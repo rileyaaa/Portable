@@ -6,6 +6,8 @@
 
 ## 开始使用
 
+`codex.exe` 使用 Git LFS 管理。通过 Git 克隆后先执行 `git lfs pull`；使用源码 ZIP 时确认其中包含实际 EXE，而不是文本形式的 LFS 指针。缺少实际工件时按[工具文档](tool/工具更新说明.md)取得并校验完整运行包。
+
 1. 解压到独立目录，例如 `D:\Codex` 或 `E:\Tools\Codex Portable`。不要从压缩包、网络盘或 symlink/junction 路径运行。
 2. 保留根目录 `codex.exe`、`codex-code-mode-host.exe` 及 `codex-package.json`、`codex-path`、`codex-resources` 等配套内容，不要只复制两个 EXE。
 3. 按下文配置认证方式。使用自定义 API 时，需要接口地址、Key 和上游实际支持的模型名；官方账号可在启动菜单选择账号 JSON 或浏览器登录。
