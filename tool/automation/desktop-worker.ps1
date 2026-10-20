@@ -13,6 +13,9 @@ if (-not $TaskAuthorized) { throw 'An explicitly selected desktop task is requir
 if ($TargetProcessId -le 0) { throw 'Select a positive target process ID.' }
 if ($Action -ne 'Tree' -and -not $AllowChanges) { throw 'A modifying action requires -AllowChanges.' }
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'Windows UI Automation is required.' }
+# The supervisor decodes captured stdout as UTF-8; Windows PowerShell otherwise
+# uses the host OEM code page and can corrupt non-ASCII control names.
+[Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 $process = Get-Process -Id $TargetProcessId -ErrorAction Stop

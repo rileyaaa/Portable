@@ -112,6 +112,18 @@ def _portable_temp_dir() -> Path:
 def get_soffice_executable() -> str:
     return str(_portable_tool("tool/office/libreoffice/program/soffice.exe"))
 
+def _portable_state_dir(root: Path, relative: str) -> Path:
+    target = root / relative
+    cursor = root
+    for part in target.relative_to(root).parts:
+        cursor = cursor / part
+        if _is_reparse(cursor, allow_missing=True):
+            raise FileNotFoundError(f"portable state path contains a reparse point: {cursor}")
+        if cursor.exists() and not cursor.is_dir():
+            raise FileNotFoundError(f"portable state path is not a directory: {cursor}")
+    return target
+
+
 def get_soffice_env() -> dict:
     # LibreOffice receives a minimal host environment plus package-local paths.
     # Unknown variables are intentionally not inherited.
@@ -123,7 +135,17 @@ def get_soffice_env() -> dict:
     }
     env = {name: value for name, value in os.environ.items() if name in allowed_host}
     root = _portable_root()
-    portable_home = root / "home-runtime"
+    state_paths = {
+        "HOME": "home-runtime", "USERPROFILE": "home-runtime",
+        "APPDATA": "appdata", "LOCALAPPDATA": "localappdata",
+        "PROGRAMDATA": "programdata", "ALLUSERSPROFILE": "programdata",
+        "PUBLIC": "public", "XDG_CACHE_HOME": "home-runtime/.cache",
+        "XDG_CONFIG_HOME": "home-runtime/.config",
+        "XDG_DATA_HOME": "home-runtime/.local/share",
+        "XDG_STATE_HOME": "home-runtime/.local/state",
+    }
+    env.update({key: str(_portable_state_dir(root, relative))
+                for key, relative in state_paths.items()})
     portable_tmp = _portable_temp_dir()
     exact_scrub = {
         "OPENAI_API_KEY", "OPENAI_BASE_URL", "CODEX_API_KEY", "ANTHROPIC_API_KEY", "AZURE_OPENAI_API_KEY",
@@ -147,8 +169,6 @@ def get_soffice_env() -> dict:
         git_injection = upper.startswith("GIT_CONFIG_KEY_") or upper.startswith("GIT_CONFIG_VALUE_")
         if upper in exact_scrub or secret_like or git_injection or upper.startswith("GIT_"):
             env.pop(name, None)
-    env["HOME"] = str(portable_home)
-    env["USERPROFILE"] = str(portable_home)
     env["TEMP"] = str(portable_tmp)
     env["TMP"] = str(portable_tmp)
     env["TMPDIR"] = str(portable_tmp)

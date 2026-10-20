@@ -227,6 +227,30 @@ class PdfLibraryTests(unittest.TestCase):
             self.markdown_path(Path("two") / "manual.pdf").read_text(encoding="utf-8"),
         )
 
+    def test_incremental_build_retries_missing_or_failed_ocr(self):
+        self.create_scanned_pdf()
+        for status in ("missing", "failed"):
+            library = self.library.with_name("retry-" + status)
+            with self.subTest(status=status):
+                with mock.patch.object(self.module, "_ocr",
+                                       return_value=("", status, "synthetic OCR unavailable")):
+                    first = self.module.build_library(self.input, library, ocr="auto")
+                self.assertEqual(first["incomplete_ocr_pages"], 1)
+                # Only the OCR boundary is simulated; the PDF renderer, SQLite
+                # cache, output hashes and incremental decision are real.
+                with mock.patch.object(self.module, "_ocr",
+                                       return_value=("RECOVERED_TEXT", "processed", "synthetic OCR")) as ocr:
+                    recovered = self.module.build_library(self.input, library, ocr="auto")
+                self.assertEqual(recovered["reused"], 0)
+                self.assertEqual(recovered["incomplete_ocr_pages"], 0)
+                ocr.assert_called_once()
+                with mock.patch.object(self.module, "_ocr",
+                                       side_effect=AssertionError("Successful OCR should be reused")):
+                    cached = self.module.build_library(self.input, library, ocr="auto")
+                self.assertEqual(cached["reused"], 1)
+                text = (library / "manuals/scanned.md").read_text(encoding="utf-8")
+                self.assertIn("RECOVERED_TEXT", text)
+
     def test_scan_without_ocr_is_incomplete_in_strict_mode(self):
         self.create_scanned_pdf()
         result = self.module.build_library(

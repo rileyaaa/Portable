@@ -1,9 +1,9 @@
-# Project-owned R19 subprocess lifetime helper. Windows PowerShell 5.1 / .NET 4.x.
+# Project-owned R20 subprocess lifetime helper. Windows PowerShell 5.1 / .NET 4.x.
 # Callers MUST validate executable, code inputs, cwd and this file before loading it.
 # No credentials, command-line contents or captured output are included in errors.
 function Initialize-PortableProcessJob {
     param([Parameter(Mandatory=$true)][string]$PackageRoot)
-    if ('CodexPortable.ProcessJobR19' -as [type]) { return }
+    if ('CodexPortable.ProcessJobR20' -as [type]) { return }
     $root = [IO.Path]::GetFullPath($PackageRoot).TrimEnd('\')
     $tempRoot = Join-Path $root 'tmp'
     foreach ($path in @($root, $tempRoot)) {
@@ -21,7 +21,7 @@ using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 namespace CodexPortable {
-    public sealed class ProcessJobR19 : IDisposable {
+    public sealed class ProcessJobR20 : IDisposable {
         [StructLayout(LayoutKind.Sequential)] struct BasicLimits {
             public long PerProcessUserTimeLimit, PerJobUserTimeLimit;
             public uint LimitFlags;
@@ -54,7 +54,7 @@ namespace CodexPortable {
         [return: MarshalAs(UnmanagedType.Bool)]
         static extern bool CloseHandle(IntPtr handle);
         IntPtr handle;
-        public ProcessJobR19() {
+        public ProcessJobR20() {
             handle = CreateJobObject(IntPtr.Zero, null);
             if (handle == IntPtr.Zero) throw new Win32Exception();
             ExtendedLimits limits = new ExtendedLimits();
@@ -74,9 +74,9 @@ namespace CodexPortable {
             if (old != IntPtr.Zero) CloseHandle(old);
             GC.SuppressFinalize(this);
         }
-        ~ProcessJobR19() { Dispose(); }
+        ~ProcessJobR20() { Dispose(); }
     }
-    public sealed class SuspendedChildR19 : IDisposable {
+    public sealed class SuspendedChildR20 : IDisposable {
         [StructLayout(LayoutKind.Sequential)] struct SecurityAttributes {
             public int Length; public IntPtr SecurityDescriptor;
             [MarshalAs(UnmanagedType.Bool)] public bool InheritHandle;
@@ -121,6 +121,28 @@ namespace CodexPortable {
         [return: MarshalAs(UnmanagedType.Bool)]
         static extern bool CloseHandle(IntPtr handle);
         static void Close(ref IntPtr value) { IntPtr h=value; value=IntPtr.Zero; if(h!=IntPtr.Zero) CloseHandle(h); }
+        [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+        [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr GetStdHandle(int kind);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool DuplicateHandle(IntPtr sourceProcess, IntPtr source, IntPtr targetProcess,
+            out IntPtr duplicate, uint access, bool inherit, uint options);
+        [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+        static extern IntPtr CreateFile(string name, uint access, uint share, ref SecurityAttributes sa,
+            uint disposition, uint attributes, IntPtr template);
+        static IntPtr InheritStandardHandle(int kind, bool input) {
+            IntPtr source=GetStdHandle(kind), duplicate;
+            if(source!=IntPtr.Zero && source!=new IntPtr(-1)) {
+                IntPtr process=GetCurrentProcess();
+                if(!DuplicateHandle(process,source,process,out duplicate,0,true,2)) throw new Win32Exception();
+                return duplicate;
+            }
+            // A GUI caller may have no standard stream. Supply NUL, never a host file.
+            var sa=new SecurityAttributes {Length=Marshal.SizeOf(typeof(SecurityAttributes)),InheritHandle=true};
+            duplicate=CreateFile("NUL",input ? 0x80000000u : 0x40000000u,3,ref sa,3,0,IntPtr.Zero);
+            if(duplicate==new IntPtr(-1)) throw new Win32Exception();
+            return duplicate;
+        }
         static System.IO.FileStream Own(ref IntPtr value, System.IO.FileAccess access) {
             var handle = new Microsoft.Win32.SafeHandles.SafeFileHandle(value, true); value=IntPtr.Zero;
             try { return new System.IO.FileStream(handle, access, 4096, false); }
@@ -132,7 +154,7 @@ namespace CodexPortable {
         public System.IO.StreamReader StandardError { get; private set; }
         public bool HasExited { get { return process.HasExited; } }
         public int ExitCode { get { return process.ExitCode; } }
-        public SuspendedChildR19(System.Diagnostics.ProcessStartInfo info, ProcessJobR19 job) {
+        public SuspendedChildR20(System.Diagnostics.ProcessStartInfo info, ProcessJobR20 job) {
             bool capture=info.RedirectStandardInput || info.RedirectStandardOutput || info.RedirectStandardError;
             if(capture && !(info.RedirectStandardInput && info.RedirectStandardOutput && info.RedirectStandardError))
                 throw new ArgumentException("All three streams must be redirected together.");
@@ -150,6 +172,17 @@ namespace CodexPortable {
                        !CreatePipe(out parentErr,out childErr,ref sa,0)) throw new Win32Exception();
                     foreach(IntPtr h in new[]{parentIn,parentOut,parentErr})
                         if(!SetHandleInformation(h,1,0)) throw new Win32Exception();
+                    StandardInput=new System.IO.StreamWriter(Own(ref parentIn,System.IO.FileAccess.Write),new System.Text.UTF8Encoding(false));
+                    StandardOutput=new System.IO.StreamReader(Own(ref parentOut,System.IO.FileAccess.Read),info.StandardOutputEncoding ?? System.Text.Encoding.UTF8);
+                    StandardError=new System.IO.StreamReader(Own(ref parentErr,System.IO.FileAccess.Read),info.StandardErrorEncoding ?? System.Text.Encoding.UTF8);
+                } else {
+                    // Forward existing console or pipe handles explicitly. CREATE_NO_WINDOW
+                    // otherwise drops MCP stdio, and generic inheritance leaks other handles.
+                    childIn=InheritStandardHandle(-10,true);
+                    childOut=InheritStandardHandle(-11,false);
+                    childErr=InheritStandardHandle(-12,false);
+                }
+                {
                     start.startup.flags=0x100; // STARTF_USESTDHANDLES
                     start.startup.input=childIn; start.startup.output=childOut; start.startup.error=childErr;
                     IntPtr size=IntPtr.Zero;
@@ -165,9 +198,6 @@ namespace CodexPortable {
                         new IntPtr(IntPtr.Size*3),IntPtr.Zero,IntPtr.Zero)) throw new Win32Exception();
                     flags |= 0x00080000; // EXTENDED_STARTUPINFO_PRESENT, explicit std-handle allowlist
                     start.startup.cb=Marshal.SizeOf(typeof(StartupInfoEx));
-                    StandardInput=new System.IO.StreamWriter(Own(ref parentIn,System.IO.FileAccess.Write),new System.Text.UTF8Encoding(false));
-                    StandardOutput=new System.IO.StreamReader(Own(ref parentOut,System.IO.FileAccess.Read),info.StandardOutputEncoding ?? System.Text.Encoding.UTF8);
-                    StandardError=new System.IO.StreamReader(Own(ref parentErr,System.IO.FileAccess.Read),info.StandardErrorEncoding ?? System.Text.Encoding.UTF8);
                 }
                 var keys=new System.Collections.Generic.List<string>();
                 foreach(string key in info.EnvironmentVariables.Keys) keys.Add(key);
@@ -182,7 +212,7 @@ namespace CodexPortable {
                 env=Marshal.StringToHGlobalUni(block.ToString());
                 if(info.FileName.IndexOf('"')>=0 || info.FileName.IndexOf('\0')>=0) throw new ArgumentException("Invalid executable.");
                 var command=new System.Text.StringBuilder("\""+info.FileName+"\" "+info.Arguments);
-                if(!CreateProcessW(info.FileName,command,IntPtr.Zero,IntPtr.Zero,capture,flags,env,
+                if(!CreateProcessW(info.FileName,command,IntPtr.Zero,IntPtr.Zero,true,flags,env,
                     info.WorkingDirectory,ref start,out pi)) throw new Win32Exception();
                 // No child instructions execute before it belongs to the kill-on-close job.
                 job.Attach(pi.process);
@@ -257,7 +287,7 @@ function Invoke-PortableProcess {
     if ($TimeoutMs -lt 0 -or $MaxOutputChars -lt 1 -or $MaxOutputChars -gt 16777216 -or $InputText.Length -gt 8388608) { throw 'Invalid process resource limit.' }
     if ($TimeoutMs -eq 0 -and ($StartInfo.RedirectStandardOutput -or $StartInfo.RedirectStandardError -or $StartInfo.RedirectStandardInput)) { throw 'Captured processes require a finite deadline.' }
     Initialize-PortableProcessJob -PackageRoot $PackageRoot
-    $job = New-Object CodexPortable.ProcessJobR19
+    $job = New-Object CodexPortable.ProcessJobR20
     $process = $null
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $started = $false; $terminated = $false
@@ -269,7 +299,7 @@ function Invoke-PortableProcess {
     $errDone = -not $StartInfo.RedirectStandardError
     $inputStage = 2
     try {
-        $process = New-Object CodexPortable.SuspendedChildR19 -ArgumentList $StartInfo,$job
+        $process = New-Object CodexPortable.SuspendedChildR20 -ArgumentList $StartInfo,$job
         $started = $true
         if (-not $outDone) { $outTask = $process.StandardOutput.ReadAsync($outBuffer, 0, $outBuffer.Length) }
         if (-not $errDone) { $errTask = $process.StandardError.ReadAsync($errBuffer, 0, $errBuffer.Length) }

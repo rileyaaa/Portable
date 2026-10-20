@@ -71,12 +71,12 @@ function Resolve-ApkLabPortablePath([string]$Path) {
 
 function Assert-ApkLabSingleLinkRegularFile([string]$Path,[string]$Label) {
     $full = Resolve-ApkLabPortablePath $Path
-    if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { throw "Missing $Label: $full" }
+    if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { throw "Missing ${Label}: $full" }
     $item = Get-Item -LiteralPath $full -Force -ErrorAction Stop
-    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Refusing reparse-point $Label: $full" }
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Refusing reparse-point ${Label}: $full" }
     $linkTypeProperty = $item.PSObject.Properties['LinkType']
     $linkType = if ($null -ne $linkTypeProperty) { [string]$linkTypeProperty.Value } else { '' }
-    if ($linkType -eq 'HardLink' -or ([string]$item.Mode).Contains('l')) { throw "Refusing hardlink/link $Label: $full" }
+    if ($linkType -eq 'HardLink' -or ([string]$item.Mode).Contains('l')) { throw "Refusing hardlink/link ${Label}: $full" }
     return $full
 }
 

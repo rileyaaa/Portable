@@ -210,10 +210,19 @@ def portable_subprocess_env() -> dict[str, str]:
         git_injection = upper.startswith("GIT_CONFIG_KEY_") or upper.startswith("GIT_CONFIG_VALUE_")
         if upper in exact_scrub or secret_like or git_injection or upper.startswith("GIT_"):
             env.pop(name, None)
-    home = root / "home-runtime"
+    state_paths = {
+        "HOME": "home-runtime", "USERPROFILE": "home-runtime",
+        "APPDATA": "appdata", "LOCALAPPDATA": "localappdata",
+        "PROGRAMDATA": "programdata", "ALLUSERSPROFILE": "programdata",
+        "PUBLIC": "public", "XDG_CACHE_HOME": "home-runtime/.cache",
+        "XDG_CONFIG_HOME": "home-runtime/.config",
+        "XDG_DATA_HOME": "home-runtime/.local/share",
+        "XDG_STATE_HOME": "home-runtime/.local/state",
+    }
+    # Direct helper calls cannot rely on the launcher checking these paths.
+    env.update({key: str(resolve_portable_path(root / relative, kind="dir"))
+                for key, relative in state_paths.items()})
     tmp = portable_temp_dir("office")
-    env["HOME"] = str(home)
-    env["USERPROFILE"] = str(home)
     env["TEMP"] = str(tmp)
     env["TMP"] = str(tmp)
     env["TMPDIR"] = str(tmp)

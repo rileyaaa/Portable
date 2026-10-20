@@ -462,7 +462,12 @@ def build_library(input_path: Path, library_path: Path, *, ocr="none",
         for name, path in items:
             digest = sha256(path)
             previous = old.get(name)
-            if previous and previous["source_sha"] == digest and previous["signature"] == signature:
+            retry_ocr = previous and connection.execute(
+                "SELECT 1 FROM pages WHERE document=? AND ocr_status IN ('missing','failed') LIMIT 1",
+                (name,),
+            ).fetchone() is not None
+            if (previous and previous["source_sha"] == digest and
+                    previous["signature"] == signature and not retry_ocr):
                 reused += 1
                 continue
             output = _output(library, name)

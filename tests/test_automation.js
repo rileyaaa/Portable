@@ -33,6 +33,16 @@ test('path guards reject traversal, hard links and linked ancestors', () => {
     assert.throws(() => bridge.checkedPath(work, base, {directory: true}), /outside/);
     fs.symlinkSync(work, path.join(base, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
     assert.throws(() => bridge.checkedPath(base, 'linked/new', {missing: true}), /Links/);
+    const originalLstat = fs.lstatSync;
+    let childProbed = false;
+    fs.lstatSync = function(candidate, ...args) {
+      if (candidate === path.join(base, 'linked', 'new')) childProbed = true;
+      return originalLstat.call(this, candidate, ...args);
+    };
+    try {
+      assert.throws(() => bridge.checkedPath(base, 'linked/new', {missing: true}), /Links/);
+      assert.equal(childProbed, false, 'Reject the linked ancestor before probing its target');
+    } finally { fs.lstatSync = originalLstat; }
     fs.symlinkSync(path.join(base, 'absent'), path.join(base, 'dangling'), process.platform === 'win32' ? 'junction' : 'dir');
     assert.throws(() => bridge.checkedPath(base, 'dangling/new', {missing: true}), /Links/);
   } finally {
@@ -45,6 +55,9 @@ test('tool policy blocks host execution, uploads, installation and local-file na
     assert.throws(() => bridge.validateToolCall(root, {name, arguments: {}}), /not enabled/);
   assert.throws(() => bridge.validateToolCall(root, {
     name: 'browser_navigate', arguments: {url: 'file:///C:/Users/secret'},
+  }), /Only HTTP/);
+  assert.throws(() => bridge.validateToolCall(root, {
+    name: 'browser_tabs', arguments: {action: 'new', url: 'file:///C:/Users/secret'},
   }), /Only HTTP/);
   assert.throws(() => bridge.validateToolCall(root, {
     name: 'browser_take_screenshot', arguments: {filename: '../outside.png'},
@@ -82,6 +95,12 @@ test('transport strips client roots and refuses requests without forwarding them
   assert.equal(forwarded.length, 1);
   await policy.send({jsonrpc: '2.0', id: 1, result: {}});
   assert.equal(policy.pending.size, 0);
+  inner.onmessage({jsonrpc: '2.0', id: 3, method: 'tools/call', params: {
+    name: 'browser_take_screenshot', arguments: {filename: 'synthetic.png', _meta: {cwd: '/outside'}},
+  }});
+  const sanitized = forwarded[1].params.arguments;
+  assert.equal(sanitized.filename, path.join(root, 'synthetic.png'));
+  assert.ok(!Object.hasOwn(sanitized, '_meta'));
 });
 
 test('real pinned MCP initializes and lists filtered tools without browser startup', async () => {

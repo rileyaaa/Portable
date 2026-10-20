@@ -235,6 +235,46 @@ class HelperRelocationTests(unittest.TestCase):
                         expected,
                     )
 
+    def test_office_child_state_paths_are_relocated_and_host_values_removed(self):
+        state_variables = (
+            "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA",
+            "ALLUSERSPROFILE", "PUBLIC", "XDG_CACHE_HOME", "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME", "XDG_STATE_HOME", "TEMP", "TMP", "TMPDIR",
+        )
+        inherited = {key: str(self.old / key) for key in state_variables}
+        inherited["CODEX_INSTALL_DIR"] = str(self.old)
+        inherited["OPENAI_API_KEY"] = "synthetic-test-only"
+        for relative in HELPERS:
+            module = self.load_helper(relative)
+            builder = getattr(module, "portable_subprocess_env", None) or \
+                getattr(module, "get_soffice_env", None)
+            if builder is None:
+                continue
+            with self.subTest(helper=relative), mock.patch.dict(os.environ, inherited), \
+                    self.forbid_path_reads(self.old):
+                child = builder()
+                for key in state_variables:
+                    self.assertTrue(Path(child[key]).is_relative_to(self.new), key)
+                self.assertNotIn("OPENAI_API_KEY", child)
+
+    def test_office_child_state_links_rejected_before_temp_creation(self):
+        for relative in HELPERS:
+            module = self.load_helper(relative)
+            builder = getattr(module, "portable_subprocess_env", None) or \
+                getattr(module, "get_soffice_env", None)
+            if builder is None:
+                continue
+            for name in ("home-runtime", "appdata", "localappdata"):
+                link = self.new / name
+                self.symlink(self.old, link, directory=True)
+                try:
+                    with self.subTest(helper=relative, state=name):
+                        with self.assertRaises(self.error_type(module)):
+                            builder()
+                        self.assertFalse((self.new / "tmp").exists())
+                finally:
+                    link.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()

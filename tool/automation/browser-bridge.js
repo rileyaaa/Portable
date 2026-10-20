@@ -25,8 +25,14 @@ function checkedPath(root, input, {directory = false, missing = false} = {}) {
   const rel = path.relative(base, full);
   if (rel.startsWith('..' + path.sep) || rel === '..' || path.isAbsolute(rel))
     throw new Error('Path is outside the allowed directory');
-  let current = full;
-  for (;;) {
+  const ancestors = [];
+  for (let current = full;;) {
+    ancestors.push(current);
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  for (const current of ancestors.reverse()) {
     try {
       const stat = fs.lstatSync(current);
       if (stat.isSymbolicLink() || (stat.isFile() && stat.nlink !== 1))
@@ -34,9 +40,6 @@ function checkedPath(root, input, {directory = false, missing = false} = {}) {
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
     }
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
   }
   let leaf;
   try { leaf = fs.lstatSync(full); } catch (error) {
@@ -59,12 +62,17 @@ function checkTree(root, directory) {
 function validateToolCall(workspace, params) {
   if (!params || !allowedTools.has(params.name))
     throw new Error('Tool is not enabled by the portable browser policy');
-  const args = params.arguments ?? {};
-  if (!args || typeof args !== 'object' || Array.isArray(args))
+  const supplied = params.arguments ?? {};
+  if (!supplied || typeof supplied !== 'object' || Array.isArray(supplied))
     throw new Error('Tool arguments must be an object');
+  const args = {...supplied};
+  // Upstream consumes _meta.cwd before schema parsing; never let it redirect
+  // relative output after we have validated it against the selected workspace.
+  delete args._meta;
   if (Object.hasOwn(args, 'filename'))
-    checkedPath(workspace, args.filename, {missing: true});
-  if (params.name === 'browser_navigate') {
+    args.filename = checkedPath(workspace, args.filename, {missing: true});
+  if (params.name === 'browser_navigate' ||
+      (params.name === 'browser_tabs' && Object.hasOwn(args, 'url'))) {
     const url = new URL(args.url);
     if (!['http:', 'https:'].includes(url.protocol) && url.href !== 'about:blank')
       throw new Error('Only HTTP(S) and about:blank navigation are enabled');
@@ -89,7 +97,8 @@ class PolicyTransport {
           // Upstream otherwise trusts arbitrary roots supplied by the client.
           message = {...message, params: {...message.params, capabilities: {}}};
         } else if (method === 'tools/call') {
-          validateToolCall(this.workspace, message.params);
+          const args = validateToolCall(this.workspace, message.params);
+          message = {...message, params: {...message.params, arguments: args}};
         } else if (!['tools/list', 'ping', 'notifications/initialized', 'notifications/cancelled'].includes(method)) {
           throw new Error('MCP method is not enabled by the portable browser policy');
         }

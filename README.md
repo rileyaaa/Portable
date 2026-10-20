@@ -1,6 +1,6 @@
 # Codex Portable（Windows x64）
 
-将 Codex、启动器、包内工具和运行状态放在同一目录的便携项目，面向 **Windows x86-64、Windows PowerShell 5.1、本地 NTFS**，不支持 32 位 Windows。当前主客户端与 Code Mode Host 均为官方 **0.163.0**，保留同版本的完整资源布局；来源和摘要见 [运行包清单](tool/runtime-manifest.json)。
+将 Codex、启动器、包内工具和运行状态放在同一目录的便携项目，面向 **Windows x86-64、Windows PowerShell 5.1、本地 NTFS**，不支持 32 位 Windows。当前主客户端与 Code Mode Host 均为官方 **0.163.0**，用于文字与 Agent 工作，保留配套执行、搜索和沙箱组件，不包含语音聊天资源；来源和摘要见 [运行包清单](tool/runtime-manifest.json)。
 
 **`D:\Codex` 只是常用位置，不是固定路径。** 解压到其他本地目录后，启动器从自身位置确定包根，重新设置工具、配置、用户状态、缓存和临时目录。当前版本已完成离线回归，Windows 客户端、Host、登录及 NTFS 行为仍待真机验收，详见 [开发文档](DEVELOPMENT.md)。
 
@@ -14,6 +14,21 @@
 4. 双击 `启动Codex.bat`，按菜单选择登录、思考等级、网络和代理。默认工作目录为包内 `work`。
 
 日常和维护都通过 BAT 进入。BAT 会在创建运行目录前检查包根祖先，并在启动 PowerShell 前重定向用户目录与缓存；直接执行 `powershell -File ...` 可能在项目脚本接管前使用宿主缓存。
+
+### Codex 的几个 EXE 分别做什么
+
+它们来自同一官方运行包，承担不同功能，并不是多装了几套 Codex：
+
+| 文件 | 用途及保留理由 |
+| --- | --- |
+| `codex.exe` | 主客户端，必需。 |
+| `codex-code-mode-host.exe` | 执行 Code Mode 工具调用的配套进程；当前项目保留此能力，必需与主客户端匹配。 |
+| `codex-command-runner.exe` | Windows 沙箱中的命令执行助手；删除会破坏使用它的沙箱执行路径。 |
+| `codex-windows-sandbox-setup.exe` | Windows 沙箱初始化助手，按需使用；不是另一套客户端。 |
+| `codex-path/rg.exe` | Codex 自带的文件内容搜索程序，避免依赖宿主安装。 |
+| `codex-voice-host.exe` 及语音资源 | 已按项目用途移除，并关闭语音、听写和实时会话配置；文字与 Agent 工作不依赖此组件。 |
+
+两个沙箱助手在根目录和 `codex-resources` 中有同字节副本，这是上游 ZIP 的兼容布局，并非四种工具。去掉语音专用的 39 个文件后，Codex 运行包解压体积从约 **491.6 MB** 降为 **472.2 MB**；不含 `tool` 工具链。两份沙箱重复副本共约 **25.9 MB**，因不同启动路径可能使用不同位置，本次保留。进一步精简必须验证受影响功能和查找路径，不能只看 EXE 数量。
 
 ## 五个 BAT 入口
 
@@ -60,7 +75,7 @@ $env:OPENAI_API_KEY = "替换为自己的Key"
 $env:CODEX_MODEL = "上游实际提供的模型名"
 ```
 
-不要使用 `CODEX_API_KEY` 代替 `OPENAI_API_KEY`，也不要只设置 `OPENAI_BASE_URL` 代替本项目的 `CODEX_BASE_URL`。包根、`PATH`、用户目录、缓存/临时目录及工具链路径受保护，不能在本机配置中覆盖。
+不要使用 `CODEX_API_KEY` 代替 `OPENAI_API_KEY`，也不要只设置 `OPENAI_BASE_URL` 代替本项目的 `CODEX_BASE_URL`。包根、`PATH`、用户目录、缓存/临时目录及工具链路径受保护，不能在本机配置中覆盖。`CODEX_*` 仅接受启动器明确支持的设置；未经核对的原生调试、日志或安装路径变量会被拒绝，避免绕过包内路径限制。
 
 ### 常用功能设置
 

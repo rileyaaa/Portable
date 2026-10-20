@@ -29,6 +29,30 @@ try {
     try { $null = Assert-AutomationPath -Root $root -Path $hard } catch { $threw = $true }
     Assert-Test $threw 'Hardlinked code input must be refused.'
     Write-Output 'PASS hardlinked executable rejection'
+    $tree = New-AutomationDirectory -Root $root -Path (Join-Path $fixture 'browser-tree')
+    $subtree = New-AutomationDirectory -Root $root -Path (Join-Path $tree 'ordinary')
+    [IO.File]::WriteAllText((Join-Path $subtree 'payload.txt'), 'synthetic')
+    Assert-AutomationTree -Root $root -Path $tree
+    $linked = Join-Path $tree 'linked'
+    $linkType = 'SymbolicLink'
+    if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) { $linkType = 'Junction' }
+    $null = New-Item -ItemType $linkType -Path $linked -Target $session
+    $script:enumeratedLinkedDirectory = $false
+    function Get-ChildItem {
+        param([string]$LiteralPath, [switch]$Force)
+        if ($LiteralPath -eq $linked) { $script:enumeratedLinkedDirectory = $true }
+        Microsoft.PowerShell.Management\Get-ChildItem -LiteralPath $LiteralPath -Force:$Force
+    }
+    try {
+        $threw = $false
+        try { Assert-AutomationTree -Root $root -Path $tree } catch { $threw = $true }
+        Assert-Test $threw 'Existing browser links must be refused.'
+        Assert-Test (-not $script:enumeratedLinkedDirectory) 'Do not enumerate a linked target before refusing it.'
+    } finally {
+        Remove-Item Function:Get-ChildItem
+        Remove-Item -LiteralPath $linked -Force
+    }
+    Write-Output 'PASS browser tree checked before linked subtree enumeration'
     $owned = New-AutomationDirectory -Root $root -Path (Join-Path $fixture 'cleanup')
     [IO.File]::WriteAllText((Join-Path $owned 'owned.txt'), 'synthetic')
     Remove-AutomationSession -Root $root -Path $owned

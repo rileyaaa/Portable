@@ -24,9 +24,16 @@ function Assert-AutomationPath {
         throw 'UNC, device paths and alternate data streams are not supported.'
     }
     # Inspect all ancestors, including those above the package root.
+    $ancestors = New-Object System.Collections.Stack
     $cursor = $full
     while ($cursor) {
-        $item = Get-Item -LiteralPath $cursor -Force -ErrorAction SilentlyContinue
+        $ancestors.Push($cursor)
+        $parent = Split-Path -Parent $cursor
+        if ($parent -eq $cursor) { break }
+        $cursor = $parent
+    }
+    while ($ancestors.Count -gt 0) {
+        $item = Get-Item -LiteralPath $ancestors.Pop() -Force -ErrorAction SilentlyContinue
         if ($null -ne $item) {
             if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
                 ($item.PSObject.Properties['LinkType'] -and $item.LinkType)) {
@@ -38,9 +45,6 @@ function Assert-AutomationPath {
                 throw 'Automation refuses multiply linked files.'
             }
         }
-        $parent = Split-Path -Parent $cursor
-        if ($parent -eq $cursor) { break }
-        $cursor = $parent
     }
     $leaf = Get-Item -LiteralPath $full -Force -ErrorAction SilentlyContinue
     if ($null -eq $leaf) {
@@ -68,22 +72,30 @@ function New-AutomationDirectory {
     return (Assert-AutomationPath -Root $Root -Path $full -Directory)
 }
 
-function Remove-AutomationSession {
+function Assert-AutomationTree {
     param([string]$Root, [string]$Path)
-    $temporary = Join-Path $Root 'tmp'
-    $full = Assert-AutomationPath -Root $temporary -Path $Path -Directory
-    if ($full -eq [IO.Path]::GetFullPath($temporary)) { throw 'Cannot remove the shared temporary root.' }
-    # Validate before descending; Get-ChildItem -Recurse could follow a link
-    # before its attributes are inspected. Only call after the owned job exits.
+    $full = Assert-AutomationPath -Root $Root -Path $Path -Directory
+    # Validate each child before descending. Recursive enumeration can cross a
+    # junction before the caller gets a chance to inspect its attributes.
     $directories = New-Object System.Collections.Stack
     $directories.Push($full)
     while ($directories.Count -gt 0) {
         $current = $directories.Pop()
+        [void](Assert-AutomationPath -Root $full -Path $current -Directory)
         foreach ($entry in @(Get-ChildItem -LiteralPath $current -Force)) {
             [void](Assert-AutomationPath -Root $full -Path $entry.FullName -Directory:$entry.PSIsContainer)
             if ($entry.PSIsContainer) { $directories.Push($entry.FullName) }
         }
     }
+}
+
+function Remove-AutomationSession {
+    param([string]$Root, [string]$Path)
+    $temporary = Join-Path $Root 'tmp'
+    $full = Assert-AutomationPath -Root $temporary -Path $Path -Directory
+    if ($full -eq [IO.Path]::GetFullPath($temporary)) { throw 'Cannot remove the shared temporary root.' }
+    # Only call after the owned job exits.
+    Assert-AutomationTree -Root $Root -Path $full
     Remove-Item -LiteralPath $full -Recurse -Force
 }
 

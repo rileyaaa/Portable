@@ -18,17 +18,14 @@ class PortablePathError(RuntimeError):
     pass
 
 
-def is_reparse(path: os.PathLike[str] | str) -> bool:
+def is_reparse(path: os.PathLike[str] | str, *, allow_missing: bool = False) -> bool:
     try:
-        p = os.fspath(path)
-        if os.path.islink(p):
-            return True
-        isjunction = getattr(os.path, "isjunction", None)
-        if callable(isjunction) and isjunction(p):
-            return True
-        attrs = getattr(os.lstat(p), "st_file_attributes", 0)
+        info = os.lstat(path)
+        attrs = getattr(info, "st_file_attributes", 0)
         flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
-        return bool(attrs & flag)
+        return stat.S_ISLNK(info.st_mode) or bool(attrs & flag)
+    except FileNotFoundError:
+        return not allow_missing
     except OSError:
         return True
 
@@ -53,22 +50,24 @@ def _inside(root: Path, candidate: Path) -> bool:
 
 def find_portable_root(script_path: os.PathLike[str] | str) -> Path:
     script = Path(script_path).absolute()
-    current = script.parent
-    for _ in range(9):
-        if (current / "codex.exe").is_file() and (current / "env.ps1").is_file():
-            if is_reparse(current):
-                raise PortablePathError("Codex Portable root must not be a junction/symlink/reparse point.")
-            # Reject a reparse component between the discovered package root and this script.
-            walk = current
-            for part in script.relative_to(current).parts:
-                walk = walk / part
-                if walk.exists() and is_reparse(walk):
-                    raise PortablePathError(f"Reparse point in APK Lab script path: {walk}")
-            return current.resolve()
-        if current.parent == current:
-            break
-        current = current.parent
-    raise PortablePathError(f"Unable to locate Codex Portable root from: {script}")
+    if len(script.parents) < 7:
+        raise PortablePathError("APK Lab script is outside the bundled layout")
+    root = script.parents[6]
+    if script.relative_to(root).parts[:-1] != (
+        "home", "plugins", "android-apk-lab", "skills",
+        "android-reverse-engineering", "scripts",
+    ):
+        raise PortablePathError("APK Lab script is outside the bundled layout")
+    # Do not search markers through a redirected ancestor, or fall back to a
+    # different package when this copy is incomplete.
+    for entry in (*reversed(script.parents), script):
+        if is_reparse(entry):
+            raise PortablePathError(f"Reparse point in APK Lab script path: {entry}")
+    for entry in (script, root / "codex.exe", root / "env.ps1"):
+        if is_reparse(entry) or not entry.is_file():
+            raise PortablePathError(f"APK Lab requires a regular package file: {entry}")
+        reject_hardlinked_file(entry)
+    return root
 
 
 def resolve_inside(
@@ -82,10 +81,15 @@ def resolve_inside(
     raw = Path(value)
     if not raw.is_absolute():
         raw = Path.cwd() / raw
-    lexical = Path(os.path.abspath(os.fspath(raw)))
+    lexical = raw.absolute()
+    if ".." in lexical.parts:
+        raise PortablePathError(f"Parent traversal is not allowed in APK Lab paths: {value}")
     if not _inside(root, lexical) or (lexical == root and not allow_root):
         raise PortablePathError(f"Path escapes Codex Portable package: {value}")
 
+    for ancestor in (*reversed(root.parents), root):
+        if is_reparse(ancestor):
+            raise PortablePathError(f"Reparse point in APK Lab package path: {ancestor}")
     walk = root
     try:
         relative = lexical.relative_to(root)
@@ -93,7 +97,7 @@ def resolve_inside(
         raise PortablePathError(f"Path escapes Codex Portable package: {value}") from exc
     for part in relative.parts:
         walk = walk / part
-        if walk.exists() and is_reparse(walk):
+        if is_reparse(walk, allow_missing=True):
             raise PortablePathError(f"Reparse point is not allowed in APK Lab path: {walk}")
 
     resolved = lexical.resolve(strict=False)

@@ -145,6 +145,29 @@ try {
             Assert-Equal $Assignments[0].Right.Extent.Text '"false"' "$Setting must default off"
         }
     }
+    Test-Case 'generated feature TOML disables all voice entry points' {
+        $StartMarker = '[void]$Builder.AppendLine("[features]")'
+        $EndMarker = '[void]$Builder.AppendLine("[tui]")'
+        $StartOffset = $LauncherSource.IndexOf($StartMarker, [StringComparison]::Ordinal)
+        $EndOffset = $LauncherSource.IndexOf($EndMarker, $StartOffset, [StringComparison]::Ordinal)
+        Assert-True ($StartOffset -ge 0 -and $EndOffset -gt $StartOffset) 'feature generation block must exist'
+        $FeatureScript = [scriptblock]::Create($LauncherSource.Substring($StartOffset, $EndOffset - $StartOffset))
+        foreach ($ExtensionsEnabled in @($false, $true)) {
+            $Builder = New-Object Text.StringBuilder
+            $ModelAllowsImage = $true
+            $FastModeEnabled = $false
+            $DisableApps = $true
+            $EnablePlugins = $ExtensionsEnabled
+            $EnablePluginSharing = $false
+            . $FeatureScript
+            $Generated = $Builder.ToString()
+            foreach ($Feature in @('in_app_voice','in_app_dictation','realtime_conversation')) {
+                Assert-True ($Generated -match ('(?m)^' + $Feature + ' = false\r?$')) "$Feature must stay disabled"
+            }
+            Assert-True ($Generated -match '(?m)^fast_mode = false\r?$') 'voice restriction must preserve Fast default'
+            Assert-True ($Generated -match ('(?m)^plugins = ' + $ExtensionsEnabled.ToString().ToLowerInvariant() + '\r?$')) 'voice restriction must preserve explicit plugin behavior'
+        }
+    }
     Test-Case 'missing values and explicit session flag both default off' {
         foreach ($Arguments in @(@(), @('--portable-extensions'))) {
             $Result = Invoke-OptionPolicy -Arguments $Arguments

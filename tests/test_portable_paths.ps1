@@ -194,7 +194,9 @@ try {
         Invoke-EnvWorker $MovedRoot
         Assert-Equal $false (Test-Path -LiteralPath $CurrentRoot) 'Original location must no longer exist'
     }
-    foreach ($ProtectedName in @('CODEX_INSTALL_DIR', 'CODEX_PYTHON', 'ANDROID_HOME', 'APK_LAB_TMP_DIR')) {
+    foreach ($ProtectedName in @('CODEX_INSTALL_DIR', 'CODEX_PYTHON', 'ANDROID_HOME', 'APK_LAB_TMP_DIR',
+        'CODEX_ROLLOUT_TRACE_ROOT', 'CODEX_TUI_SESSION_LOG_PATH', 'CODEX_MANAGED_PACKAGE_ROOT',
+        'CODEX_WINDOWS_REGISTERED_CORE', 'CODEX_FUTURE_UNREVIEWED_PATH')) {
         Test-Case "Local override of $ProtectedName is rejected without changing derived paths" {
             $EscapedOldRoot = $OldRoot.Replace("'", "''")
             Set-SyntheticLocalEnv $MovedRoot ('$env:' + $ProtectedName + " = '" + $EscapedOldRoot + "'")

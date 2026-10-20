@@ -5,3 +5,4 @@ tool/automation/playwright/** -text
 codex-resources/** -text
 codex-path/** -text
 codex-package.json -text
+tool/runtime-manifest.json -text

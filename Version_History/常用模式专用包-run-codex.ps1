@@ -234,6 +234,7 @@ Assert-PortablePinnedExecutableAcl "codex.exe" $CodexExe
 # This hardened launcher is version-specific.  Never run the 0.163.0 config/schema
 # assumptions against an older, newer, zero-byte, or locally modified Codex binary.
 $ExpectedCodexVersion = "0.163.0"
+$ExpectedRuntimeManifestSha256 = "96205C2D35E170EB98165EA4EA4E88F222C6FBC270556662041182D9B013FAA3"
 $ExpectedCodexSha256 = "2692C8C7BB2CF8B0AEFE638741FC90236F4B824C59578CE84994F9DE58200993"
 $CodeModeHost = Join-Path $Root "codex-code-mode-host.exe"
 $ExpectedCodeModeHostSha256 = "07F3869F0849CD54B31CEC1F86EC796F004501BD3A215135C1FACC883A2B9988"
@@ -282,6 +283,76 @@ function Assert-PinnedCodeModeHost {
     }
 }
 
+# The native client discovers metadata, rg, sandbox helpers, voice resources and
+# DLLs independently. Pin the manifest itself before trusting any of its paths or
+# hashes, then validate every recorded input before the first native invocation.
+function Assert-PinnedRuntimePackage {
+    $manifestPath = Join-Path $Root 'tool\runtime-manifest.json'
+    Assert-PortableRegularInputFile 'runtime manifest' $manifestPath
+    $manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256 -ErrorAction Stop).Hash
+    if ($manifestHash -ne $ExpectedRuntimeManifestSha256) {
+        throw 'Runtime manifest does not match the pinned release; restore the verified complete package.'
+    }
+    $manifest = [IO.File]::ReadAllText($manifestPath, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    if ($manifest.version -ne $ExpectedCodexVersion -or $manifest.target -ne 'x86_64-pc-windows-msvc') {
+        throw 'Runtime manifest version or platform does not match the launcher.'
+    }
+    $runtimeExecutables = @{}
+    foreach ($entry in @($manifest.files.PSObject.Properties)) {
+        $relative = [string]$entry.Name
+        if ($relative -notmatch '^[A-Za-z0-9_. /-]+$' -or
+            $relative.StartsWith('/') -or @($relative -split '/' | Where-Object { $_ -in @('', '.', '..') }).Count -gt 0) {
+            throw 'Runtime manifest contains an invalid relative path.'
+        }
+        $path = Join-Path $Root $relative
+        Assert-PortableRegularInputFile ('runtime file ' + $relative) $path
+        $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash
+        if ($actual -ne [string]$entry.Value.sha256) {
+            throw ('Runtime file differs from the pinned release: ' + $relative)
+        }
+        if ($relative.EndsWith('.exe', [StringComparison]::OrdinalIgnoreCase)) {
+            $runtimeExecutables[[IO.Path]::GetFileName($path)] = $path
+        }
+    }
+    # These directories are touched by native sandbox initialization before a
+    # tool's write sandbox exists. Inspect links/metadata only, never secrets.
+    foreach ($relative in @('home\.sandbox', 'home\.sandbox-bin', 'home\.sandbox-secrets')) {
+        $stateRoot = Join-Path $Root $relative
+        Assert-PortablePath 'sandbox state directory' $stateRoot
+        if (-not (Test-Path -LiteralPath $stateRoot)) { continue }
+        $pending = New-Object 'System.Collections.Generic.Stack[string]'
+        $pending.Push($stateRoot)
+        while ($pending.Count -gt 0) {
+            $dir = $pending.Pop()
+            Assert-PortablePath 'sandbox state directory' $dir
+            $dirItem = Get-Item -LiteralPath $dir -Force -ErrorAction Stop
+            if (-not $dirItem.PSIsContainer) { throw 'Sandbox state path must be a directory.' }
+            foreach ($item in @(Get-ChildItem -LiteralPath $dir -Force -ErrorAction Stop)) {
+                Assert-PortablePath 'sandbox state entry' $item.FullName
+                if ($item.PSIsContainer) { $pending.Push($item.FullName) }
+                else { Assert-PortableRegularInputFile 'sandbox state file' $item.FullName }
+            }
+        }
+    }
+    # Upstream reuses materialized helpers by size+mtime, not digest. Validate
+    # files it would reuse; stale copies remain eligible for upstream replacement.
+    $runtimeExecutables['codex-command-runner-' + $ExpectedCodexVersion + '.exe'] = Join-Path $Root 'codex-command-runner.exe'
+    foreach ($name in @($runtimeExecutables.Keys)) {
+        $cachedPath = Join-Path (Join-Path $Root 'home\.sandbox-bin') $name
+        Assert-PortablePath 'cached sandbox helper' $cachedPath
+        if (-not (Test-Path -LiteralPath $cachedPath)) { continue }
+        Assert-PortableRegularInputFile 'cached sandbox helper' $cachedPath
+        $source = Get-Item -LiteralPath $runtimeExecutables[$name] -Force -ErrorAction Stop
+        $cached = Get-Item -LiteralPath $cachedPath -Force -ErrorAction Stop
+        if ($cached.Length -eq $source.Length -and $cached.LastWriteTimeUtc -ge $source.LastWriteTimeUtc) {
+            $sourceHash = (Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256 -ErrorAction Stop).Hash
+            $cachedHash = (Get-FileHash -LiteralPath $cachedPath -Algorithm SHA256 -ErrorAction Stop).Hash
+            if ($cachedHash -ne $sourceHash) { throw ('Cached sandbox helper differs from the pinned release: ' + $name) }
+        }
+    }
+}
+
+Assert-PinnedRuntimePackage
 Assert-PinnedCodeModeHost
 
 # Re-check the exact executable immediately before every host-level Codex spawn.
@@ -393,6 +464,8 @@ $Dirs = @(
     "home\.agents",
     "home\.agents\plugins",
     "home\.sandbox",
+    "home\.sandbox-bin",
+    "home\.sandbox-secrets",
     "home\tmp",
     "home\tmp\arg0",
     "logs",
@@ -1737,6 +1810,7 @@ function Set-CodexChildPortableEnvironment {
 
 function New-CodexChildStartInfo {
     param([object[]]$LaunchArgs,[switch]$RedirectOutput)
+    Assert-PinnedRuntimePackage
     Assert-PinnedCodeModeHost
     Assert-PinnedCodexExecutable
     $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -3016,6 +3090,10 @@ switch ($ProviderMode) {
 # ------------------------------------------------------------
 [void]$Builder.AppendLine("")
 [void]$Builder.AppendLine("[features]")
+# Text/agent portable edition: no bundled audio runtime and no voice UI.
+[void]$Builder.AppendLine("in_app_voice = false")
+[void]$Builder.AppendLine("in_app_dictation = false")
+[void]$Builder.AppendLine("realtime_conversation = false")
 if (-not $ModelAllowsImage) {
     # text 模式下不向 Responses 请求注册 image_generation 工具，避免上游 403。
     [void]$Builder.AppendLine("image_generation = false")

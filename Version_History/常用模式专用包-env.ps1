@@ -298,6 +298,25 @@ function Import-CodexPortableLocalEnv {
         '^(?i:CODEX_API_KEY|CODEX_ACCESS_TOKEN|OPENAI_FEDERATION_RULE_ID|OPENAI_IDENTITY_TOKEN_FILE|OPENAI_WORKLOAD_IDENTITY_CONTEXT)$'
     )
 
+    # CODEX_* is not an arbitrary pass-through interface. Native diagnostic,
+    # installer and remote-runtime variables can open/write paths before the
+    # execution sandbox. Add supported settings here only after auditing the
+    # upstream consumer; ordinary custom header variables remain available.
+    $supportedCodex = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in @(
+        'CODEX_ALLOW_HOST_SYSTEM_CONFIG','CODEX_AUTH_MODE','CODEX_BASE_URL',
+        'CODEX_DISABLE_APPS','CODEX_DISABLE_WEBSOCKET','CODEX_ENABLE_PLUGINS','CODEX_ENABLE_PLUGIN_SHARING',
+        'CODEX_ENV_HTTP_HEADERS_TOML','CODEX_HTTP_HEADERS_TOML','CODEX_QUERY_PARAMS_TOML',
+        'CODEX_LOGIN_JSON_ALLOW_DIRECT','CODEX_LOGIN_JSON_ALLOW_DIRECT_PARALLEL',
+        'CODEX_LOGIN_JSON_CONNECT_TIMEOUT_SEC','CODEX_LOGIN_JSON_HTTP_BACKEND','CODEX_LOGIN_JSON_JOB_TIMEOUT_SEC',
+        'CODEX_LOGIN_JSON_MAX_CREDENTIALS','CODEX_LOGIN_JSON_MAX_FILES','CODEX_LOGIN_JSON_PROXY_MODE','CODEX_LOGIN_JSON_THROTTLE',
+        'CODEX_MODEL','CODEX_MODEL_CATALOG_JSON','CODEX_MODEL_CONTEXT_WINDOW','CODEX_MODEL_INSTRUCTIONS_FILE','CODEX_MODEL_MODALITIES',
+        'CODEX_PORTABLE_ALLOW_USER_MCP','CODEX_PROVIDER_ID','CODEX_PROVIDER_MODE','CODEX_PROVIDER_NAME',
+        'CODEX_PROXY_BRIDGE_HOST','CODEX_PROXY_BRIDGE_PORT','CODEX_PROXY_BYPASS_MODEL','CODEX_PROXY_ENABLED',
+        'CODEX_PROXY_FOR_SUBPROCESS','CODEX_PROXY_HOST','CODEX_PROXY_HTTP_BRIDGE','CODEX_PROXY_PORT','CODEX_PROXY_PROTOCOL',
+        'CODEX_REASONING_EFFORT','CODEX_STARTUP_INTERACTIVE','CODEX_STATUS_LINE_DIR_ITEM','CODEX_WIRE_API'
+    )) { [void]$supportedCodex.Add($name) }
+
     # 双引号值按字面量读取（不做 PowerShell 插值）；单引号值仅支持数据文件常见的 '' -> '。
     # 分成两个表达式而不是依赖备选捕获组，避免 PowerShell $Matches 对未命中组返回空串时
     # 把单引号值误解析成空值。
@@ -326,6 +345,9 @@ function Import-CodexPortableLocalEnv {
 
         if ($protectedExact.Contains($name) -or @($protectedPatterns | Where-Object { $name -match $_ }).Count -gt 0) {
             throw "env.local.ps1 第 $lineNo 行试图覆盖受保护的便携变量：$name"
+        }
+        if ($name -match '^(?i:CODEX_)' -and -not $supportedCodex.Contains($name)) {
+            throw "env.local.ps1 第 $lineNo 行使用了未经便携边界审核的 Codex 变量：$name"
         }
         if ($name -ieq 'CODEX_MODEL_INSTRUCTIONS_FILE') { $script:CodexPortableAutoModelInstructions = $false }
         [Environment]::SetEnvironmentVariable($name, $value, [EnvironmentVariableTarget]::Process)

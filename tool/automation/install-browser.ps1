@@ -41,9 +41,7 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT -or -not [Enviro
 }
 $browserRoot = New-AutomationDirectory -Root $root -Path $browserRoot
 # Reject an existing linked subtree before the upstream installer writes into it.
-foreach ($item in @(Get-ChildItem -LiteralPath $browserRoot -Force -Recurse)) {
-    [void](Assert-AutomationPath -Root $root -Path $item.FullName -Directory:$item.PSIsContainer)
-}
+Assert-AutomationTree -Root $root -Path $browserRoot
 $session = New-AutomationDirectory -Root $root -Path (Join-Path $root ('tmp\browser-install-' + [Guid]::NewGuid().ToString('N')))
 Initialize-AutomationSupervisor -Root $root
 $start = New-AutomationStartInfo -Root $root -FilePath $node -WorkingDirectory $session -Arguments @($cli, 'install', '--no-shell', 'chromium') -SessionDirectory $session -CaptureOutput
