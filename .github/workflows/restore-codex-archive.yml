@@ -1,0 +1,151 @@
+name: Restore complete Codex Portable project
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/restore-codex-archive.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: codex-archive-restore-main
+  cancel-in-progress: false
+jobs:
+  restore:
+    if: github.repository == 'rileyaaa/Codex-Portable' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out uploaded archive
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          lfs: false
+          persist-credentials: true
+      - name: Verify all fifteen original archive volumes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          files=[Path(f"Codex.z{i:02d}") for i in range(1,15)]+[Path("Codex.zip")]
+          missing=[str(p) for p in files if not p.is_file()]
+          if missing:
+              raise SystemExit("Missing archive volumes: "+", ".join(missing))
+          for p in files[:-1]:
+              if p.stat().st_size != 25165824:
+                  raise SystemExit(f"Unexpected volume size: {p} = {p.stat().st_size}")
+          if files[-1].stat().st_size != 17345917:
+              raise SystemExit(f"Unexpected last volume size: {files[-1].stat().st_size}")
+          print("All 15 volumes present; total",sum(p.stat().st_size for p in files),"bytes")
+          PY
+      - name: Reconstruct a standard ZIP from split volumes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v zip >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y zip
+          fi
+          zip -s 0 Codex.zip --out "$RUNNER_TEMP/codex-complete.zip"
+          sha256sum "$RUNNER_TEMP/codex-complete.zip"
+      - name: Validate CRC, safety and original relative paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path, PurePosixPath, PureWindowsPath
+          import json, os, stat, zipfile
+          archive=Path(os.environ["RUNNER_TEMP"])/"codex-complete.zip"
+          target=Path(os.environ["RUNNER_TEMP"])/"codex-extracted"
+          target.mkdir(parents=True,exist_ok=True)
+          with zipfile.ZipFile(archive) as z:
+              infos=z.infolist()
+              file_infos=[i for i in infos if not i.is_dir()]
+              if not file_infos or len(file_infos)>200000:
+                  raise SystemExit("Unreasonable file count")
+              if sum(i.file_size for i in file_infos)>10*1024**3:
+                  raise SystemExit("Archive exceeds 10 GiB safety limit")
+              names=[]
+              for info in infos:
+                  name=info.filename
+                  path=PurePosixPath(name)
+                  if (not name or name.startswith("/") or "\\" in name or
+                      ".." in path.parts or ".git" in path.parts or
+                      PureWindowsPath(name).drive or
+                      (info.external_attr >> 16) & 0o170000 == stat.S_IFLNK):
+                      raise SystemExit("Unsafe archive entry: "+repr(name))
+                  if name.startswith(".github/workflows/"):
+                      raise SystemExit("Refusing to import auto-executable GitHub workflows")
+                  if not info.is_dir():
+                      names.append(name)
+              duplicate_count=len(names)-len(set(names))
+              if duplicate_count:
+                  raise SystemExit(f"Duplicate paths inside archive: {duplicate_count}")
+              print("Validating CRC for",len(file_infos),"files...")
+              corrupt=z.testzip()
+              if corrupt:
+                  raise SystemExit("ZIP CRC check failed: "+corrupt)
+              z.extractall(target)
+              manifest=Path(os.environ["RUNNER_TEMP"])/"codex-file-manifest.json"
+              manifest.write_text(json.dumps(names,ensure_ascii=False),encoding="utf-8")
+              print("CRC passed, files:",len(names),"size:",sum(i.file_size for i in file_infos))
+              print("Top-level archive entries:", sorted(set(PurePosixPath(x).parts[0] for x in names)))
+          PY
+      - name: Import exact original paths, with LFS for oversized files
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git lfs version; then
+            sudo apt-get update -qq
+            sudo apt-get install -y git-lfs
+          fi
+          git lfs install --local
+          cp -a "$RUNNER_TEMP/codex-extracted/." .
+          rm -f Codex.z{01..14} Codex.zip
+          rm -f .github/workflows/restore-codex-archive.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, os, subprocess
+          paths=json.loads((Path(os.environ["RUNNER_TEMP"])/"codex-file-manifest.json").read_text(encoding="utf-8"))
+          missing=[p for p in paths if not Path(p).is_file()]
+          if missing:
+              raise SystemExit("Some ZIP entries were not extracted: "+repr(missing[:20]))
+          limit=90*1024*1024
+          large=sorted((p for p in paths if Path(p).stat().st_size>=limit))
+          for p in large:
+              subprocess.run(["git","lfs","track",p],check=True)
+              attr=subprocess.check_output(["git","check-attr","filter","--",p],text=True).strip()
+              if not attr.endswith(": lfs"):
+                  raise SystemExit("LFS not enabled for large file: "+p+" "+attr)
+          print("Large files stored through Git LFS:",len(large))
+          for p in large:
+              print(p,Path(p).stat().st_size)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all --force
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, os, subprocess
+          paths=json.loads((Path(os.environ["RUNNER_TEMP"])/"codex-file-manifest.json").read_text(encoding="utf-8"))
+          tracked=set(subprocess.check_output(["git","ls-files","-z"]).decode("utf-8").rstrip("\0").split("\0"))
+          missing=[p for p in paths if p not in tracked]
+          if missing:
+              raise SystemExit("Original archive entries missing from Git index: "+repr(missing[:20]))
+          for p in paths:
+              if Path(p).stat().st_size >= 90*1024*1024:
+                  pointer=subprocess.check_output(["git","show",":"+p])
+                  if not pointer.startswith(b"version https://git-lfs.github.com/spec/v1\n"):
+                      raise SystemExit("Large file not staged as LFS pointer: "+p)
+          print("Original files preserved in Git index:",len(paths))
+          PY
+          git diff --cached --stat | tail -n 25 || true
+          git commit -m "Restore all files from verified Codex split ZIP, preserving original paths"
+          git push origin HEAD:main
+          {
+            echo "### Codex Portable archive restored"
+            echo "ZIP archive CRC validation succeeded. All original archive files retain their original relative paths."
+            echo "Files imported: $(python3 -c 'import json,os,pathlib; print(len(json.loads((pathlib.Path(os.environ["RUNNER_TEMP"])/"codex-file-manifest.json").read_text())))')"
+            echo "Commit: $(git rev-parse HEAD)"
+          } >> "$GITHUB_STEP_SUMMARY"
