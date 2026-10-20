@@ -26,6 +26,16 @@
 
 **结果：** 常用两份与根文件完全一致；YOLO 启动脚本同步，env 只保留 approval、sandbox、network 三项差异。`strict` 在两种模式中都相同，Fast 和扩展默认关闭。`never` + `danger-full-access` 可避免权限批准等待，但会关闭执行器文件写入沙箱；路径重定向仍生效，不能据此保证任意命令绝不越界。严格写入边界使用常用模式。无人值守还需预先完成认证并选择非交互启动。
 
+## 2026-10-20：统一浏览器与限定应用调试
+
+**原因：** ChromeDriver 与 Chrome 分别更新容易失配；多套浏览器/MCP 增加便携包体积，默认桌面 MCP 的操作范围又过大。
+
+**结果：** 仅采用一套固定 Playwright 依赖，共用一份配套 Chromium。任务脚本、可选 stdio MCP 与 CDP 诊断复用同一安装；无 ChromeDriver、第二浏览器或 Chrome DevTools MCP。进程用户目录、profile、缓存和临时下载落包内，退出时关闭本次进程并校验后清理。MCP 过滤任意 Node 执行、上传、安装、配置及客户端重定向根目录；任务脚本入口仍是受当前权限约束的代码执行，不能冒充不可信脚本沙箱。Windows 桌面入口使用系统 UI Automation，只读指定 PID 主窗口的有界树，修改动作需要额外开关，未安装通用 Windows-MCP。
+
+**交付状态：** JS 依赖约 18.7 MB、185 个文件已安装并记录摘要；配套 Windows 浏览器尚未取得。已提供仅手动触发、artifact 保留 1 天并清理 runner 临时目录的下载工作流；云环境官方 CDN 与 Actions API 被网络策略拦截，已保存域名配置草稿，尚未触发工作流或产生远端 artifact。实际 Windows 浏览器、UI Automation 和进程退出行为待验。
+
+**附带修正：** PDF ZIP 摘要写回现有 `SHA256.md` 的最近导出记录，ZIP 内仍只含 Markdown，不自引用最终 ZIP 哈希，也不增加项目说明文档。复现了 Windows `core.autocrlf=true` 会改写新增官方 Python 文本文件、导致摘要失配的问题；`.gitattributes` 现固定 Python、Playwright 和客户端资源的原始字节，不改动上游内容。
+
 ## 2026-10-20：技能去重、任务开关与 PDF 检索
 
 **原因：** Android 外层技能与插件内 17 组流程完全重复，维护模式会自动激活用户 MCP；大量 PDF 全文进入上下文造成额外开销，Office 技能存在“依赖已安装”等不准确说明。
@@ -86,12 +96,15 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 
 | 检查 | 结果与范围 |
 | --- | --- |
-| Python unittest discovery | 18 项通过：11 项 helper 搬迁/路径测试、4 项连接超时、3 项发行包摘要/架构/版本检查 |
+| Python unittest discovery | 46 项通过：原 18 项 helper/超时/发行包检查，新增 11 项 Android、13 项 PDF、2 项可选依赖摘要/架构、2 项模式副本检查 |
 | `test_portable_config.ps1` | 13 项通过，2 项导出检查跳过；升级时另曾用匹配 0.163.0 的实际 bundled JSON 完成全部 15 项 |
 | `test_portable_paths.ps1` | 7 项通过：真实加载 env.ps1，覆盖 15 个派生路径、中文/空格、旧根、无关 cwd、移动目录及 4 个受保护变量；不是整个启动链测试 |
 | `test_instruction_paths.ps1` | 3 项通过：普通文件成功，真实硬链接/符号链接被拒绝；Linux 仅替换 Windows 路径包含判断，链接检查及写入用生产函数 |
+| `test_extension_policy.ps1` | 11 项通过：Fast/扩展默认关闭、维护模式、显式开关、命名空间筛选、配置保留及两条模型指令生成路径 |
+| `test_automation_paths.ps1` | 6 组通过：子进程目录重定向、参数引用、越界/硬链接、只清理自有目录、任务开关与 PowerShell 解析；没有启动 Windows 程序 |
+| `test_automation.js` | 6 项通过：实际固定版 MCP 初始化与工具筛选、拒绝未选任务、路径边界、禁止能力、依赖字节摘要；不启动浏览器 |
 | `test_bootstrap_paths.ps1` | Linux 明确跳过；15 个 Windows BAT 普通/junction 用例未运行，不执行真实客户端 |
-| 语法、格式与 BAT 静态检查 | 11 个 PowerShell 文件无解析错误；5 个 BAT 的编码、祖先循环及检查顺序检查通过；项目文件差异检查通过。官方 LGPL/proxy-libintl 许可证自带空白格式告警，保留原字节及摘要 |
+| 语法、格式与 BAT 静态检查 | 原 11 个 PowerShell 文件及新增自动化入口无解析错误；5 个 BAT 的编码、祖先循环及检查顺序检查通过；项目文件差异检查通过。官方资源、wheel 与 npm payload 的空白/格式保留原字节，不为格式检查改写 |
 | 转换器 smoke / static audit | 通过；一个合成 fixture、四账号、17 种输出，命令见子项目 README |
 
 在包根使用 Windows PowerShell 5.1 复验：
@@ -102,6 +115,9 @@ powershell.exe -NoProfile -File .\tests\test_portable_config.ps1
 powershell.exe -NoProfile -File .\tests\test_portable_paths.ps1
 powershell.exe -NoProfile -File .\tests\test_instruction_paths.ps1
 powershell.exe -NoProfile -File .\tests\test_bootstrap_paths.ps1
+powershell.exe -NoProfile -File .\tests\test_extension_policy.ps1
+powershell.exe -NoProfile -File .\tests\test_automation_paths.ps1
+.\tool\node\node.exe --test .\tests\test_automation.js
 ```
 
 配置回归可用匹配客户端的 `debug models --bundled` 成功导出到包内临时 UTF-8 JSON 后，传入 `-BundledModelsPath` 启用另两项检查；先检查导出退出码。Windows 链接回归需 NTFS，创建符号链接可能需要 Developer Mode 或相应权限；Python 无此能力时明确 skip，PowerShell 指令测试会报错，都不算通过。

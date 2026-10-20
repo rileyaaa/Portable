@@ -59,4 +59,4 @@ description: Use only when the user explicitly requests searching or reading a c
 & .\tool\python\python.exe .\home\skills\pdf-library\scripts\pdf_library.py export --library .\work\manual-library --output .\work\manuals-markdown.zip --strict
 ```
 
-导出前检查正文哈希、页映射、围栏及禁用资源，输出只含正文和四份 `.md` 报告，不含 SQLite、PDF、图片或其他附件。ZIP 写完后校验 CRC 和 UTF-8，命令输出 ZIP SHA-256。目标 ZIP 必须是包内的新路径，位于库目录之外；不会覆盖既有交付物。`export --strict` 在检查未完成时拒绝生成 ZIP。普通导出允许交付明确标为未完成的草稿，不能把它标成严格验收通过。
+导出前检查正文哈希、页映射、围栏及禁用资源，输出只含正文和四份 `.md` 报告，不含 SQLite、PDF、图片或其他附件。ZIP 写完后校验 CRC 和 UTF-8，命令输出 ZIP SHA-256，并更新库目录现有 `SHA256.md` 的最近导出记录；ZIP 内不能包含自身最终摘要。目标 ZIP 必须是包内的新路径，位于库目录之外；不会覆盖既有交付物。`export --strict` 在检查未完成时拒绝生成 ZIP。普通导出允许交付明确标为未完成的草稿，不能把它标成严格验收通过。

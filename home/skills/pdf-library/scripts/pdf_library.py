@@ -581,9 +581,18 @@ def export_library(library: Path, destination: Path) -> dict:
         files += [checked(library / name, exists=True, kind="file") for name in REPORTS]
         destination.parent.mkdir(parents=True, exist_ok=True)
         checked(destination.parent, exists=True, kind="dir")
+        checksum_report = library / "SHA256.md"
+        # A ZIP cannot contain its own final digest. Keep the latest ZIP receipt
+        # in the existing external Markdown report, not a new non-MD artifact.
+        checksum_text = checksum_report.read_text(encoding="utf-8").split(
+            "\n## 最近导出的 ZIP（ZIP 外校验）\n", 1
+        )[0].rstrip() + "\n"
         with zipfile.ZipFile(destination, "x", compression=zipfile.ZIP_DEFLATED) as archive:
             for path in files:
-                archive.write(path, arcname=path.relative_to(library).as_posix())
+                if path == checksum_report:
+                    archive.writestr("SHA256.md", checksum_text.encode("utf-8"))
+                else:
+                    archive.write(path, arcname=path.relative_to(library).as_posix())
         with zipfile.ZipFile(destination) as archive:
             if archive.testzip() is not None or any(
                 Path(info.filename).suffix.lower() != ".md" for info in archive.infolist()
@@ -591,7 +600,12 @@ def export_library(library: Path, destination: Path) -> dict:
                 raise ValueError("ZIP integrity/type validation failed")
             for name in archive.namelist():
                 archive.read(name).decode("utf-8")
-        return dict(sha256=sha256(destination), files=len(files), **summary)
+        digest = sha256(destination)
+        _write(checksum_report, checksum_text +
+               "\n## 最近导出的 ZIP（ZIP 外校验）\n\n" +
+               "此摘要写在库目录的报告中，不在 ZIP 内自引用。\n\n" +
+               fence(f"{digest}  {destination.relative_to(ROOT).as_posix()}"))
+        return dict(sha256=digest, files=len(files), **summary)
     finally:
         connection.close()
 

@@ -1,1 +1,7 @@
 codex.exe filter=lfs diff=lfs merge=lfs -text
+# Preserve verified upstream payload bytes on Windows checkouts too.
+tool/python/** -text
+tool/automation/playwright/** -text
+codex-resources/** -text
+codex-path/** -text
+codex-package.json -text

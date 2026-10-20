@@ -282,6 +282,16 @@ class PdfLibraryTests(unittest.TestCase):
         self.assertEqual(
             hashlib.sha256(destination.read_bytes()).hexdigest(), result["sha256"]
         )
+        receipt = (self.library / "SHA256.md").read_text(encoding="utf-8")
+        self.assertIn(result["sha256"], receipt)
+        self.assertIn("work/export.zip", receipt)
+        second = self.package / "work" / "export-second.zip"
+        updated = self.module.export_library(self.library, second)
+        receipt = (self.library / "SHA256.md").read_text(encoding="utf-8")
+        self.assertIn(updated["sha256"], receipt)
+        self.assertNotIn("  work/export.zip", receipt)
+        with zipfile.ZipFile(second) as archive:
+            self.assertNotIn("最近导出的 ZIP", archive.read("SHA256.md").decode("utf-8"))
 
     def test_outside_input_and_output_are_rejected(self):
         source = self.ordinary_pdf()
