@@ -46,7 +46,7 @@
 | `login_json` | 待导入的账号文件与检查报告，按凭据管理。 |
 | `cache`、`tmp`、`home-runtime`、`appdata` 等 | 包内缓存、临时文件及工具用户状态；部分路径会进一步指向本次会话目录。 |
 | `tool`、`home/skills`、`home/plugins` | 工具、技能和插件。变量或目录存在不代表对应工具已安装。 |
-| `Version_History` | 历史预设与独立账号格式转换子项目；旧预设不应覆盖根目录的当前配置。 |
+| `Version_History` | 与根脚本同步的常用/YOLO 四份模式模板，以及独立账号格式转换子项目。 |
 
 启动器先清理宿主继承的相关变量，再加载 `env.ps1` 和允许的 `env.local.ps1` 设置，处理菜单与命令行参数，最后生成 `home\config.toml`。**不要直接修改生成的 `config.toml` 保存长期设置。** 大部分 `CODEX_*` 是启动器接口，会转换成客户端配置，并非要求官方客户端识别同名变量。
 
@@ -85,6 +85,8 @@ $env:CODEX_MODEL = "上游实际提供的模型名"
 正常模式主要开放 `work` 和受管理的会话临时目录；维护模式扩大到包内维护范围。`workspace-write` 主要限制写入，并不保证禁止所有包外读取；默认不扫描或处理宿主用户文件，需要包外任务文件时按用户授权的具体范围访问。Windows 系统程序、系统依赖及固定系统策略文件的存在性检查是必要系统访问。维护模式不自动授权包外操作。
 
 联网开关控制 Codex 执行的本地命令，不限制模型 API 连接。Fast 与权限模式独立：关闭生成 `service_tier="default"`，开启生成 `priority`，实际可用性还取决于账号、模型和上游。以启动器的 `Fast`、`Approval`、`Sandbox`、`ShellNetwork` 输出确认本次配置。YOLO 仅用于明确选择的隔离无人值守场景；`danger-full-access` 要求与 `approval_policy=never` 配对，旧值 `untrusted` 已不支持。
+
+`Version_History` 的常用两份文件与根文件相同；YOLO 使用同一启动器，保留 `strict`，将 approval/sandbox/network 分别设为 `never` / `danger-full-access` / `true`。YOLO 不再等待权限批准，但关闭了执行器的文件写入沙箱；包内路径设置仍保留，不能保证任意命令绝不越界。要求严格写入边界时使用常用模式。无人值守还需要可用认证及非交互命令，例如 `exec`，仅改变权限设置不会自动完成登录或跳过菜单。
 
 ### 代理与账号检查
 

@@ -14,7 +14,7 @@ $env:CODEX_PORTABLE_PROFILE = "strict"
 # 如真实环境需要新增工具，请把工具放入 Codex\tool 并在检查器/安装脚本中登记。
 
 # 是否允许 Codex 在需要越权时弹窗请求批准。
-# 普通模式默认 on-request；Codex 0.149.0 起已移除旧值 untrusted，0.156.1 会拒绝该值。
+# 普通模式默认 on-request；Codex 0.149.0 起已移除旧值 untrusted，0.163.0 会拒绝该值。
 # Version_History 的 YOLO 预设会把本项与 sandbox/network 三项一起切换。
 $env:CODEX_APPROVAL_POLICY = "never"
 
@@ -39,13 +39,13 @@ $env:CODEX_SANDBOX_NETWORK_ACCESS = "true"
 
 # Fast 服务层开关（与 YOLO、模型、Code Mode 相互独立）。
 # false = 显式生成 service_tier="default"，保持 Standard 并阻止账号资格自动启用 Fast。
-# true  = 生成 Codex 0.156.1 配置拼写 service_tier="fast"（运行时请求值为 priority）。
+# true  = 生成 Codex 0.163.0 配置拼写 service_tier="priority"（旧值 fast 为兼容别名）。
 $env:CODEX_FAST_MODE = "false"
 
 # ------------------------------------------------------------
 # 0.1 自定义 Provider 是否禁用 WebSocket
 # ------------------------------------------------------------
-# Codex 0.156.1 schema 仍兼容旧的 responses_websockets feature 字段，但本包不再强制写它们；
+# Codex 0.163.0 已移除 responses_websockets / responses_websockets_v2 feature；本包使用 provider.supports_websockets；
 # provider 级 supports_websockets 才是本包的主控制。true=禁用 WS；false=只有在该上游确实支持 Responses WebSocket 时才声明 true。
 # 自定义 Provider 的 supports_websockets 默认值本身就是 false，所以不能靠“省略字段”表达启用。
 # custom_provider 会显式双向写 true/false；local_ollama 固定 HTTP/SSE。
@@ -56,7 +56,7 @@ $env:CODEX_DISABLE_WEBSOCKET = "true"
 # 0.2 模型输入能力：自动优先，手工覆盖只做兼容兜底
 # ------------------------------------------------------------
 # auto（推荐）：如果模型 slug 能匹配当前 codex.exe bundled catalog，就继承官方 input_modalities；
-#               匹配不到的第三方/本地模型不强写该字段，让 Codex 0.156.1 使用自身兼容默认。
+#               匹配不到的第三方/本地模型不强写该字段，让 Codex 0.163.0 使用自身兼容默认。
 # text：       明确强制纯文本；会关闭 image_generation 注册。
 # text_image： 明确强制文字+图片。
 # 正常情况下不要改 auto；只有特殊中转模型兼容异常时再手工覆盖。
@@ -70,17 +70,17 @@ $env:CODEX_MODEL_MODALITIES = "auto"
 # 不影响本地文件、shell、模型 API，以及不依赖外部连接器的本地 Skills。
 $env:CODEX_DISABLE_APPS = "true"
 
-# 保留 Apps/Connectors 关闭，但启用本地 Plugins 功能
-# true  = 启用 home\plugins 本地插件
-# false = 禁用本地插件功能
-$env:CODEX_ENABLE_PLUGINS = "true"
+# 本地 Plugins 默认关闭；只有明确相关任务才添加启动参数 --portable-extensions。
+# true  = 允许本次带 --portable-extensions 的会话启用 home\plugins
+# false = 禁用本地插件功能；维护模式也不会自动启用
+$env:CODEX_ENABLE_PLUGINS = "false"
 
 # 是否允许插件分享/发布
 $env:CODEX_ENABLE_PLUGIN_SHARING = "false"
 
 # User-defined [mcp_servers.*] entries can launch host-side processes outside the workspace sandbox.
-# They remain persistent, but strict normal mode does not activate them unless explicitly enabled.
-# Maintenance mode activates them automatically for installation/testing.
+# Configuration stays persistent, but activation requires BOTH this value=true and --portable-extensions.
+# Maintenance mode does not activate MCP. Enable it only for an explicitly requested related task.
 $env:CODEX_PORTABLE_ALLOW_USER_MCP = "false"
 
 # ------------------------------------------------------------
@@ -118,6 +118,7 @@ $env:CODEX_PROXY_BYPASS_MODEL = "true"
 # direct = 只直连/TUN
 # proxy  = 只走 CODEX_PROXY_PROTOCOL/HOST/PORT 指定的本地代理端口
 $env:CODEX_LOGIN_JSON_PROXY_MODE = "auto"
+# Python/curl 连接阶段超时（1-30 秒）；powershell 后端仅支持整体请求超时。
 $env:CODEX_LOGIN_JSON_CONNECT_TIMEOUT_SEC = "8"
 $env:CODEX_LOGIN_JSON_HTTP_BACKEND = "python"
 # 单个账号后台检测任务的总超时（30-3600 秒）；覆盖刷新、模型和额度检测，默认 420 秒。
@@ -230,7 +231,7 @@ $env:CODEX_WIRE_API = "responses"
 $env:CODEX_MODEL_CATALOG_JSON = "home\model-catalog.custom.json"
 
 # 自定义/本地模型的上下文窗口(token)。默认留空：AUTO 时完全交给 Codex / 上游决定；
-# 手工 modality 覆盖时若仍留空：能匹配 bundled 的模型保留其原 context/max；真正 unknown 才使用 0.156.1 的保守 272000 fallback。
+# 手工 modality 覆盖时若仍留空：能匹配 bundled 的模型保留其原 context/max；真正 unknown 才使用 0.163.0 的保守 272000 fallback。
 $env:CODEX_MODEL_CONTEXT_WINDOW = ""
 
 # 模型思考强度（reasoning effort）。

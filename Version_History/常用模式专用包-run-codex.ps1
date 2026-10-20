@@ -231,12 +231,12 @@ Assert-PortablePath "codex.exe" $CodexExe
 Assert-PortableRegularInputFile "codex.exe" $CodexExe
 Assert-PortablePinnedExecutableAcl "codex.exe" $CodexExe
 
-# This hardened launcher is version-specific.  Never run the 0.156.1 config/schema
+# This hardened launcher is version-specific.  Never run the 0.163.0 config/schema
 # assumptions against an older, newer, zero-byte, or locally modified Codex binary.
-$ExpectedCodexVersion = "0.156.1"
-$ExpectedCodexSha256 = "70BCB05F9BF1A4E7306EDD0CD1B57D02AF3267AD02A34B26F45C8C4BB20A3301"
+$ExpectedCodexVersion = "0.163.0"
+$ExpectedCodexSha256 = "2692C8C7BB2CF8B0AEFE638741FC90236F4B824C59578CE84994F9DE58200993"
 $CodeModeHost = Join-Path $Root "codex-code-mode-host.exe"
-$ExpectedCodeModeHostSha256 = "0F83A73DC6D511D43BD3E52CC0A999CB383C19C645EF3FBD8FBDADDDE3088138"
+$ExpectedCodeModeHostSha256 = "07F3869F0849CD54B31CEC1F86EC796F004501BD3A215135C1FACC883A2B9988"
 $KnownStagingCodexSha256 = "83751F15CB6A0A7B97DF67752C001E3FE1C20E18FFBFEC3FF63567296205EB6C"
 try {
     $actualCodexSha256 = (Get-FileHash -LiteralPath $CodexExe -Algorithm SHA256 -ErrorAction Stop).Hash.ToUpperInvariant()
@@ -247,7 +247,7 @@ try {
 if ($actualCodexSha256 -ne $ExpectedCodexSha256) {
     if ($actualCodexSha256 -eq $KnownStagingCodexSha256) {
         Write-Host "当前仍是完整母版的官方 Codex 0.145.0 staging binary。" -ForegroundColor Yellow
-        Write-Host "Clean Portable 不附带升级工具；请重新解压经过验证的 0.156.1 发行包，或使用维护工作树恢复匹配的 Codex + Host runtime pair。" -ForegroundColor Yellow
+        Write-Host "Clean Portable 不附带升级工具；请重新解压经过验证的 0.163.0 发行包，或使用维护工作树恢复匹配的 Codex + Host runtime pair。" -ForegroundColor Yellow
     } else {
         Write-Host "codex.exe 不是本启动器锁定的官方 Codex $ExpectedCodexVersion。" -ForegroundColor Red
         Write-Host "expected SHA-256: $ExpectedCodexSha256" -ForegroundColor DarkGray
@@ -259,19 +259,26 @@ if ($actualCodexSha256 -ne $ExpectedCodexSha256) {
 # Code Mode is an upstream runtime component of the pinned Codex release. Keep
 # this package-local check fail-closed for every launcher mode.
 function Assert-PinnedCodeModeHost {
-    Assert-PortableRegularInputFile "codex-code-mode-host.exe" $CodeModeHost
-    Assert-PortablePinnedExecutableAcl "codex-code-mode-host.exe" $CodeModeHost
-    try {
-        $hostHash = (Get-FileHash -LiteralPath $CodeModeHost -Algorithm SHA256 -ErrorAction Stop).Hash.ToUpperInvariant()
-    } catch {
-        Write-Host "无法读取 codex-code-mode-host.exe SHA-256；严格便携模式拒绝启动：$($_.Exception.Message)" -ForegroundColor Red
-        exit 3
-    }
-    if ($hostHash -ne $ExpectedCodeModeHostSha256) {
-        Write-Host "codex-code-mode-host.exe 不是当前 Codex $ExpectedCodexVersion 的锁定官方 Host，拒绝启动。" -ForegroundColor Red
-        Write-Host "expected SHA-256: $ExpectedCodeModeHostSha256" -ForegroundColor DarkGray
-        Write-Host "actual   SHA-256: $hostHash" -ForegroundColor DarkGray
-        exit 3
+    # 0.163.0 resolves a resource-directory host before the sibling executable.
+    # Validate every present candidate so another path cannot bypass the root pin.
+    $hostCandidates = @($CodeModeHost)
+    $resourceHost = Join-Path $Root "codex-resources\codex-code-mode-host.exe"
+    if (Test-Path -LiteralPath $resourceHost) { $hostCandidates += $resourceHost }
+    foreach ($hostPath in $hostCandidates) {
+        Assert-PortableRegularInputFile "codex-code-mode-host.exe" $hostPath
+        Assert-PortablePinnedExecutableAcl "codex-code-mode-host.exe" $hostPath
+        try {
+            $hostHash = (Get-FileHash -LiteralPath $hostPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToUpperInvariant()
+        } catch {
+            Write-Host "无法读取 codex-code-mode-host.exe SHA-256；严格便携模式拒绝启动：$($_.Exception.Message)" -ForegroundColor Red
+            exit 3
+        }
+        if ($hostHash -ne $ExpectedCodeModeHostSha256) {
+            Write-Host "codex-code-mode-host.exe 不是当前 Codex $ExpectedCodexVersion 的锁定官方 Host，拒绝启动：$hostPath" -ForegroundColor Red
+            Write-Host "expected SHA-256: $ExpectedCodeModeHostSha256" -ForegroundColor DarkGray
+            Write-Host "actual   SHA-256: $hostHash" -ForegroundColor DarkGray
+            exit 3
+        }
     }
 }
 
@@ -601,7 +608,6 @@ Assert-PortablePath "generated config" $GeneratedConfigPath
 Assert-PortablePath "extension store" $ExtensionStorePath
 $ExtensionSourcePath = if (Test-Path -LiteralPath $ExtensionStorePath -PathType Leaf) { $ExtensionStorePath } else { $GeneratedConfigPath }
 $PreservedExtensionToml = Get-PersistableCodexExtensionToml -Path $ExtensionSourcePath
-$PreservedPluginToml = Get-PersistableCodexExtensionToml -Path $ExtensionSourcePath -AllowedNamespaces @("plugins")
 if (Test-Path -LiteralPath $GeneratedConfigPath -PathType Leaf) {
     Remove-Item -LiteralPath $GeneratedConfigPath -Force -ErrorAction SilentlyContinue
 }
@@ -819,6 +825,29 @@ function Convert-ToFeatureBool {
     return (Convert-ToTomlBool $Value $Default) -eq "true"
 }
 
+# An old env.local.ps1 value alone must never activate host-side extensions.
+# Parse both settings even when the session flag is absent so invalid values fail closed.
+function Get-PortableExtensionPolicy {
+    param(
+        [bool]$TaskRequested = $false,
+        [string]$PluginsValue = "",
+        [string]$UserMcpValue = ""
+    )
+    $pluginsConfigured = Convert-ToFeatureBool $PluginsValue $false
+    $userMcpConfigured = Convert-ToFeatureBool $UserMcpValue $false
+    $pluginsEnabled = $TaskRequested -and $pluginsConfigured
+    $userMcpEnabled = $TaskRequested -and $userMcpConfigured
+    $allowedNamespaces = @()
+    if ($pluginsEnabled) { $allowedNamespaces += "plugins" }
+    if ($userMcpEnabled) { $allowedNamespaces += "mcp_servers" }
+    return [pscustomobject]@{
+        TaskRequested = $TaskRequested
+        PluginsEnabled = $pluginsEnabled
+        UserMcpEnabled = $userMcpEnabled
+        AllowedNamespaces = [string[]]$allowedNamespaces
+    }
+}
+
 function Initialize-PortablePlugins {
     param([string]$PluginRoot, [string]$MarketplaceFile)
     Assert-PortablePath "PluginRoot" $PluginRoot
@@ -969,7 +998,7 @@ function Reset-PortableInvariantEnvironment {
 Reset-PortableInvariantEnvironment
 # PATH 已确定，不把原宿主 PATH 快照继续暴露给 Codex/子进程。
 
-# Codex 0.156.1 在进程非常早期会自动读取 $CODEX_HOME\.env，并把除 CODEX_* 外的变量
+# Codex 0.163.0 在进程非常早期会自动读取 $CODEX_HOME\.env，并把除 CODEX_* 外的变量
 # 再次注入自身环境。那一步发生在启动器对子进程完成“清空 + 白名单重建”之后，可能重新带入
 # OPENAI_BASE_URL / OPENAI_API_KEY / 代理 / PYTHONPATH / NODE_OPTIONS / HOME 等值。
 # 严格便携模式因此不允许这个隐式配置入口；请统一使用根目录 env.local.ps1。
@@ -992,7 +1021,7 @@ if ($PortableProfile -ne "strict") {
     exit 1
 }
 
-# Codex 0.156.1 在 Windows 通过 Known Folder API 读取真实 %ProgramData%\OpenAI\Codex，
+# Codex 0.163.0 在 Windows 通过 Known Folder API 读取真实 %ProgramData%\OpenAI\Codex，
 # 这不受上面的 $env:PROGRAMDATA 重定向影响。默认拒绝宿主 system config/requirements；
 # 如组织策略明确要求使用，可在 env.local.ps1 写 CODEX_ALLOW_HOST_SYSTEM_CONFIG="true" 显式同意。
 $allowHostSystemConfig = Convert-ToFeatureBool ([string]$env:CODEX_ALLOW_HOST_SYSTEM_CONFIG) $false
@@ -1302,6 +1331,7 @@ foreach ($savedAuthPath in @($AccountJsonAuthPath, $BrowserAuthPath)) {
 $ConfiguredAuthMode = $env:CODEX_AUTH_MODE
 if ([string]::IsNullOrWhiteSpace($ConfiguredAuthMode)) { $ConfiguredAuthMode = "menu" }
 $PortableMaintenanceMode = $false
+$PortableExtensionsRequested = $false
 $CodexLaunchArgs = New-Object System.Collections.Generic.List[string]
 $portableOptionScan = $true
 for ($argumentIndex = 0; $argumentIndex -lt $args.Count; $argumentIndex++) {
@@ -1319,6 +1349,10 @@ for ($argumentIndex = 0; $argumentIndex -lt $args.Count; $argumentIndex++) {
         $PortableMaintenanceMode = $true
         continue
     }
+    if ($portableOptionScan -and $argument -eq "--portable-extensions") {
+        $PortableExtensionsRequested = $true
+        continue
+    }
     if ($portableOptionScan -and $argument -eq "--portable-auth") {
         if ($argumentIndex + 1 -ge $args.Count) {
             Write-Host "--portable-auth 后需要填写认证模式。" -ForegroundColor Red
@@ -1334,7 +1368,8 @@ for ($argumentIndex = 0; $argumentIndex -lt $args.Count; $argumentIndex++) {
     }
     $CodexLaunchArgs.Add($argument)
 }
-$AllowUserMcp = $PortableMaintenanceMode -or (Convert-ToFeatureBool $env:CODEX_PORTABLE_ALLOW_USER_MCP $false)
+$PortableExtensionPolicy = Get-PortableExtensionPolicy -TaskRequested $PortableExtensionsRequested -PluginsValue $env:CODEX_ENABLE_PLUGINS -UserMcpValue $env:CODEX_PORTABLE_ALLOW_USER_MCP
+$AllowUserMcp = $PortableExtensionPolicy.UserMcpEnabled
 $ConfiguredAuthMode = $ConfiguredAuthMode.Trim().ToLowerInvariant()
 if ($ConfiguredAuthMode -notin @("menu", "last", "api", "account_json", "browser")) {
     Write-Host "CODEX_AUTH_MODE 只支持 menu / last / api / account_json / browser：$ConfiguredAuthMode" -ForegroundColor Red
@@ -1554,7 +1589,7 @@ function Test-AndNormalizeCodexCliArgs {
             }
         }
 
-        # --image in Codex 0.156.1 accepts 1.. values. Detached form is ambiguous to a wrapper,
+        # --image in Codex 0.163.0 accepts 1.. values. Detached form is ambiguous to a wrapper,
         # so strict mode only accepts an attached comma-delimited list and validates every item.
         $imagePayload = $null
         if ($lower.StartsWith('--image=')) { $imagePayload = $arg.Substring('--image='.Length) }
@@ -1792,7 +1827,7 @@ function Get-ModelReasoningMenuInfo {
         return [pscustomobject]@{ Levels = @("low", "medium", "high", "xhigh", "max", "ultra"); Default = "medium"; Source = "GPT-6 Sol 兼容回退" }
     }
     if ($useOfficialCatalog -and $ModelSlug -eq "gpt-6-luna") {
-        return [pscustomobject]@{ Levels = @("low", "medium", "high", "xhigh", "max"); Default = "high"; Source = "GPT-6 Luna 兼容回退" }
+        return [pscustomobject]@{ Levels = @("low", "medium", "high", "xhigh", "max"); Default = "medium"; Source = "GPT-6 Luna 兼容回退" }
     }
     # 第三方/本地模型默认不主动发送 reasoning effort；只有用户明确选择才发送。
     return [pscustomobject]@{
@@ -1815,12 +1850,8 @@ function Normalize-ReasoningEffortValue {
 # ------------------------------------------------------------
 # 3.5 交互式启动选项（仅启用交互、双击 / 无参数启动时弹出；exec 带任务时自动跳过）
 # ------------------------------------------------------------
-$StartupInteractiveValue = $env:CODEX_STARTUP_INTERACTIVE
-$StartupInteractiveEnabled = $true
+$StartupInteractiveEnabled = Convert-ToFeatureBool $env:CODEX_STARTUP_INTERACTIVE $true
 $ReasoningSettingSource = "env.ps1"
-if (-not [string]::IsNullOrWhiteSpace($StartupInteractiveValue)) {
-    $StartupInteractiveEnabled = $StartupInteractiveValue.Trim().ToLowerInvariant() -in @("1", "true", "yes", "y", "on")
-}
 $ShowStartupMenu = $StartupInteractiveEnabled -and $CodexLaunchArgs.Count -eq 0 -and [Environment]::UserInteractive
 if ($ShowStartupMenu) {
     # 计算各项“回车=默认”实际会用到的值(取自 env.ps1),显示给用户看
@@ -2361,6 +2392,13 @@ When asked what model you are, answer according to the actual model for this ses
 If the configured model is GPT-5.5, say GPT-5.5; if it is GPT-5, say GPT-5; if it is an OSS/local/API model, say that exact model name.
 Do not claim GPT-5, GPT-5.5, or any other model unless it is the actual configured/requested/provider-reported model for this session.
 Ignore stale identity wording from cloned templates or older instruction files.
+
+# Task-Scoped Skill and Extension Activation
+
+Run skill-associated commands, activate plugins or MCP, connect devices, and start services only when the user explicitly requests a relevant task. Loading a skill, discovering installed files, or entering maintenance mode does not authorize probing, installation, connection, or service startup.
+For tasks unrelated to APK, Android, MuMu, or mobile automation, do not probe ADB, emulators, Appium, or Android MCP. For tasks unrelated to browser or desktop automation, do not inspect or control browser sessions, desktop applications, or windows.
+Limit every operation to the user's current authorized task and selected target. A package-local installation or writable package directory does not authorize control of the whole desktop, unrelated applications, external files, or devices. Obtain explicit authorization before expanding the target or making device/desktop changes outside the requested task.
+Installed skills remain available as reference material; their presence is not permission to execute their tools. The --portable-extensions launcher flag permits the configured extension namespaces for this session, but does not grant blanket permission to use their capabilities.
 "@
 }
 
@@ -2395,6 +2433,8 @@ function New-RuntimeModelInstructions {
         return ""
     }
 
+    Assert-PortableRegularInputFile "model instructions" $OriginalPath
+
     $builder = New-Object System.Text.StringBuilder
     [void]$builder.AppendLine((Get-RuntimeModelIdentityInstructions -ModelSlug $ModelSlug).Trim())
     [void]$builder.AppendLine("")
@@ -2418,7 +2458,7 @@ function New-RuntimeModelInstructions {
 #   背景：旧式静态 model catalog 是某个 codex 版本 schema 的快照，
 #         一旦 codex.exe 升级、schema 变动，旧快照可能因 missing field 启动报错。
 #   方案：从“当前 codex.exe”现场导出 bundled 模型库（schema 必然匹配本版本）。
-#         能按 Codex 0.156.1 规则匹配 bundled 元数据时克隆原 entry，只覆盖明确请求项；
+#         能按 Codex 0.163.0 规则匹配 bundled 元数据时克隆原 entry，只覆盖明确请求项；
 #         真正未知模型才使用 fallback-shaped 最小 entry。
 #   稳健：第三方显式 override 的目录生成失败必须停止，避免配置看似生效其实被 fallback 截断。
 # ------------------------------------------------------------
@@ -2442,7 +2482,7 @@ function Find-BundledModelSource {
     param([object]$Bundled, [string]$ModelSlug)
     if ($null -eq $Bundled -or $null -eq $Bundled.models -or [string]::IsNullOrWhiteSpace($ModelSlug)) { return $null }
 
-    # Mirror Codex 0.156.1 ModelsManager matching: longest starts_with prefix first.
+    # Mirror Codex 0.163.0 ModelsManager matching: longest starts_with prefix first.
     $best = $null
     $bestLength = -1
     foreach ($candidate in @($Bundled.models)) {
@@ -2634,7 +2674,7 @@ if ($ProviderMode -notin @("custom_provider", "local_ollama", "official_chatgpt"
 }
 $UseOfficialModelCatalog = $UseAccountJsonLogin -or $UseBrowserLogin -or ($ProviderMode -eq "official_chatgpt")
 
-# Codex 0.156.1 clamps model_context_window to ModelInfo.max_context_window.
+# Codex 0.163.0 clamps model_context_window to ModelInfo.max_context_window.
 # Unknown-model fallback metadata has max_context_window=272000, so a third-party model
 # that explicitly requests a different context window needs a matching local catalog entry.
 $CustomModelContextWindow = 0
@@ -2670,7 +2710,7 @@ $ModelAllowsImage = (-not $ModelModalitiesKnown) -or [bool]($ModelInputModalitie
 # r15-clean: AUTO normally lets Codex use its own bundled entry or unknown-model fallback.
 # Two explicit compatibility overrides require a local schema-matched catalog:
 #   1) text/text_image modality override;
-#   2) CODEX_MODEL_CONTEXT_WINDOW, because Codex 0.156.1 clamps against fallback max_context_window=272000.
+#   2) CODEX_MODEL_CONTEXT_WINDOW, because Codex 0.163.0 clamps against fallback max_context_window=272000.
 $RequestedModalityMode = if ($UseOfficialModelCatalog) { "auto" } else { [string]$env:CODEX_MODEL_MODALITIES }
 if ([string]::IsNullOrWhiteSpace($RequestedModalityMode)) { $RequestedModalityMode = "auto" }
 $RequestedModalityMode = $RequestedModalityMode.Trim().ToLowerInvariant()
@@ -2716,7 +2756,7 @@ $ApprovalPolicy = $env:CODEX_APPROVAL_POLICY
 if ([string]::IsNullOrWhiteSpace($ApprovalPolicy)) { $ApprovalPolicy = "on-request" }
 $ApprovalPolicy = $ApprovalPolicy.Trim().ToLowerInvariant()
 if ($ApprovalPolicy -eq "untrusted") {
-    Write-Host "CODEX_APPROVAL_POLICY=untrusted 不在 Codex 0.156.1 的 approval_policy schema 中，会被拒绝。请改为 on-request（推荐）或 never。" -ForegroundColor Red
+    Write-Host "CODEX_APPROVAL_POLICY=untrusted 不在 Codex 0.163.0 的 approval_policy schema 中，会被拒绝。请改为 on-request（推荐）或 never。" -ForegroundColor Red
     exit 1
 }
 if ($ApprovalPolicy -notin @("never", "on-request")) {
@@ -2740,15 +2780,15 @@ $TomlSandboxMode = Convert-ToTomlString $SandboxMode
 
 $SandboxNetworkAccess = Convert-ToTomlBool $env:CODEX_SANDBOX_NETWORK_ACCESS $false
 $FastModeEnabled = (Convert-ToTomlBool $env:CODEX_FAST_MODE $false) -eq "true"
-$ServiceTier = $(if ($FastModeEnabled) { "fast" } else { "default" })
+$ServiceTier = $(if ($FastModeEnabled) { "priority" } else { "default" })
 
 $DisableWebSocket = (Convert-ToTomlBool $env:CODEX_DISABLE_WEBSOCKET $true) -eq "true"
 $ProviderSupportsWebSocketsToml = $(if ($DisableWebSocket) { "false" } else { "true" })
 
 # Codex Apps、Plugins 与插件分享分别控制。
 $DisableApps = (Convert-ToTomlBool $env:CODEX_DISABLE_APPS $true) -eq "true"
-$EnablePlugins = Convert-ToFeatureBool $env:CODEX_ENABLE_PLUGINS $true
-$EnablePluginSharing = Convert-ToFeatureBool $env:CODEX_ENABLE_PLUGIN_SHARING $false
+$EnablePlugins = $PortableExtensionPolicy.PluginsEnabled
+$EnablePluginSharing = (Convert-ToFeatureBool $env:CODEX_ENABLE_PLUGIN_SHARING $false) -and $EnablePlugins
 $PluginRoot = Join-Path $env:CODEX_HOME "plugins"
 $PluginMarketplaceFile = Join-Path $env:CODEX_HOME ".agents\plugins\marketplace.json"
 Assert-PortablePath "PluginRoot" $PluginRoot
@@ -3101,20 +3141,20 @@ if ($ProxyEnabled -and $ProxyForSubprocess -and $SandboxNetworkAccess -eq "true"
 }
 
 # 用户 MCP / Plugin 扩展配置只在生成主体之后追加，且不能覆盖上面的安全命名空间。
-# Persist all sanitized extension text outside generated config. Strict normal mode keeps user MCP disabled.
+# Persist all sanitized extension text outside generated config; activate only the namespaces requested for this session.
 if (-not [string]::IsNullOrWhiteSpace($PreservedExtensionToml)) {
     Write-Utf8TextAtomic -Path $ExtensionStorePath -Text $PreservedExtensionToml
 } elseif (Test-Path -LiteralPath $ExtensionStorePath -PathType Leaf) {
     Write-Utf8TextAtomic -Path $ExtensionStorePath -Text ""
 }
-$EffectiveExtensionToml = if ($AllowUserMcp) { $PreservedExtensionToml } else { $PreservedPluginToml }
+$EffectiveExtensionToml = Get-PersistableCodexExtensionToml -Path $ExtensionStorePath -AllowedNamespaces $PortableExtensionPolicy.AllowedNamespaces
 if (-not [string]::IsNullOrWhiteSpace($EffectiveExtensionToml)) {
     [void]$Builder.AppendLine("")
     [void]$Builder.AppendLine("# Preserved portable extension configuration")
     [void]$Builder.Append($EffectiveExtensionToml)
 }
 if (-not $AllowUserMcp -and -not [string]::IsNullOrWhiteSpace($PreservedExtensionToml) -and $PreservedExtensionToml -match '(?m)^\s*\[\[?\s*(?:mcp_servers|[''"]mcp_servers[''"])' ) {
-    Write-Host "User MCP configuration is stored in home\portable-extensions.toml but disabled in strict normal mode. Use maintenance mode or CODEX_PORTABLE_ALLOW_USER_MCP=true to activate it." -ForegroundColor DarkYellow
+    Write-Host "User MCP configuration is stored in home\portable-extensions.toml but disabled for this session. A related task requires --portable-extensions AND CODEX_PORTABLE_ALLOW_USER_MCP=true; maintenance mode does not enable it." -ForegroundColor DarkYellow
 }
 
 $ConfigPath = $GeneratedConfigPath
@@ -3154,7 +3194,7 @@ Write-Host "ProviderMode  : $ProviderMode"
 Write-Host "Model         : $env:CODEX_MODEL"
 Write-Host "Approval      : $ApprovalPolicy"
 Write-Host "Sandbox       : $SandboxMode"
-Write-Host "Fast          : $(if ($FastModeEnabled) { 'ON (service_tier=fast)' } else { 'OFF (service_tier=default)' })"
+Write-Host "Fast          : $(if ($FastModeEnabled) { 'ON (service_tier=priority)' } else { 'OFF (service_tier=default)' })"
 Write-Host "Reasoning     : $(if ([string]::IsNullOrWhiteSpace($ReasoningEffort)) { '默认 — 未指定,用模型自带默认(codex 界面显示 default)' } else { $ReasoningEffort + ' (来源: ' + $ReasoningSettingSource + ')' })"
 $ModalitiesDisplay = if ($ModelModalitiesKnown) { $ModelInputModalities -join "+" } else { "auto (unknown model -> Codex compatibility default)" }
 Write-Host "Modalities    : $ModalitiesDisplay ($(if ($ModelAllowsImage) { 'image_generation 按 Codex 默认' } else { 'image_generation 已禁用' }))"
@@ -3170,7 +3210,7 @@ if ($ProviderMode -eq "local_ollama") {
 }
 Write-Host "Codex Apps    : $(if ($DisableApps) { 'disabled (外部 Apps/Connectors 已关闭)' } else { 'enabled' })"
 Write-Host "Plugins       : $(if ($EnablePlugins) { 'enabled' } else { 'disabled' })"
-Write-Host "User MCP      : $(if ($AllowUserMcp) { 'enabled (host extension)' } else { 'stored/disabled in SAFE' })"
+Write-Host "User MCP      : $(if ($AllowUserMcp) { 'enabled (host extension)' } else { 'stored/disabled for this session' })"
 Write-Host "PluginSharing : $(if ($EnablePluginSharing) { 'enabled' } else { 'disabled' })"
 if ($EnablePlugins -and (Test-Path -LiteralPath $PluginRoot) -and (Test-Path -LiteralPath $PluginMarketplaceFile)) {
     Write-Host "PluginRoot    : $PluginRoot"
