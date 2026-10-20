@@ -954,6 +954,7 @@ function Invoke-JsonHttpPython {
             headers = $Headers
             body = $Body
             timeout = $TimeoutSec
+            connect_timeout = Get-LoginJsonConnectTimeout
             proxy_url = $ProxyUrl
         }
     $payloadText = ConvertTo-PortableJsonText -InputObject $payload -Depth 32 -Compress
@@ -1175,6 +1176,7 @@ function Get-CodexClientVersion {
     # Standalone login checks must never execute an arbitrary package-local codex.exe.
     # Map exact official/staging hashes to their client versions instead.
     $knownHashes = @{
+        '2692c8c7bb2cf8b0aefe638741fc90236f4b824c59578ce84994f9de58200993' = '0.163.0'
         '70bcb05f9bf1a4e7306edd0cd1b57d02af3267ad02a34b26f45c8c4bb20a3301' = '0.156.1'
         '83751f15cb6a0a7b97df67752c001e3fe1c20e18ffbfec3ff63567296205eb6c' = '0.145.0'
     }

@@ -8,6 +8,8 @@ license: Proprietary. LICENSE.txt has complete terms
 
 > **Codex Portable tool rule:** run Python helpers with `$CODEX_PYTHON` and use only package-local Pandoc, LibreOffice, Poppler, Node/npm dependencies, and archive helpers exposed by the portable launcher. If a dependency is missing, report it and request approval for package-local provisioning; never run host/global `pip`, `npm`, `unzip`, `zip`, Pandoc, LibreOffice, or Poppler as a fallback.
 
+> **Portable paths:** bundled Office helpers derive the package root from their own script location and ignore an inherited `CODEX_INSTALL_DIR`. Keep inputs, outputs, profiles, and temporary files inside that package; do not use `..` or linked paths. Moving the complete package must not redirect work to an old installation. External task files require authorization and a package-local working copy before using these helpers.
+
 A `.docx` is a ZIP archive of XML files. Choose your approach by task:
 
 | Task | Approach |

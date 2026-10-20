@@ -66,7 +66,7 @@ set "GOMODCACHE=%~dp0cache\gomod"
 set "GOROOT=%~dp0tool\go"
 set "GOTOOLCHAIN=local"
 set "GRADLE_USER_HOME=%~dp0cache\gradle"
-set "MAVEN_OPTS=-Dmaven.repo.local=%~dp0cache\maven"
+set "MAVEN_OPTS=-Dmaven.repo.local="%~dp0cache\maven""
 set "UV_CACHE_DIR=%~dp0cache\uv"
 set "UV_PYTHON_INSTALL_DIR=%~dp0tool\python"
 set "UV_TOOL_DIR=%~dp0tool\uv-tools"
@@ -103,12 +103,29 @@ echo CSV: "%~dp0login_json\login_json_report.csv"
 if "%~1"=="" pause
 exit /b %CODEX_EXIT_CODE%
 :RejectReparse
-setlocal
+setlocal DisableDelayedExpansion
+rem Check the target and every ancestor before any package directory is created.
+set "CODEX_REPARSE_CURSOR="
+for %%A in ("%CODEX_REPARSE_TARGET%") do set "CODEX_REPARSE_CURSOR=%%~fA"
+if not defined CODEX_REPARSE_CURSOR goto RejectReparseUnsafe
+set "CODEX_REPARSE_LEAF=1"
+:RejectReparseNext
 set "CODEX_REPARSE_ATTR="
-for %%A in ("%CODEX_REPARSE_TARGET%") do set "CODEX_REPARSE_ATTR=%%~aA"
-if /i "%CODEX_REPARSE_ATTR:~-1%"=="l" (
-  endlocal
-  exit /b 1
-)
+for %%A in ("%CODEX_REPARSE_CURSOR%") do set "CODEX_REPARSE_ATTR=%%~aA"
+if not defined CODEX_REPARSE_ATTR goto RejectReparseUnsafe
+if /i not "%CODEX_REPARSE_ATTR:l=%"=="%CODEX_REPARSE_ATTR%" goto RejectReparseUnsafe
+if /i not "%CODEX_REPARSE_ATTR:~0,1%"=="d" if not "%CODEX_REPARSE_ATTR:~0,1%"=="-" goto RejectReparseUnsafe
+if not defined CODEX_REPARSE_LEAF if /i not "%CODEX_REPARSE_ATTR:~0,1%"=="d" goto RejectReparseUnsafe
+set "CODEX_REPARSE_PARENT="
+for %%A in ("%CODEX_REPARSE_CURSOR%") do for %%B in ("%%~dpA.") do set "CODEX_REPARSE_PARENT=%%~fB"
+if not defined CODEX_REPARSE_PARENT goto RejectReparseUnsafe
+if /i "%CODEX_REPARSE_PARENT%"=="%CODEX_REPARSE_CURSOR%" goto RejectReparseSafe
+set "CODEX_REPARSE_CURSOR=%CODEX_REPARSE_PARENT%"
+set "CODEX_REPARSE_LEAF="
+goto RejectReparseNext
+:RejectReparseUnsafe
+endlocal
+exit /b 1
+:RejectReparseSafe
 endlocal
 exit /b 0

@@ -8,6 +8,8 @@ license: Proprietary. LICENSE.txt has complete terms
 
 > **Codex Portable tool rule:** use package-local qpdf, Poppler, Tesseract, and Python dependencies. If a required package-local tool is missing, report it and request approval for a package-local install; do not fall back to host/global tools.
 
+> **Portable paths:** bundled path helpers derive the package root from their own script location and ignore an inherited `CODEX_INSTALL_DIR`. Keep inputs, outputs, and temporary files inside that package; do not use `..` or linked paths. Moving the complete package must not redirect work to an old installation. External task files require authorization and a package-local working copy before using these helpers.
+
 ## Overview
 
 This guide covers essential PDF processing operations using Python libraries and command-line tools. For advanced features, JavaScript libraries, and detailed examples, see REFERENCE.md. If you need to fill out a PDF form, read FORMS.md and follow its instructions.

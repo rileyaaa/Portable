@@ -25,25 +25,52 @@ from collections.abc import Iterable
 from pathlib import Path
 
 
+def _is_reparse(path: Path, *, allow_missing: bool = False) -> bool:
+    try:
+        if path.is_symlink():
+            return True
+        is_junction = getattr(path, "is_junction", None)
+        if callable(is_junction) and is_junction():
+            return True
+        return bool(getattr(path.lstat(), "st_file_attributes", 0) & 0x400)
+    except FileNotFoundError:
+        return not allow_missing
+    except OSError:
+        return True
+
+
 def _portable_root() -> Path:
-    value = os.environ.get("CODEX_INSTALL_DIR")
-    if not value:
-        raise FileNotFoundError("CODEX_INSTALL_DIR is required; refusing host LibreOffice fallback")
-    raw = Path(value).expanduser().absolute()
-    if not (raw / "codex.exe").is_file() or not (raw / "env.ps1").is_file():
-        raise FileNotFoundError("CODEX_INSTALL_DIR is not a valid Codex Portable root")
-    if raw.is_symlink() or (getattr(raw, "is_junction", None) and raw.is_junction()):
-        raise FileNotFoundError("Codex Portable root may not be a symlink or junction")
-    return raw.resolve()
+    # The script's location is authoritative even if an old package still
+    # exists at an inherited CODEX_INSTALL_DIR.
+    script = Path(__file__).absolute()
+    expected = ("home", "skills", script.parent.parent.parent.name,
+                "scripts", "office", "soffice.py")
+    if len(script.parents) < 6 or expected[2] not in {"docx", "pptx", "xlsx"}:
+        raise FileNotFoundError("LibreOffice helper is not in the bundled skill layout")
+    root = script.parents[5]
+    if script.relative_to(root).parts != expected:
+        raise FileNotFoundError("LibreOffice helper is not in the bundled skill layout")
+    for entry in (*reversed(script.parents), script):
+        if _is_reparse(entry):
+            raise FileNotFoundError(f"Portable helper path crosses a symlink/junction/reparse point: {entry}")
+    for entry in (script, root / "codex.exe", root / "env.ps1"):
+        if _is_reparse(entry) or not entry.is_file():
+            raise FileNotFoundError(f"Portable helper requires a regular package file: {entry}")
+        if getattr(entry.stat(follow_symlinks=False), "st_nlink", 1) != 1:
+            raise FileNotFoundError(f"Portable helper requires a single-link package file: {entry}")
+    return root
 
 
 def _portable_tool(relative: str) -> Path:
     root = _portable_root()
-    raw = root / relative
+    rel = Path(relative)
+    if rel.anchor or ".." in rel.parts:
+        raise FileNotFoundError(f"invalid package-local tool path: {relative}")
+    raw = root / rel
     cursor = root
-    for part in Path(relative).parts:
+    for part in rel.parts:
         cursor = cursor / part
-        if cursor.exists() and (cursor.is_symlink() or (getattr(cursor, "is_junction", None) and cursor.is_junction())):
+        if _is_reparse(cursor, allow_missing=True):
             raise FileNotFoundError(f"portable tool path contains a symlink/junction: {cursor}")
     candidate = raw.resolve(strict=False)
     try:
@@ -69,11 +96,10 @@ def _portable_temp_dir() -> Path:
     cursor = root
     for part in target.relative_to(root).parts:
         cursor = cursor / part
-        if cursor.exists() or cursor.is_symlink():
-            if cursor.is_symlink() or (getattr(cursor, "is_junction", None) and cursor.is_junction()):
-                raise FileNotFoundError(f"portable temp path contains a symlink/junction: {cursor}")
+        if _is_reparse(cursor, allow_missing=True):
+            raise FileNotFoundError(f"portable temp path contains a symlink/junction: {cursor}")
     target.mkdir(parents=True, exist_ok=True)
-    if target.is_symlink() or (getattr(target, "is_junction", None) and target.is_junction()):
+    if _is_reparse(target):
         raise FileNotFoundError(f"portable temp path may not be a symlink/junction: {target}")
     resolved = target.resolve()
     try:

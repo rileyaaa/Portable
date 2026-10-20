@@ -14,7 +14,7 @@ class PortablePathError(RuntimeError):
     pass
 
 
-def is_reparse(path: Path) -> bool:
+def is_reparse(path: Path, *, allow_missing: bool = False) -> bool:
     try:
         if path.is_symlink():
             return True
@@ -23,6 +23,8 @@ def is_reparse(path: Path) -> bool:
             return True
         attrs = getattr(path.lstat(), "st_file_attributes", 0)
         return bool(attrs & 0x400)
+    except FileNotFoundError:
+        return not allow_missing
     except OSError:
         return True
 
@@ -39,15 +41,22 @@ def reject_hardlinked_file(path: Path) -> None:
 
 
 def portable_root() -> Path:
-    value = os.environ.get("CODEX_INSTALL_DIR")
-    if not value:
-        raise PortablePathError("CODEX_INSTALL_DIR is required; refusing host-directory fallback")
-    raw = Path(value).expanduser().absolute()
-    if not (raw / "codex.exe").is_file() or not (raw / "env.ps1").is_file():
-        raise PortablePathError("CODEX_INSTALL_DIR is not a valid Codex Portable root")
-    if is_reparse(raw):
-        raise PortablePathError("Codex Portable root may not be a symlink/junction/reparse point")
-    return raw.resolve()
+    # Resolve only the known bundled layout, without consulting an inherited
+    # CODEX_INSTALL_DIR or searching unrelated ancestor directories for markers.
+    script = Path(__file__).absolute()
+    if len(script.parents) < 5:
+        raise PortablePathError("PDF helper is not in the bundled skill layout")
+    root = script.parents[4]
+    if script.relative_to(root).parts != ("home", "skills", "pdf", "scripts", "portable_safety.py"):
+        raise PortablePathError("PDF helper is not in the bundled skill layout")
+    for entry in (*reversed(script.parents), script):
+        if is_reparse(entry):
+            raise PortablePathError(f"Portable helper path crosses a symlink/junction/reparse point: {entry}")
+    for entry in (script, root / "codex.exe", root / "env.ps1"):
+        if is_reparse(entry) or not entry.is_file():
+            raise PortablePathError(f"Portable helper requires a regular package file: {entry}")
+        reject_hardlinked_file(entry)
+    return root
 
 
 def resolve_inside(value: str | os.PathLike[str], *, must_exist: bool = False, kind: str | None = None) -> Path:
@@ -55,6 +64,8 @@ def resolve_inside(value: str | os.PathLike[str], *, must_exist: bool = False, k
     raw = Path(value).expanduser()
     candidate = raw if raw.is_absolute() else (Path.cwd() / raw)
     candidate = candidate.absolute()
+    if ".." in candidate.parts:
+        raise PortablePathError(f"Parent traversal is not allowed at the portable boundary: {value}")
     try:
         rel = candidate.relative_to(root)
     except ValueError as exc:
@@ -65,7 +76,7 @@ def resolve_inside(value: str | os.PathLike[str], *, must_exist: bool = False, k
     cursor = root
     for part in rel.parts:
         cursor = cursor / part
-        if cursor.exists() and is_reparse(cursor):
+        if is_reparse(cursor, allow_missing=True):
             raise PortablePathError(f"Path crosses a symbolic link/junction/reparse point: {cursor}")
 
     resolved = candidate.resolve(strict=False)

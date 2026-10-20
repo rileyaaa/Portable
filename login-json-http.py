@@ -38,6 +38,7 @@ def main() -> int:
         headers = req.get("headers") or {}
         body = req.get("body", None)
         timeout = max(1, min(int(req.get("timeout") or 45), 300))
+        connect_timeout = max(1, min(int(req.get("connect_timeout") or 8), 30, timeout))
         proxy_url = str(req.get("proxy_url") or "")
         if any(ord(ch) <= 32 or ord(ch) == 127 for ch in url + proxy_url):
             raise ValueError("URL contains forbidden characters")
@@ -103,7 +104,7 @@ def main() -> int:
                 url=url,
                 headers=clean_headers,
                 json=body if body is not None else None,
-                timeout=timeout,
+                timeout=(connect_timeout, timeout),
                 proxies=proxies,
                 allow_redirects=False,
                 stream=True,

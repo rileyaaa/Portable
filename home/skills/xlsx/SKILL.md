@@ -8,6 +8,8 @@ license: Proprietary. LICENSE.txt has complete terms
 
 > **Codex Portable tool rule:** run helpers with `$CODEX_PYTHON`; use only package-local Python packages, MarkItDown, and LibreOffice. A missing dependency must be reported and, if needed, provisioned inside the Codex package after approval. Never run host/global `pip`, Python, MarkItDown, or LibreOffice as a fallback.
 
+> **Portable paths:** bundled Office helpers derive the package root from their own script location and ignore an inherited `CODEX_INSTALL_DIR`. Keep inputs, outputs, profiles, and temporary files inside that package; do not use `..` or linked paths. Moving the complete package must not redirect work to an old installation. External task files require authorization and a package-local working copy before using these helpers.
+
 | Task | Approach |
 |---|---|
 | **Create** or **edit** with formulas/formatting | `openpyxl` — see gotchas below |

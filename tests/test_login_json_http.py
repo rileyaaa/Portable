@@ -1,0 +1,64 @@
+"""Offline regression checks for the login HTTP helper's timeout contract."""
+
+import contextlib
+import importlib.util
+import io
+import json
+import pathlib
+import unittest
+from unittest import mock
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location(
+    "login_json_http", ROOT / "login-json-http.py"
+)
+HELPER = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(HELPER)
+
+
+class LoginHttpTimeoutTests(unittest.TestCase):
+    def run_request(self, **overrides):
+        payload = {
+            "method": "GET",
+            "url": "https://chatgpt.com/backend-api/codex/models",
+            "timeout": 60,
+            **overrides,
+        }
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        response = session.request.return_value
+        response.status_code = 200
+        response.iter_content.return_value = [b'{"models":[]}']
+        output = io.StringIO()
+        with (
+            mock.patch.object(HELPER.requests, "Session", return_value=session),
+            mock.patch.object(HELPER.sys, "argv", ["login-json-http.py", "-"]),
+            mock.patch.object(HELPER.sys, "stdin", io.StringIO(json.dumps(payload))),
+            contextlib.redirect_stdout(output),
+        ):
+            result = HELPER.main()
+        self.assertEqual(result, 0, output.getvalue())
+        self.assertEqual(json.loads(output.getvalue())["status_code"], 200)
+        self.assertFalse(session.trust_env)
+        return session.request.call_args.kwargs
+
+    def test_explicit_connect_timeout_reaches_requests(self):
+        request = self.run_request(connect_timeout=2)
+        self.assertEqual(request["timeout"], (2, 60))
+
+    def test_omitted_connect_timeout_uses_eight_seconds(self):
+        request = self.run_request()
+        self.assertEqual(request["timeout"], (8, 60))
+
+    def test_connect_timeout_is_bounded_by_thirty_seconds(self):
+        request = self.run_request(connect_timeout=90)
+        self.assertEqual(request["timeout"], (30, 60))
+
+    def test_connect_timeout_cannot_exceed_overall_request_limit(self):
+        request = self.run_request(connect_timeout=20, timeout=5)
+        self.assertEqual(request["timeout"], (5, 5))
+
+
+if __name__ == "__main__":
+    unittest.main()

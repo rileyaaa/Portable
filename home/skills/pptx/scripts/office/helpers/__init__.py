@@ -22,7 +22,7 @@ _SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")
 SLIDE_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide"
 
 
-def _is_reparse(path: Path) -> bool:
+def _is_reparse(path: Path, *, allow_missing: bool = False) -> bool:
     try:
         if path.is_symlink():
             return True
@@ -31,6 +31,8 @@ def _is_reparse(path: Path) -> bool:
             return True
         attrs = getattr(path.lstat(), "st_file_attributes", 0)
         return bool(attrs & 0x400)
+    except FileNotFoundError:
+        return not allow_missing
     except OSError:
         return True
 
@@ -47,15 +49,26 @@ def _reject_hardlinked_file(path: Path) -> None:
 
 
 def portable_root() -> Path:
-    value = os.environ.get("CODEX_INSTALL_DIR")
-    if not value:
-        raise RuntimeError("CODEX_INSTALL_DIR is required; refusing host temporary-directory fallback")
-    raw = Path(value).expanduser().absolute()
-    if not (raw / "codex.exe").is_file() or not (raw / "env.ps1").is_file():
-        raise RuntimeError("CODEX_INSTALL_DIR is not a valid Codex Portable root")
-    if _is_reparse(raw):
-        raise RuntimeError("Codex Portable root may not be a symlink/junction/reparse point")
-    return raw.resolve()
+    # Bind to this copy of the helper.  An inherited CODEX_INSTALL_DIR can still
+    # name a different, valid package after a move or copy.
+    script = Path(__file__).absolute()
+    expected = ("home", "skills", script.parent.parent.parent.parent.name,
+                "scripts", "office", "helpers", "__init__.py")
+    if len(script.parents) < 7 or expected[2] not in {"docx", "pptx", "xlsx"}:
+        raise RuntimeError("Office helper is not in the bundled skill layout")
+    root = script.parents[6]
+    if script.relative_to(root).parts != expected:
+        raise RuntimeError("Office helper is not in the bundled skill layout")
+    # Check ancestors before inspecting markers: a redirected package path
+    # must not make us inspect or create files in its target.
+    for entry in (*reversed(script.parents), script):
+        if _is_reparse(entry):
+            raise RuntimeError(f"Portable helper path crosses a symlink/junction/reparse point: {entry}")
+    for entry in (script, root / "codex.exe", root / "env.ps1"):
+        if _is_reparse(entry) or not entry.is_file():
+            raise RuntimeError(f"Portable helper requires a regular package file: {entry}")
+        _reject_hardlinked_file(entry)
+    return root
 
 
 
@@ -65,6 +78,8 @@ def resolve_portable_path(value: str | os.PathLike[str], *, must_exist: bool = F
     raw = Path(value).expanduser()
     candidate = raw if raw.is_absolute() else (Path.cwd() / raw)
     candidate = candidate.absolute()
+    if ".." in candidate.parts:
+        raise RuntimeError(f"Parent traversal is not allowed at the portable boundary: {value}")
     try:
         rel = candidate.relative_to(root)
     except ValueError as exc:
@@ -75,7 +90,7 @@ def resolve_portable_path(value: str | os.PathLike[str], *, must_exist: bool = F
     cursor = root
     for part in rel.parts:
         cursor = cursor / part
-        if cursor.exists() and _is_reparse(cursor):
+        if _is_reparse(cursor, allow_missing=True):
             raise RuntimeError(f"Path crosses a symbolic link/junction/reparse point: {cursor}")
 
     resolved = candidate.resolve(strict=False)
@@ -120,13 +135,13 @@ def ensure_portable_tree_no_reparse(value: str | os.PathLike[str], *, max_entrie
 def portable_file(relative: str) -> Path:
     root = portable_root()
     rel = Path(relative)
-    if rel.is_absolute() or ".." in rel.parts:
+    if rel.anchor or ".." in rel.parts:
         raise RuntimeError(f"invalid package-local tool path: {relative}")
     candidate = root / rel
     cursor = root
     for part in rel.parts:
         cursor = cursor / part
-        if cursor.exists() and _is_reparse(cursor):
+        if _is_reparse(cursor, allow_missing=True):
             raise RuntimeError(f"package-local tool path contains a reparse point: {cursor}")
     resolved = candidate.resolve(strict=False)
     try:
@@ -141,11 +156,14 @@ def portable_file(relative: str) -> Path:
 
 def portable_temp_dir(category: str = "office") -> Path:
     root = portable_root()
-    target = root / "tmp" / category
+    rel = Path(category)
+    if rel.anchor or ".." in rel.parts:
+        raise RuntimeError(f"invalid package-local temporary category: {category}")
+    target = root / "tmp" / rel
     cursor = root
     for part in target.relative_to(root).parts:
         cursor = cursor / part
-        if cursor.exists() and _is_reparse(cursor):
+        if _is_reparse(cursor, allow_missing=True):
             raise RuntimeError(f"portable temp path contains a reparse point: {cursor}")
     target.mkdir(parents=True, exist_ok=True)
     resolved = target.resolve()

@@ -8,6 +8,8 @@ license: Proprietary. LICENSE.txt has complete terms
 
 > **Codex Portable tool rule:** run Python helpers with `$CODEX_PYTHON` and use only package-local Node/npm dependencies, MarkItDown, LibreOffice, Poppler, and archive helpers from the portable launcher. If a dependency is missing, report it and request approval for package-local provisioning; never fall back to host/global Python, npm, unzip/zip, LibreOffice, or Poppler.
 
+> **Portable paths:** bundled Office helpers derive the package root from their own script location and ignore an inherited `CODEX_INSTALL_DIR`. Keep inputs, outputs, profiles, and temporary files inside that package; do not use `..` or linked paths. Moving the complete package must not redirect work to an old installation. External task files require authorization and a package-local working copy before using these helpers.
+
 A `.pptx` is a ZIP archive of XML files. Choose your approach by task:
 
 | Task | Approach |

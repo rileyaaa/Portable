@@ -25,7 +25,9 @@ preserved.
 
 ## Workflow outline
 
-1. Load `AGENTS.md` and inspect the workspace without changing it:
+1. Read the maintenance rules in the current Codex Portable package's root
+   `DEVELOPMENT.md`, then follow the target repository's own instructions
+   (`AGENTS.md` when present). Inspect the workspace without changing it:
    `git status --short`, repository file inventory, `node --version`,
    `npm --version`, and `npm config get registry`.
 2. Verify the package-local runtime directly with `node --version` and `npm --version`. Require top-level
