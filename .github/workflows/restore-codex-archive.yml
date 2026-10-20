@@ -39,15 +39,11 @@ jobs:
               raise SystemExit(f"Unexpected last volume size: {files[-1].stat().st_size}")
           print("All 15 volumes present; total",sum(p.stat().st_size for p in files),"bytes")
           PY
-      - name: Reconstruct a standard ZIP from split volumes
+      - name: Reconstruct split ZIP losslessly using exact volume offsets
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v zip >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y zip
-          fi
-          zip -s 0 Codex.zip --out "$RUNNER_TEMP/codex-complete.zip"
+          python3 .github/scripts/restore_split_zip.py Codex.z{01..14} Codex.zip "$RUNNER_TEMP/codex-complete.zip"
           sha256sum "$RUNNER_TEMP/codex-complete.zip"
       - name: Validate CRC, safety and original relative paths
         shell: bash
@@ -104,6 +100,7 @@ jobs:
           cp -a "$RUNNER_TEMP/codex-extracted/." .
           rm -f Codex.z{01..14} Codex.zip
           rm -f .github/workflows/restore-codex-archive.yml
+          rm -f .github/scripts/restore_split_zip.py
           python3 - <<'PY'
           from pathlib import Path
           import json, os, subprocess
