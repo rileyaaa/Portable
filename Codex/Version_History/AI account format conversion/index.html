@@ -1,0 +1,109 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI 账号格式转换器 · 本地离线</title>
+  <link rel="stylesheet" href="./app/style.css" />
+</head>
+<body>
+  <div class="orb orb-a"></div><div class="orb orb-b"></div><div class="orb orb-c"></div>
+  <main class="shell">
+    <section class="hero glass">
+      <div>
+        <p class="eyebrow">Local only · No upload</p>
+        <h1>AI 账号格式转换器</h1>
+        <p class="subtitle">把 ChatGPT web session、Codex auth、sub2api、API Key、OAuth token 等单账号或多账号数组互相识别并批量导出。</p>
+      </div>
+      <div class="hero-actions">
+        <button id="offlineCheckBtn" class="ghost">离线自检</button>
+        <button id="clearBtn" class="ghost danger">清空</button>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel glass input-panel">
+        <div class="panel-head">
+          <div><h2>输入</h2><p>粘贴 JSON / 数组 / Token / API Key / Cookie / base_url+key</p></div>
+          <button id="chooseFileBtn" type="button" class="file-btn">选择文件</button>
+          <input id="fileInput" class="visually-hidden-file" type="file" />
+        </div>
+        <div id="dropZone" class="drop-zone">拖拽单账号或多账号数组文件到这里，或直接粘贴内容</div>
+        <textarea id="inputText" spellcheck="false" placeholder='例如：从 https://chatgpt.com/api/auth/session 复制的 JSON，或 sub2api.json，或 ~/.codex/auth.json'></textarea>
+        <div class="row">
+          <button id="convertBtn" class="primary">智能识别并转换</button>
+          <label class="toggle"><input id="redactToggle" type="checkbox" checked /> 预览脱敏</label>
+        </div>
+      </div>
+
+      <aside class="panel glass meta-panel">
+        <h2>识别结果</h2>
+        <div id="detected" class="detected empty">等待输入</div>
+        <div id="hints" class="hints"></div>
+      </aside>
+    </section>
+
+    <section class="panel glass tools-panel">
+      <div class="panel-head">
+        <div><h2>增强功能开关</h2><p>按需启用高级功能。</p></div>
+      </div>
+      <div class="switch-grid">
+        <label class="switch"><input id="jwtToggle" type="checkbox" /> <span>3 JWT 解码查看器</span></label>
+        <label class="switch"><input id="rulesToggle" type="checkbox" /> <span>4 规则编辑器</span></label>
+        <label class="switch"><input id="vaultToggle" type="checkbox" /> <span>6 加密账号库</span></label>
+        <label class="switch"><input id="completeToggle" type="checkbox" /> <span>9 导出前字段补全</span></label>
+      </div>
+      <div id="rulesBox" class="tool-box hidden">
+        <b>规则编辑器</b>
+        <p>JSON 键名映射，例如把自定义字段转成标准字段：<code>{"token":"access_token","mail":"email","url":"base_url"}</code></p>
+        <textarea id="rulesText" spellcheck="false" placeholder='{"token":"access_token","mail":"email","url":"base_url"}'></textarea>
+      </div>
+      <div id="vaultBox" class="tool-box hidden">
+        <b>加密账号库</b>
+        <p>用密码 AES-GCM 加密当前识别结果为本地文件；不会使用浏览器存储。</p>
+        <div class="toolbar">
+          <input id="vaultPass" class="text-input" type="password" placeholder="加密/解密密码" />
+          <button id="exportVaultBtn" class="ghost">导出加密 vault</button>
+          <button id="importVaultBtn" class="ghost">导入加密 vault</button>
+          <input id="vaultFileInput" class="visually-hidden-file" type="file" />
+        </div>
+      </div>
+    </section>
+
+    <section id="insightsPanel" class="panel glass insights-panel hidden">
+      <h2>识别报告 / JWT / 评分 / 重复检测 / 字段补全</h2>
+      <div id="reportBox" class="report-box"></div>
+      <div id="jwtBox" class="jwt-box hidden"></div>
+      <div id="completeBox" class="complete-box hidden"></div>
+    </section>
+
+    <section class="panel glass outputs-panel">
+      <div class="panel-head sticky-ish">
+        <div><h2>可导出格式</h2><p>点击卡片切换预览，下载按钮保存单个结果。</p></div>
+        <div class="toolbar">
+          <select id="formatSelect"></select>
+          <button id="copyBtn" class="ghost">复制当前</button>
+          <button id="downloadBtn" class="primary small">下载当前</button>
+          <button id="downloadZipBtn" class="primary small">下载ZIP</button>
+        </div>
+      </div>
+      <div id="cards" class="cards"></div>
+      <pre id="preview" class="preview"><code></code></pre>
+    </section>
+
+    <section class="panel glass docs-panel">
+      <h2>支持格式与说明</h2>
+      <div class="doc-grid">
+        <div><b>输入识别</b><p>ChatGPT web session JSON、Codex auth.json、sub2api 导出/单账号、通用 OAuth token、OpenAI API key、OpenAI-compatible proxy、Cookie/Header。</p></div>
+        <div><b>输出导出</b><p>Codex auth.json、Codex 批量数组、批量文件包 JSON、sub2api、通用 OAuth、API env、OpenAI-compatible JSON、LiteLLM YAML、One API/New API 通道草稿、cURL、HTTPie、.env、Bearer header。</p></div>
+        <div><b>续期限制</b><p>web session 页面通常只有当前 accessToken/sessionToken，不能凭空生成 refresh_token；导出的 sub2api/Codex 只能沿用已有 token，过期后需要重新获取或提供 refresh_token。</p></div>
+        <div><b>绑定手机/MFA</b><p>是否绑定手机不能从 session JSON 稳定判断；若账号启用了额外验证，缺少 refresh_token 的转换结果更容易在 Codex 续期或校验阶段失败。</p></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <script src="./app/converter.js"></script>
+  <script src="./app/app.js"></script>
+</body>
+</html>

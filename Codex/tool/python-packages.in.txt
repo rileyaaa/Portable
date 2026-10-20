@@ -1,0 +1,31 @@
+# Codex Portable Python direct dependencies.
+# Edit this file only when intentionally changing the tool set, then remove
+# python-packages.lock.txt and run setup-tools.ps1 once to create a new lock.
+pip
+requests
+httpx
+beautifulsoup4
+lxml
+pandas
+numpy
+openpyxl
+python-dateutil
+six
+pyyaml
+rich
+python-docx
+python-pptx
+pillow
+XlsxWriter
+typing-extensions
+pyinstaller
+PySocks
+pypdf
+defusedxml
+pdfplumber
+pdf2image
+reportlab
+pypdfium2
+pytesseract
+openai
+markitdown[all]

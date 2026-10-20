@@ -1,0 +1,34 @@
+{
+  "name": "android-apk-lab",
+  "version": "0.5.1",
+  "description": "Portable Android APK analysis workflow skills and local MCP helpers for Codex.",
+  "author": {
+    "name": "Local portable Codex"
+  },
+  "keywords": [
+    "android",
+    "apk",
+    "reverse-engineering",
+    "mcp",
+    "portable"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Android APK Lab",
+    "shortDescription": "Portable APK analysis and reporting workflows.",
+    "longDescription": "Adds local Skills and a stdio MCP helper for APK intake, static/native/network analysis, repack/sign routing, runtime triage, test routing, and reports. All paths are constrained to the Codex portable package root.",
+    "developerName": "Local portable Codex",
+    "category": "Developer tools",
+    "capabilities": [
+      "Write",
+      "Local files",
+      "MCP"
+    ],
+    "defaultPrompt": [
+      "Analyze this APK statically",
+      "Create an APK job report",
+      "Route this APK test plan"
+    ]
+  }
+}

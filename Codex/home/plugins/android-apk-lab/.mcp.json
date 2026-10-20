@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "apk_lab_mcp": {
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/start_apk_lab_mcp.ps1"
+      ],
+      "cwd": ".",
+      "env": {
+        "CODEX_APK_LAB_PORTABLE": "1"
+      }
+    }
+  }
+}

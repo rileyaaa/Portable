@@ -1,0 +1,21 @@
+env.local.ps1
+
+# Runtime credentials and generated state
+home/auth*.json
+home/auth*.json.*
+home/mode
+
+# Imported account credentials and generated reports
+login_json/*.json
+login_json/*.csv
+login_json/**/*.json
+login_json/**/*.csv
+
+# Runtime lock and machine-generated Codex state
+.codex-portable.instance.lock
+home/config.toml
+home/model-catalog*.json
+home/model-catalog*.json.version
+home/installation_id
+home/cap_sid
+home/codex-runtime-instructions.generated.md
