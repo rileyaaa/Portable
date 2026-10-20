@@ -1,10 +1,27 @@
-﻿$ErrorActionPreference = 'Stop'
+﻿#Requires -Version 5.1
+param([switch]$TaskAuthorized)
+$ErrorActionPreference = 'Stop'
+
+# Caller records that this MCP was selected for the current task. This switch
+# does not infer user intent, and maintenance mode cannot supply it implicitly.
+if (-not $TaskAuthorized) {
+    throw 'APK Lab MCP requires explicit task selection: -TaskAuthorized'
+}
 $PluginRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $PluginScriptsDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PluginParent = Split-Path -Parent $PluginRoot
 $HomeDirBeforeHelper = Split-Path -Parent $PluginParent
 $PackageRootBeforeHelper = Split-Path -Parent $HomeDirBeforeHelper
-foreach ($guardDir in @($PackageRootBeforeHelper,$HomeDirBeforeHelper,$PluginParent,$PluginRoot,$PluginScriptsDir)) {
+# Inspect the lexical path from the volume root down, before following any link.
+$BootstrapAncestors = @()
+$BootstrapCursor = [IO.Path]::GetFullPath($PluginScriptsDir)
+while (-not [string]::IsNullOrWhiteSpace($BootstrapCursor)) {
+    $BootstrapAncestors = @($BootstrapCursor) + $BootstrapAncestors
+    $BootstrapParent = Split-Path -Parent $BootstrapCursor
+    if ($BootstrapParent -eq $BootstrapCursor) { break }
+    $BootstrapCursor = $BootstrapParent
+}
+foreach ($guardDir in $BootstrapAncestors) {
     $guardItem = Get-Item -LiteralPath $guardDir -Force -ErrorAction Stop
     if (-not $guardItem.PSIsContainer -or (($guardItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
         throw "Refusing reparse/non-directory APK Lab bootstrap path: $guardDir"
@@ -13,10 +30,10 @@ foreach ($guardDir in @($PackageRootBeforeHelper,$HomeDirBeforeHelper,$PluginPar
 function Assert-ApkBootstrapSingleLinkFile([string]$Path,[string]$Label) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "$Label not found: $Path" }
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
-    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Refusing reparse-point $Label: $Path" }
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Refusing reparse-point ${Label}: $Path" }
     $linkTypeProperty = $item.PSObject.Properties['LinkType']
     $linkType = if ($null -ne $linkTypeProperty) { [string]$linkTypeProperty.Value } else { '' }
-    if ($linkType -eq 'HardLink' -or ([string]$item.Mode).Contains('l')) { throw "Refusing hardlink/link $Label: $Path" }
+    if ($linkType -eq 'HardLink' -or ([string]$item.Mode).Contains('l')) { throw "Refusing hardlink/link ${Label}: $Path" }
 }
 [void](Assert-ApkBootstrapSingleLinkFile $PSCommandPath 'APK Lab MCP starter')
 $PortablePathsScript = Join-Path $PluginRoot 'scripts\portable_paths.ps1'
@@ -25,6 +42,12 @@ $PortablePathsScript = Join-Path $PluginRoot 'scripts\portable_paths.ps1'
 $Root = Get-ApkLabRoot
 $PluginRoot = Resolve-ApkLabPath $PluginRoot
 $env:CODEX_INSTALL_DIR = $Root
+
+# MCP is part of the portable package: never silently fall back to a host Python.
+$Python = Resolve-ApkLabPath (Join-Path $Root 'tool\python\python.exe')
+[void](Assert-ApkBootstrapSingleLinkFile $Python 'portable Python')
+$McpScript = Resolve-ApkLabPath (Join-Path $PluginRoot 'scripts\apk_lab_mcp.py')
+[void](Assert-ApkBootstrapSingleLinkFile $McpScript 'APK Lab MCP Python script')
 
 $PortableTmpRoot = Resolve-ApkLabPath (Join-Path $Root 'tmp')
 function Get-ApkLabSessionScopedPath {
@@ -35,7 +58,7 @@ function Get-ApkLabSessionScopedPath {
             $tmpPrefix = $PortableTmpRoot.TrimEnd('\') + '\'
             if ($safeCandidate.StartsWith($tmpPrefix, [StringComparison]::OrdinalIgnoreCase)) {
                 $relative = $safeCandidate.Substring($tmpPrefix.Length)
-                $first = @($relative -split '\')[0]
+                $first = @($relative -split '\\')[0]
                 if ($first -match '^session-state-[0-9A-Fa-f]{32}$') {
                     return $safeCandidate
                 }
@@ -105,11 +128,6 @@ foreach ($d in @($env:HOME,$env:APPDATA,$env:LOCALAPPDATA,$env:PROGRAMDATA,$env:
     New-Item -ItemType Directory -Force -Path $safe | Out-Null
 }
 
-# MCP is part of the portable package: never silently fall back to a host Python.
-$Python = Resolve-ApkLabPath (Join-Path $Root 'tool\python\python.exe')
-[void](Assert-ApkBootstrapSingleLinkFile $Python 'portable Python')
-$McpScript = Resolve-ApkLabPath (Join-Path $PluginRoot 'scripts\apk_lab_mcp.py')
-[void](Assert-ApkBootstrapSingleLinkFile $McpScript 'APK Lab MCP Python script')
 $env:PATH = @(
     (Resolve-ApkLabPath (Join-Path $Root 'tool\bin')),
     (Resolve-ApkLabPath (Join-Path $Root 'tool\python')),
@@ -120,5 +138,5 @@ $env:PATH = @(
     (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0')
 ) -join ';'
 
-& $Python -B $McpScript
+& $Python -B $McpScript --task-authorized
 exit $LASTEXITCODE

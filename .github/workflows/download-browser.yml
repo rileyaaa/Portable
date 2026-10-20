@@ -1,0 +1,60 @@
+name: Download pinned Windows browser (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-browser-download
+  cancel-in-progress: false
+
+jobs:
+  download:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Fetch official Chrome for Testing archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '155.0.8059.12'
+          $url = "https://storage.googleapis.com/chrome-for-testing-public/$version/win64/chrome-win64.zip"
+          $output = Join-Path $env:RUNNER_TEMP 'portable-browser-download'
+          New-Item -ItemType Directory -Path $output | Out-Null
+          $archive = Join-Path $output 'chrome-win64.zip'
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead($archive)
+          try {
+            if (-not $zip.GetEntry('chrome-win64/chrome.exe')) { throw 'Missing browser executable.' }
+            foreach ($entry in $zip.Entries) {
+              if ($entry.FullName -notmatch '^chrome-win64/' -or $entry.FullName -match '(^|/)\.\.(/|$)') {
+                throw 'Unexpected archive path.'
+              }
+            }
+          } finally { $zip.Dispose() }
+          @{
+            version = $version
+            target = 'win64'
+            source = $url
+            sha256 = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+            size = (Get-Item $archive).Length
+            run = "${{ github.run_id }}"
+            note = 'Digest calculated from the official TLS download; not an upstream signature.'
+          } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'receipt.json') -Encoding utf8
+      - name: Upload temporary download
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: chrome-win64-155.0.8059.12
+          path: ${{ runner.temp }}/portable-browser-download/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - name: Remove runner download
+        if: always()
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'portable-browser-download'
+          if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Recurse -Force }

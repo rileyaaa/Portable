@@ -1,7 +1,7 @@
 {
   "name": "android-apk-lab",
-  "version": "0.5.1",
-  "description": "Portable Android APK analysis workflow skills and local MCP helpers for Codex.",
+  "version": "0.6.0",
+  "description": "Task-selected Android APK workflows; no automatic MCP or device startup.",
   "author": {
     "name": "Local portable Codex"
   },
@@ -13,17 +13,15 @@
     "portable"
   ],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Android APK Lab",
-    "shortDescription": "Portable APK analysis and reporting workflows.",
-    "longDescription": "Adds local Skills and a stdio MCP helper for APK intake, static/native/network analysis, repack/sign routing, runtime triage, test routing, and reports. All paths are constrained to the Codex portable package root.",
+    "shortDescription": "On-demand APK analysis and semantic Android testing.",
+    "longDescription": "Use only for an explicit APK/Android task. Provides offline analysis workflows and Appium UiAutomator2 guidance. The optional local MCP is started separately for that task; it does not control devices.",
     "developerName": "Local portable Codex",
     "category": "Developer tools",
     "capabilities": [
       "Write",
-      "Local files",
-      "MCP"
+      "Local files"
     ],
     "defaultPrompt": [
       "Analyze this APK statically",

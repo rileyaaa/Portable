@@ -1,26 +1,33 @@
 ---
 name: pptx
-description: "Use this skill any time a .pptx or .potx file is involved in any way — as input, output, or both. This includes: creating slide decks, pitch decks, or presentations; reading, parsing, or extracting text from any .pptx or .potx file (even if the extracted content will be used elsewhere, like in an email or summary); editing, modifying, or updating existing presentations; combining or splitting slide files; working with templates (.potx), layouts, speaker notes, or comments. Trigger whenever the user mentions \"deck,\" \"slides,\" \"presentation,\" or references a .pptx or .potx filename, regardless of what they plan to do with the content afterward. If a .pptx or .potx file needs to be opened, created, or touched, use this skill."
+description: "Use only when the user explicitly requests creating, reading, reviewing, editing, or converting a PowerPoint presentation (.pptx) or template (.potx), including slides, charts, layouts, and speaker notes. A filename mention, discovered presentation, or loaded skill alone does not authorize file access, tool probes, installation, conversion, or execution. Do not use for unrelated coding or other document formats."
 license: Proprietary. LICENSE.txt has complete terms
 ---
 
 # PPTX creation, editing, and analysis
 
-> **Codex Portable tool rule:** run Python helpers with `$CODEX_PYTHON` and use only package-local Node/npm dependencies, MarkItDown, LibreOffice, Poppler, and archive helpers from the portable launcher. If a dependency is missing, report it and request approval for package-local provisioning; never fall back to host/global Python, npm, unzip/zip, LibreOffice, or Poppler.
+> **Codex Portable tool rule:** run Python helpers with `$env:CODEX_PYTHON` and use only package-local Python, Node/npm dependencies, MarkItDown, LibreOffice, Poppler, and archive helpers from the portable launcher. Report missing dependencies; provision them only when the user's authorization covers that installation. Never fall back to host/global package managers or Office tools.
 
 > **Portable paths:** bundled Office helpers derive the package root from their own script location and ignore an inherited `CODEX_INSTALL_DIR`. Keep inputs, outputs, profiles, and temporary files inside that package; do not use `..` or linked paths. Moving the complete package must not redirect work to an old installation. External task files require authorization and a package-local working copy before using these helpers.
+
+## Task activation and scope
+
+- Start only for an explicit presentation task. Loading this skill or finding a deck does not trigger dependency probes, application startup, downloads, or processing.
+- Reading or reviewing does not authorize rewriting the source, following external links, or running embedded content. Work on a task-local copy for edits and preserve the original unless replacement was requested.
+- The user's template, brand rules, and requested format take precedence over generic styling advice. Inspect the template before choosing the authoring method.
+- Use only dependencies needed for this task; no automatic installation. State which operations are unavailable when an optional dependency is absent.
 
 A `.pptx` is a ZIP archive of XML files. Choose your approach by task:
 
 | Task | Approach |
 |---|---|
-| **Create** a new deck | Write a `pptxgenjs` script — see gotchas below |
+| **Create** a new deck | Bundled `python-pptx` for supported authoring; optional `pptxgenjs` for a task that benefits from it |
 | **Edit** an existing deck, or build from a template | `safe_ooxml.py unpack` → edit `ppt/slides/slideN.xml` → `safe_ooxml.py pack` |
-| **Read** content | `markitdown deck.pptx` (one block per slide under `<!-- Slide number: N -->` markers); visual grid: `& $env:CODEX_PYTHON scripts/thumbnail.py deck.pptx` |
+| **Read** content | `python-pptx` and relevant OOXML parts for text, tables, charts, notes, and relationships. MarkItDown is optional; `scripts/thumbnail.py` requires rendering dependencies |
 
 ## Scripts
 
-Paths are relative to this skill's directory. Everything else is plain Python, `node`, or shell.
+Paths are relative to this skill's directory. Resolve them to absolute paths and invoke helpers with the portable interpreter from a validated package-local task workspace. Keep outputs and previews out of the skill installation.
 
 | Script | What it does |
 |---|---|
@@ -28,11 +35,11 @@ Paths are relative to this skill's directory. Everything else is plain Python, `
 | `scripts/add_slide.py unpacked/ slide2.xml [--after slideN.xml]` | Duplicate a slide (or a `slideLayoutN.xml`) with all the package bookkeeping. Also takes a `.pptx` directly with `-o out.pptx` |
 | `scripts/clean.py unpacked/` | Delete slides, media, and rels no longer referenced. Run **after** `<p:sldIdLst>` is final |
 | `scripts/office/validate.py deck.pptx [--original src.pptx]` | Schema, relationship, content-type, chart and slide checks; each failure names its fix. Pass `--original` for any template-derived deck — it baselines the schema checks against the template, so the template's own XSD errors don't read as yours |
-| `scripts/office/soffice.py --headless --convert-to pdf deck.pptx` | LibreOffice wrapper — bare `soffice` hangs in this sandbox |
+| `scripts/office/soffice.py --headless --convert-to pdf deck.pptx` | Package-local LibreOffice wrapper with an isolated profile; requires an installed LibreOffice payload |
 
-## Creating with pptxgenjs — gotchas
+## Optional pptxgenjs authoring — gotchas
 
-The package is expected to provision `pptxgenjs` in its package-local Node environment. Do not run `npm install` automatically. If `require('pptxgenjs')` fails, stop and request approval for package-local provisioning; never install it into host/global npm locations. The model knows the API; these are the footguns:
+Use `pptxgenjs` only when it is available in the package-local Node environment and appropriate for the task. It is not required for the bundled Python workflow. Check the installed version's API before using these patterns; do not install it automatically.
 
 - **Set `pres.layout` before adding slides.** The default canvas is `LAYOUT_16x9` = **10" × 5.625"**, not 13.3" wide. Coordinates past the edge are written, not clamped — the shape just isn't on the slide. (`LAYOUT_WIDE` is 13.3" × 7.5".)
 - **Hex colors: never `#`, never 8 digits.** `color: "FF0000"`. Both `"#FF0000"` and alpha baked into the hex (`"00000020"`) **corrupt the file**. For translucency: `transparency: 0-100` on fills and images, `opacity: 0.0-1.0` on shadows — each is silently ignored on the other.
@@ -51,11 +58,17 @@ The package is expected to provision `pptxgenjs` in its package-local Node envir
 - **A combo series using `secondaryValAxis`/`secondaryCatAxis` needs both `valAxes` and `catAxes` on the chart options, two entries each.** Without them pptxgenjs writes axis *ids* it never declares, and PowerPoint **discards that chart** and reports the file as corrupt. Supplying only `valAxes` is not enough.
 - **After `writeFile()`, run `& $env:CODEX_PYTHON scripts/office/validate.py deck.pptx`.** It reports the two chart faults above and the slide-XML defects PowerPoint refuses, and names the fix for each. Fix them in your generator, not by hand-editing the packed XML.
 - **Never reorder the children of `<p:presentation>`.** pptxgenjs writes `<p:notesMasterIdLst>` right after `<p:sldIdLst>` and points both masters at one theme part. PowerPoint reads that happily — move the element and the same deck becomes unopenable.
-- **Icons:** render `react-icons` to SVG (`ReactDOMServer.renderToStaticMarkup`), rasterize with `sharp` at ≥256px, and insert via `addImage({ data: "image/png;base64," + buf.toString("base64") })` — the `image/png;base64,` prefix is required (`react-icons`, `react`, `react-dom`, and `sharp` are expected in the package-local Node environment. If a require fails, request package-local provisioning; do not run host/global npm installs).
+- **Icons:** reuse template assets or available package-local images first. If the optional `react-icons`, `react`, `react-dom`, and `sharp` stack is already available, render SVG through `ReactDOMServer.renderToStaticMarkup`, rasterize at ≥256px, and insert via `addImage({ data: "image/png;base64," + buf.toString("base64") })`. Do not install an icon toolchain merely to decorate a slide.
 
 ## Editing existing decks and templates
 
-Pick layouts first: `& $env:CODEX_PYTHON scripts/thumbnail.py template.pptx template-thumbs` writes a labeled grid of every slide and prints the file(s) it created — `template-thumbs.jpg`, split into `template-thumbs-N.jpg` past 12 slides. **Always pass that second argument, named after the deck.** It defaults to `thumbnails`, so two decks thumbnailed in one directory silently overwrite each other's grids — the first deck's are simply gone (template analysis only — visual QA needs the full-resolution renders from [Converting to Images](#converting-to-images); it only accepts `.pptx`, so copy a `.potx` to a `.pptx` name first). Use it with `markitdown` to map each content section onto a template slide, and vary the layouts — don't put every section on the same title-and-bullets slide.
+Inspect the user's template first: aspect ratio, theme fonts/colors, masters/layouts, placeholders, image crops, chart styles, notes, and reading order. Preserve those features outside the requested changes. Map each section to a suitable existing layout and preserve editable text, charts, and tables where possible.
+
+When no template was supplied and a cached template fits the task, inspect that template's `artifact-template.json` and preview under `home/plugins/cache/openai-curated-remote/openai-templates/0.1.1/skills/`, then copy its `reference.pptx` into the task workspace. Local template use does not require enabling the whole plugin, loading every template skill, or invoking external apps.
+
+When rendering dependencies are available, `scripts/thumbnail.py template.pptx <unique-task-local-prefix>` writes a labeled grid of slides. Always pass a validated absolute prefix inside a fresh task-owned directory to avoid overwriting another deck's previews. Use the grid to select layouts; full-resolution renders are still needed for visual QA. Without rendering, inspect available template previews and OOXML and report the rendering gap.
+
+The thumbnail helper accepts `.pptx` only. For a `.potx` template, preserve the original and create a proper presentation copy with the correct main-part content type, or use a supported template-aware converter. Renaming the extension alone is not conversion.
 
 ```powershell
 & $env:CODEX_PYTHON scripts/office/safe_ooxml.py unpack deck.pptx unpacked/
@@ -72,7 +85,7 @@ Do not replace `safe_ooxml.py` with raw `unzip`, `Expand-Archive`, `zipfile.extr
 - **Do all structural work — add, delete, reorder — before editing any slide's content.** `add_slide.py` copies a slide file verbatim, so duplicating after you edit clones the edited content; and `clean.py` deletes any slide missing from `<p:sldIdLst>`, including one you just wrote.
 - **Never copy a slide file by hand** — `add_slide.py` does every registration a new slide needs and reports what it made (`Created ppt/slides/slide17.xml from slide2.xml`). It also works directly on a file: `add_slide.py deck.pptx slide2.xml -o out.pptx` — **pass `-o`, or it rewrites the input deck in place.** A duplicated slide still *references* its source's chart/SmartArt/embedded-object parts rather than cloning them, so editing one slide's chart changes the other's.
 - **If you use `python-pptx`**, three things it won't do: duplicate a slide (its only entry point is `add_slide(layout)`), preserve formatting through `text_frame.text = "..."` (that collapses the paragraph to a single unstyled run — assign `run.text` instead), or read the SVG/EMF most template art uses (`add_picture` raises `UnidentifiedImageError`).
-- Legacy `.ppt` must be converted first: `& $env:CODEX_PYTHON scripts/office/soffice.py --headless --convert-to pptx file.ppt`. `.potx` templates unpack and pack identically — keep the `.potx` extension on the output.
+- Legacy `.ppt` requires an available converter before these OOXML helpers can edit it. `.potx` templates use the same safe unpack/pack workflow; keep template content types and extension when the requested deliverable is a template.
 - To reuse a template icon or image, duplicate a slide or layout that already contains it.
 
 When filling in a template:
@@ -83,20 +96,22 @@ When filling in a template:
 - Let bullets inherit from the layout; only add `<a:buChar>`, `<a:buAutoNum>` (numbered), or `<a:buNone>` to override — never a literal `•` in the text.
 - Text with leading or trailing spaces needs `xml:space="preserve"` on its `<a:t>`.
 
-## Design Ideas
+## Design and narrative
 
-**Don't create boring slides.** Plain bullets on a white background won't impress anyone. Consider ideas from this list for each slide.
+Start with the audience, purpose, evidence, and decision the deck supports. Build a clear sequence: context/problem → supporting evidence or options → recommendation → next steps, adapting it to the user's material. Give each slide one takeaway and use a message title when appropriate. Preserve source facts, units, dates, uncertainty, and citations; never invent data to fill a layout.
+
+The user's template overrides the suggestions below. Good design makes the message easier to understand: choose diagrams for relationships, charts for comparisons, images for context, and concise text when text is the clearest form. Do not add decorative content just to fill space.
 
 ### Before Starting
 
-- **Pick a bold, content-informed color palette**: The palette should feel designed for THIS topic. If swapping your colors into a completely different presentation would still "work," you haven't made specific enough choices.
-- **Dominance over equality**: One color should dominate (60-70% visual weight), with 1-2 supporting tones and one sharp accent. Never give all colors equal weight.
-- **Dark/light contrast**: Dark backgrounds for title + conclusion slides, light for content ("sandwich" structure). Or commit to dark throughout for a premium feel.
-- **Commit to a visual motif**: Pick ONE distinctive element and repeat it — rounded image frames, icons in colored circles. Carry it across every slide. **Do not use a color bar or accent stripe as your motif** (see Avoid list).
+- **Choose a coherent palette:** use the user's brand or template first; otherwise choose a dominant neutral/base, supporting tone, and limited accent with clear contrast.
+- **Establish hierarchy:** titles, evidence, annotations, and sources should have consistent visual roles.
+- **Use contrast deliberately:** a dark opening or section divider can work, but a consistent light deck is also valid.
+- **Repeat a visual system:** align margins, spacing, shape styles, chart colors, and emphasis across slides while varying layouts to suit content.
 
 ### Color Palettes
 
-Choose colors that match your topic — don't default to generic blue. Use these palettes as inspiration:
+When no brand or template palette was specified, these are optional starting points:
 
 | Theme | Primary | Secondary | Accent |
 |-------|---------|-----------|--------|
@@ -113,7 +128,7 @@ Choose colors that match your topic — don't default to generic blue. Use these
 
 ### For Each Slide
 
-**Every slide needs a visual element** — image, chart, icon, or shape. Text-only slides are forgettable.
+Choose a visual only when it explains the slide's message. A deliberate title, quotation, agenda, or conclusion slide can use text alone.
 
 **Layout options:**
 - Two-column (text left, illustration on right)
@@ -132,20 +147,16 @@ Choose colors that match your topic — don't default to generic blue. Use these
 
 ### Typography
 
-**Font names you write into the .pptx are rendered by the user's PowerPoint, not by this environment.** Your visual QA renders via LibreOffice, which substitutes fonts it doesn't have — and for some fonts the substitute has different widths, so your QA preview can show text overflow (or fit) that the real deck won't have. To keep your QA trustworthy:
+Keep template fonts unless the user requests a change. Check the fonts actually available to the chosen renderer when rendering the task; a font family name does not guarantee it is installed or metrically identical on another computer. For Chinese or mixed-language slides, preserve East Asian font settings and check punctuation and wrapping.
 
-- **Safe fonts** (render true-to-width in QA *and* ship with Office): **Arial, Calibri, Cambria, Times New Roman, Courier New, Bookman Old Style, Century Schoolbook**. Use these for body text and anything where fit matters.
-- **Headers with personality at zero QA risk**: pair a safe-list serif header (Cambria, Bookman Old Style, Century Schoolbook) with a safe-list sans body (Calibri or Arial). You get visual contrast without giving up reliable overflow checks.
-- **If the user asks for a font outside the safe list** (e.g. Georgia or Trebuchet MS): use it where the user asked, but size those containers with extra slack (~10%) and don't trust QA text-fit on those elements — the preview of that font is approximate. If the user hasn't specified, prefer safe-list fonts for body text.
-- **QA-unreliable fonts** (substitute has different widths — overflow checks can be wrong): Georgia, Trebuchet MS, Impact, Arial Black, Garamond, Consolas, Palatino Linotype. Calibri Light substitution varies by environment; treat as QA-unreliable. Fine for titles/accents with slack; don't trust QA text-fit on these.
-- **Never default to Aptos** — Office's post-2023 default has no metric-compatible substitute here *and* is missing from older Office installs, so it's unreliable on both ends.
+LibreOffice may substitute fonts and differ from the recipient's PowerPoint. Leave sensible layout slack, inspect rendered text fit, and disclose substitution or unverified target rendering. Do not silently install host fonts or claim that a fixed font list guarantees fidelity.
 
 | Element | Size |
 |---------|------|
 | Slide title | 36-44pt bold |
 | Section header | 20-24pt bold |
-| Body text | 14-16pt |
-| Captions | 10-12pt muted |
+| Body text | 18-24pt; split dense content instead of shrinking it |
+| Captions and sources | 12-14pt, legible at presentation size |
 
 ### Spacing
 
@@ -157,41 +168,27 @@ Choose colors that match your topic — don't default to generic blue. Use these
 
 - **Don't repeat the same layout** — vary columns, cards, and callouts across slides
 - **Don't center body text** — left-align paragraphs and lists; center only titles
-- **Don't skimp on size contrast** — titles need 36pt+ to stand out from 14-16pt body
-- **Don't default to blue** — pick colors that reflect the specific topic
+- **Keep a clear size hierarchy** — use the template's hierarchy or distinguish titles, body text, and sources consistently
+- **Keep colors purposeful** — preserve brand colors and use accents to explain meaning
 - **Don't mix spacing randomly** — choose 0.3" or 0.5" gaps and use consistently
 - **Don't style one slide and leave the rest plain** — commit fully or keep it simple throughout
-- **Don't create text-only slides** — add images, icons, charts, or visual elements; avoid plain title + bullets
+- **Don't force decorative visuals** — avoid repeating a dense title-and-bullets layout when a chart or diagram explains the content better
 - **Don't forget text box padding** — when aligning lines or shapes with text edges, set `margin: 0` on the text box or offset the shape to account for padding
 - **Don't use low-contrast elements** — icons AND text need strong contrast against the background; avoid light text on light backgrounds or dark text on dark backgrounds
-- **NEVER use accent lines under titles** — these are a hallmark of AI-generated slides; use whitespace or background color instead
-- **NEVER add decorative color bars or accent stripes** — this includes: header/footer bars spanning the slide width, vertical sidebar stripes down one edge of the slide, thin accent stripes along one edge of a card or content block, and "single-side borders" on rectangles. These read as AI-generated filler. If you want to set a card apart, use a subtle background tint, a drop shadow, or an icon — not an edge stripe.
-- **Don't default to cream/beige backgrounds** — when no background is specified, use white (`FFFFFF`) or the user's brand palette; avoid warm-neutral defaults like `F5F5DC`, `FAF0E6`, `FAEBD7`, `FFF8E1`
-- **Don't ship text that overflows its shape** — if text doesn't fit, reduce font size, split across slides, or enlarge the container; never leave content cut off or spilling past bounds
+- **Avoid decoration without a purpose** — preserve the supplied template's lines, bars, and motifs; for new decks, use whitespace and restrained emphasis
+- **Don't ship text that overflows its shape** — shorten carefully, split across slides, or enlarge the container before reducing text below a legible size
 
 ## QA (Required)
 
-Your first render usually has a few real issues — overlaps, overflow, misalignment. Find and fix those, re-render only the slides you changed, and stop.
+Perform content, structural, and visual checks appropriate to the requested change. Fix found defects and recheck affected slides; master/theme changes can affect the whole deck. Report failed or skipped checks and missing dependencies accurately.
 
 ### Content QA
 
-```bash
-markitdown output.pptx
-```
-
-Check for missing content, typos, wrong order.
-
-**When using templates, check for leftover placeholder text:**
-
-```bash
-markitdown output.pptx | grep -iE "\bx{3,}\b|lorem|ipsum|\bTODO|\[insert|this.*(page|slide).*layout"
-```
-
-If grep returns results, fix them before declaring success.
+Read the saved output with `python-pptx` and relevant OOXML parts; an available package-local MarkItDown is an optional text dump. Check slide order, requested content, tables, notes, labels, numbers, units, citations, and chart data. Search for leftover placeholders such as `XXX`, `Lorem ipsum`, `TODO`, and `[insert ...]`, then inspect matches in context. A text dump alone does not verify layout or embedded charts.
 
 ### File QA (required)
 
-```bash
+```powershell
 & $env:CODEX_PYTHON scripts/office/validate.py output.pptx                      # built from scratch
 & $env:CODEX_PYTHON scripts/office/validate.py output.pptx --original src.pptx  # built from a template
 ```
@@ -203,15 +200,15 @@ the schema and slide checks against the template, suppressing errors it already 
 The structural checks — relationships, content types, charts — ignore `--original` and
 report template-inherited problems either way, so read those on their own merits.
 
-pptxgenjs emits chart XML PowerPoint refuses to open, and every other tool
-accepts: python-pptx opens those decks, LibreOffice renders them, the XSD
-passes them. Every failure names its fix. Fix it in the generator and rebuild.
+Some generator defects, including invalid chart axis references or label positions, can
+survive a successful `python-pptx` load or LibreOffice render. Inspect the validator's
+findings as well, fix generator defects at the source, and rebuild.
 
 ### Visual QA
 
-Convert the slides to images (see [Converting to Images](#converting-to-images)) and inspect every one. After staring at the generating code you tend to see what you expect rather than what rendered, so look at the images fresh (a subagent works well for this if you have one). User-visible defects to look for:
+When package-local rendering dependencies are available, convert the slides to images (see [Converting to Images](#converting-to-images)) and inspect every slide. If dependencies are missing or rendering fails, report visual QA as not performed; never claim that XML inspection or a template's old preview is a render of the new deck. User-visible defects to look for:
 
-- **Text overflow or text cut off at a box or slide boundary — check this first.** It is the most common defect and always user-visible. (For a font the previewer renders unreliably per Typography, the preview is approximate: trust the ~10% slack you left, not its apparent fit.)
+- **Text overflow or text cut off at a box or slide boundary — check this first.** Font substitution makes target rendering uncertain even when a preview fits; identify that limitation.
 - Overlapping elements (text through shapes, lines through words, stacked elements)
 - Source citations or footers colliding with content above
 - Elements too close (< 0.3" gaps) or cards/sections nearly touching
@@ -226,19 +223,22 @@ Convert the slides to images (see [Converting to Images](#converting-to-images))
 
 ## Converting to Images
 
-Convert presentations to individual slide images for visual inspection:
+Use a fresh, validated task-owned preview directory for each render so stale pages cannot enter QA:
 
-```bash
-& $env:CODEX_PYTHON scripts/office/soffice.py --headless --convert-to pdf output.pptx
-rm -f slide-*.jpg
-pdftoppm -jpeg -r 150 output.pdf slide
-ls -1 "$PWD"/slide-*.jpg
+```powershell
+# These variables are validated package-local paths; $Poppler is pdftoppm.exe.
+& $env:CODEX_PYTHON (Join-Path $SkillDir 'scripts/office/soffice.py') --headless --convert-to pdf --outdir $PreviewDir $OutputPath
+if ($LASTEXITCODE -ne 0) { throw 'Slide preview conversion failed' }
+$PreviewPdf = Join-Path $PreviewDir ([IO.Path]::GetFileNameWithoutExtension($OutputPath) + '.pdf')
+& $Poppler -jpeg -r 150 $PreviewPdf (Join-Path $PreviewDir 'slide')
+if ($LASTEXITCODE -ne 0) { throw 'Slide preview rasterization failed' }
+Get-ChildItem -LiteralPath $PreviewDir -Filter 'slide-*.jpg' | Select-Object -ExpandProperty FullName
 ```
 
-**Pass the absolute paths printed above directly to the view tool.** The `rm` clears stale images from prior runs. `pdftoppm` zero-pads based on page count: `slide-1.jpg` for decks under 10 pages, `slide-01.jpg` for 10-99, `slide-001.jpg` for 100+.
+**Pass the absolute paths printed above directly to the view tool.** `pdftoppm` zero-pads based on page count: `slide-1.jpg` for decks under 10 pages, `slide-01.jpg` for 10-99, `slide-001.jpg` for 100+.
 
-**After fixes, rerun all four commands above** — the PDF must be regenerated from the edited `.pptx` before `pdftoppm` can reflect your changes.
+**After fixes, regenerate the PDF and images from the edited `.pptx`.** Clean up only previews created by this task, within its validated directory.
 
 ## Dependencies
 
-`pptxgenjs` (npm, preinstalled — install only if `require('pptxgenjs')` fails) · `markitdown[pptx]`, `Pillow`, `defusedxml`, `lxml` (pip — text dump, thumbnail, clean, validate) · LibreOffice (`soffice`, auto-configured for sandboxed environments via `scripts/office/soffice.py`) · `pdftoppm` (Poppler)
+The package's Python toolset includes `python-pptx`, `Pillow`, and `lxml`; validation and thumbnail helpers also require `defusedxml`. Optional routes require package-local `pptxgenjs`, MarkItDown, LibreOffice, or Poppler respectively. Check only the components needed by the explicit task; reserved paths and configuration do not prove that a payload is installed. Thumbnails and full slide rendering need working rendering dependencies.

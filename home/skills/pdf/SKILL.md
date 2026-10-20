@@ -1,6 +1,6 @@
 ---
 name: pdf
-description: Use this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, extracting images, and OCR on scanned PDFs to make them searchable. If the user mentions a .pdf file or asks to produce one, use this skill.
+description: Use only when the user explicitly requests a PDF task, such as reading/extracting text or tables, merging, splitting, rotating, watermarking, creating PDFs, filling forms, encrypting/decrypting, extracting images, or OCR. A mere mention of a PDF does not authorize activation or tool execution. Use pdf-library for large manual collections and bounded page retrieval.
 license: Proprietary. LICENSE.txt has complete terms
 ---
 
@@ -12,7 +12,9 @@ license: Proprietary. LICENSE.txt has complete terms
 
 ## Overview
 
-This guide covers essential PDF processing operations using Python libraries and command-line tools. For advanced features, JavaScript libraries, and detailed examples, see REFERENCE.md. If you need to fill out a PDF form, read FORMS.md and follow its instructions.
+This guide covers essential PDF processing operations using Python libraries and command-line tools. Activate only for the PDF work the user requested; do not proactively scan files or start tools. For advanced features, JavaScript libraries, and detailed examples, see `reference.md`. If you need to fill out a PDF form, read `forms.md` and follow its instructions.
+
+For large PDF/manual collections, use [pdf-library](../pdf-library/SKILL.md) to build a package-local Markdown/page index, search bounded snippets, and read only the requested pages. Do not load all converted manuals into context or claim text-layer checks prove visual/OCR completeness.
 
 ## Quick Start
 

@@ -1,28 +1,41 @@
 ---
 name: docx
-description: "Use this skill whenever the user wants to create, read, edit, or manipulate Word documents (.docx files) or Word templates (.dotx files). Triggers include: any mention of 'Word doc', 'word document', '.docx', '.dotx', or requests to produce professional documents with formatting like tables of contents, headings, page numbers, or letterheads. Also use when extracting or reorganizing content from .docx or .dotx files, inserting or replacing images in documents, performing find-and-replace in Word files, working with tracked changes or comments, or converting content into a polished Word document. If the user asks for a 'report', 'memo', 'letter', 'template', or similar deliverable as a Word or .docx file, use this skill. Do NOT use for PDFs, spreadsheets, Google Docs, or general coding tasks unrelated to document generation."
+description: "Use only when the user explicitly requests creating, reading, reviewing, editing, or converting a Word document (.docx) or Word template (.dotx), including formatting, tracked changes, comments, and template-based reports. A filename mention, discovered document, or loaded skill alone does not authorize file access, tool probes, installation, conversion, or execution. Do not use for unrelated coding, PDF, spreadsheet, or presentation tasks."
 license: Proprietary. LICENSE.txt has complete terms
 ---
 
 # DOCX creation, editing, and analysis
 
-> **Codex Portable tool rule:** run Python helpers with `$CODEX_PYTHON` and use only package-local Pandoc, LibreOffice, Poppler, Node/npm dependencies, and archive helpers exposed by the portable launcher. If a dependency is missing, report it and request approval for package-local provisioning; never run host/global `pip`, `npm`, `unzip`, `zip`, Pandoc, LibreOffice, or Poppler as a fallback.
+> **Codex Portable tool rule:** run Python helpers with `$env:CODEX_PYTHON` and use only package-local Python, Pandoc, LibreOffice, Poppler, Node/npm dependencies, and archive helpers exposed by the portable launcher. Report missing dependencies; provision them only when the user's authorization covers that installation. Never run host/global package managers or Office tools as a fallback.
 
 > **Portable paths:** bundled Office helpers derive the package root from their own script location and ignore an inherited `CODEX_INSTALL_DIR`. Keep inputs, outputs, profiles, and temporary files inside that package; do not use `..` or linked paths. Moving the complete package must not redirect work to an old installation. External task files require authorization and a package-local working copy before using these helpers.
+
+## Task activation and scope
+
+- Start only for an explicit Word task. Loading this skill or finding a document does not trigger dependency probes, application startup, downloads, or processing.
+- Reading or reviewing does not authorize rewriting the source, accepting revisions, running macros, or following external links. Create and edit in a task-local working copy; preserve the original unless replacement was requested.
+- Use only dependencies needed for the requested operation. Existing environment setup is not proof that an optional renderer or converter is installed. No automatic installation.
+- Script paths below are relative to this skill's directory. Resolve them to absolute paths and invoke them from a validated package-local task workspace; do not write deliverables or previews into the skill installation.
 
 A `.docx` is a ZIP archive of XML files. Choose your approach by task:
 
 | Task | Approach |
 |---|---|
-| **Create** a new document | Write a `docx` (npm) script — see gotchas below |
-| **Edit** an existing document | `unzip` → edit `word/document.xml` → `zip` (docx-js cannot open existing files) |
-| **Read** content | `pandoc -t markdown file.docx` |
+| **Create** a new document | Prefer bundled `python-docx`; `docx` (npm) is an optional authoring alternative |
+| **Edit** an existing document or template | Use `python-docx` for supported changes; use `safe_ooxml.py unpack` → targeted XML edits → `safe_ooxml.py pack` when preservation requires it |
+| **Read** content | `python-docx` for paragraphs/tables; inspect relevant OOXML parts for headers, footers, comments, revisions, and embedded content. Pandoc is optional |
 
-> Script paths below are relative to this skill's directory.
+## Template-first editing
 
-## Creating with docx-js — gotchas
+- A user-supplied template or reference document takes precedence over generic design rules. Inspect page size, margins, sections, styles, numbering, tables, headers/footers, logos, and content controls before choosing an editing method.
+- If no template was supplied and a cached template fits the request, inspect that template's `artifact-template.json` and preview under `home/plugins/cache/openai-curated-remote/openai-templates/0.1.1/skills/`, then copy its `reference.docx` into the task workspace. Do not enable the whole plugin, load every template skill, or invoke external apps to use these local assets.
+- Preserve style IDs, numbering, section breaks, relationships, fields, and document properties outside the requested changes. Replace the smallest suitable runs: assigning `paragraph.text` discards run formatting. Do not silently accept tracked changes or remove comments.
+- For a `.dotx` source, preserve the template when that is the requested output. A new `.docx` based on it needs the correct main-part content type; changing the filename extension alone is not conversion.
+- Match the template's typography, including East Asian font settings for Chinese text. Renderer font substitution can change pagination; inspect the rendered result when rendering is available.
 
-The package is expected to provision `docx` in its package-local Node environment. Do not run `npm install` automatically. If `require('docx')` fails, stop and request approval to provision it inside the Codex package; never install it into host/global npm locations. The model knows the API; these are the footguns:
+## Optional docx-js authoring — gotchas
+
+Use `docx` only when it is available in the package-local Node environment and appropriate for the task. It is not required for the bundled Python workflow and cannot open existing documents. Check the installed version's API before using these patterns; do not install it automatically.
 
 - **Page size defaults to A4.** For US Letter set `page: { size: { width: 12240, height: 15840 } }` (DXA; 1440 = 1″).
 - **Landscape:** pass portrait dimensions and `orientation: PageOrientation.LANDSCAPE` — docx-js swaps width/height internally.
@@ -38,15 +51,19 @@ The package is expected to provision `docx` in its package-local Node environmen
 
 ## Verify the output
 
-After writing a `.docx`, render it and look at it:
+Check content and structure after writing a `.docx`, including requested changes, preserved template elements, missing images, and leftover placeholders. Run the bundled validator for OOXML edits. When package-local LibreOffice and Poppler are available, render and inspect every page. Use a fresh, validated task-owned preview directory so old images cannot be mistaken for the new output:
 
 ```powershell
-& $env:CODEX_PYTHON scripts/office/soffice.py --headless --convert-to pdf output.docx
-pdftoppm -jpeg -r 100 output.pdf page
-ls page-*.jpg   # then Read the images
+# These variables are validated package-local paths; $Poppler is pdftoppm.exe.
+& $env:CODEX_PYTHON (Join-Path $SkillDir 'scripts/office/soffice.py') --headless --convert-to pdf --outdir $PreviewDir $OutputPath
+if ($LASTEXITCODE -ne 0) { throw 'Word preview conversion failed' }
+$PreviewPdf = Join-Path $PreviewDir ([IO.Path]::GetFileNameWithoutExtension($OutputPath) + '.pdf')
+& $Poppler -jpeg -r 120 $PreviewPdf (Join-Path $PreviewDir 'page')
+if ($LASTEXITCODE -ne 0) { throw 'Word preview rasterization failed' }
+Get-ChildItem -LiteralPath $PreviewDir -Filter 'page-*.jpg' | Select-Object -ExpandProperty FullName
 ```
 
-`pdftoppm` zero-pads page numbers to the width of the page count (`page-01.jpg`…`page-12.jpg`).
+Open the images and inspect pagination, clipping, tables, headers/footers, fonts, and spacing; repair defects and regenerate the previews. `pdftoppm` zero-pads page numbers to the width of the page count (`page-01.jpg`…`page-12.jpg`). If rendering dependencies are missing or conversion fails, report visual QA as not performed and state which structural/content checks actually ran. Never describe XML inspection as a rendered preview.
 
 ## Editing existing documents
 
@@ -80,7 +97,7 @@ An empty bullet in either view is an artifact of that view, not a defect in the 
 
 Comments require six cross-linked files. Use the helper — directory mode when you'll also be editing `document.xml` (saves an unzip/rezip cycle), `.docx`-direct mode otherwise:
 
-```bash
+```powershell
 # Against an already-unpacked directory (preferred when also placing markers)
 & $env:CODEX_PYTHON scripts/comment.py unpacked/ "Fees & expenses cap is too low"
 & $env:CODEX_PYTHON scripts/comment.py unpacked/ "Agreed" --parent 0
@@ -93,4 +110,4 @@ The script writes `comments.xml`, `commentsExtended.xml`, `commentsIds.xml`, `co
 
 ## Dependencies
 
-Package-local `docx` (npm) · package-local `pandoc` · LibreOffice (`soffice`) · `pdftoppm` (Poppler). Missing dependencies are a WARN/request-for-package-local-provisioning condition, not permission to use host/global tools.
+The package's Python toolset includes `python-docx` and `lxml`; the validators additionally require `defusedxml`. Verify the specific import only when the task needs it. Optional routes require package-local `docx` (npm), Pandoc, LibreOffice, or Poppler respectively; their reserved paths do not establish availability. Report the missing component and continue only the checks supported by available dependencies.

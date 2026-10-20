@@ -1,26 +1,26 @@
 ---
 name: apk-test-router
-description: "Use to choose the lowest-cost APK validation method: static assertions, direct API tests, mocks, remote device, Appium page source, or visual screenshots."
+description: Use only when the user explicitly requests APK analysis, modification, reverse engineering, repacking, or Android/MuMu testing. Route to one package-local workflow; do not start tools merely because APK files are present.
 ---
 
-## Codex Portable execution boundary
-- Resolve executable commands to package-local tools under `CODEX_INSTALL_DIR` (plus Windows system components explicitly required by the launcher). Never silently use host/global npm, Appium, Git, curl, Python, Java, Android SDK, or package-manager installs. `npx` may be used only with `--no-install`, from an explicitly selected project that is itself inside the Codex package.
-- A connected phone, emulator, remote Android instance, or its filesystem/state is outside the Codex package. Before reading from or changing such a target, obtain explicit user approval for that target/session. Commands that mutate device state (`adb push/install/uninstall`, `adb shell am/pm/settings/input/chmod/rm/mv/cp`, Frida/Objection injection, Maestro/Appium sessions, reboot/root/trust changes) always require that approval before execution.
-# APK Test Router
+# Android task entry
 
-For each test request, choose the lowest-cost proof:
-1. Static assertion if manifest/resources/code prove it.
-2. Direct API test if server behavior is the target.
-3. Mock/WireMock/mitmproxy fault injection for error paths.
-4. Remote Android only for framework/runtime behavior.
-5. Appium page source/selectors for UI structure.
-6. Screenshot diff only for visual layout evidence.
+This is the lightweight entry point. The maintained workflows live once under `home/plugins/android-apk-lab/skills`; reading them does not require enabling plugins or starting MCP.
 
-Emit `tests/plan.json`, executable skeletons when useful, and `report/tests.md`.
+Resolve the current package root from this skill's location (`home/skills/apk-test-router/SKILL.md`), validate that it contains `env.ps1` and `codex.exe`, and reject linked paths. Never use an inherited old install root. Read only the workflow needed by the user's current request:
 
-## Portable constraints
-- Resolve the package root dynamically from `CODEX_INSTALL_DIR`, `CODEX_HOME`, or this plugin path; never hard-code a drive letter.
-- Keep inputs, outputs, temporary files, credentials, certificates, SDK homes, package-manager caches, and reports under the package root.
-- Reject symlink/reparse-point escapes and any resolved path outside the package root.
-- Prefer static/CLI analysis before device, GUI, screenshot, or OCR workflows.
-- Treat long-running tools (Appium, mitmproxy, Frida, Ghidra, remote Android) as task-scoped processes and stop them at task end.
+| Requested work | Workflow relative to the current package root |
+| --- | --- |
+| Inspect an APK and create its working copy | `home/plugins/android-apk-lab/skills/apk-intake/SKILL.md` |
+| Manifest, resources, decompilation, names, code flow | `home/plugins/android-apk-lab/skills/apk-static-analysis/SKILL.md`; load `android-reverse-engineering/SKILL.md` in that skills directory only as needed |
+| Native libraries / captured network traffic | `home/plugins/android-apk-lab/skills/apk-native-analysis/SKILL.md` / `apk-network-analysis/SKILL.md` |
+| Modify, rebuild, align, sign | `home/plugins/android-apk-lab/skills/apk-repack-sign/SKILL.md` |
+| Choose a test or produce a report | `home/plugins/android-apk-lab/skills/apk-test-router/SKILL.md` / `apk-report/SKILL.md` |
+| MuMu connection and task cleanup | `home/skills/mumu-adb/SKILL.md` (the user's own skill; retain it) |
+| Semantic Android UI automation | `home/plugins/android-apk-lab/skills/appium-setup-uiautomator2/SKILL.md`; use `appium-troubleshooting/SKILL.md` only for an observed failure |
+
+Do not run ADB, scan devices, start an emulator/server/MCP, probe dependencies, download tools, or install a device helper unless the requested task needs that action and its target/scope is authorized. A static APK task does not authorize touching MuMu. Installation on an Android device is outside the host package and must be covered by device/session authorization.
+
+Prefer existing static evidence first. For authorized UI testing, use the accessibility/UI hierarchy and stable selectors with waits; screenshots are for visual checks or controls that expose no usable hierarchy. Do not claim semantic control is available until a real session and locator action succeed.
+
+The optional `home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1 -TaskAuthorized` starts an offline APK analysis/report helper only after explicit selection. It does not control MuMu or install Appium. Its `.mcp.manual.json` is an opt-in example, not an automatically registered server. The switch records the caller's deliberate choice; it does not establish authorization by itself.

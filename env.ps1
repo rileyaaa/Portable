@@ -70,17 +70,17 @@ $env:CODEX_MODEL_MODALITIES = "auto"
 # 不影响本地文件、shell、模型 API，以及不依赖外部连接器的本地 Skills。
 $env:CODEX_DISABLE_APPS = "true"
 
-# 保留 Apps/Connectors 关闭，但启用本地 Plugins 功能
-# true  = 启用 home\plugins 本地插件
-# false = 禁用本地插件功能
-$env:CODEX_ENABLE_PLUGINS = "true"
+# 本地 Plugins 默认关闭；只有明确相关任务才添加启动参数 --portable-extensions。
+# true  = 允许本次带 --portable-extensions 的会话启用 home\plugins
+# false = 禁用本地插件功能；维护模式也不会自动启用
+$env:CODEX_ENABLE_PLUGINS = "false"
 
 # 是否允许插件分享/发布
 $env:CODEX_ENABLE_PLUGIN_SHARING = "false"
 
 # User-defined [mcp_servers.*] entries can launch host-side processes outside the workspace sandbox.
-# They remain persistent, but strict normal mode does not activate them unless explicitly enabled.
-# Maintenance mode activates them automatically for installation/testing.
+# Configuration stays persistent, but activation requires BOTH this value=true and --portable-extensions.
+# Maintenance mode does not activate MCP. Enable it only for an explicitly requested related task.
 $env:CODEX_PORTABLE_ALLOW_USER_MCP = "false"
 
 # ------------------------------------------------------------

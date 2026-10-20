@@ -1,92 +1,43 @@
 ---
 name: appium-setup-uiautomator2
-description: "Prepare and verify Appium UiAutomator2 by validating Node/Appium, Android SDK and Java prerequisites, driver installation, doctor output, and server smoke evidence. Use after the setup Skill selects UiAutomator2 or appium-troubleshooting hands off a UiAutomator2 prerequisite or doctor failure. Do not use for an existing runtime failure after prerequisites pass."
+description: Use only for explicitly requested Android or MuMu UI automation and UiAutomator2 setup. Prefer UI hierarchy and stable selectors to repeated screenshot coordinates; never start a server or device session merely on skill load.
 ---
 
-## Codex Portable execution boundary
-- Resolve executable commands to package-local tools under `CODEX_INSTALL_DIR` (plus Windows system components explicitly required by the launcher). Never silently use host/global npm, Appium, Git, curl, Python, Java, Android SDK, or package-manager installs. `npx` may be used only with `--no-install`, from an explicitly selected project that is itself inside the Codex package.
-- A connected phone, emulator, remote Android instance, or its filesystem/state is outside the Codex package. Before reading from or changing such a target, obtain explicit user approval for that target/session. Commands that mutate device state (`adb push/install/uninstall`, `adb shell am/pm/settings/input/chmod/rm/mv/cp`, Frida/Objection injection, Maestro/Appium sessions, reboot/root/trust changes) always require that approval before execution.
+# Appium UiAutomator2 for portable Windows
 
-## APK Lab portable override
-For this portable Codex package, treat any upstream examples that mention user-home installs, global package managers, system PATH edits, Homebrew, winget, choco, scoop, or OS-level install locations as layout examples only. Place tools, caches, generated files, credentials, test outputs, and temporary files under the package root (`CODEX_INSTALL_DIR`, or parent of `CODEX_HOME`). Prefer `tool/android`, `cache/android`, `tmp/android`, and `work/apk-jobs`.
+## Activation and scope
 
-# UiAutomator2 Setup Workflow
+Start only for the user's current Android/MuMu testing or setup request. Confirm the intended instance/serial and authorized actions from the request; reuse existing authorization instead of asking for it repeatedly. Static APK analysis needs no device/server. Preserve the user's `home/skills/mumu-adb/SKILL.md` for ADB connection and cleanup.
 
-## Routing
+Host downloads, runtimes, npm packages, SDK, driver state, logs and temporary files must stay under the current package root, derived from the skill/script location. No host/global npm, Java, Android SDK, registry installs, system PATH edits, or automatic `npx` downloads. A device/emulator is a separate target: UiAutomator2 session startup can install its server/settings helper APKs and change device state. Proceed only when the requested test session covers this deployment; otherwise report the required device change before creating a session.
 
-Use this Skill to prepare or repair UiAutomator2 prerequisites selected by
-`skills/setup/SKILL.md` or handed off by
-`skills/appium-troubleshooting/SKILL.md`. After required setup checks pass,
-route an existing UiAutomator2 session or command failure back to
-`skills/appium-troubleshooting/SKILL.md`. Load FFmpeg or bundletool only when
-the user explicitly requested that capability.
+## Select and prepare the smallest toolchain
 
-## Required inputs
+Use the maintained [Appium installation guide](https://appium.io/docs/en/latest/quickstart/install/) and [UiAutomator2 driver](https://github.com/appium/appium-uiautomator2-driver) requirements for the selected versions. Record exact Appium/driver versions; do not blindly use `latest` or copy global-install examples.
 
-Confirm Android as the target, package-local `appium` mode or an explicitly requested
-package-contained project using `npx --no-install appium`, host OS, device or emulator expectations, permissions,
-and optional dependency requests.
+| Component | Package-local location |
+| --- | --- |
+| Node and npm | `tool/node`; invoke its `node.exe` and `node_modules/npm/bin/npm-cli.js` explicitly |
+| Appium npm project | `tool/automation/appium`; retain its package and lock files |
+| UiAutomator2 driver state | A persistent Appium home under that project; use the same home for installation and runtime |
+| Java | `tool/android/jdk`; set `JAVA_HOME` for this process |
+| Android SDK / SDK adb | `tool/android/sdk`; set `ANDROID_HOME` and compatible `ANDROID_SDK_ROOT` |
+| npm / Android user state | Current package `cache` and `home-runtime/.android` |
+| Test logs and artifacts | A dedicated task directory under `work/apk-jobs` or `tmp` |
 
-## Workflow outline
+The bundled `tool/android/platform-tools/adb.exe` is standalone ADB, not a complete SDK. Do not claim the toolchain is ready merely because that file exists. Do not invoke a host Appium if the package-local project is missing. For an explicitly authorized setup, select compatible pinned versions, install only UiAutomator2 using the local Appium CLI and package-local npm cache/prefix/home, and accept SDK licences only within the approved setup scope. Optional FFmpeg, extra drivers, emulators and Android Studio are not required defaults.
 
-1. Load the package-local Appium command profile by default. Use a project-local profile only when explicitly requested, only from a project inside the Codex package, and only with `npx --no-install`.
-2. Load the Android profile, shared Appium setup basics, and Android emulator
-   setup Context.
-3. Load the UiAutomator2 decision, installation, doctor, and smoke references
-   in that order.
-4. Verify directly with `node --version`, `appium --version`, `adb version`, `java -version`, `appium driver list --installed`, and `appium driver doctor uiautomator2`; pass
-   `--appium-mode local` only for an explicitly requested package-contained project-local mode. Apply required fixes in technical
-   dependency order and rerun the affected check after each fix.
-5. Run the UiAutomator2 doctor and server smoke checks. Load the matching
-   example only when it clarifies execution.
+After preparation, run the needed package-local version/driver/doctor checks. Start Appium only on loopback (`127.0.0.1`), with task-local logs and a retained PID. A successful `/status` or driver doctor check proves host readiness only; it does not prove that the target device can be controlled.
 
-## Verification
+## Semantic test session
 
-1. Re-run `appium driver list --installed` and `appium driver doctor uiautomator2`; add
-   `--appium-mode local` only for an explicitly requested package-contained project-local mode. Verify
-   `summary.requiredOk: true`, `summary.driverInstalled: true`, a populated
-   `summary.driverVersion`, and `summary.doctorRequiredOk: true`.
-2. Verify the direct doctor output reports `0 required fixes needed` using
-   `appium driver doctor uiautomator2`, or
-   `npx --no-install appium driver doctor uiautomator2` in local mode.
-3. Start the Appium server in the selected mode, request
-   `http://127.0.0.1:4723/status`, and verify the response indicates readiness
-   while the server log lists `uiautomator2` as an available driver.
-4. Stop the server and verify no Appium server process remains, following the
-   platform-specific cleanup check in the smoke-status reference.
+1. Select the already authorized MuMu serial explicitly; never operate on whichever device happens to be first. For a preinstalled app, use its package/activity and `appium:noReset=true`; do not reset or reinstall it as a default repair.
+2. Create a session using `platformName=Android`, `appium:automationName=UiAutomator2`, and that `appium:udid`. Set a bounded command timeout. Do not use automatic browser/Chromedriver downloads for native-app testing.
+3. Read page source only when structure changes or the requested assertion needs it. Prefer `resource-id` and accessibility/content-description selectors; scoped text is next, XPath last. Use explicit waits for visibility/enabled state, then perform a specific action and verify its resulting state.
+4. Save a screenshot only for layout/color evidence, a failed assertion, or a control without a usable semantic tree. Canvas/game surfaces and some WebViews expose insufficient hierarchy; report this limitation and use the minimum authorized visual fallback instead of claiming universal intelligent control.
+5. For hybrid WebView work, inspect the selected context and its engine version. This still has a WebDriver compatibility boundary; do not assume native UiAutomator2 removes every Chromedriver requirement.
+6. End the WebDriver session and stop only servers/helpers started by this task. Preserve an existing ADB server, existing user/device data, and test outputs the user wants. Never erase an emulator or uninstall unrelated helper packages as routine cleanup.
 
-## UiAutomator2 setup safety and approval constraints
+## Completion evidence
 
-- Preserve the selected command mode throughout the workflow.
-- Ask before optional FFmpeg or bundletool setup, privileged commands, SDK
-  license changes, or emulator creation that changes local state.
-- Preserve working Java, Android SDK, device, emulator, and driver
-  installations.
-
-## Completion criteria
-
-- Android environment completion criteria pass.
-- Appium succeeds in the selected command mode.
-- The installed driver list includes `uiautomator2`.
-- `appium driver doctor uiautomator2` reports `0 required fixes needed`;
-  optional warnings are non-blocking.
-- `/status` succeeds, server logs list `uiautomator2`, and cleanup leaves no
-  Appium server process.
-
-## Evidence boundary
-
-Report Appium and UiAutomator2 versions, helper `requiredOk`, Android
-prerequisite summary, doctor required/optional summary, `/status`, server
-driver evidence, cleanup, and explicitly requested optional capability results.
-
-## Self-Improvement Prompt
-
-Before the final response, report any missing, ambiguous, outdated, or
-retry-causing UiAutomator2 setup instruction with its asset path and proposed
-wording. Leave unrelated assets unchanged.
-
-## Codex Portable APK Lab constraints
-- Keep all downloaded tools, generated files, test artifacts, credentials, SDK state, package-manager caches, and temporary files under the Codex package root (`CODEX_INSTALL_DIR` or the parent of `CODEX_HOME`).
-- Prefer package-local paths from `ANDROID_HOME`, `ANDROID_USER_HOME`, `APKTOOL_FRAMEWORK_DIR`, `FRIDA_CACHE_DIR`, `MITMPROXY_HOME`, `APPIUM_HOME`, `APK_LAB_CACHE_DIR`, `APK_LAB_TMP_DIR`, and `APK_LAB_JOBS_DIR`.
-- Before writing/deleting, resolve the final absolute path and keep it inside the package root; skip reparse points/symlinks.
-- Start Appium, device sessions, proxies, emulators, Frida, or GUI tools only for the current task and stop them when done.
+Report host versions and package paths, selected serial/app, whether helper APK deployment occurred, one successful hierarchy/selector action and assertion, relevant artifacts, and task-owned process cleanup. If no Windows device session was run, state that clearly. Route observed setup or locator failures to `../appium-troubleshooting/SKILL.md`; this package does not contain the upstream repository's `contexts/` or readiness-summary scripts.

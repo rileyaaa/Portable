@@ -12,7 +12,6 @@ import zipfile
 from datetime import datetime, timezone
 
 RAW_PLUGIN_ROOT = pathlib.Path(__file__).absolute().parents[1]
-PLUGIN_ROOT = RAW_PLUGIN_ROOT.resolve()
 MAX_ZIP_ENTRIES = 50_000
 MAX_SCAN_ENTRY_BYTES = 20_000_000
 MAX_SCAN_TOTAL_BYTES = 256_000_000
@@ -23,7 +22,7 @@ MAX_RPC_LINE_BYTES = 2_000_000
 MAX_ENDPOINTS = 10_000
 MAX_ENDPOINT_ENTRIES = 20
 SUPPORTED_PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
-SERVER_VERSION = "0.5.1"
+SERVER_VERSION = "0.6.0"
 URL_RE = re.compile(rb"(?i)\b(?:https?|wss?)://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{4,512}")
 PRINTABLE_RE = re.compile(rb"[\x20-\x7e]{4,}")
 WINDOWS_BAD_CHARS_RE = re.compile(r'[<>:"|?*\x00-\x1f]')
@@ -33,10 +32,13 @@ JOB_NAME_RE = re.compile(r"^[0-9a-f]{64}$")
 
 def _raw_is_reparse_or_symlink(path: pathlib.Path) -> bool:
     try:
-        if path.is_symlink():
-            return True
-        is_junction = getattr(path, "is_junction", None)
-        return bool(is_junction and is_junction())
+        info = path.lstat()
+        return stat.S_ISLNK(info.st_mode) or bool(
+            getattr(info, "st_file_attributes", 0)
+            & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        )
+    except FileNotFoundError:
+        return False
     except OSError:
         return True
 
@@ -51,33 +53,34 @@ def _reject_raw_reparse_chain(root: pathlib.Path, leaf: pathlib.Path) -> None:
         raise RuntimeError(f"portable root may not be a reparse/symlink: {current}")
     for part in rel.parts:
         current = current / part
-        if current.exists() and _raw_is_reparse_or_symlink(current):
+        if _raw_is_reparse_or_symlink(current):
             raise RuntimeError(f"plugin path contains a reparse/symlink: {current}")
 
 
-def _validated_package_root(candidate) -> pathlib.Path | None:
-    try:
-        root = pathlib.Path(candidate).expanduser().resolve()
-        PLUGIN_ROOT.relative_to(root)
-    except (OSError, RuntimeError, ValueError):
-        return None
-    if not (root / "codex.exe").is_file() or not (root / "env.ps1").is_file():
-        return None
+def find_package_root() -> pathlib.Path:
+    # Derive from the installed layout; never probe unrelated parent directories
+    # for markers or accept a stale/inherited install root after relocation.
+    root = RAW_PLUGIN_ROOT.parents[2]
+    if RAW_PLUGIN_ROOT != root / "home" / "plugins" / "android-apk-lab":
+        raise RuntimeError("APK Lab must run from home/plugins/android-apk-lab")
+    _reject_raw_reparse_chain(pathlib.Path(root.anchor), RAW_PLUGIN_ROOT)
+    for marker in ("codex.exe", "env.ps1"):
+        path = root / marker
+        if _raw_is_reparse_or_symlink(path):
+            raise RuntimeError(f"portable root marker may not be a link: {path}")
+        try:
+            info = path.lstat()
+        except OSError as exc:
+            raise RuntimeError(f"unable to locate Codex Portable root from {RAW_PLUGIN_ROOT}") from exc
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise RuntimeError(f"portable root marker must be a single-link file: {path}")
     return root
 
 
-def find_package_root() -> pathlib.Path:
-    for raw_candidate in (RAW_PLUGIN_ROOT, *RAW_PLUGIN_ROOT.parents):
-        if (raw_candidate / "codex.exe").is_file() and (raw_candidate / "env.ps1").is_file():
-            _reject_raw_reparse_chain(raw_candidate, RAW_PLUGIN_ROOT)
-            root = _validated_package_root(raw_candidate)
-            if root is not None:
-                return root
-    raise RuntimeError(f"unable to locate Codex Portable root from {RAW_PLUGIN_ROOT}")
-
-
-PKG_ROOT = find_package_root()
-JOBS_ROOT = pathlib.Path(os.environ.get("APK_LAB_JOBS_DIR", PKG_ROOT / "work" / "apk-jobs")).expanduser().resolve()
+# Initialized only after the caller explicitly selects this task's manual MCP.
+# Import/discovery performs no root probing, directory creation, or device work.
+PKG_ROOT: pathlib.Path
+JOBS_ROOT: pathlib.Path
 
 
 def now() -> str:
@@ -85,19 +88,13 @@ def now() -> str:
 
 
 def _is_reparse_or_symlink(path: pathlib.Path) -> bool:
-    try:
-        if path.is_symlink():
-            return True
-        is_junction = getattr(path, "is_junction", None)
-        return bool(is_junction and is_junction())
-    except OSError:
-        return True
+    return _raw_is_reparse_or_symlink(path)
 
 
 def inside(path) -> pathlib.Path:
     if path is None:
         raise ValueError("path is required")
-    raw = pathlib.Path(path).expanduser()
+    raw = pathlib.Path(path)
     if not raw.is_absolute():
         raw = pathlib.Path.cwd() / raw
     lexical = pathlib.Path(os.path.abspath(os.fspath(raw)))
@@ -110,7 +107,7 @@ def inside(path) -> pathlib.Path:
         raise ValueError(f"portable root may not be a reparse/symlink: {current}")
     for part in lexical_rel.parts:
         current = current / part
-        if current.exists() and _is_reparse_or_symlink(current):
+        if _is_reparse_or_symlink(current):
             raise ValueError(f"reparse/symlink component rejected: {current}")
     p = lexical.resolve(strict=False)
     try:
@@ -659,6 +656,16 @@ def handle(req):
 
 
 def main() -> int:
+    # This switch records the caller's task-scope decision; it cannot determine
+    # user intent. No environment variable or maintenance mode enables it.
+    if sys.argv[1:] != ["--task-authorized"]:
+        print("APK Lab MCP requires explicit task selection: --task-authorized", file=sys.stderr)
+        return 2
+    global PKG_ROOT, JOBS_ROOT
+    PKG_ROOT = find_package_root()
+    JOBS_ROOT = pathlib.Path(os.environ.get("APK_LAB_JOBS_DIR", PKG_ROOT / "work" / "apk-jobs"))
+    # Validate the optional output override lexically before resolving links.
+    inside_jobs(JOBS_ROOT)
     while True:
         raw = sys.stdin.buffer.readline(MAX_RPC_LINE_BYTES + 1)
         if not raw:

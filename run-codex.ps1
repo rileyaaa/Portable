@@ -608,7 +608,6 @@ Assert-PortablePath "generated config" $GeneratedConfigPath
 Assert-PortablePath "extension store" $ExtensionStorePath
 $ExtensionSourcePath = if (Test-Path -LiteralPath $ExtensionStorePath -PathType Leaf) { $ExtensionStorePath } else { $GeneratedConfigPath }
 $PreservedExtensionToml = Get-PersistableCodexExtensionToml -Path $ExtensionSourcePath
-$PreservedPluginToml = Get-PersistableCodexExtensionToml -Path $ExtensionSourcePath -AllowedNamespaces @("plugins")
 if (Test-Path -LiteralPath $GeneratedConfigPath -PathType Leaf) {
     Remove-Item -LiteralPath $GeneratedConfigPath -Force -ErrorAction SilentlyContinue
 }
@@ -824,6 +823,29 @@ function Convert-ToTomlBool {
 function Convert-ToFeatureBool {
     param([string]$Value, [bool]$Default)
     return (Convert-ToTomlBool $Value $Default) -eq "true"
+}
+
+# An old env.local.ps1 value alone must never activate host-side extensions.
+# Parse both settings even when the session flag is absent so invalid values fail closed.
+function Get-PortableExtensionPolicy {
+    param(
+        [bool]$TaskRequested = $false,
+        [string]$PluginsValue = "",
+        [string]$UserMcpValue = ""
+    )
+    $pluginsConfigured = Convert-ToFeatureBool $PluginsValue $false
+    $userMcpConfigured = Convert-ToFeatureBool $UserMcpValue $false
+    $pluginsEnabled = $TaskRequested -and $pluginsConfigured
+    $userMcpEnabled = $TaskRequested -and $userMcpConfigured
+    $allowedNamespaces = @()
+    if ($pluginsEnabled) { $allowedNamespaces += "plugins" }
+    if ($userMcpEnabled) { $allowedNamespaces += "mcp_servers" }
+    return [pscustomobject]@{
+        TaskRequested = $TaskRequested
+        PluginsEnabled = $pluginsEnabled
+        UserMcpEnabled = $userMcpEnabled
+        AllowedNamespaces = [string[]]$allowedNamespaces
+    }
 }
 
 function Initialize-PortablePlugins {
@@ -1309,6 +1331,7 @@ foreach ($savedAuthPath in @($AccountJsonAuthPath, $BrowserAuthPath)) {
 $ConfiguredAuthMode = $env:CODEX_AUTH_MODE
 if ([string]::IsNullOrWhiteSpace($ConfiguredAuthMode)) { $ConfiguredAuthMode = "menu" }
 $PortableMaintenanceMode = $false
+$PortableExtensionsRequested = $false
 $CodexLaunchArgs = New-Object System.Collections.Generic.List[string]
 $portableOptionScan = $true
 for ($argumentIndex = 0; $argumentIndex -lt $args.Count; $argumentIndex++) {
@@ -1326,6 +1349,10 @@ for ($argumentIndex = 0; $argumentIndex -lt $args.Count; $argumentIndex++) {
         $PortableMaintenanceMode = $true
         continue
     }
+    if ($portableOptionScan -and $argument -eq "--portable-extensions") {
+        $PortableExtensionsRequested = $true
+        continue
+    }
     if ($portableOptionScan -and $argument -eq "--portable-auth") {
         if ($argumentIndex + 1 -ge $args.Count) {
             Write-Host "--portable-auth 后需要填写认证模式。" -ForegroundColor Red
@@ -1341,7 +1368,8 @@ for ($argumentIndex = 0; $argumentIndex -lt $args.Count; $argumentIndex++) {
     }
     $CodexLaunchArgs.Add($argument)
 }
-$AllowUserMcp = $PortableMaintenanceMode -or (Convert-ToFeatureBool $env:CODEX_PORTABLE_ALLOW_USER_MCP $false)
+$PortableExtensionPolicy = Get-PortableExtensionPolicy -TaskRequested $PortableExtensionsRequested -PluginsValue $env:CODEX_ENABLE_PLUGINS -UserMcpValue $env:CODEX_PORTABLE_ALLOW_USER_MCP
+$AllowUserMcp = $PortableExtensionPolicy.UserMcpEnabled
 $ConfiguredAuthMode = $ConfiguredAuthMode.Trim().ToLowerInvariant()
 if ($ConfiguredAuthMode -notin @("menu", "last", "api", "account_json", "browser")) {
     Write-Host "CODEX_AUTH_MODE 只支持 menu / last / api / account_json / browser：$ConfiguredAuthMode" -ForegroundColor Red
@@ -2364,6 +2392,13 @@ When asked what model you are, answer according to the actual model for this ses
 If the configured model is GPT-5.5, say GPT-5.5; if it is GPT-5, say GPT-5; if it is an OSS/local/API model, say that exact model name.
 Do not claim GPT-5, GPT-5.5, or any other model unless it is the actual configured/requested/provider-reported model for this session.
 Ignore stale identity wording from cloned templates or older instruction files.
+
+# Task-Scoped Skill and Extension Activation
+
+Run skill-associated commands, activate plugins or MCP, connect devices, and start services only when the user explicitly requests a relevant task. Loading a skill, discovering installed files, or entering maintenance mode does not authorize probing, installation, connection, or service startup.
+For tasks unrelated to APK, Android, MuMu, or mobile automation, do not probe ADB, emulators, Appium, or Android MCP. For tasks unrelated to browser or desktop automation, do not inspect or control browser sessions, desktop applications, or windows.
+Limit every operation to the user's current authorized task and selected target. A package-local installation or writable package directory does not authorize control of the whole desktop, unrelated applications, external files, or devices. Obtain explicit authorization before expanding the target or making device/desktop changes outside the requested task.
+Installed skills remain available as reference material; their presence is not permission to execute their tools. The --portable-extensions launcher flag permits the configured extension namespaces for this session, but does not grant blanket permission to use their capabilities.
 "@
 }
 
@@ -2752,8 +2787,8 @@ $ProviderSupportsWebSocketsToml = $(if ($DisableWebSocket) { "false" } else { "t
 
 # Codex Apps、Plugins 与插件分享分别控制。
 $DisableApps = (Convert-ToTomlBool $env:CODEX_DISABLE_APPS $true) -eq "true"
-$EnablePlugins = Convert-ToFeatureBool $env:CODEX_ENABLE_PLUGINS $true
-$EnablePluginSharing = Convert-ToFeatureBool $env:CODEX_ENABLE_PLUGIN_SHARING $false
+$EnablePlugins = $PortableExtensionPolicy.PluginsEnabled
+$EnablePluginSharing = (Convert-ToFeatureBool $env:CODEX_ENABLE_PLUGIN_SHARING $false) -and $EnablePlugins
 $PluginRoot = Join-Path $env:CODEX_HOME "plugins"
 $PluginMarketplaceFile = Join-Path $env:CODEX_HOME ".agents\plugins\marketplace.json"
 Assert-PortablePath "PluginRoot" $PluginRoot
@@ -3106,20 +3141,20 @@ if ($ProxyEnabled -and $ProxyForSubprocess -and $SandboxNetworkAccess -eq "true"
 }
 
 # 用户 MCP / Plugin 扩展配置只在生成主体之后追加，且不能覆盖上面的安全命名空间。
-# Persist all sanitized extension text outside generated config. Strict normal mode keeps user MCP disabled.
+# Persist all sanitized extension text outside generated config; activate only the namespaces requested for this session.
 if (-not [string]::IsNullOrWhiteSpace($PreservedExtensionToml)) {
     Write-Utf8TextAtomic -Path $ExtensionStorePath -Text $PreservedExtensionToml
 } elseif (Test-Path -LiteralPath $ExtensionStorePath -PathType Leaf) {
     Write-Utf8TextAtomic -Path $ExtensionStorePath -Text ""
 }
-$EffectiveExtensionToml = if ($AllowUserMcp) { $PreservedExtensionToml } else { $PreservedPluginToml }
+$EffectiveExtensionToml = Get-PersistableCodexExtensionToml -Path $ExtensionStorePath -AllowedNamespaces $PortableExtensionPolicy.AllowedNamespaces
 if (-not [string]::IsNullOrWhiteSpace($EffectiveExtensionToml)) {
     [void]$Builder.AppendLine("")
     [void]$Builder.AppendLine("# Preserved portable extension configuration")
     [void]$Builder.Append($EffectiveExtensionToml)
 }
 if (-not $AllowUserMcp -and -not [string]::IsNullOrWhiteSpace($PreservedExtensionToml) -and $PreservedExtensionToml -match '(?m)^\s*\[\[?\s*(?:mcp_servers|[''"]mcp_servers[''"])' ) {
-    Write-Host "User MCP configuration is stored in home\portable-extensions.toml but disabled in strict normal mode. Use maintenance mode or CODEX_PORTABLE_ALLOW_USER_MCP=true to activate it." -ForegroundColor DarkYellow
+    Write-Host "User MCP configuration is stored in home\portable-extensions.toml but disabled for this session. A related task requires --portable-extensions AND CODEX_PORTABLE_ALLOW_USER_MCP=true; maintenance mode does not enable it." -ForegroundColor DarkYellow
 }
 
 $ConfigPath = $GeneratedConfigPath
@@ -3175,7 +3210,7 @@ if ($ProviderMode -eq "local_ollama") {
 }
 Write-Host "Codex Apps    : $(if ($DisableApps) { 'disabled (外部 Apps/Connectors 已关闭)' } else { 'enabled' })"
 Write-Host "Plugins       : $(if ($EnablePlugins) { 'enabled' } else { 'disabled' })"
-Write-Host "User MCP      : $(if ($AllowUserMcp) { 'enabled (host extension)' } else { 'stored/disabled in SAFE' })"
+Write-Host "User MCP      : $(if ($AllowUserMcp) { 'enabled (host extension)' } else { 'stored/disabled for this session' })"
 Write-Host "PluginSharing : $(if ($EnablePluginSharing) { 'enabled' } else { 'disabled' })"
 if ($EnablePlugins -and (Test-Path -LiteralPath $PluginRoot) -and (Test-Path -LiteralPath $PluginMarketplaceFile)) {
     Write-Host "PluginRoot    : $PluginRoot"

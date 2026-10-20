@@ -1,7 +1,11 @@
 ---
 name: maestro-mobile-testing
-description: "Maestro mobile E2E testing patterns for React Native/Expo apps: YAML test flows, testID selectors, adaptive auth state, optimistic update verification, GraalJS scripting, cross-platform stability, CI/CD integration, Maestro Cloud, and MCP server integration"
+description: "Use only for an explicitly requested Android/APK task. Maestro mobile E2E testing patterns for React Native/Expo apps: YAML test flows, testID selectors, adaptive auth state, optimistic update verification, GraalJS scripting, cross-platform stability, CI/CD integration, Maestro Cloud, and MCP server integration"
 ---
+
+## Task activation
+
+Loading this skill, detecting an APK, or entering maintenance mode does not authorize execution. Do not run prerequisite probes, ADB, device discovery, servers, downloads, or installations until the user has requested the relevant Android/APK task. Use the existing authorization for the selected target/session; do not ask again for the same authorized operation. Device/helper installation and actions outside that scope need separate authorization. Resolve the current package root from this skill/script location and validate its markers and lexical ancestors first; environment roots such as `CODEX_INSTALL_DIR` are usable only after they match that current root. Never follow a stale root after moving the package.
 
 ## Codex Portable execution boundary
 - Resolve executable commands to package-local tools under `CODEX_INSTALL_DIR` (plus Windows system components explicitly required by the launcher). Never silently use host/global npm, Appium, Git, curl, Python, Java, Android SDK, or package-manager installs. `npx` may be used only with `--no-install`, from an explicitly selected project that is itself inside the Codex package.

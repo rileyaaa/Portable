@@ -20,7 +20,7 @@
 | 文件 | 用途与注意事项 |
 | --- | --- |
 | `启动Codex.bat` | 日常受限启动。无参数默认显示菜单；带参数可执行 `exec`、`resume` 等允许的客户端命令。 |
-| `启动Codex-维护模式.bat` | 有意修改包内脚本、工具、Skills、Plugins 或 MCP 时使用；扩大包内可写范围并启用保留的用户 MCP 配置。 |
+| `启动Codex-维护模式.bat` | 有意修改包内脚本、工具、Skills、Plugins 或 MCP 时使用；扩大包内可写范围，扩展仍须明确选择后启用。 |
 | `检查login_json.bat` | 检查 `login_json` 中待导入账号，生成包内 CSV 报告；会访问认证服务，网络失败不代表账号可删除。 |
 | `检查隔离.bat` | 检查便携目录和隔离条件。双击时会询问是否允许本次只读扫描宿主残留，默认拒绝；不会自动获得包外清理权限。 |
 | `清理缓存.bat` | 清理可再生缓存并重建必要目录；不将认证快照、切换/退出标记或安装身份当缓存删除。 |
@@ -73,8 +73,8 @@ $env:CODEX_MODEL = "上游实际提供的模型名"
 | 输入能力与上下文 | `CODEX_MODEL_MODALITIES=auto`、`CODEX_MODEL_CONTEXT_WINDOW` 留空。手动 `text`/`text_image` 或上下文数值仅用于自定义/本地模型兼容，官方账号使用官方目录。 |
 | 模型指令文件 | `CODEX_MODEL_INSTRUCTIONS_FILE` 必须为包内普通单链接文件，相对路径基于 `home`；在 `env.local.ps1` 显式设为空会同时关闭旧指令文件自动发现。 |
 | WebSocket | `CODEX_DISABLE_WEBSOCKET=true`。自定义接口确实支持时才改为 `false`；Ollama 固定 HTTP/SSE。 |
-| Apps / Plugins | `CODEX_DISABLE_APPS=true`、`CODEX_ENABLE_PLUGINS=true`、`CODEX_ENABLE_PLUGIN_SHARING=false`。Apps 还需要官方登录与连接器授权；启用插件不等于装齐依赖。 |
-| 用户 MCP | 正常模式 `CODEX_PORTABLE_ALLOW_USER_MCP=false`，保留配置但不激活；显式开启或维护模式才启用。它与 Plugins 开关独立。 |
+| Apps / Plugins | `CODEX_DISABLE_APPS=true`、`CODEX_ENABLE_PLUGINS=false`、`CODEX_ENABLE_PLUGIN_SHARING=false`。Plugins 须配置为 true 且本次启动带 `--portable-extensions`；Apps 还需要官方登录与连接器授权。 |
+| 用户 MCP | `CODEX_PORTABLE_ALLOW_USER_MCP=false`，保留配置但不激活。须配置为 true 且本次启动带 `--portable-extensions`；维护模式不会自动启用。 |
 
 手动模型能力覆盖生成的 `CODEX_MODEL_CATALOG_JSON` 是输出路径，相对包根解析，不是导入任意模型目录的入口。其他 Provider header、query、状态栏等选项见 `env.ps1` 注释；需要 TOML 的选项使用单行 inline table。
 
@@ -118,6 +118,18 @@ $env:CODEX_MODEL = "上游实际提供的模型名"
 4. B 机保留或生成自己的 `installation_id`。从 BAT 启动并选择对应认证模式；若出现 401、refresh 无效或账号不一致，重新登录。
 
 认证快照、账号 JSON、API Key 和私密配置等同密码，不得进入 Git、公开压缩包、截图或日志；不要读取、编辑或比较真实凭据内容/哈希。同机完整搬迁与对外分发是不同操作，发布包必须排除这些私密状态。
+
+## 按任务使用技能
+
+技能可以被发现和阅读，但只有你明确提出相关任务后才能运行其工具、检查依赖、启动服务或连接设备。例如文档任务不会顺带运行 APK、MuMu 或浏览器工具。安装在包内只规定文件位置，不代表授权操作整个桌面。
+
+| 工作 | 当前方案 |
+| --- | --- |
+| Word / PPT / Excel | 保留 `docx`、`pptx`、`xlsx`。用户提供的模板优先；PPT 检查版式、层次、字体与实际预览，Word 保留样式和结构，Excel 检查公式及重算结果。缺渲染/重算工具时明确标注未验证。 |
+| PDF 编辑与大量手册阅读 | 普通编辑使用 `pdf`；`pdf-library` 使用 PyMuPDF4LLM 按页转换并建立本地索引，先搜索后读取命中页，支持增量更新和纯 Markdown ZIP。仅转换格式不保证省 token；避免一次加载全部全文。OCR 引擎尚未预置，扫描/图中文字会标为待处理。 |
+| APK / MuMu | `apk-test-router` 按任务读取插件内唯一的完整流程；你的 `mumu-adb` 保留。测试优先考虑 Appium/UiAutomator2 的 UI 树、resource-id、accessibility 和等待条件，画布/游戏界面仍可能需要截图。完整 SDK/JDK/Appium 尚未预置。 |
+
+需要启用已配置的扩展时，在本机配置中将对应开关设为 `true`，再通过 `.\启动Codex.bat --portable-extensions` 明确选择本次扩展会话；这个启动器参数不会传给官方 CLI。技能本身可按需读取，不要求启用整套插件。扩展配置保存不等于运行授权，实际工具调用仍须符合当前任务。
 
 ## 工具、更新与故障处理
 

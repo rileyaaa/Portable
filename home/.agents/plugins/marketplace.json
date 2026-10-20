@@ -7,18 +7,5 @@
       "plugins": []
     }
   ],
-  "plugins": [
-    {
-      "name": "android-apk-lab",
-      "source": {
-        "source": "local",
-        "path": "./plugins/android-apk-lab"
-      },
-      "policy": {
-        "installation": "INSTALLED_BY_DEFAULT",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Developer tools"
-    }
-  ]
+  "plugins": []
 }
