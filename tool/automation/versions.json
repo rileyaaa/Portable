@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "checkedAt": "2026-10-20",
+  "checkedAt": "2026-10-23",
   "platform": "win32-x64",
   "playwrightMcp": "0.0.83",
   "playwright": "1.64.0-alpha-1790635538000",
@@ -13,9 +13,9 @@
     "revision": "1247",
     "executable": "browsers/chromium-1247/chrome-win64/chrome.exe",
     "downloadUrl": "https://cdn.playwright.dev/builds/cft/155.0.8059.12/win64/chrome-win64.zip",
-    "payloadBundled": false,
-    "payloadReason": "Official CDN and GitHub Actions API require cloud allowlist changes. A manual workflow and explicit Windows installer are provided; no browser artifact has been fetched yet.",
-    "chromedriverRequired": false
+    "payloadBundled": true,
+    "chromedriverRequired": false,
+    "payloadManifest": "browser-manifest.json"
   },
   "browserPolicy": "One Chromium payload shared by task scripts, MCP and CDP diagnostics. No ChromeDriver, second browser, Chrome DevTools MCP, or host profile.",
   "desktopAssessment": {

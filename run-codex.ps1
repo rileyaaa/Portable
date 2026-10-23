@@ -39,6 +39,32 @@ function Find-CodexPortableRoot {
     throw "无法从启动脚本位置定位 Codex Portable 根目录：$StartDirectory"
 }
 
+function Get-CodexBrowserLoginFlow {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return 'device_auth' }
+    $flow = $Value.Trim().ToLowerInvariant()
+    if ($flow -notin @('device_auth', 'system_browser')) {
+        throw 'CODEX_BROWSER_LOGIN_FLOW 只支持 device_auth / system_browser。'
+    }
+    return $flow
+}
+
+function Invoke-CodexOfficialAccountLogin {
+    param([string]$Flow)
+    $flow = Get-CodexBrowserLoginFlow -Value $Flow
+    if ($flow -eq 'system_browser') {
+        Write-Host '已明确启用 system_browser：将打开系统默认浏览器，会读写宿主浏览器用户数据。' -ForegroundColor Yellow
+        $loginArgs = @('login')
+    } else {
+        Write-Host '正在启动 Codex 官方设备码登录，请按终端提示在你选择的设备/浏览器完成授权。' -ForegroundColor Cyan
+        Write-Host '账号须启用设备码登录；本包不会自动打开浏览器，失败也不会回退到系统浏览器。' -ForegroundColor Yellow
+        $loginArgs = @('login', '--device-auth')
+    }
+    # One attempt only: an unavailable device-auth flow must never silently
+    # turn into an OS browser launch outside the portable storage boundary.
+    return (Invoke-CodexChildInteractive -LaunchArgs $loginArgs)
+}
+
 $Root = Find-CodexPortableRoot $LauncherDir
 $RootItem = Get-Item -LiteralPath $Root -Force -ErrorAction Stop
 if (($RootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
@@ -979,6 +1005,8 @@ Get-ChildItem Env: | Where-Object { $_.Name -match '^(?i:CODEX_|OPENAI_)' -and $
 
 $script:CodexPortableAutoModelInstructions = $false
 . $EnvFile
+# Validate the package's explicit login choice before touching account state.
+$BrowserLoginFlow = Get-CodexBrowserLoginFlow -Value $env:CODEX_BROWSER_LOGIN_FLOW
 
 # env.ps1/env.local.ps1 加载后，重新固定所有“便携边界常量”。
 # 用户配置只能改变模型/API/代理等业务值，不能把工具链、用户目录或缓存重新指向宿主机。
@@ -1663,7 +1691,7 @@ function Test-AndNormalizeCodexCliArgs {
             $rootCommand = $lower
             $script:CodexRootCommand = $rootCommand
             if ($rootCommand -in @('app','app-server','update','sandbox','debug','execpolicy','agents','remote-control','responses-api-proxy','stdio-to-uds','exec-server','mcp-server','features','login')) {
-                Stop-UnsafeCodexCliArgument $arg '该 Codex 子命令具有安装/更新、直接沙箱调试、隐藏规则文件读取、共享 daemon、远程控制、服务端模式、非标准宿主 I/O、会修改由 env.ps1 管理的固定 feature 配置，或会绕过便携包受控登录流程，因此不从严格便携入口开放。浏览器登录请使用便携启动器的认证菜单。'
+                Stop-UnsafeCodexCliArgument $arg '该 Codex 子命令具有安装/更新、直接沙箱调试、隐藏规则文件读取、共享 daemon、远程控制、服务端模式、非标准宿主 I/O、会修改由 env.ps1 管理的固定 feature 配置，或会绕过便携包受控登录流程，因此不从严格便携入口开放。官方账号登录请使用便携启动器的认证菜单。'
             }
             if ($rootCommand -eq 'logout') {
                 $logoutMode = $ConfiguredAuthMode
@@ -1914,7 +1942,8 @@ if ($ShowStartupMenu) {
     Write-Host "登录方式:" -ForegroundColor Cyan
     Write-Host "  1) API 登录(沿用 env.ps1)" -ForegroundColor Cyan
     Write-Host "  2) 账号 JSON 导入登录(login_json)" -ForegroundColor Cyan
-    Write-Host "  3) 浏览器在线登录(官方账号)   [回车=默认: API]" -ForegroundColor Cyan
+    $OfficialLoginLabel = if ($BrowserLoginFlow -eq 'system_browser') { '系统浏览器，已显式启用' } else { '设备码' }
+    Write-Host "  3) 官方账号登录($OfficialLoginLabel)   [回车=默认: API]" -ForegroundColor Cyan
     $LoginChoice = Read-Host "请选择登录方式 (1/2/3, 回车=API)"
     if ($LoginChoice.Trim() -eq "2") {
         $UseAccountJsonLogin = $true
@@ -2024,7 +2053,7 @@ if ($ShowStartupMenu) {
         $UseBrowserLogin = $true
         $env:CODEX_PROVIDER_MODE = "official_chatgpt"
         $env:CODEX_ACCOUNT_JSON_AUTH = "false"
-        $CodexAuthDisplay = "浏览器在线登录 (auth-browser.json)"
+        $CodexAuthDisplay = "官方账号登录 (auth-browser.json)"
 
         # 官方账号模式不能继承 API 模式的中转地址或 Key。
         foreach ($name in @("OPENAI_API_KEY", "OPENAI_BASE_URL", "CODEX_BASE_URL")) {
@@ -2037,12 +2066,12 @@ if ($ShowStartupMenu) {
         Start-CodexAuthTransition
         if ($HasBrowserAuth) {
             Copy-CodexAuthAtomic -Source $BrowserAuthPath -Destination $ActiveAuthPath
-            Write-Host "已载入浏览器在线登录凭证，不再打开浏览器：$BrowserAuthPath" -ForegroundColor Green
+            Write-Host "已载入官方账号凭证，无需重新登录：$BrowserAuthPath" -ForegroundColor Green
         } else {
             $BrowserLoginRequired = $true
             # 防止选项 2 留下的活动 auth.json 让 `codex login` 误判为已登录。
             Remove-PortableAuthStateFile -Path $ActiveAuthPath -Name 'active auth before fresh login'
-            Write-Host "未找到浏览器在线登录凭证，将打开系统默认浏览器完成登录。" -ForegroundColor Yellow
+            Write-Host "未找到官方账号凭证，将使用 $BrowserLoginFlow 完成登录。" -ForegroundColor Yellow
         }
         Write-Host ""
     }
@@ -2165,7 +2194,7 @@ if (-not $ShowStartupMenu) {
             $UseBrowserLogin = $true
             $env:CODEX_PROVIDER_MODE = "official_chatgpt"
             $env:CODEX_ACCOUNT_JSON_AUTH = "false"
-            $CodexAuthDisplay = "浏览器在线登录 (auth-browser.json)"
+            $CodexAuthDisplay = "官方账号登录 (auth-browser.json)"
             foreach ($name in @("OPENAI_API_KEY", "OPENAI_BASE_URL", "CODEX_BASE_URL")) {
                 Remove-Item "Env:$name" -ErrorAction SilentlyContinue
             }
@@ -3207,20 +3236,22 @@ $ConfigPath = $GeneratedConfigPath
 Write-Utf8TextAtomic -Path $ConfigPath -Text $Builder.ToString()
 
 if ($UseBrowserLogin -and $BrowserLoginRequired -and $script:CodexRootCommand -eq 'logout') {
-    Write-Host "没有可退出的浏览器便携凭证：$BrowserAuthPath" -ForegroundColor Yellow
+    Write-Host "没有可退出的官方账号便携凭证：$BrowserAuthPath" -ForegroundColor Yellow
     exit 1
 }
 
 if ($UseBrowserLogin -and $BrowserLoginRequired) {
-    Write-Host "正在启动 Codex 官方在线登录，请在系统默认浏览器中完成登录..." -ForegroundColor Cyan
-    $BrowserLoginExitCode = Invoke-CodexChildInteractive -LaunchArgs @("login")
+    $BrowserLoginExitCode = Invoke-CodexOfficialAccountLogin -Flow $BrowserLoginFlow
     if (($BrowserLoginExitCode -ne 0) -or -not (Test-CodexAuthFile $ActiveAuthPath)) {
-        Write-Host "浏览器在线登录未完成，未生成有效凭证：$ActiveAuthPath" -ForegroundColor Red
+        Write-Host "官方账号登录未完成，未生成有效凭证：$ActiveAuthPath" -ForegroundColor Red
+        if ($BrowserLoginFlow -eq 'device_auth') {
+            Write-Host '请确认账号已启用设备码登录；也可选择账号 JSON，或在 env.local.ps1 明确设置 CODEX_BROWSER_LOGIN_FLOW="system_browser"（会读写宿主浏览器数据）。' -ForegroundColor Yellow
+        }
         exit 1
     }
     Copy-CodexAuthAtomic -Source $ActiveAuthPath -Destination $BrowserAuthPath -FreshLogin
     Clear-CodexLogoutBlockAfterFreshLogin 'browser'
-    Write-Host "浏览器在线登录凭证已独立保存：$BrowserAuthPath" -ForegroundColor Green
+    Write-Host "官方账号登录凭证已独立保存：$BrowserAuthPath" -ForegroundColor Green
 }
 
 function Invoke-CodexChild {

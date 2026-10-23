@@ -32,6 +32,12 @@ $env:CODEX_STARTUP_INTERACTIVE = "true"
 # 也可固定为 api / account_json / browser。
 $env:CODEX_AUTH_MODE = "menu"
 
+# 官方账号登录方式（认证模式 browser / auth-browser.json 名称保持兼容）：
+# device_auth = 默认设备码；账号须启用设备码登录，不自动打开宿主浏览器，失败不自动回退。
+# system_browser = 仅在明确选择后打开系统默认浏览器，会读写宿主浏览器用户数据。
+# 也可在 env.local.ps1 显式覆盖；不支持设备码时可改用账号 JSON 导入。
+$env:CODEX_BROWSER_LOGIN_FLOW = "device_auth"
+
 # 是否允许 Codex 执行的 shell 命令访问网络。
 # 注意：这里限制的是 Codex 调用的本地命令，不影响 Codex 自己访问你的 API 接口。
 # 普通模式默认禁止本地工具联网；YOLO 预设会与 approval/sandbox 一起明确开启。
@@ -304,7 +310,7 @@ function Import-CodexPortableLocalEnv {
     # upstream consumer; ordinary custom header variables remain available.
     $supportedCodex = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     foreach ($name in @(
-        'CODEX_ALLOW_HOST_SYSTEM_CONFIG','CODEX_AUTH_MODE','CODEX_BASE_URL',
+        'CODEX_ALLOW_HOST_SYSTEM_CONFIG','CODEX_AUTH_MODE','CODEX_BASE_URL','CODEX_BROWSER_LOGIN_FLOW',
         'CODEX_DISABLE_APPS','CODEX_DISABLE_WEBSOCKET','CODEX_ENABLE_PLUGINS','CODEX_ENABLE_PLUGIN_SHARING',
         'CODEX_ENV_HTTP_HEADERS_TOML','CODEX_HTTP_HEADERS_TOML','CODEX_QUERY_PARAMS_TOML',
         'CODEX_LOGIN_JSON_ALLOW_DIRECT','CODEX_LOGIN_JSON_ALLOW_DIRECT_PARALLEL',

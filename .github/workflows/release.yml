@@ -7,6 +7,11 @@ on:
         description: 'Release tag, for example v2026.10.23'
         required: true
         type: string
+      publish_release:
+        description: 'Publish after validation; disable to run Windows checks only'
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -55,10 +60,16 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          # Fail on missing optional native PDF support instead of silently
+          # skipping its behavior suite on the actual Windows release runner.
+          & .\tool\python\python.exe -B -c "import pymupdf, pymupdf4llm"
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled native PDF runtime is unavailable.' }
           & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Python regression failure.' }
           & .\tool\python\python.exe -B .\tool\python-lock.py validate-runtime --requirements .\tool\python-packages.in.txt
           if ($LASTEXITCODE -ne 0) { throw 'Python runtime preflight failure.' }
+          & .\tool\python\python.exe -B .\tool\automation\install-browser.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned browser payload verification failed.' }
           & .\tool\node\node.exe --test .\tests\test_automation.js
           if ($LASTEXITCODE -ne 0) { throw 'Browser tooling regression failure.' }
           & .\tool\node\node.exe '.\Version_History\AI account format conversion\test\smoke.js'
@@ -73,7 +84,7 @@ jobs:
           $engine = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
           foreach ($test in @('test_portable_config','test_portable_paths','test_instruction_paths',
               'test_bootstrap_paths','test_extension_policy','test_runtime_preflight',
-              'test_python_setup','test_automation_paths','test_automation_process')) {
+              'test_python_setup','test_automation_paths','test_automation_process','test_browser_login_flow')) {
             & $engine -NoProfile -ExecutionPolicy Bypass -File ".\tests\$test.ps1"
             if ($LASTEXITCODE -ne 0) { throw "Windows regression failure: $test" }
           }
@@ -83,7 +94,15 @@ jobs:
           if (($reported -join "`n") -notmatch [regex]::Escape($expected)) { throw 'Client version mismatch.' }
           Write-Output $reported
 
+      - name: Exercise the real browser in an owned relocated fixture
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows browser persistence or cleanup smoke test failed.' }
+
       - name: Build and verify release assets
+        if: ${{ inputs.publish_release }}
         id: package
         shell: powershell
         env:
@@ -98,6 +117,7 @@ jobs:
           }
 
       - name: Publish a verified non-prerelease
+        if: ${{ inputs.publish_release }}
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
@@ -119,8 +139,10 @@ jobs:
             'Download the windows-x64.zip asset, extract it, and start with the BAT entry point.',
             'SHA256SUMS and release-manifest.json identify the verified package.',
             'Validated on Windows: bundled Python/Node regressions, PowerShell 5.1, BAT/NTFS fixtures, process stdio and native Codex version.',
+            'The single bundled Chromium passed relocated-path rendering/screenshot, persistent-cookie and explicit-cache-cleanup checks.',
             'Not exercised: real account login, live Agent/Host tool calls, elevated sandbox initialization or real devices.',
-            'Browser tooling is included; the optional matching browser binary is not bundled. See README and tool documentation.'
+            'The customer ZIP excludes project tests, CI configuration and release-building scripts. The source checkout retains them.',
+            'Browser profile/cache stays inside cache/browser across tasks and is removed by the package cache cleaner.'
           ) | Set-Content -LiteralPath $notes -Encoding UTF8
           & gh release create $env:RELEASE_VERSION $env:RELEASE_ARCHIVE $env:RELEASE_MANIFEST $env:RELEASE_CHECKSUMS --repo $env:GITHUB_REPOSITORY --target $env:RELEASE_COMMIT --title "Codex Portable $env:RELEASE_VERSION (Windows x64)" --notes-file $notes --draft
           if ($LASTEXITCODE -ne 0) { throw 'Release draft/upload failed; inspect this run before retrying.' }

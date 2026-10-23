@@ -46,8 +46,9 @@ def _safe_regex(pattern: str) -> re.Pattern[str]:
     return re.compile(pattern)
 
 
-def load_mapping(mapping_dir: Path) -> dict[str, str]:
-    path = mapping_dir / "mapping.json"
+def load_mapping(root: Path, mapping_dir: Path) -> dict[str, str]:
+    # Validating the directory does not validate the derived file entry.
+    path = resolve_inside(root, mapping_dir / "mapping.json", kind="file")
     if not path.is_file():
         raise PortablePathError(f"mapping.json not found in {mapping_dir}")
     if path.stat().st_size > MAX_MAPPING_BYTES:
@@ -104,7 +105,7 @@ def main(argv: list[str]) -> int:
     try:
         root = find_portable_root(__file__)
         mapping_dir = resolve_inside(root, args.mapping_dir, kind="dir")
-        mapping = load_mapping(mapping_dir)
+        mapping = load_mapping(root, mapping_dir)
         reverse: dict[str, list[str]] = {}
         for obf, real in mapping.items():
             reverse.setdefault(real, []).append(obf)

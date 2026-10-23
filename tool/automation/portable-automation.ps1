@@ -89,6 +89,34 @@ function Assert-AutomationTree {
     }
 }
 
+function Open-AutomationBrowserLock {
+    param([Parameter(Mandatory=$true)][string]$Root)
+    # Separate from the Codex lock: the parent Codex process may already own it.
+    # Keep this file outside cache so clearing browser state cannot unlink a live lock.
+    $lockPath = Assert-AutomationPath -Root $Root -Path (Join-Path $Root '.codex-browser.instance.lock') -MayNotExist
+    $handle = $null
+    try {
+        $handle = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        [void](Assert-AutomationPath -Root $Root -Path $lockPath)
+        return $handle
+    } catch {
+        if ($null -ne $handle) { $handle.Dispose() }
+        throw 'Browser state is in use, or its package lock is unsafe; close the browser task before retrying.'
+    }
+}
+
+function Initialize-AutomationBrowserState {
+    param([Parameter(Mandatory=$true)][string]$Root)
+    # Caller holds Open-AutomationBrowserLock until the entire owned process tree exits.
+    $state = New-AutomationDirectory -Root $Root -Path (Join-Path (Join-Path $Root 'cache') 'browser')
+    Assert-AutomationTree -Root $Root -Path $state
+    $paths = [ordered]@{ Root = $state }
+    foreach ($name in @('profile', 'cache', 'crashes', 'downloads', 'runtime')) {
+        $paths[$name] = New-AutomationDirectory -Root $Root -Path (Join-Path $state $name)
+    }
+    return [PSCustomObject]$paths
+}
+
 function Remove-AutomationSession {
     param([string]$Root, [string]$Path)
     $temporary = Join-Path $Root 'tmp'
@@ -137,8 +165,13 @@ function New-AutomationStartInfo {
         if ($value) { $start.EnvironmentVariables[$name] = $value }
     }
     foreach ($name in @('HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'TMPDIR',
-                        'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME')) {
+                        'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME')) {
         $start.EnvironmentVariables[$name] = $SessionDirectory
+    }
+    if ([IO.Path]::DirectorySeparatorChar -eq '\') {
+        $drive = [IO.Path]::GetPathRoot($SessionDirectory).TrimEnd('\')
+        $start.EnvironmentVariables['HOMEDRIVE'] = $drive
+        $start.EnvironmentVariables['HOMEPATH'] = $SessionDirectory.Substring($drive.Length)
     }
     $start.EnvironmentVariables['PATH'] = (Join-Path $Root 'tool\node')
     $start.EnvironmentVariables['PLAYWRIGHT_BROWSERS_PATH'] = Join-Path $Root 'tool\automation\browsers'

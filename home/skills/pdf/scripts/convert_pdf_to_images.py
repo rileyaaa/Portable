@@ -1,6 +1,4 @@
-import os
 import sys
-from pathlib import Path
 
 from pdf2image import convert_from_path
 
@@ -12,20 +10,15 @@ from portable_safety import PortablePathError, portable_root, prepare_output_dir
 def _portable_poppler_bin() -> str:
     root = portable_root()
     for rel in ("tool/pdf/poppler/Library/bin", "tool/pdf/poppler/bin"):
-        candidate = root / rel
-        cursor = root
-        for part in Path(rel).parts:
-            cursor = cursor / part
-            from portable_safety import is_reparse
-            if cursor.exists() and is_reparse(cursor):
-                raise RuntimeError(f"Poppler path contains a reparse point: {cursor}")
-        resolved = candidate.resolve(strict=False)
+        candidate = resolve_inside(root / rel, kind="dir")
         try:
-            resolved.relative_to(root)
-        except ValueError as exc:
-            raise RuntimeError("Poppler path escapes portable package") from exc
-        if (resolved / "pdftoppm.exe").is_file() and (resolved / "pdfinfo.exe").is_file():
-            return str(resolved)
+            # pdf2image starts both binaries. Validate their leaf entries as
+            # well as the directory before allowing executable discovery.
+            for executable in ("pdftoppm.exe", "pdfinfo.exe"):
+                resolve_inside(candidate / executable, must_exist=True, kind="file")
+        except FileNotFoundError:
+            continue
+        return str(candidate)
     raise RuntimeError("package-local Poppler is missing under tool/pdf/poppler")
 
 def convert(pdf_path, output_dir, max_dim=1000):

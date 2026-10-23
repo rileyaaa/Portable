@@ -84,6 +84,25 @@ class ReleasePackageTests(unittest.TestCase):
         }}, indent=2).encode()
         self.write("tool/runtime-manifest.json", manifest)
         self.write("run-codex.ps1", ('$ExpectedRuntimeManifestSha256 = "' + hashlib.sha256(manifest).hexdigest() + '"\n').encode())
+        self.browser_executable = "tool/automation/browsers/chromium-1247/chrome-win64/chrome.exe"
+        self.write(self.browser_executable, native_exe())
+        self.write("tool/automation/install-browser.py", (ROOT / "tool/automation/install-browser.py").read_bytes())
+        self.write("tool/automation/versions.json", json.dumps({"browser": {
+            "version": "155.0.8059.12", "revision": "1247", "payloadBundled": True,
+            "payloadManifest": "browser-manifest.json",
+            "executable": "browsers/chromium-1247/chrome-win64/chrome.exe",
+        }}).encode())
+        self.write("tool/automation/browser-manifest.json", json.dumps({
+            "schemaVersion": 1, "browserVersion": "155.0.8059.12", "revision": "1247", "platform": "win32-x64",
+            "archive": {
+                "sourceUrl": "https://cdn.playwright.dev/builds/cft/155.0.8059.12/win64/chrome-win64.zip",
+                "resolvedUrl": "https://storage.googleapis.com/chrome-for-testing-public/155.0.8059.12/win64/chrome-win64.zip",
+                "sha256": "0" * 64, "size": 128,
+            },
+            "fileCount": 1, "uncompressedBytes": len(native_exe()), "files": {
+                self.browser_executable: {"sha256": hashlib.sha256(native_exe()).hexdigest(), "size": len(native_exe())},
+            },
+        }).encode())
         self.commit()
 
     def write(self, name, contents):
@@ -114,6 +133,8 @@ class ReleasePackageTests(unittest.TestCase):
         self.assertNotIn("home/auth.json", metadata["files"])
         self.assertEqual(metadata["file_count"], len(metadata["files"]))
         self.assertEqual(metadata["package_kind"], "customer")
+        self.assertEqual(metadata["browser_version"], "155.0.8059.12")
+        self.assertIn(self.browser_executable, metadata["files"])
         excluded = self.development_files | {"tool/package-release.py"}
         self.assertEqual(set(metadata["excluded_files"]), excluded)
         self.assertTrue(all(metadata["excluded_files"].values()))
@@ -205,6 +226,23 @@ class ReleasePackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "single-link"):
             release.build_release(self.root)
         self.assertFalse((self.root / "tmp").exists())
+
+    def test_browser_inventory_and_payload_are_required(self):
+        self.write(self.browser_executable, native_exe() + b"modified")
+        self.commit()
+        with self.assertRaisesRegex(ValueError, "Pinned browser payload has changed"):
+            release.build_release(self.root)
+        self.write(self.browser_executable, native_exe())
+        extra = "tool/automation/browsers/unpinned/extra.bin"
+        self.write(extra, b"synthetic extra browser")
+        self.commit()
+        with self.assertRaisesRegex(ValueError, "browser inventory differs"):
+            release.build_release(self.root)
+        (self.root / extra).unlink()
+        (self.root / self.browser_executable).unlink()
+        self.commit()
+        with self.assertRaisesRegex(ValueError, "browser inventory differs"):
+            release.build_release(self.root)
 
     def test_customer_selection_keeps_actual_runtime_and_documentation(self):
         # Read names only from Git, never recurse through local user state.

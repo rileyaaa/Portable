@@ -17,8 +17,23 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $Root = $PSScriptRoot
-$RootItem = Get-Item -LiteralPath $Root -Force -ErrorAction Stop
-if (($RootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { throw "拒绝以重解析点作为 Codex Portable 根目录：$Root" }
+# Reject a linked package ancestor before checking markers or opening either lock.
+$bootstrapAncestors = New-Object System.Collections.Stack
+$bootstrapCursor = [IO.Path]::GetFullPath($PSCommandPath)
+while ($bootstrapCursor) {
+    $bootstrapAncestors.Push($bootstrapCursor)
+    $bootstrapParent = Split-Path -Parent $bootstrapCursor
+    if ($bootstrapParent -eq $bootstrapCursor) { break }
+    $bootstrapCursor = $bootstrapParent
+}
+while ($bootstrapAncestors.Count -gt 0) {
+    $bootstrapItem = Get-Item -LiteralPath $bootstrapAncestors.Pop() -Force -ErrorAction Stop
+    if (($bootstrapItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        ($bootstrapItem.PSObject.Properties['LinkType'] -and $bootstrapItem.LinkType) -or
+        (-not $bootstrapItem.PSIsContainer -and ([string]$bootstrapItem.Mode).Contains('l'))) {
+        throw '缓存清理入口及其祖先目录不能是 hardlink/reparse/link。'
+    }
+}
 
 foreach ($g in @('codex.exe', 'run-codex.ps1', 'env.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $Root $g))) {
@@ -59,6 +74,7 @@ function Assert-PackagePath([string]$Path) {
 
 # 与启动器/账号检查共用包根独占文件锁：运行中的便携包不允许同时清缓存。
 $CleanupPackageFileLock = $null
+$CleanupBrowserFileLock = $null
 $CleanupPackageLockPath = Join-Path $Root '.codex-portable.instance.lock'
 Assert-PackagePath $CleanupPackageLockPath
 if (Test-Path -LiteralPath $CleanupPackageLockPath -PathType Leaf) {
@@ -81,6 +97,38 @@ try {
     )
 } catch {
     Write-Host "[安全终止] Codex 便携包正在运行，或无法安全创建包级锁文件；未清理任何文件。" -ForegroundColor Red
+    exit 2
+}
+# A browser task may run independently of Codex. Hold its own lock for the whole
+# preview/cleanup operation so persistent profiles cannot be deleted during use.
+try {
+    $CleanupBrowserFileLock = & {
+        param([string]$PackageRoot)
+        $helper = Join-Path $PackageRoot 'tool\automation\portable-automation.ps1'
+        # Inspect the complete helper ancestry before loading any project code.
+        $ancestors = New-Object System.Collections.Stack
+        $cursor = [IO.Path]::GetFullPath($helper)
+        while ($cursor) {
+            $ancestors.Push($cursor)
+            $parent = Split-Path -Parent $cursor
+            if ($parent -eq $cursor) { break }
+            $cursor = $parent
+        }
+        while ($ancestors.Count -gt 0) {
+            $item = Get-Item -LiteralPath $ancestors.Pop() -Force -ErrorAction Stop
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+                ($item.PSObject.Properties['LinkType'] -and $item.LinkType) -or
+                (-not $item.PSIsContainer -and ([string]$item.Mode).Contains('l'))) {
+                throw 'Browser cleanup helper path must not contain links.'
+            }
+        }
+        if ($item.PSIsContainer) { throw 'Browser cleanup helper must be an ordinary file.' }
+        # The child scope keeps helper StrictMode and functions out of this script.
+        . $helper
+        Open-AutomationBrowserLock -Root $PackageRoot
+    } $Root
+} catch {
+    Write-Host '[安全终止] 浏览器正在运行，或浏览器状态锁/清理助手不安全；未清理任何文件。' -ForegroundColor Red
     exit 2
 }
 function Read-YesNo([string]$Prompt, [string]$Default = 'N') {
@@ -417,6 +465,7 @@ Write-Host ("  Skills  ：" + $(if ($PreserveSkills) {'保留'} else {'清理'})
 Write-Host ("  work    ：" + $(if ($PreserveWork) {'保留'} else {'清理'}))
 Write-Host ("  Plugins ：" + $(if ($PreservePlugins) {'保留'} else {'清理'}))
 Write-Host "  运行缓存：清理"
+Write-Host "  浏览器数据：清理 cache\browser（包括 Cookies、网站登录状态和浏览器缓存）"
 if (-not $PreserveWork) { Write-Host "注意：本次会清理 work 工作区中的项目文件。" -ForegroundColor Red }
 
 $plan=@(); $grand=0L
@@ -479,6 +528,10 @@ if ($errs -gt 0) { exit 1 }
 exit 0
 
 } finally {
+    if ($null -ne $CleanupBrowserFileLock) {
+        try { $CleanupBrowserFileLock.Dispose() } catch {}
+        $CleanupBrowserFileLock = $null
+    }
     if ($null -ne $CleanupPackageFileLock) {
         try { $CleanupPackageFileLock.Dispose() } catch {}
         $CleanupPackageFileLock = $null

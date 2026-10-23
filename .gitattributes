@@ -8,3 +8,4 @@ codex-package.json -text
 tool/runtime-manifest.json -text
 tool/python-packages.in.txt -text
 tool/licenses/** -text
+tool/automation/browsers/** filter=lfs diff=lfs merge=lfs -text

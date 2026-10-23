@@ -10,11 +10,11 @@
 
 优先下载 [Releases](https://github.com/rileyaaa/Codex-Portable/releases) 中命名为 `Codex-Portable-版本-windows-x64.zip` 的发行附件，并用同次发布的 `SHA256SUMS` 核对摘要。客户发行包不含第一方测试、CI 工作流、Git 配置、开发打包器或用户运行数据；测试保留在 GitHub 源码中。GitHub 自动生成的 Source code ZIP 不等同于便携发行包。
 
-`codex.exe` 使用 Git LFS 管理。通过 Git 克隆后先执行 `git lfs pull`；使用源码 ZIP 时确认其中包含实际 EXE，而不是文本形式的 LFS 指针。缺少实际工件时按[工具文档](tool/工具更新说明.md)取得并校验完整运行包。
+`codex.exe` 和配套浏览器文件使用 Git LFS 管理。通过 Git 克隆后先执行 `git lfs pull`；使用源码 ZIP 时确认其中包含实际 EXE，而不是文本形式的 LFS 指针。缺少实际工件时按[工具文档](tool/工具更新说明.md)取得并校验完整运行包。
 
 1. 解压到独立目录，例如 `D:\Codex` 或 `E:\Tools\Codex Portable`。不要从压缩包、网络盘或 symlink/junction 路径运行。
 2. 保留清单中的六个运行文件：主客户端、Code Mode Host、两个根目录沙箱助手、`codex-package.json` 和 `codex-path/rg.exe`，以及布局所需的 `codex-resources` 目录，不要只复制两个 EXE。
-3. 按下文配置认证方式。使用自定义 API 时，需要接口地址、Key 和上游实际支持的模型名；官方账号可在启动菜单选择账号 JSON 或浏览器登录。
+3. 按下文配置认证方式。使用自定义 API 时，需要接口地址、Key 和上游实际支持的模型名；官方账号可在启动菜单选择账号 JSON 或设备码登录。
 4. 双击 `启动Codex.bat`，按菜单选择登录、思考等级、网络和代理。默认工作目录为包内 `work`。
 
 日常和维护都通过 BAT 进入。BAT 会在创建运行目录前检查包根祖先，并在启动 PowerShell 前重定向用户目录与缓存；直接执行 `powershell -File ...` 可能在项目脚本接管前使用宿主缓存。
@@ -44,7 +44,7 @@
 | `启动Codex-维护模式.bat` | 有意修改包内脚本、工具、Skills、Plugins 或 MCP 时使用；扩大包内可写范围，扩展仍须明确选择后启用。 |
 | `检查login_json.bat` | 检查 `login_json` 中待导入账号，生成包内 CSV 报告；会访问认证服务，网络失败不代表账号可删除。 |
 | `检查隔离.bat` | 检查便携目录和隔离条件。双击时会询问是否允许本次只读扫描宿主残留，默认拒绝；不会自动获得包外清理权限。 |
-| `清理缓存.bat` | 清理可再生缓存并重建必要目录；不将认证快照、切换/退出标记或安装身份当缓存删除。 |
+| `清理缓存.bat` | 退出工具后清理包内缓存，包括浏览器 Cookies、网站登录状态和缓存；浏览器运行时拒绝清理。不删除 Codex 认证快照、切换/退出标记或安装身份。 |
 
 命令行示例，在包根打开终端：
 
@@ -65,6 +65,7 @@
 | `work` | 默认项目工作区。 |
 | `home`、`sqlite` | Codex 配置、认证、会话和数据库状态；不要公开或整目录迁移给他人。 |
 | `login_json` | 待导入的账号文件与检查报告，按凭据管理。 |
+| `cache/browser` | 配套浏览器的 profile、缓存、崩溃和临时下载、进程用户目录；任务结束保留，通过“清理缓存”统一删除。 |
 | `cache`、`tmp`、`home-runtime`、`appdata` 等 | 包内缓存、临时文件及工具用户状态；部分路径会进一步指向本次会话目录。 |
 | `tool`、`home/skills`、`home/plugins` | 工具、技能和插件。变量或目录存在不代表对应工具已安装。 |
 | `Version_History` | 与根脚本同步的常用/YOLO 四份模式模板，以及独立账号格式转换子项目。 |
@@ -123,9 +124,11 @@ $env:CODEX_MODEL = "上游实际提供的模型名"
 | --- | --- | --- |
 | `api` | 自定义 API / 本地 Provider | 自定义 API 使用本机配置中的 Key；Ollama 不要求 Key。 |
 | `account_json` | 从 `login_json` 选择并导入账号 | `home\auth-account-json.json` |
-| `browser` | 官方浏览器登录 | `home\auth-browser.json` |
+| `browser` | 官方设备码登录（默认） | `home\auth-browser.json` |
 
 `home\auth.json` 是当前活动槽位，`home\mode` 记录其认证模式。启动器从对应快照恢复活动槽位，并在正常退出或后续启动时将刷新后的凭据回收到正确快照；两种账号模式的长期快照分开保存。
+
+官方账号默认执行设备码登录，显示网址和一次性代码，不自动打开系统浏览器；可在配套浏览器或另一设备完成。账号需启用设备码登录，未启用时可改用账号 JSON。若明确接受系统浏览器保存自己的 Cookies/历史，可在 `env.local.ps1` 设置 `$env:CODEX_BROWSER_LOGIN_FLOW = "system_browser"`；默认值为 `device_auth`，失败不自动切换。
 
 显式退出登录会删除对应快照并设置 `logout-*.block`，阻止旧快照复活；成功重新登录后才清除。`auth-transition.block` 表示认证切换未完成，`auth.json.invalid-transition-*` 是归属不明的恢复材料，都不能当普通迁移文件处理。
 
@@ -151,10 +154,12 @@ $env:CODEX_MODEL = "上游实际提供的模型名"
 | Word / PPT / Excel | 保留 `docx`、`pptx`、`xlsx`。用户提供的模板优先；PPT 检查版式、层次、字体与实际预览，Word 保留样式和结构，Excel 检查公式及重算结果。缺渲染/重算工具时明确标注未验证。 |
 | PDF 编辑与大量手册阅读 | 普通编辑使用 `pdf`；`pdf-library` 使用 PyMuPDF4LLM 按页转换并建立本地索引，先搜索后读取命中页，支持增量更新和纯 Markdown ZIP。仅转换格式不保证省 token；避免一次加载全部全文。OCR 引擎尚未预置，扫描/图中文字会标为待处理。 |
 | APK / MuMu | `apk-test-router` 按任务读取插件内唯一的完整流程；你的 `mumu-adb` 保留。测试优先考虑 Appium/UiAutomator2 的 UI 树、resource-id、accessibility 和等待条件，画布/游戏界面仍可能需要截图。完整 SDK/JDK/Appium 尚未预置。 |
-| 网页调试 | `browser-debug` 共用一套 Playwright：任务脚本、可选 MCP、控制台/网络及 CDP 诊断都使用同一份 Chromium，无需 ChromeDriver，也不另装 Chrome DevTools MCP。JS 依赖已包含；配套 Windows 浏览器下载尚受云环境网络策略阻塞，不能视为已可启动。 |
+| 网页调试 | `browser-debug` 共用一套 Playwright：任务脚本、可选 MCP、控制台/网络及 CDP 诊断都使用同一份 Chromium，无需 ChromeDriver，也不另装 Chrome DevTools MCP。已包含匹配的 Windows x64 Chromium 155.0.8059.12；同一份浏览器约 458 MB 解压体积。 |
 | Windows 应用调试 | `windows-desktop` 使用系统 UI Automation，仅处理明确指定的进程主窗口。默认读取控件树，点击/赋值需明确选择；不提供全盘 Shell、注册表或整桌面 MCP。实际 Windows 行为待验。 |
 
 需要启用已配置的扩展时，在本机配置中将对应开关设为 `true`，再通过 `.\启动Codex.bat --portable-extensions` 明确选择本次扩展会话；这个启动器参数不会传给官方 CLI。技能本身可按需读取，不要求启用整套插件。扩展配置保存不等于运行授权，实际工具调用仍须符合当前任务。
+
+包内入口管理的用户资料、配置、下载临时文件和缓存随解压目录移动；任务脚本必须遵守同样的路径约定。这些路径设置不能阻止任意自行执行的程序越界，也不能控制 Windows 的事件日志等系统记录。常用模式提供写入沙箱；YOLO 和明确选择的宿主浏览器登录有上文说明的边界。
 
 ## 工具、更新与故障处理
 

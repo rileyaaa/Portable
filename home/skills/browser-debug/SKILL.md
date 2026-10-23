@@ -45,6 +45,6 @@ module.exports = async ({page, context, workspace}) => {
 
 配套浏览器安装状态以 `-Check` 和 `tool/automation/versions.json` 为准。缺失时只在安装授权覆盖范围内运行 `tool/automation/install-browser.ps1 -Install`。也可用 `-ExecutablePath` 指定**当前包内**已有的 Chrome for Testing；必须另验兼容，不回退系统 Chrome。
 
-包内 `work/<任务>` 保存明确导出的截图和报告；浏览器 profile、缓存、崩溃输出、下载临时文件和进程用户目录位于独立 `tmp/browser-*`。默认隔离会话、禁止下载和 service worker，不复用登录资料。进程 Job 在退出时关闭本次子进程，然后校验链接并清理本次会话目录；仅排障确需保留时使用 `-KeepSessionData`，之后及时清理。Windows/浏览器系统组件仍可能产生系统审计记录，不能承诺操作系统零外部写入。
+包内 `work/<任务>` 保存明确导出的截图和报告；浏览器资料稳定保存在 `cache/browser/{profile,cache,crashes,downloads,runtime}`。任务结束关闭本次进程，保留 profile 和网站登录供后续明确授权的任务复用；禁止复用宿主 profile，禁止下载和 service worker。读取某个网站或账号仍需本次任务授权，存在 Cookie 不等于授权访问全部网站。根“清理缓存”会统一删除这些浏览器数据并退出网站登录，执行时必须先关闭浏览器任务；浏览器和清理入口使用同一独立互斥锁。旧 `-KeepSessionData` 仅兼容既有命令，默认已经保留。Windows/浏览器系统组件仍可能产生系统审计记录，不能承诺操作系统零外部写入。
 
 本地路径检查和 MCP 工具白名单是范围约束，不是完整安全沙箱。不得扩大为宿主文件访问、任意 Node 代码执行或其他设备控制。真正的 Windows 浏览器启动、资料目录、页面行为与退出清理必须在 Windows 验证，不能用 Linux 检查冒充。

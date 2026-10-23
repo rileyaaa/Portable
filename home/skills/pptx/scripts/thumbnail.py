@@ -262,6 +262,9 @@ def create_grids(
             suffix = output_path.suffix
             grid_filename = output_path.parent / f"{stem}-{chunk_idx + 1}{suffix}"
 
+        # Multi-grid names differ from the prefix checked by main(). A
+        # pre-existing numbered output must pass the same link/path checks.
+        grid_filename = resolve_portable_path(grid_filename, must_exist=False, kind="file")
         grid_filename.parent.mkdir(parents=True, exist_ok=True)
         grid.save(str(grid_filename), quality=JPEG_QUALITY)
         grid_files.append(str(grid_filename))

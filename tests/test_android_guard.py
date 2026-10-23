@@ -51,6 +51,60 @@ class AndroidGuardTests(unittest.TestCase):
         except (OSError, NotImplementedError) as error:
             self.skipTest(f"Symlink creation unavailable: {error}")
 
+    def load_script(self, filename):
+        path = self.package / SCRIPTS / filename
+        shutil.copyfile(ROOT / SCRIPTS / filename, path)
+        spec = importlib.util.spec_from_file_location("android_read_fixture", path)
+        module = importlib.util.module_from_spec(spec)
+        with mock.patch.object(sys, "dont_write_bytecode", True), \
+                mock.patch.dict(sys.modules, {"portable_guard": self.guard}):
+            spec.loader.exec_module(module)
+        return module
+
+    def leaf_readers(self):
+        mapping_dir = self.package / "work" / "mapping"
+        mapping_dir.mkdir(parents=True)
+        skill_root = (self.package / SCRIPTS).parent
+        (skill_root / "references").mkdir()
+        mapping = self.load_script("lookup_name.py")
+        scanner = self.load_script("find_api_calls.py")
+        return (
+            (mapping_dir / "mapping.json", lambda: mapping.load_mapping(self.package, mapping_dir)),
+            (skill_root / "references" / "third_party_hosts.txt",
+             lambda: scanner.load_denylist(self.package, skill_root)),
+        )
+
+    def test_derived_inputs_reject_symlinks_before_content_read(self):
+        outside = self.old / "synthetic-source.txt"
+        outside.write_text('{"a.b": "example.Name"}')
+        for path, read in self.leaf_readers():
+            with self.subTest(path=path.name):
+                self.symlink(outside, path)
+                with mock.patch.object(Path, "read_text", side_effect=AssertionError("Input opened")):
+                    with self.assertRaises(self.guard.PortablePathError):
+                        read()
+
+    def test_derived_inputs_reject_hardlinks_before_content_read(self):
+        outside = self.old / "synthetic-source.txt"
+        outside.write_text('{"a.b": "example.Name"}')
+        for path, read in self.leaf_readers():
+            with self.subTest(path=path.name):
+                try:
+                    os.link(outside, path)
+                except OSError as error:
+                    self.skipTest(f"Hard link creation unavailable: {error}")
+                with mock.patch.object(Path, "read_text", side_effect=AssertionError("Input opened")):
+                    with self.assertRaises(self.guard.PortablePathError):
+                        read()
+
+    def test_derived_inputs_keep_regular_reads_and_optional_denylist(self):
+        mapping, denylist = self.leaf_readers()
+        mapping[0].write_text('{"a.b": "example.Name"}')
+        self.assertEqual(mapping[1](), {"a.b": "example.Name"})
+        self.assertEqual(denylist[1](), [])
+        denylist[0].write_text("# synthetic entry\nexample\\.invalid\n")
+        self.assertEqual([pattern.pattern for pattern in denylist[1]()], [r"example\.invalid"])
+
     def test_actual_move_ignores_old_package_and_unrelated_cwd(self):
         moved = self.base / "再次移动 New Location"
         self.package.rename(moved)

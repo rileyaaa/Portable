@@ -8,6 +8,7 @@ param(
     [switch]$Headed,
     [switch]$Check,
     [switch]$TaskAuthorized,
+    # Compatibility switch: browser data is now always kept until cache cleanup.
     [switch]$KeepSessionData
 )
 $ErrorActionPreference = 'Stop'
@@ -15,17 +16,21 @@ if (-not $Check -and -not $TaskAuthorized) {
     throw 'Select a browser task explicitly with -TaskAuthorized before starting the server.'
 }
 # Validate the entry path and helper before loading project code.
+$bootstrapAncestors = New-Object System.Collections.Stack
 $bootstrapCursor = [IO.Path]::GetFullPath($PSCommandPath)
 while ($bootstrapCursor) {
-    $bootstrapItem = Get-Item -LiteralPath $bootstrapCursor -Force -ErrorAction Stop
+    $bootstrapAncestors.Push($bootstrapCursor)
+    $bootstrapParent = Split-Path -Parent $bootstrapCursor
+    if ($bootstrapParent -eq $bootstrapCursor) { break }
+    $bootstrapCursor = $bootstrapParent
+}
+while ($bootstrapAncestors.Count -gt 0) {
+    $bootstrapItem = Get-Item -LiteralPath $bootstrapAncestors.Pop() -Force -ErrorAction Stop
     if (($bootstrapItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
         ($bootstrapItem.PSObject.Properties['LinkType'] -and $bootstrapItem.LinkType) -or
         (-not $bootstrapItem.PSIsContainer -and ([string]$bootstrapItem.Mode).Contains('l'))) {
         throw 'Automation entry path must not contain links.'
     }
-    $bootstrapParent = Split-Path -Parent $bootstrapCursor
-    if ($bootstrapParent -eq $bootstrapCursor) { break }
-    $bootstrapCursor = $bootstrapParent
 }
 $helperPath = Join-Path $PSScriptRoot 'portable-automation.ps1'
 $helperItem = Get-Item -LiteralPath $helperPath -Force -ErrorAction Stop
@@ -58,6 +63,8 @@ if ($Check) {
         PackageRoot = $root; Workspace = $Workspace
         MCPVersion = $manifest.playwrightMcp; BrowserVersion = $manifest.browser.version
         BrowserExecutable = $ExecutablePath; BrowserPresent = [IO.File]::Exists($ExecutablePath)
+        BrowserDataDirectory = Join-Path (Join-Path $root 'cache') 'browser'
+        PersistentProfile = $true; Cleanup = 'Run the package cache cleaner after closing browser tasks'
         AutomaticStart = $false; Mode = $(if ($TaskScript) { 'task-script' } else { 'stdio-mcp' }); Headed = [bool]$Headed
     } | ConvertTo-Json
     exit 0
@@ -66,20 +73,23 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT -or -not [Enviro
     throw 'Browser automation requires Windows x64.'
 }
 [void](Assert-AutomationPath -Root $root -Path $ExecutablePath)
-$Workspace = New-AutomationDirectory -Root $root -Path $Workspace
-$session = New-AutomationDirectory -Root $root -Path (Join-Path $root ('tmp\browser-' + [Guid]::NewGuid().ToString('N')))
-Initialize-AutomationSupervisor -Root $root
-$mode = 'headless'; if ($Headed) { $mode = 'headed' }
-$arguments = @($bridge, $Workspace, $ExecutablePath, $mode, '--task-authorized')
-if ($TaskScript) { $arguments += $TaskScript }
-$start = New-AutomationStartInfo -Root $root -FilePath $node -WorkingDirectory $Workspace -Arguments $arguments -SessionDirectory $session
-# Foreground stdio only. The supervisor closes the whole browser job on exit.
-# Session cleanup follows process exit and refuses any linked subtree.
+$browserLock = Open-AutomationBrowserLock -Root $root
 try {
+    # Chromium also loads sibling DLLs/resources; validate the complete payload tree.
+    Assert-AutomationTree -Root $root -Path (Split-Path -Parent $ExecutablePath)
+    $Workspace = New-AutomationDirectory -Root $root -Path $Workspace
+    $state = Initialize-AutomationBrowserState -Root $root
+    Initialize-AutomationSupervisor -Root $root
+    $mode = 'headless'; if ($Headed) { $mode = 'headed' }
+    $arguments = @($bridge, $Workspace, $ExecutablePath, $mode, '--task-authorized')
+    if ($TaskScript) { $arguments += $TaskScript }
+    $start = New-AutomationStartInfo -Root $root -FilePath $node -WorkingDirectory $Workspace -Arguments $arguments -SessionDirectory $state.runtime
+    # Foreground stdio only. The supervisor closes the complete browser job on exit.
+    # Profile/cache survive sequential tasks; only the package cache cleaner removes them.
     $timeout = 0
     if ($TaskScript) { $timeout = $TaskTimeoutSec * 1000 }
     $result = Invoke-PortableProcess -StartInfo $start -PackageRoot $root -TimeoutMs $timeout
 } finally {
-    if (-not $KeepSessionData) { Remove-AutomationSession -Root $root -Path $session }
+    $browserLock.Dispose()
 }
 exit $result.ExitCode

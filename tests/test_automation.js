@@ -50,6 +50,77 @@ test('path guards reject traversal, hard links and linked ancestors', () => {
   }
 });
 
+test('browser configuration reuses only the package-local persistent state', () => {
+  const scratch = bridge.checkedPath(root, 'tmp', {directory: true, missing: true});
+  fs.mkdirSync(scratch, {recursive: true});
+  const fixture = fs.mkdtempSync(path.join(scratch, 'persistent-browser-'));
+  try {
+    const state = path.join(fixture, 'cache', 'browser');
+    for (const name of ['profile', 'cache', 'crashes', 'downloads', 'runtime'])
+      fs.mkdirSync(path.join(state, name), {recursive: true});
+    const executable = path.join(fixture, 'synthetic.exe');
+    fs.writeFileSync(executable, 'Never executable');
+    const environment = Object.fromEntries(['HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA',
+      'TEMP', 'TMP', 'TMPDIR', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME',
+      'XDG_STATE_HOME', 'PROGRAMDATA', 'ALLUSERSPROFILE', 'PUBLIC'].map(key => [key, path.join(state, 'runtime')]));
+    const first = bridge.browserConfiguration(fixture, executable, false, environment);
+    fs.writeFileSync(path.join(first.userDataDir, 'synthetic-state'), 'survives the next task');
+    const second = bridge.browserConfiguration(fixture, executable, true, environment);
+    assert.equal(second.userDataDir, first.userDataDir);
+    assert.equal(fs.readFileSync(path.join(second.userDataDir, 'synthetic-state'), 'utf8'), 'survives the next task');
+    assert.equal(first.isolated, false);
+    assert.equal(first.contextOptions.acceptDownloads, false);
+    assert.equal(first.contextOptions.serviceWorkers, 'block');
+    assert.equal(first.launchOptions.downloadsPath, path.join(state, 'downloads'));
+    assert.ok(first.launchOptions.args.includes(`--disk-cache-dir=${path.join(state, 'cache')}`));
+    assert.ok(first.launchOptions.args.includes(`--crash-dumps-dir=${path.join(state, 'crashes')}`));
+    assert.throws(() => bridge.browserConfiguration(fixture, executable, false, {...environment, TEMP: root}), /outside/);
+    assert.throws(() => bridge.browserConfiguration(fixture, executable, false, {...environment, APPDATA: fixture}), /portable wrapper/);
+    const linked = path.join(first.userDataDir, 'linked');
+    fs.symlinkSync(path.join(state, 'runtime'), linked, process.platform === 'win32' ? 'junction' : 'dir');
+    assert.throws(() => bridge.browserConfiguration(fixture, executable, false, environment), /Links/);
+    fs.rmSync(linked);
+    fs.linkSync(path.join(first.userDataDir, 'synthetic-state'), path.join(state, 'hardlink'));
+    assert.throws(() => bridge.browserConfiguration(fixture, executable, false, environment), /Links/);
+  } finally { fs.rmSync(fixture, {recursive: true, force: true}); }
+});
+
+test('persistent browser owner is lazy, closes explicitly and serializes reopen', async () => {
+  let starts = 0, closes = 0, releaseClose;
+  const options = {userDataDir: 'synthetic/profile', launchOptions: {headless: true}, contextOptions: {acceptDownloads: false}};
+  const chromium = {async launchPersistentContext(profile, supplied) {
+    assert.equal(profile, options.userDataDir);
+    assert.deepEqual(supplied, {headless: true, acceptDownloads: false});
+    starts++;
+    const context = new EventEmitter();
+    context.close = async () => {
+      closes++;
+      if (closes === 1) await new Promise(resolve => { releaseClose = resolve; });
+      context.emit('close');
+    };
+    return context;
+  }};
+  const owner = bridge.createBrowserOwner(chromium, options);
+  await owner.close();
+  assert.equal(starts, 0, 'Closing an unused MCP session must not launch a browser');
+  const [first, same] = await Promise.all([owner.get(), owner.get()]);
+  assert.equal(first, same);
+  assert.equal(starts, 1);
+  const closing = owner.close();
+  const duplicateClose = owner.close();
+  const reopened = owner.get();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(starts, 1, 'A second context must wait for the previous one to close');
+  releaseClose();
+  await Promise.all([closing, duplicateClose]);
+  assert.notEqual(await reopened, first);
+  assert.equal(starts, 2);
+  assert.equal(closes, 1);
+  await owner.dispose();
+  assert.equal(closes, 2);
+  await assert.rejects(owner.get(), /ended/);
+});
+
 test('tool policy blocks host execution, uploads, installation and local-file navigation', () => {
   for (const name of ['browser_run_code_unsafe', 'browser_file_upload', 'browser_install', 'browser_config'])
     assert.throws(() => bridge.validateToolCall(root, {name, arguments: {}}), /not enabled/);
@@ -101,6 +172,30 @@ test('transport strips client roots and refuses requests without forwarding them
   const sanitized = forwarded[1].params.arguments;
   assert.equal(sanitized.filename, path.join(root, 'synthetic.png'));
   assert.ok(!Object.hasOwn(sanitized, '_meta'));
+});
+
+test('browser_close closes the owned context without forwarding or starting a browser', async () => {
+  const inner = new MemoryTransport();
+  let closed = 0, forwarded = 0;
+  const policy = new bridge.PolicyTransport(inner, root, async () => { closed++; });
+  policy.onmessage = () => { forwarded++; };
+  await policy.start();
+  const response = await inner.request({jsonrpc: '2.0', id: 30, method: 'tools/call', params: {name: 'browser_close'}});
+  assert.equal(closed, 1);
+  assert.equal(forwarded, 0);
+  assert.match(response.result.content[0].text, /profile retained/);
+  assert.equal(policy.pending.size, 0);
+});
+
+test('a disconnected client during browser_close reports transport failure without leaking a rejection', async () => {
+  const inner = new MemoryTransport();
+  inner.send = async () => { throw new Error('synthetic closed pipe'); };
+  const policy = new bridge.PolicyTransport(inner, root, async () => {});
+  const reported = new Promise(resolve => { policy.onerror = resolve; });
+  await policy.start();
+  inner.onmessage({jsonrpc: '2.0', id: 31, method: 'tools/call', params: {name: 'browser_close'}});
+  assert.match((await reported).message, /closed pipe/);
+  assert.equal(policy.pending.size, 0);
 });
 
 test('real pinned MCP initializes and lists filtered tools without browser startup', async () => {

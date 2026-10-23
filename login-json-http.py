@@ -20,16 +20,14 @@ def read_request(stream):
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print(json.dumps({"status_code": 0, "body": "", "error": "request path or '-' is required"}))
+    # The PowerShell caller sends credentials through stdin.  Keeping the old
+    # filename mode would allow direct helper calls to read outside the package.
+    if len(sys.argv) != 2 or sys.argv[1] != "-":
+        print(json.dumps({"status_code": 0, "body": "", "error": "stdin marker '-' is required"}))
         return 2
 
     try:
-        if sys.argv[1] == "-":
-            req = read_request(sys.stdin)
-        else:
-            with open(sys.argv[1], "r", encoding="utf-8") as f:
-                req = read_request(f)
+        req = read_request(sys.stdin)
         if not isinstance(req, dict):
             raise ValueError("request payload must be a JSON object")
 

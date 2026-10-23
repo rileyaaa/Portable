@@ -12,7 +12,7 @@
 6. **先验证路径，再访问。** 先检查词法边界，再检查完整祖先及目标的 reparse/junction/symlink、输入硬链接和适用的 ACL；检查应早于创建目录、读取内容或执行程序。保留正常/维护模式分界、受保护变量和 CLI 覆盖限制，不通过关闭身份校验、放开路径或关闭 Code Mode 掩盖故障。MCP/插件的外部命令及绝对路径需另行核对。
 7. **每次升级复核变量。** 更新 Codex、Host 或任何工具后，核对对应变量的声明、默认值、加载/覆盖、生成配置、子进程最终值和新版实际消费点，并查看上游 schema/发行说明。区分启动器私有接口、原生变量、兼容别名和仅预留路径；确认失效时移除或替换并同步文档、回归。变量存在或程序安装成功都不等于功能生效。
 8. **保持工件与工具来源。** Codex/Host 使用同一官方稳定 release 的 Windows x64 工件，校验来源和摘要，更新固定身份、登录版本映射及 `tool/runtime-manifest.json`；保留所需配套资源与许可证，不修改官方 EXE/DLL 字节。本包明确只做文字与 Agent 工作，省略语音组件并关闭语音相关功能；今后升级也保留这一范围。其他工具按 [工具说明](tool/工具更新说明.md) 在包内安装/更新，工具缺失时明确报告，不静默调用宿主或全局包管理器，不永久修改系统/用户 PATH，不运行 Node 随附的系统安装脚本。
-9. **保护状态与清理边界。** 不读取、记录或提交真实账号 JSON、API Key、认证快照、会话、机器私密配置及其内容/哈希。测试使用合成数据，临时文件放包内 `tmp` 的独立目录，创建前检查链接；只清理本次创建的文件和启动的进程。认证 snapshot、transition/logout/recovery 标记及 installation identity 不当作缓存删除，既有用户数据和进程应保留。
+9. **保护状态与清理边界。** 不读取、记录或提交真实账号 JSON、API Key、认证快照、会话、机器私密配置及其内容/哈希。测试使用合成数据，临时文件放包内 `tmp` 的独立目录，创建前检查链接；只清理本次创建的文件和启动的进程。认证 snapshot、transition/logout/recovery 标记及 installation identity 不当作缓存删除，既有用户数据和进程应保留。配套浏览器资料固定在 `cache/browser`，任务退出只关闭进程，默认保留资料；用户运行“清理缓存”时才统一删除 Cookies、网站登录和缓存，并通过专用锁拒绝清理活动会话。
 10. **单一维护来源与模式副本同步。** Android 完整流程统一维护在 `home/plugins/android-apk-lab/skills`，外层只保留精简 `apk-test-router`，保留用户编写的 `mumu-adb`。Office 的 docx/pptx/xlsx 共用 helper 副本保持一致。根 `env.ps1` / `run-codex.ps1` 更新时，必须同步 `Version_History` 下的四份常用/YOLO 模式文件：常用两份与根文件逐字节相同；YOLO 启动脚本与根相同，env 基于根生成，保持 `CODEX_PORTABLE_PROFILE=strict`，仅将 approval 改为 `never`、sandbox 改为 `danger-full-access`，并保留原 YOLO 的 `CODEX_SANDBOX_NETWORK_ACCESS=true`。Fast、扩展默认值及其他修复全部同步，不另维护旧版客户端身份。用回归验证差异仅为这三项赋值。其他真正历史资料不批量替换；账号格式转换器独立维护。
 11. **验证与交付。** 运行与变更相关的回归，明确区分通过、失败、跳过和未运行；不能用假输出或空程序冒充工具可用。保留用户改动，使用现有 checkout，不另建 worktree，除非用户要求。提交/推送前核对差异、引用、Git LFS 工件及私密/临时文件排除；没有执行的 Windows、真实账号或设备流程不得写成已通过。正式包从干净提交的文件清单生成，包含实际 LFS 工件，逐项验证 ZIP，并附来源提交与 SHA-256；不递归打包整个工作目录。
 12. **按任务启用，默认关闭 Fast。** `CODEX_FAST_MODE=false`；Plugins、用户 MCP 默认关闭，维护模式也不自动启用。扩展配置须同时满足对应开关和本次 `--portable-extensions`。发现、读取技能或进入维护模式不代表授权运行其工具；只有用户明确提出相关任务，才检查依赖、启动服务、连接设备或操作目标。包内安装不等于授权控制整台电脑或模拟器；实际任务仍限已选目标。
@@ -26,6 +26,10 @@
 **精简决定：** 复核后没有可无损删去的大块内容。C/C++ PDF 开发文件及两份搜索程序最多约可省 10.5 MB 解压体积；用户明确选择保留现状，修复 bug 后发布。没有删除这些候选；测试保留在源码中，客户 ZIP 排除第一方测试、CI 和打包脚本，模式模板与转换器运行文件继续交付。
 
 **修复：** 之前只在依赖安装器中禁用了宿主 pip 配置，普通 Agent 命令仍可能经 Windows 系统路径读取 `pip.ini`。根启动器、五个 BAT、子进程环境和生成的 shell 配置现统一固定 `PIP_CONFIG_FILE=nul`，模式副本同步；真实 bundled pip 加载器的合成回归验证普通和 isolated 模式下均不读取配置文件。
+
+**边界复查：** 修复 PPT 多张缩略图派生文件、Poppler 可执行文件和 Android 映射/规则输入漏验链接的问题；登录 HTTP helper 移除未使用的文件参数，只接收启动器传入的标准输入。官方账号默认改用设备码，避免系统默认浏览器写入宿主资料；原方式仅在明确设置 `CODEX_BROWSER_LOGIN_FLOW=system_browser` 后启用，失败不自动回退，模式副本同步。
+
+**浏览器：** 固定资料改为 `cache/browser`，任务结束关闭进程并保留 Cookies/登录；“清理缓存”统一删除，并与浏览器通过独立锁互斥。修复固定 MCP 上游关闭连接未必关闭浏览器上下文的问题，由包装器显式持有和关闭上下文。只下载固定官方 Chromium ZIP，不额外安装 ffmpeg、winldd、ChromeDriver 或第二套浏览器。
 
 **发行准备：** 新增打包器，仅接受已提交且干净的完整 checkout，拒绝私密路径、链接、Windows 文件名冲突和 LFS 指针，验证固定运行包身份；ZIP 生成后逐项检查内容摘要与 CRC，另产出来源清单和 SHA256SUMS。补齐官方固定版本的 LICENSE/NOTICE，保留原始字节。新增手动发布工作流，在 Windows 运行回归后打包，上传 draft 成功才转为正式 Release；不创建长期 artifact 或缓存，结束后清理本次 runner 文件。真实账号、在线 Agent/Host、提权沙箱与设备操作仍不属于该工作流的验收范围。
 
@@ -78,9 +82,9 @@
 
 **原因：** ChromeDriver 与 Chrome 分别更新容易失配；多套浏览器/MCP 增加便携包体积，默认桌面 MCP 的操作范围又过大。
 
-**结果：** 仅采用一套固定 Playwright 依赖，共用一份配套 Chromium。任务脚本、可选 stdio MCP 与 CDP 诊断复用同一安装；无 ChromeDriver、第二浏览器或 Chrome DevTools MCP。进程用户目录、profile、缓存和临时下载落包内，退出时关闭本次进程并校验后清理。MCP 过滤任意 Node 执行、上传、安装、配置及客户端重定向根目录；任务脚本入口仍是受当前权限约束的代码执行，不能冒充不可信脚本沙箱。Windows 桌面入口使用系统 UI Automation，只读指定 PID 主窗口的有界树，修改动作需要额外开关，未安装通用 Windows-MCP。
+**结果：** 仅采用一套固定 Playwright 依赖，共用一份配套 Chromium。任务脚本、可选 stdio MCP 与 CDP 诊断复用同一安装；无 ChromeDriver、第二浏览器或 Chrome DevTools MCP。进程用户目录、profile、缓存和临时下载落包内，退出时关闭本次进程；资料保留与统一清理见上面的维护约定。MCP 过滤任意 Node 执行、上传、安装、配置及客户端重定向根目录；任务脚本入口仍是受当前权限约束的代码执行，不能冒充不可信脚本沙箱。Windows 桌面入口使用系统 UI Automation，只读指定 PID 主窗口的有界树，修改动作需要额外开关，未安装通用 Windows-MCP。
 
-**交付状态：** JS 依赖约 18.7 MB、185 个文件已安装并记录摘要；配套 Windows 浏览器尚未取得。已提供仅手动触发、artifact 保留 1 天并清理 runner 临时目录的下载工作流；云环境官方 CDN 与 Actions API 被网络策略拦截，已保存域名配置草稿，尚未触发工作流或产生远端 artifact。实际 Windows 浏览器、UI Automation 和进程退出行为待验。
+**交付状态：** JS 依赖约 18.7 MB、185 个文件已安装并记录摘要；10 月 23 日通过官方 CDN/Google 存储取得唯一配套 Chromium，305 个文件约 458 MB（官方 ZIP 约 207 MB），来源和摘要记录在 browser-manifest.json。浏览器 payload 使用 Git LFS，发行 ZIP 包含实际文件。未使用下载 Actions 或生成临时 artifact；手动下载工作流保留为备用。
 
 **附带修正：** PDF ZIP 摘要写回现有 `SHA256.md` 的最近导出记录，ZIP 内仍只含 Markdown，不自引用最终 ZIP 哈希，也不增加项目说明文档。复现了 Windows `core.autocrlf=true` 会改写新增官方 Python 文本文件、导致摘要失配的问题；`.gitattributes` 现固定 Python、Playwright 和客户端资源的原始字节，不改动上游内容。
 
@@ -144,7 +148,7 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 
 | 检查 | 结果与范围 |
 | --- | --- |
-| Python unittest discovery | 72 项通过：13 项 helper、4 项 HTTP 超时、5 项运行包、17 项 Android、14 项 PDF、2 项可选依赖摘要/架构、2 项模式副本、9 项 wheel 锁/修复边界、1 项 Windows 依赖闭合、1 项 pip 配置隔离、4 项发行 ZIP 检查 |
+| Python unittest discovery | 88 项通过：便携路径、HTTP、运行包、Android、Office/PDF、固定依赖、模式副本、pip 隔离、浏览器安装与发行 ZIP 校验 |
 | `test_portable_config.ps1` | 13 项通过，2 项导出检查跳过；升级时另曾用匹配 0.163.0 的实际 bundled JSON 完成全部 15 项 |
 | `test_portable_paths.ps1` | 14 项通过：真实加载 env.ps1，覆盖 15 个派生路径、中文/空格、旧根、无关 cwd、移动目录及受保护/未审核变量；另验证真实启动器函数清除 Go/uv 变量、保留 Python/Node 路径、转发 header，并将 pip 配置禁用传到子进程和 TOML，不执行整个启动链 |
 | `test_python_setup.ps1` | 4 组通过：实际 pip 参数、配置禁用与子进程变量筛选、修复范围拒绝早于任何 pip 调用、完整祖先链接拒绝；不执行安装 |
@@ -152,14 +156,15 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 | `test_instruction_paths.ps1` | 3 项通过：普通文件成功，真实硬链接/符号链接被拒绝；Linux 仅替换 Windows 路径包含判断，链接检查及写入用生产函数 |
 | `test_extension_policy.ps1` | 12 项通过：Fast/扩展默认关闭、语音配置关闭、维护模式、显式开关、命名空间筛选、配置保留及两条模型指令生成路径 |
 | `test_runtime_preflight.ps1` | 10 项合成工件检查通过：清单先校验、文件缺失/替换/链接、沙箱缓存新旧与状态硬链接；不执行客户端，不读取真实凭据 |
-| `test_automation_paths.ps1` | 7 组通过：子进程目录重定向、参数引用、越界/硬链接、先查祖先再遍历、只清理自有目录、任务开关与 PowerShell 解析；没有启动 Windows 程序 |
+| `test_automation_paths.ps1` | 通过：子进程目录重定向、参数引用、越界/硬链接、先查祖先再遍历、只清理自有目录、任务开关与 PowerShell 解析；没有启动 Windows 程序 |
 | `test_automation_process.ps1` | 生产监督器 C# 编译通过；实际继承/捕获标准流需 Windows，Linux 明确跳过 |
-| `test_automation.js` | 6 项通过：实际固定版 MCP 初始化与工具筛选、拒绝未选任务、路径边界、禁止能力、依赖字节摘要；不启动浏览器 |
+| `test_automation.js` | 10 项通过：实际固定版 MCP 初始化与工具筛选、拒绝未选任务、路径边界、禁止能力、依赖字节摘要；不启动浏览器 |
+| `test_browser_login_flow.ps1` | 7 项离线检查通过：默认设备码、显式系统浏览器、非法值与失败无回退 |
 | `test_bootstrap_paths.ps1` | Linux 明确跳过；15 个 Windows BAT 普通/junction 用例未运行，不执行真实客户端 |
 | 语法、格式与 BAT 静态检查 | 全部 31 个第一方 PowerShell 文件解析通过，94 个第一方 Python 文件 AST 检查通过；5 个 BAT 的 ASCII/CRLF、Go/uv 变量清除、pip 配置禁用和祖先检查先于目录创建检查通过。按 CRLF 规则检查项目差异；保留的官方运行文件与 npm payload 字节未改写 |
 | 转换器 smoke / static audit | 通过；一个合成 fixture、四账号、17 种输出，命令见子项目 README |
 
-在包根使用 Windows PowerShell 5.1 复验：
+以下开发测试仅随 GitHub 源码提供，客户发行包不附带。在源码包根使用 Windows PowerShell 5.1 复验：
 
 ```powershell
 .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v

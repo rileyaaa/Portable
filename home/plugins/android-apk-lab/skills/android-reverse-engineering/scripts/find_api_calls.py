@@ -109,8 +109,11 @@ def collect_pattern(files: list[Path], pattern: str, *, flags: int, remaining: i
     return out
 
 
-def load_denylist(skill_root: Path) -> list[re.Pattern[str]]:
-    path = skill_root / "references" / "third_party_hosts.txt"
+def load_denylist(root: Path, skill_root: Path) -> list[re.Pattern[str]]:
+    path = resolve_inside(
+        root, skill_root / "references" / "third_party_hosts.txt",
+        must_exist=False, kind="file",
+    )
     out: list[re.Pattern[str]] = []
     if not path.is_file() or path.stat().st_size > 1_048_576:
         return out
@@ -214,7 +217,7 @@ def main(argv: list[str]) -> int:
                 total_matches += print_section(title, matches, src)
         skill_root = Path(__file__).absolute().parent.parent
         if args.urls:
-            scan_urls(files, load_denylist(skill_root))
+            scan_urls(files, load_denylist(root, skill_root))
         if args.paths:
             scan_paths(files)
         print("\n=== Search complete ===")

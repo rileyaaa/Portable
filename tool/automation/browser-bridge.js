@@ -59,6 +59,71 @@ function checkTree(root, directory) {
   }
 }
 
+function browserConfiguration(root, executable, headed, environment = process.env) {
+  executable = checkedPath(root, executable);
+  checkTree(root, path.dirname(executable));
+  const state = checkedPath(root, path.join(root, 'cache', 'browser'), {directory: true});
+  // Reject nested links before Chromium reads persisted databases or preferences.
+  checkTree(root, state);
+  const directories = {};
+  for (const name of ['profile', 'cache', 'crashes', 'downloads', 'runtime'])
+    directories[name] = checkedPath(state, name, {directory: true});
+  for (const key of ['HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'TMPDIR',
+    'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME',
+    'PROGRAMDATA', 'ALLUSERSPROFILE', 'PUBLIC']) {
+    if (checkedPath(root, environment[key], {directory: true}) !== directories.runtime)
+      throw new Error('Launch through the portable wrapper to isolate browser data');
+  }
+  return {
+    browserName: 'chromium', isolated: false, userDataDir: directories.profile,
+    launchOptions: {
+      executablePath: checkedPath(root, executable), headless: !headed, chromiumSandbox: true,
+      downloadsPath: directories.downloads,
+      args: [
+        `--disk-cache-dir=${directories.cache}`,
+        `--crash-dumps-dir=${directories.crashes}`,
+        '--disable-breakpad',
+      ],
+    },
+    contextOptions: {acceptDownloads: false, serviceWorkers: 'block'},
+  };
+}
+
+function createBrowserOwner(chromium, configuration) {
+  let current = null, closing = null, disposed = false;
+  return {
+    async get() {
+      if (closing) await closing;
+      if (disposed) throw new Error('Browser task has ended');
+      if (!current) {
+        const pending = chromium.launchPersistentContext(configuration.userDataDir, {
+          ...configuration.launchOptions, ...configuration.contextOptions,
+        });
+        current = pending;
+        try {
+          const context = await pending;
+          context.once('close', () => { if (current === pending) current = null; });
+        } catch (error) {
+          if (current === pending) current = null;
+          throw error;
+        }
+      }
+      return current;
+    },
+    async close() {
+      if (closing) return closing;
+      const pending = current;
+      if (!pending) return;
+      closing = (async () => {
+        try { await (await pending).close(); }
+        finally { if (current === pending) current = null; }
+      })();
+      try { await closing; } finally { closing = null; }
+    },
+    async dispose() { disposed = true; await this.close(); },
+  };
+}
+
 function validateToolCall(workspace, params) {
   if (!params || !allowedTools.has(params.name))
     throw new Error('Tool is not enabled by the portable browser policy');
@@ -83,9 +148,10 @@ function validateToolCall(workspace, params) {
 }
 
 class PolicyTransport {
-  constructor(inner, workspace) {
+  constructor(inner, workspace, closeBrowser = null) {
     this.inner = inner;
     this.workspace = workspace;
+    this.closeBrowser = closeBrowser;
     this.pending = new Map();
   }
   async start() {
@@ -107,10 +173,23 @@ class PolicyTransport {
             throw new Error('Too many or duplicate requests');
           this.pending.set(message.id, method);
         }
+        if (method === 'tools/call' && message.params.name === 'browser_close' && this.closeBrowser) {
+          // The pinned API disposes its backend without closing the supplied context.
+          // Closing our owner also resets that backend through its context-close event.
+          void Promise.resolve().then(() => this.closeBrowser()).then(
+            () => this.send({jsonrpc: '2.0', id: message.id, result: {
+              content: [{type: 'text', text: 'Browser closed; package-local profile retained.'}],
+            }}),
+            error => this.send({jsonrpc: '2.0', id: message.id, error: {code: -32603, message: error.message}}),
+          ).catch(error => this.onerror?.(error));
+          return;
+        }
         this.onmessage?.(message);
       } catch (error) {
         if (message?.id !== undefined)
-          void this.inner.send({jsonrpc: '2.0', id: message.id, error: {code: -32602, message: error.message}});
+          void Promise.resolve().then(() => this.inner.send({
+            jsonrpc: '2.0', id: message.id, error: {code: -32602, message: error.message},
+          })).catch(sendError => this.onerror?.(sendError));
       }
     };
     this.inner.onclose = () => this.onclose?.();
@@ -143,39 +222,44 @@ async function main() {
   const headed = process.argv[4] === 'headed';
   if (!['headed', 'headless'].includes(process.argv[4]))
     throw new Error('Invalid browser launch arguments');
-  const session = checkedPath(path.join(root, 'tmp'), process.env.TEMP, {directory: true});
-  for (const key of ['HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TMP', 'TMPDIR'])
-    if (checkedPath(root, process.env[key], {directory: true}) !== session)
-      throw new Error('Launch through the portable wrapper to isolate browser data');
+  const browser = browserConfiguration(root, executable, headed);
   const dependencies = path.join(__dirname, 'playwright', 'node_modules');
   checkTree(root, dependencies);
   process.chdir(workspace);
   const {createConnection} = require('./playwright/node_modules/@playwright/mcp');
+  const {chromium} = require('./playwright/node_modules/playwright');
+  const owner = createBrowserOwner(chromium, browser);
   const {StdioServerTransport} = require('./playwright/node_modules/playwright-core/lib/utilsBundle');
   const server = await createConnection({
-    browser: {
-      browserName: 'chromium', isolated: true,
-      launchOptions: {
-        executablePath: executable, headless: !headed, chromiumSandbox: true,
-        downloadsPath: session,
-        args: [
-          `--disk-cache-dir=${path.join(session, 'browser-cache')}`,
-          `--crash-dumps-dir=${path.join(session, 'crashes')}`,
-          '--disable-breakpad',
-        ],
-      },
-      contextOptions: {acceptDownloads: false, serviceWorkers: 'block'},
-    },
+    browser,
     capabilities: [], webmcp: false, allowUnrestrictedFileAccess: false,
     outputDir: workspace, outputMaxSize: 50 * 1024 * 1024,
     saveSession: false, codegen: 'none',
+  }, () => owner.get());
+  const transport = new PolicyTransport(new StdioServerTransport(), workspace, () => owner.close());
+  let shutdownPromise;
+  const shutdown = () => {
+    if (!shutdownPromise) shutdownPromise = (async () => {
+      try { await owner.dispose(); } finally { await server.close(); }
+    })();
+    return shutdownPromise;
+  };
+  const onEnd = () => void shutdown().catch(error => {
+    process.stderr.write(`Portable browser shutdown: ${error.message}\n`);
+    process.exitCode = 1;
   });
-  const transport = new PolicyTransport(new StdioServerTransport(), workspace);
-  await server.connect(transport);
-  process.stdin.on('end', () => void server.close());
+  process.stdin.once('end', onEnd);
+  process.once('SIGINT', onEnd);
+  process.once('SIGTERM', onEnd);
+  try {
+    await server.connect(transport);
+    const previousClose = transport.onclose, previousError = transport.onerror;
+    transport.onclose = () => { previousClose?.(); onEnd(); };
+    transport.onerror = error => { previousError?.(error); onEnd(); };
+  } catch (error) { await shutdown(); throw error; }
 }
 
-module.exports = {allowedTools, checkedPath, checkTree, validateToolCall, PolicyTransport};
+module.exports = {allowedTools, checkedPath, checkTree, browserConfiguration, createBrowserOwner, validateToolCall, PolicyTransport};
 if (require.main === module) main().catch(error => {
   process.stderr.write(`Portable browser: ${error.message}\n`);
   process.exitCode = 1;

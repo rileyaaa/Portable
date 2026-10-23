@@ -18,6 +18,22 @@ SPEC.loader.exec_module(HELPER)
 
 
 class LoginHttpTimeoutTests(unittest.TestCase):
+    def test_file_arguments_are_rejected_before_file_or_network_access(self):
+        for path in ("request.json", "../request.json", r"Z:\synthetic outside\request.json"):
+            with self.subTest(path=path):
+                output = io.StringIO()
+                with (
+                    mock.patch.object(HELPER.sys, "argv", ["login-json-http.py", path]),
+                    mock.patch("builtins.open") as open_file,
+                    mock.patch.object(HELPER.requests, "Session") as session,
+                    contextlib.redirect_stdout(output),
+                ):
+                    result = HELPER.main()
+                self.assertEqual(result, 2)
+                self.assertEqual(json.loads(output.getvalue())["status_code"], 0)
+                open_file.assert_not_called()
+                session.assert_not_called()
+
     def run_request(self, **overrides):
         payload = {
             "method": "GET",

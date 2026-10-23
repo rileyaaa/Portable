@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -210,6 +211,30 @@ def runtime_identity(root: Path, names: list[str]) -> dict:
     return manifest
 
 
+def browser_identity(root: Path, names: list[str]) -> dict:
+    required = {"tool/automation/install-browser.py", "tool/automation/browser-manifest.json",
+                "tool/automation/versions.json"}
+    if not required.issubset(names):
+        raise ValueError("Browser identity and verifier must be committed.")
+    versions = json.loads(package_file(root, "tool/automation/versions.json").read_bytes())
+    if (versions["browser"].get("payloadBundled") is not True or
+            versions["browser"].get("payloadManifest") != "browser-manifest.json"):
+        raise ValueError("Customer releases require the pinned browser payload.")
+    # Share the installer's strict official-source, inventory and PE checks.
+    verifier = package_file(root, "tool/automation/install-browser.py")
+    spec = importlib.util.spec_from_file_location("portable_browser_verifier", verifier)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    manifest, _ = module.load_manifest(root)
+    for name in manifest["files"]:
+        safe_name(name)
+    tracked_payload = {name for name in names if name.startswith("tool/automation/browsers/")}
+    if tracked_payload != set(manifest["files"]):
+        raise ValueError("Committed browser inventory differs from the pinned manifest.")
+    module.verify_payload(root, manifest)
+    return manifest
+
+
 def verify_zip(archive: Path, files: dict) -> None:
     ordinary(archive)
     with zipfile.ZipFile(archive) as zipped:
@@ -231,6 +256,7 @@ def build_release(root: Path, version: str | None = None) -> dict:
     commit, timestamp, source_names = clean_checkout(root)
     names, excluded = customer_files(source_names)
     manifest = runtime_identity(root, names)
+    browser = browser_identity(root, names)
     version = version or manifest["version"]
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", version):
         raise ValueError("Invalid release version/tag.")
@@ -277,6 +303,8 @@ def build_release(root: Path, version: str | None = None) -> dict:
             "package_kind": "customer", "source_file_count": len(source_names),
             "excluded_file_count": len(excluded), "excluded_files": excluded,
             "codex_version": manifest["version"],
+            "browser_version": browser["browserVersion"], "browser_revision": browser["revision"],
+            "browser_archive_sha256": browser["archive"]["sha256"],
             "target": manifest["target"], "archive": archive.name, "file_count": len(files),
             "uncompressed_bytes": sum(record["size"] for record in files.values()),
             "files": files,
@@ -310,7 +338,9 @@ def main() -> None:
         commit, _, source_names = clean_checkout(root)
         names, excluded = customer_files(source_names)
         manifest = runtime_identity(root, names)
+        browser = browser_identity(root, names)
         print(json.dumps({"source_commit": commit, "codex_version": manifest["version"],
+                          "browser_version": browser["browserVersion"],
                           "file_count": len(names), "source_file_count": len(source_names),
                           "excluded_file_count": len(excluded)}))
     else:
