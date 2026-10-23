@@ -1,0 +1,144 @@
+name: Validate and publish Windows release (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag, for example v2026.10.23'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: portable-official-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out selected commit and real LFS binaries
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          lfs: true
+          fetch-depth: 1
+
+      - name: Prepare package-local test state
+        shell: powershell
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RELEASE_VERSION -notmatch '^v\d{4}\.\d{2}\.\d{2}(?:\.\d+)?$') { throw 'Use a dated release tag.' }
+          $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state'
+          $state = @{
+            HOME = 'home'; USERPROFILE = 'home'; APPDATA = 'appdata'; LOCALAPPDATA = 'localappdata';
+            PROGRAMDATA = 'programdata'; ALLUSERSPROFILE = 'programdata';
+            TEMP = 'temp'; TMP = 'temp'; TMPDIR = 'temp';
+            XDG_CACHE_HOME = 'cache'; XDG_CONFIG_HOME = 'config'; XDG_DATA_HOME = 'data'; XDG_STATE_HOME = 'state';
+            CODEX_HOME = 'codex-home'; CODEX_SQLITE_HOME = 'sqlite'; GH_CONFIG_DIR = 'gh'
+          }
+          foreach ($name in $state.Keys) {
+            $path = Join-Path $base $state[$name]
+            New-Item -ItemType Directory -Force -Path $path | Out-Null
+            "$name=$path" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+          'PIP_CONFIG_FILE=nul' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'PYTHONDONTWRITEBYTECODE=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'POWERSHELL_TELEMETRY_OPTOUT=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run bundled Python and Node regression suites
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Python regression failure.' }
+          & .\tool\python\python.exe -B .\tool\python-lock.py validate-runtime --requirements .\tool\python-packages.in.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Python runtime preflight failure.' }
+          & .\tool\node\node.exe --test .\tests\test_automation.js
+          if ($LASTEXITCODE -ne 0) { throw 'Browser tooling regression failure.' }
+          & .\tool\node\node.exe '.\Version_History\AI account format conversion\test\smoke.js'
+          if ($LASTEXITCODE -ne 0) { throw 'Converter smoke failure.' }
+          & .\tool\node\node.exe '.\Version_History\AI account format conversion\test\static-audit.js'
+          if ($LASTEXITCODE -ne 0) { throw 'Converter audit failure.' }
+
+      - name: Run Windows PowerShell 5.1 and native client checks
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $engine = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          foreach ($test in @('test_portable_config','test_portable_paths','test_instruction_paths',
+              'test_bootstrap_paths','test_extension_policy','test_runtime_preflight',
+              'test_python_setup','test_automation_paths','test_automation_process')) {
+            & $engine -NoProfile -ExecutionPolicy Bypass -File ".\tests\$test.ps1"
+            if ($LASTEXITCODE -ne 0) { throw "Windows regression failure: $test" }
+          }
+          $reported = & .\codex.exe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Native Codex version check failed.' }
+          $expected = (Get-Content .\tool\runtime-manifest.json -Raw | ConvertFrom-Json).version
+          if (($reported -join "`n") -notmatch [regex]::Escape($expected)) { throw 'Client version mismatch.' }
+          Write-Output $reported
+
+      - name: Build and verify release assets
+        id: package
+        shell: powershell
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $result = & .\tool\python\python.exe -B .\tool\package-release.py --version $env:RELEASE_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Release packaging failed.' }
+          $package = ($result -join "`n") | ConvertFrom-Json
+          foreach ($name in @('output_dir','archive','manifest','checksums','source_commit')) {
+            "$name=$($package.$name)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+
+      - name: Publish a verified non-prerelease
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_COMMIT: ${{ steps.package.outputs.source_commit }}
+          RELEASE_DIRECTORY: ${{ steps.package.outputs.output_dir }}
+          RELEASE_ARCHIVE: ${{ steps.package.outputs.archive }}
+          RELEASE_MANIFEST: ${{ steps.package.outputs.manifest }}
+          RELEASE_CHECKSUMS: ${{ steps.package.outputs.checksums }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Abort on an existing tag or API failure; never overwrite another release.
+          $tags = & git ls-remote --tags origin "refs/tags/$env:RELEASE_VERSION"
+          if ($LASTEXITCODE -ne 0 -or $tags) { throw 'Release tag exists or could not be checked.' }
+          $notes = Join-Path $env:RELEASE_DIRECTORY 'release-notes.txt'
+          @(
+            'Windows x64 portable package for text/Agent and Python/data workflows.',
+            "Source commit: $env:RELEASE_COMMIT",
+            'Download the windows-x64.zip asset, extract it, and start with the BAT entry point.',
+            'SHA256SUMS and release-manifest.json identify the verified package.',
+            'Validated on Windows: bundled Python/Node regressions, PowerShell 5.1, BAT/NTFS fixtures, process stdio and native Codex version.',
+            'Not exercised: real account login, live Agent/Host tool calls, elevated sandbox initialization or real devices.',
+            'Browser tooling is included; the optional matching browser binary is not bundled. See README and tool documentation.'
+          ) | Set-Content -LiteralPath $notes -Encoding UTF8
+          & gh release create $env:RELEASE_VERSION $env:RELEASE_ARCHIVE $env:RELEASE_MANIFEST $env:RELEASE_CHECKSUMS --repo $env:GITHUB_REPOSITORY --target $env:RELEASE_COMMIT --title "Codex Portable $env:RELEASE_VERSION (Windows x64)" --notes-file $notes --draft
+          if ($LASTEXITCODE -ne 0) { throw 'Release draft/upload failed; inspect this run before retrying.' }
+          & gh release edit $env:RELEASE_VERSION --repo $env:GITHUB_REPOSITORY --draft=false --prerelease=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Assets uploaded, but publication failed; the draft remains for review.' }
+
+      - name: Remove this runner's release and test files
+        if: always()
+        shell: powershell
+        env:
+          RELEASE_DIRECTORY: ${{ steps.package.outputs.output_dir }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tmp = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE 'tmp'))
+          if ($env:RELEASE_DIRECTORY) {
+            $output = [IO.Path]::GetFullPath($env:RELEASE_DIRECTORY)
+            if ([IO.Path]::GetDirectoryName($output) -ne $tmp -or [IO.Path]::GetFileName($output) -notlike 'release-*') { throw 'Unexpected release cleanup path.' }
+            if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Recurse -Force }
+          }
+          $state = Join-Path $tmp 'windows-release-state'
+          if (Test-Path -LiteralPath $state) { Remove-Item -LiteralPath $state -Recurse -Force }

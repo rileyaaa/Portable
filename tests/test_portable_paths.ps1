@@ -187,7 +187,7 @@ try {
         if ($Errors.Count) { throw 'Launcher parse failure.' }
         foreach ($Name in @('Reset-PortableInvariantEnvironment','Set-PortableProcessPath',
                             'Set-CodexChildPortableEnvironment','Set-ProcessEnvironmentValue',
-                            'Get-ConfiguredHeaderEnvironmentVariableNames')) {
+                            'Get-ConfiguredHeaderEnvironmentVariableNames','Append-TomlSet','Convert-ToTomlString')) {
             $Definition = @($Ast.FindAll({param($Node) $Node -is [Management.Automation.Language.FunctionDefinitionAst]}, $true) | Where-Object { $_.Name -eq $Name })
             if ($Definition.Count -ne 1) { throw 'Missing launcher function.' }
             . ([scriptblock]::Create($Definition[0].Extent.Text))
@@ -213,9 +213,22 @@ try {
         $GoNames = @('GOPATH','GOCACHE','GOMODCACHE','GOROOT','GOTOOLCHAIN',
                      'UV_CACHE_DIR','UV_PYTHON_INSTALL_DIR','UV_TOOL_DIR','UV_TOOL_BIN_DIR')
         foreach ($Name in $GoNames) { [Environment]::SetEnvironmentVariable($Name, (Join-Path $ExpectedOldRoot 'stale-go'), 'Process') }
+        $env:PIP_CONFIG_FILE = Join-Path $ExpectedOldRoot 'synthetic-host-pip.ini'
         Reset-PortableInvariantEnvironment
         $Child = New-Object Diagnostics.ProcessStartInfo
         Set-CodexChildPortableEnvironment $Child
+        if ($env:PIP_CONFIG_FILE -cne 'nul' -or $Child.EnvironmentVariables['PIP_CONFIG_FILE'] -cne 'nul') {
+            throw 'Pip config suppression did not survive launcher reset and child environment mapping.'
+        }
+        $PipCommand = @($Ast.FindAll({param($Node) $Node -is [Management.Automation.Language.CommandAst]}, $true) | Where-Object {
+            $_.Extent.Text -ceq 'Append-TomlSet $Builder "PIP_CONFIG_FILE" $env:PIP_CONFIG_FILE'
+        })
+        if ($PipCommand.Count -ne 1) { throw 'Missing pip shell-policy config setting.' }
+        $Builder = New-Object Text.StringBuilder
+        . ([scriptblock]::Create($PipCommand[0].Extent.Text))
+        if ($Builder.ToString().Trim() -cne 'PIP_CONFIG_FILE = "nul"') {
+            throw 'Generated shell policy did not disable pip config files.'
+        }
         foreach ($Name in $GoNames) {
             if ([Environment]::GetEnvironmentVariable($Name) -or $Child.EnvironmentVariables.ContainsKey($Name)) {
                 throw "Removed compiler state leaked into process environment: $Name"
@@ -259,7 +272,7 @@ try {
     }
     foreach ($ProtectedName in @('CODEX_INSTALL_DIR', 'CODEX_PYTHON', 'ANDROID_HOME', 'APK_LAB_TMP_DIR',
         'CODEX_ROLLOUT_TRACE_ROOT', 'CODEX_TUI_SESSION_LOG_PATH', 'CODEX_MANAGED_PACKAGE_ROOT',
-        'CODEX_WINDOWS_REGISTERED_CORE', 'CODEX_FUTURE_UNREVIEWED_PATH')) {
+        'CODEX_WINDOWS_REGISTERED_CORE', 'CODEX_FUTURE_UNREVIEWED_PATH', 'PIP_CONFIG_FILE')) {
         Test-Case "Local override of $ProtectedName is rejected without changing derived paths" {
             $EscapedOldRoot = $OldRoot.Replace("'", "''")
             Set-SyntheticLocalEnv $MovedRoot ('$env:' + $ProtectedName + " = '" + $EscapedOldRoot + "'")

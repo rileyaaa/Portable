@@ -7,3 +7,4 @@ codex-path/** -text
 codex-package.json -text
 tool/runtime-manifest.json -text
 tool/python-packages.in.txt -text
+tool/licenses/** -text

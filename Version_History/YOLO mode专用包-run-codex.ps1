@@ -706,6 +706,7 @@ $env:XDG_DATA_HOME = $PortableLocalData
 $env:XDG_STATE_HOME = Join-Path $PortableLocalData "state"
 
 # 常见开发工具缓存，尽量避免子进程写到用户目录
+$env:PIP_CONFIG_FILE = "nul"
 $env:PIP_CACHE_DIR = Join-Path $PortableCache "pip"
 $env:PYTHONUSERBASE = Join-Path $PortableCache "python-userbase"
 $env:NPM_CONFIG_CACHE = Join-Path $PortableCache "npm"
@@ -1012,6 +1013,8 @@ function Reset-PortableInvariantEnvironment {
     $env:XDG_CONFIG_HOME = $PortableAppData
     $env:XDG_DATA_HOME = $PortableLocalData
     $env:XDG_STATE_HOME = Join-Path $PortableLocalData "state"
+    # Windows pip uses Shell Folders for config paths; rebasing APPDATA is insufficient.
+    $env:PIP_CONFIG_FILE = "nul"
     $env:PIP_CACHE_DIR = Join-Path $PortableCache "pip"
     $env:PYTHONUSERBASE = Join-Path $PortableCache "python-userbase"
     $env:PYTHONPYCACHEPREFIX = Join-Path $PortableCache "pycache"
@@ -1765,7 +1768,7 @@ function Set-CodexChildPortableEnvironment {
 
     $fixed = @(
         "PATH","CODEX_HOME","CODEX_SQLITE_HOME","HOME","USERPROFILE","HOMEDRIVE","HOMEPATH","APPDATA","LOCALAPPDATA","PROGRAMDATA","ALLUSERSPROFILE",
-        "TEMP","TMP","TMPDIR","XDG_CACHE_HOME","XDG_CONFIG_HOME","XDG_DATA_HOME","XDG_STATE_HOME","PIP_CACHE_DIR","PYTHONUSERBASE",
+        "TEMP","TMP","TMPDIR","XDG_CACHE_HOME","XDG_CONFIG_HOME","XDG_DATA_HOME","XDG_STATE_HOME","PIP_CONFIG_FILE","PIP_CACHE_DIR","PYTHONUSERBASE",
         "NPM_CONFIG_CACHE","NPM_CONFIG_PREFIX","NPM_CONFIG_GLOBALCONFIG","NPM_CONFIG_USERCONFIG","NODE_REPL_HISTORY","YARN_CACHE_FOLDER","PNPM_HOME","PNPM_STORE_DIR",
         "GRADLE_USER_HOME","MAVEN_OPTS","POWERSHELL_TELEMETRY_OPTOUT","PSModuleAnalysisCachePath","PSModulePath",
         "PYTHONPYCACHEPREFIX","GIT_CONFIG_NOSYSTEM","CODEX_INSTALL_DIR","CODEX_PYTHON",
@@ -3139,6 +3142,7 @@ Append-TomlSet $Builder "XDG_CACHE_HOME" $env:XDG_CACHE_HOME
 Append-TomlSet $Builder "XDG_CONFIG_HOME" $env:XDG_CONFIG_HOME
 Append-TomlSet $Builder "XDG_DATA_HOME" $env:XDG_DATA_HOME
 Append-TomlSet $Builder "XDG_STATE_HOME" $env:XDG_STATE_HOME
+Append-TomlSet $Builder "PIP_CONFIG_FILE" $env:PIP_CONFIG_FILE
 Append-TomlSet $Builder "PIP_CACHE_DIR" $env:PIP_CACHE_DIR
 Append-TomlSet $Builder "PYTHONUSERBASE" $env:PYTHONUSERBASE
 Append-TomlSet $Builder "NPM_CONFIG_CACHE" $env:NPM_CONFIG_CACHE

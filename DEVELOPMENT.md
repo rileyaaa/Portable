@@ -14,11 +14,21 @@
 8. **保持工件与工具来源。** Codex/Host 使用同一官方稳定 release 的 Windows x64 工件，校验来源和摘要，更新固定身份、登录版本映射及 `tool/runtime-manifest.json`；保留所需配套资源与许可证，不修改官方 EXE/DLL 字节。本包明确只做文字与 Agent 工作，省略语音组件并关闭语音相关功能；今后升级也保留这一范围。其他工具按 [工具说明](tool/工具更新说明.md) 在包内安装/更新，工具缺失时明确报告，不静默调用宿主或全局包管理器，不永久修改系统/用户 PATH，不运行 Node 随附的系统安装脚本。
 9. **保护状态与清理边界。** 不读取、记录或提交真实账号 JSON、API Key、认证快照、会话、机器私密配置及其内容/哈希。测试使用合成数据，临时文件放包内 `tmp` 的独立目录，创建前检查链接；只清理本次创建的文件和启动的进程。认证 snapshot、transition/logout/recovery 标记及 installation identity 不当作缓存删除，既有用户数据和进程应保留。
 10. **单一维护来源与模式副本同步。** Android 完整流程统一维护在 `home/plugins/android-apk-lab/skills`，外层只保留精简 `apk-test-router`，保留用户编写的 `mumu-adb`。Office 的 docx/pptx/xlsx 共用 helper 副本保持一致。根 `env.ps1` / `run-codex.ps1` 更新时，必须同步 `Version_History` 下的四份常用/YOLO 模式文件：常用两份与根文件逐字节相同；YOLO 启动脚本与根相同，env 基于根生成，保持 `CODEX_PORTABLE_PROFILE=strict`，仅将 approval 改为 `never`、sandbox 改为 `danger-full-access`，并保留原 YOLO 的 `CODEX_SANDBOX_NETWORK_ACCESS=true`。Fast、扩展默认值及其他修复全部同步，不另维护旧版客户端身份。用回归验证差异仅为这三项赋值。其他真正历史资料不批量替换；账号格式转换器独立维护。
-11. **验证与交付。** 运行与变更相关的回归，明确区分通过、失败、跳过和未运行；不能用假输出或空程序冒充工具可用。保留用户改动，使用现有 checkout，不另建 worktree，除非用户要求。提交/推送前核对差异、引用、Git LFS 工件及私密/临时文件排除；没有执行的 Windows、真实账号或设备流程不得写成已通过。
+11. **验证与交付。** 运行与变更相关的回归，明确区分通过、失败、跳过和未运行；不能用假输出或空程序冒充工具可用。保留用户改动，使用现有 checkout，不另建 worktree，除非用户要求。提交/推送前核对差异、引用、Git LFS 工件及私密/临时文件排除；没有执行的 Windows、真实账号或设备流程不得写成已通过。正式包从干净提交的文件清单生成，包含实际 LFS 工件，逐项验证 ZIP，并附来源提交与 SHA-256；不递归打包整个工作目录。
 12. **按任务启用，默认关闭 Fast。** `CODEX_FAST_MODE=false`；Plugins、用户 MCP 默认关闭，维护模式也不自动启用。扩展配置须同时满足对应开关和本次 `--portable-extensions`。发现、读取技能或进入维护模式不代表授权运行其工具；只有用户明确提出相关任务，才检查依赖、启动服务、连接设备或操作目标。包内安装不等于授权控制整台电脑或模拟器；实际任务仍限已选目标。
 13. **GitHub Actions 只手动运行。** 所有工作流仅允许 `workflow_dispatch`，不添加 push、PR、定时或关联工作流自动触发。临时下载使用短保留期，不建立长期大文件缓存；产物取回并校验后及时删除本次 artifact、临时分支/发行附件及下载缓存。未能执行或清理须明确报告，不能将保留期代替主动清理。
 14. **及时提交并推送。** 每完成一批可独立验证、文档已同步的修改就提交并推送到用户指定仓库，不将大量已完成改动或多个提交长期堆在本地。推送前检查差异和测试，推送后核对远端提交；未完成的功能留待下一批，不能为赶进度发布已知损坏入口。
 15. **控制体积与重复能力。** 默认面向 DBA、Python 爬虫/数据处理和偶尔开发调试；保留常用运行依赖，低频 Go 编译和 Python EXE 打包优先放独立项目的手动 GitHub Actions，不自动补回编译工具。同一用途优先复用已装依赖；浏览器统一为一套 Playwright 和一份配套 Chromium，不并装 ChromeDriver、第二套浏览器或 Chrome DevTools MCP。先检查现有 API/CDP 是否能完成任务，再考虑新增工具并说明收益与体积。精简前核对上游查找路径、共享依赖和实际功能；不因文件名相似就删除官方助手或资源，不为体积牺牲已保留功能。所有可配置的 profile、下载、缓存、临时文件随包根移动；不能以“便携”名义隐藏系统权限或工具自身的限制。
+
+## 2026-10-23：发布复查与打包
+
+**精简决定：** 复核后没有可无损删去的大块内容。C/C++ PDF 开发文件及两份搜索程序最多约可省 10.5 MB 解压体积；用户明确选择保留现状，修复 bug 后发布。没有删除这些候选、现有测试或模式/转换器资料。
+
+**修复：** 之前只在依赖安装器中禁用了宿主 pip 配置，普通 Agent 命令仍可能经 Windows 系统路径读取 `pip.ini`。根启动器、五个 BAT、子进程环境和生成的 shell 配置现统一固定 `PIP_CONFIG_FILE=nul`，模式副本同步；真实 bundled pip 加载器的合成回归验证普通和 isolated 模式下均不读取配置文件。
+
+**发行准备：** 新增打包器，仅接受已提交且干净的完整 checkout，拒绝私密路径、链接、Windows 文件名冲突和 LFS 指针，验证固定运行包身份；ZIP 生成后逐项检查内容摘要与 CRC，另产出来源清单和 SHA256SUMS。补齐官方固定版本的 LICENSE/NOTICE，保留原始字节。新增手动发布工作流，在 Windows 运行回归后打包，上传 draft 成功才转为正式 Release；不创建长期 artifact 或缓存，结束后清理本次 runner 文件。真实账号、在线 Agent/Host、提权沙箱与设备操作仍不属于该工作流的验收范围。
+
+**当前发布限制：** 本云环境的 Git 推送可用，GitHub Release API 请求被网络策略拒绝。Windows 发布工作流及最终 Release 是否完成须以实际运行和远端附件为准，不能将本地 ZIP、代码提交或工作流文件当作已发布。
 
 ## 2026-10-23：DBA/Python 用途精简
 
@@ -133,9 +143,9 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 
 | 检查 | 结果与范围 |
 | --- | --- |
-| Python unittest discovery | 67 项通过：13 项 helper、4 项 HTTP 超时、5 项发行包、17 项 Android、14 项 PDF、2 项可选依赖摘要/架构、2 项模式副本、9 项 wheel 锁/修复边界、1 项 Windows 依赖闭合检查 |
+| Python unittest discovery | 72 项通过：13 项 helper、4 项 HTTP 超时、5 项运行包、17 项 Android、14 项 PDF、2 项可选依赖摘要/架构、2 项模式副本、9 项 wheel 锁/修复边界、1 项 Windows 依赖闭合、1 项 pip 配置隔离、4 项发行 ZIP 检查 |
 | `test_portable_config.ps1` | 13 项通过，2 项导出检查跳过；升级时另曾用匹配 0.163.0 的实际 bundled JSON 完成全部 15 项 |
-| `test_portable_paths.ps1` | 13 项通过：真实加载 env.ps1，覆盖 15 个派生路径、中文/空格、旧根、无关 cwd、移动目录及 9 个受保护/未审核变量；另验证真实启动器函数清除 Go/uv 变量、保留 Python/Node 路径并转发自定义 header，不执行整个启动链 |
+| `test_portable_paths.ps1` | 14 项通过：真实加载 env.ps1，覆盖 15 个派生路径、中文/空格、旧根、无关 cwd、移动目录及受保护/未审核变量；另验证真实启动器函数清除 Go/uv 变量、保留 Python/Node 路径、转发 header，并将 pip 配置禁用传到子进程和 TOML，不执行整个启动链 |
 | `test_python_setup.ps1` | 4 组通过：实际 pip 参数、配置禁用与子进程变量筛选、修复范围拒绝早于任何 pip 调用、完整祖先链接拒绝；不执行安装 |
 | 官方 PyPI wheel 解析 | Windows x64 / CPython 3.14 的 36 个固定版本解析成功，候选锁生成和校验通过；未执行 Windows 安装 |
 | `test_instruction_paths.ps1` | 3 项通过：普通文件成功，真实硬链接/符号链接被拒绝；Linux 仅替换 Windows 路径包含判断，链接检查及写入用生产函数 |
@@ -145,7 +155,7 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 | `test_automation_process.ps1` | 生产监督器 C# 编译通过；实际继承/捕获标准流需 Windows，Linux 明确跳过 |
 | `test_automation.js` | 6 项通过：实际固定版 MCP 初始化与工具筛选、拒绝未选任务、路径边界、禁止能力、依赖字节摘要；不启动浏览器 |
 | `test_bootstrap_paths.ps1` | Linux 明确跳过；15 个 Windows BAT 普通/junction 用例未运行，不执行真实客户端 |
-| 语法、格式与 BAT 静态检查 | 全部 31 个第一方 PowerShell 文件解析通过，91 个第一方 Python 文件 AST 检查通过；5 个 BAT 的 ASCII/CRLF、Go/uv 变量清除和祖先检查先于目录创建检查通过。按 CRLF 规则检查项目差异；保留的官方运行文件与 npm payload 字节未改写 |
+| 语法、格式与 BAT 静态检查 | 全部 31 个第一方 PowerShell 文件解析通过，94 个第一方 Python 文件 AST 检查通过；5 个 BAT 的 ASCII/CRLF、Go/uv 变量清除、pip 配置禁用和祖先检查先于目录创建检查通过。按 CRLF 规则检查项目差异；保留的官方运行文件与 npm payload 字节未改写 |
 | 转换器 smoke / static audit | 通过；一个合成 fixture、四账号、17 种输出，命令见子项目 README |
 
 在包根使用 Windows PowerShell 5.1 复验：

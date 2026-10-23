@@ -8,6 +8,8 @@
 
 ## 开始使用
 
+优先下载 [Releases](https://github.com/rileyaaa/Codex-Portable/releases) 中命名为 `Codex-Portable-版本-windows-x64.zip` 的发行附件，并用同次发布的 `SHA256SUMS` 核对摘要。GitHub 自动生成的 Source code ZIP 不等同于便携发行包。
+
 `codex.exe` 使用 Git LFS 管理。通过 Git 克隆后先执行 `git lfs pull`；使用源码 ZIP 时确认其中包含实际 EXE，而不是文本形式的 LFS 指针。缺少实际工件时按[工具文档](tool/工具更新说明.md)取得并校验完整运行包。
 
 1. 解压到独立目录，例如 `D:\Codex` 或 `E:\Tools\Codex Portable`。不要从压缩包、网络盘或 symlink/junction 路径运行。
@@ -159,6 +161,8 @@ $env:CODEX_MODEL = "上游实际提供的模型名"
 当前包保留 Python 的网络、数据、Office/PDF 依赖，支持日常脚本开发和调试；Node 用于已有浏览器工具与账号转换器，Android 已有工具和技能也保留。Git、完整 Android SDK/JDK、Office 渲染和 OCR 等可选工具尚未预置，目录或变量存在不表示工具已安装。
 
 Go、PyInstaller 及其专用构建依赖、uv 系列和可再生 Python 字节码已移出默认包。本地 Python 依赖维护改用包内 pip、固定版本和 wheel 摘要；需要编译或 EXE 打包时，在独立仓库手动运行 GitHub Actions，取回并校验产物后及时清理。安装位置、下载来源和更新步骤统一见 [工具下载与更新](tool/工具更新说明.md)。
+
+启动器固定 `PIP_CONFIG_FILE=nul`，日常 Agent 命令与安装器均不读取宿主的 `pip.ini`；依赖维护参数按工具文档显式指定。
 
 | 现象 | 处理 |
 | --- | --- |
