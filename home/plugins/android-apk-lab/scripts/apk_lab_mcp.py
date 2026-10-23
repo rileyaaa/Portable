@@ -655,6 +655,14 @@ def handle(req):
     return rpc_error(rid, -32601, f"method not found: {method}")
 
 
+def write_rpc(response):
+    # MCP stdio is UTF-8 JSON regardless of the Windows console/pipe code page.
+    # ASCII escapes preserve every Unicode value while remaining valid UTF-8;
+    # binary output also prevents PYTHONIOENCODING from changing wire bytes.
+    sys.stdout.buffer.write((json.dumps(response, ensure_ascii=True) + "\n").encode("ascii"))
+    sys.stdout.buffer.flush()
+
+
 def main() -> int:
     # This switch records the caller's task-scope decision; it cannot determine
     # user intent. No environment variable or maintenance mode enables it.
@@ -667,6 +675,7 @@ def main() -> int:
     # Validate the optional output override lexically before resolving links.
     inside_jobs(JOBS_ROOT)
     while True:
+        # Decode the protocol bytes explicitly, never through locale-bound stdin.
         raw = sys.stdin.buffer.readline(MAX_RPC_LINE_BYTES + 1)
         if not raw:
             break
@@ -676,8 +685,7 @@ def main() -> int:
             # JSON-RPC messages on the stdio transport.
             while raw and not raw.endswith(b"\n"):
                 raw = sys.stdin.buffer.readline(MAX_RPC_LINE_BYTES + 1)
-            sys.stdout.write(json.dumps(rpc_error(None, -32700, "request line too large")) + "\n")
-            sys.stdout.flush()
+            write_rpc(rpc_error(None, -32700, "request line too large"))
             continue
         try:
             req = json.loads(raw.decode("utf-8"))
@@ -687,8 +695,7 @@ def main() -> int:
         except Exception as exc:
             response = rpc_error(None, -32000, f"{type(exc).__name__}: {exc}")
         if response is not None:
-            sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
+            write_rpc(response)
     return 0
 
 

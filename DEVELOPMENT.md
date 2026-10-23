@@ -27,7 +27,7 @@
 
 **修复：** 之前只在依赖安装器中禁用了宿主 pip 配置，普通 Agent 命令仍可能经 Windows 系统路径读取 `pip.ini`。根启动器、五个 BAT、子进程环境和生成的 shell 配置现统一固定 `PIP_CONFIG_FILE=nul`，模式副本同步；真实 bundled pip 加载器的合成回归验证普通和 isolated 模式下均不读取配置文件。
 
-**边界复查：** 修复 PPT 多张缩略图派生文件、Poppler 可执行文件和 Android 映射/规则输入漏验链接的问题；登录 HTTP helper 移除未使用的文件参数，只接收启动器传入的标准输入。官方账号默认改用设备码，避免系统默认浏览器写入宿主资料；原方式仅在明确设置 `CODEX_BROWSER_LOGIN_FLOW=system_browser` 后启用，失败不自动回退，模式副本同步。
+**边界复查：** 修复 PPT 多张缩略图派生文件、Poppler 可执行文件和 Android 映射/规则输入漏验链接的问题；登录 HTTP helper 移除未使用的文件参数，只接收启动器传入的标准输入。Windows 实测暴露 Android MCP 的中文 JSON 响应受默认码页影响，现统一通过字节流输出合法 ASCII/UTF-8 JSON，并覆盖低码页及无效 UTF-8 后恢复处理。官方账号默认改用设备码，避免系统默认浏览器写入宿主资料；原方式仅在明确设置 `CODEX_BROWSER_LOGIN_FLOW=system_browser` 后启用，失败不自动回退，模式副本同步。
 
 **浏览器：** 固定资料改为 `cache/browser`，任务结束关闭进程并保留 Cookies/登录；“清理缓存”统一删除，并与浏览器通过独立锁互斥。修复固定 MCP 上游关闭连接未必关闭浏览器上下文的问题，由包装器显式持有和关闭上下文。只下载固定官方 Chromium ZIP，不额外安装 ffmpeg、winldd、ChromeDriver 或第二套浏览器。
 

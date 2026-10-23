@@ -128,6 +128,50 @@ class AndroidExtensionTests(unittest.TestCase):
         self.assertTrue((expected / "metadata" / "intake.json").is_file())
         self.assertEqual(list(self.outside.iterdir()), [])
 
+    def test_utf8_mcp_wire_survives_ascii_and_windows_legacy_stdio_encodings(self):
+        apk = self.apk("中文输入.apk")
+        outside = self.outside / "中文私密.apk"
+        outside.write_bytes(b"must not read")
+        requests = [
+            {"jsonrpc": "2.0", "id": "中文成功", "method": "tools/call",
+             "params": {"name": "apk.inspect", "arguments": {"path": str(apk)}}},
+            {"jsonrpc": "2.0", "id": "中文错误", "method": "tools/call",
+             "params": {"name": "未知工具", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": "中文拒绝", "method": "tools/call",
+             "params": {"name": "apk.inspect", "arguments": {"path": str(outside)}}},
+        ]
+        # Send real UTF-8 Chinese bytes, not JSON \u escapes. Locale decoding
+        # would corrupt the path or stop the stream before the successful reply.
+        wire = "".join(json.dumps(request, ensure_ascii=False) + "\n" for request in requests).encode("utf-8")
+        wire += b"\xff\n"  # Invalid UTF-8 is a parse error, not locale text.
+        wire += (json.dumps({"jsonrpc": "2.0", "id": "继续消息", "method": "ping"},
+                            ensure_ascii=False) + "\n").encode("utf-8")
+        for encoding in ("ascii", "cp1252"):
+            with self.subTest(stdio_encoding=encoding):
+                env = {**self.env, "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0",
+                       "PYTHONIOENCODING": encoding + ":strict"}
+                run = subprocess.run(
+                    [sys.executable, "-B", str(self.server), "--task-authorized"],
+                    input=wire, capture_output=True, timeout=15, cwd=self.package, env=env,
+                )
+                self.assertEqual(run.returncode, 0, run.stderr.decode("ascii", "backslashreplace"))
+                self.assertTrue(run.stdout.isascii(), "MCP output must not depend on a Windows code page")
+                responses = [json.loads(line) for line in run.stdout.decode("utf-8").splitlines()]
+                self.assertEqual(len(responses), 5)
+                self.assertEqual(responses[0]["id"], "中文成功")
+                self.assertFalse(responses[0]["result"]["isError"])
+                payload = json.loads(responses[0]["result"]["content"][0]["text"])
+                self.assertEqual(payload["path"], str(apk))
+                self.assertEqual(payload["packageRoot"], str(self.package))
+                self.assertEqual(responses[1]["id"], "中文错误")
+                self.assertIn("未知工具", responses[1]["error"]["message"])
+                self.assertEqual(responses[2]["id"], "中文拒绝")
+                self.assertTrue(responses[2]["result"]["isError"])
+                self.assertIn("中文私密.apk", responses[2]["result"]["content"][0]["text"])
+                self.assertEqual(responses[3]["error"]["code"], -32700)
+                self.assertEqual(responses[4], {"jsonrpc": "2.0", "id": "继续消息", "result": {}})
+        self.assertEqual(outside.read_bytes(), b"must not read")
+
     def test_outside_and_private_inputs_are_denied_without_jobs(self):
         outside = self.outside / "private.apk"
         outside.write_bytes(b"must not read")

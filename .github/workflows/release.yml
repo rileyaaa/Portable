@@ -32,6 +32,7 @@ jobs:
           fetch-depth: 1
 
       - name: Prepare package-local test state
+        id: prepare
         shell: powershell
         env:
           RELEASE_VERSION: ${{ inputs.version }}
@@ -78,23 +79,27 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Converter audit failure.' }
 
       - name: Run Windows PowerShell 5.1 and native client checks
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $engine = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          $testFailures = @()
           foreach ($test in @('test_portable_config','test_portable_paths','test_instruction_paths',
               'test_bootstrap_paths','test_extension_policy','test_runtime_preflight',
               'test_python_setup','test_automation_paths','test_automation_process','test_browser_login_flow')) {
             & $engine -NoProfile -ExecutionPolicy Bypass -File ".\tests\$test.ps1"
-            if ($LASTEXITCODE -ne 0) { throw "Windows regression failure: $test" }
+            if ($LASTEXITCODE -ne 0) { $testFailures += $test }
           }
           $reported = & .\codex.exe --version
           if ($LASTEXITCODE -ne 0) { throw 'Native Codex version check failed.' }
           $expected = (Get-Content .\tool\runtime-manifest.json -Raw | ConvertFrom-Json).version
           if (($reported -join "`n") -notmatch [regex]::Escape($expected)) { throw 'Client version mismatch.' }
           Write-Output $reported
+          if ($testFailures.Count) { throw ('Windows regression failures: ' + ($testFailures -join ', ')) }
 
       - name: Exercise the real browser in an owned relocated fixture
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
