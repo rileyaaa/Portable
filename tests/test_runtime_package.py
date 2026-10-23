@@ -72,17 +72,20 @@ class RuntimePackageTests(unittest.TestCase):
                 self.manifest["files"]["codex-code-mode-host.exe"]["sha256"],
             )
 
-    def test_text_agent_package_omits_only_voice_component(self):
+    def test_text_agent_package_retains_active_runtime_dependencies(self):
         self.assertIn("voice", self.manifest["excluded_components"])
+        self.assertIn("duplicate_sandbox_resources", self.manifest["excluded_components"])
         self.assertFalse((ROOT / "codex-resources/voice").exists())
-        # All non-voice inputs from this official Windows ZIP remain available.
+        # Keep one complete root-level helper set. Upstream resolves these before
+        # the duplicate resources copies; a missing helper may search host PATH.
         self.assertEqual(set(self.manifest["files"]), {
             "codex.exe", "codex-code-mode-host.exe", "codex-package.json",
             "codex-path/rg.exe", "codex-command-runner.exe",
             "codex-windows-sandbox-setup.exe",
-            "codex-resources/codex-command-runner.exe",
-            "codex-resources/codex-windows-sandbox-setup.exe",
         })
+        self.assertTrue((ROOT / "codex-resources").is_dir())
+        for name in ("codex-command-runner.exe", "codex-windows-sandbox-setup.exe"):
+            self.assertFalse((ROOT / "codex-resources" / name).exists())
 
     def test_all_native_helpers_are_windows_x64(self):
         # Search, sandbox and voice helpers must match the main client's platform.

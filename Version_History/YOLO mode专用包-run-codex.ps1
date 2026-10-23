@@ -234,7 +234,7 @@ Assert-PortablePinnedExecutableAcl "codex.exe" $CodexExe
 # This hardened launcher is version-specific.  Never run the 0.163.0 config/schema
 # assumptions against an older, newer, zero-byte, or locally modified Codex binary.
 $ExpectedCodexVersion = "0.163.0"
-$ExpectedRuntimeManifestSha256 = "96205C2D35E170EB98165EA4EA4E88F222C6FBC270556662041182D9B013FAA3"
+$ExpectedRuntimeManifestSha256 = "A116B3D64EB5FE8DDE7F380E3551E1FC5065920FA32B2F13E8279D86B92E7C27"
 $ExpectedCodexSha256 = "2692C8C7BB2CF8B0AEFE638741FC90236F4B824C59578CE84994F9DE58200993"
 $CodeModeHost = Join-Path $Root "codex-code-mode-host.exe"
 $ExpectedCodeModeHostSha256 = "07F3869F0849CD54B31CEC1F86EC796F004501BD3A215135C1FACC883A2B9988"
@@ -485,9 +485,6 @@ $Dirs = @(
     "cache\android\mitmproxy",
     "cache\android\appium",
     "cache\android\apk-lab",
-    "cache\go",
-    "cache\go-build",
-    "cache\gomod",
     "cache\gradle",
     "cache\maven",
     "cache\npm",
@@ -497,21 +494,18 @@ $Dirs = @(
     "cache\pnpm",
     "cache\pnpm-store",
     "cache\pycache",
-    "cache\uv",
     "cache\yarn",
     "tool",
     "tool\android",
     "tool\android\cli",
     "tool\android\cli\bin",
     "tool\bin",
-    "tool\go",
     "tool\node",
     "tool\git",
     "tool\git\cmd",
     "tool\git\bin",
     "tool\python",
-    "tool\python\Scripts",
-    "tool\uv-tools"
+    "tool\python\Scripts"
 )
 foreach ($Dir in $Dirs) {
     $dirPath = Join-Path $Root $Dir
@@ -722,9 +716,6 @@ $env:NODE_REPL_HISTORY = Join-Path $PortableHome ".node_repl_history"
 $env:YARN_CACHE_FOLDER = Join-Path $PortableCache "yarn"
 $env:PNPM_HOME = Join-Path $PortableCache "pnpm"
 $env:PNPM_STORE_DIR = Join-Path $PortableCache "pnpm-store"
-$env:GOPATH = Join-Path $PortableCache "go"
-$env:GOCACHE = Join-Path $PortableCache "go-build"
-$env:GOMODCACHE = Join-Path $PortableCache "gomod"
 $env:GRADLE_USER_HOME = Join-Path $PortableCache "gradle"
 $env:MAVEN_OPTS = "-Dmaven.repo.local=`"" + (Join-Path $PortableCache "maven") + "`""
 $env:POWERSHELL_TELEMETRY_OPTOUT = "1"
@@ -738,20 +729,12 @@ New-Item -ItemType Directory -Force -Path $PortablePsModules | Out-Null
 $env:CODEX_INSTALL_DIR = $Root
 
 # ------------------------------------------------------------
-# 2.1 便携工具链：tool 目录（python / node / go / uv 等）
-#     全部前插 PATH；uv / python 的缓存与安装目录固定到包内，避免越界写入用户目录
+# 2.1 便携工具：tool 目录（python / node 等）
+#     全部前插 PATH；Python 的缓存与安装目录固定到包内，避免越界写入用户目录
 # ------------------------------------------------------------
 $PortableTool = Join-Path $Root "tool"
 $env:CODEX_PYTHON = Join-Path $PortableTool "python\python.exe"
-$env:UV_CACHE_DIR          = Join-Path $PortableCache "uv"
-$env:UV_PYTHON_INSTALL_DIR = Join-Path $PortableTool "python"
-$env:UV_TOOL_DIR           = Join-Path $PortableTool "uv-tools"
-$env:UV_TOOL_BIN_DIR       = Join-Path $PortableTool "bin"
 $env:PYTHONPYCACHEPREFIX   = Join-Path $PortableCache "pycache"
-
-# Go：编译器在 tool\go（GOPATH/GOCACHE/GOMODCACHE 已在上方便携缓存区统一配置）；这里只补 GOROOT 与禁止联网自动换工具链
-$env:GOROOT      = Join-Path $PortableTool "go"
-$env:GOTOOLCHAIN = "local"
 
 # Android SDK build-tools 使用版本目录（例如 build-tools\36.0.0），不能写死版本号。
 # 优先选最高版本的完整目录；若只有不完整目录，则仍加入最高可用目录，交给检查器逐项 WARN。
@@ -806,7 +789,6 @@ $ToolPaths = @(
     (Join-Path $PortableCache "npm-prefix"),
     (Join-Path $PortableCache "npm-prefix\node_modules\.bin"),
     (Join-Path $PortableCache "pnpm"),
-    (Join-Path $PortableTool "go\bin"),
     (Join-Path $PortableTool "android\jdk\bin"),
     (Join-Path $PortableTool "android\sdk\platform-tools"),
     (Join-Path $PortableTool "android\sdk\emulator"),
@@ -1000,6 +982,10 @@ $script:CodexPortableAutoModelInstructions = $false
 # env.ps1/env.local.ps1 加载后，重新固定所有“便携边界常量”。
 # 用户配置只能改变模型/API/代理等业务值，不能把工具链、用户目录或缓存重新指向宿主机。
 function Reset-PortableInvariantEnvironment {
+    # This edition ships runtime tools only; stale compiler paths must not survive.
+    foreach ($name in @('GOPATH','GOCACHE','GOMODCACHE','GOROOT','GOTOOLCHAIN','UV_CACHE_DIR','UV_PYTHON_INSTALL_DIR','UV_TOOL_DIR','UV_TOOL_BIN_DIR')) {
+        Remove-Item ("Env:" + $name) -ErrorAction SilentlyContinue
+    }
     $env:CODEX_HOME = Join-Path $Root "home"
     $env:CODEX_SQLITE_HOME = Join-Path $Root "sqlite"
     $env:CODEX_INSTALL_DIR = $Root
@@ -1037,17 +1023,8 @@ function Reset-PortableInvariantEnvironment {
     $env:YARN_CACHE_FOLDER = Join-Path $PortableCache "yarn"
     $env:PNPM_HOME = Join-Path $PortableCache "pnpm"
     $env:PNPM_STORE_DIR = Join-Path $PortableCache "pnpm-store"
-    $env:GOPATH = Join-Path $PortableCache "go"
-    $env:GOCACHE = Join-Path $PortableCache "go-build"
-    $env:GOMODCACHE = Join-Path $PortableCache "gomod"
-    $env:GOROOT = Join-Path $PortableTool "go"
-    $env:GOTOOLCHAIN = "local"
     $env:GRADLE_USER_HOME = Join-Path $PortableCache "gradle"
     $env:MAVEN_OPTS = "-Dmaven.repo.local=`"" + (Join-Path $PortableCache "maven") + "`""
-    $env:UV_CACHE_DIR = Join-Path $PortableCache "uv"
-    $env:UV_PYTHON_INSTALL_DIR = Join-Path $PortableTool "python"
-    $env:UV_TOOL_DIR = Join-Path $PortableTool "uv-tools"
-    $env:UV_TOOL_BIN_DIR = Join-Path $PortableTool "bin"
     $env:POWERSHELL_TELEMETRY_OPTOUT = "1"
     $env:PSModuleAnalysisCachePath = Join-Path $PortableLocalData "Microsoft\Windows\PowerShell\ModuleAnalysisCache"
     $env:PSModulePath = $PortablePsModules + ";" + (Join-Path $PSHOME "Modules")
@@ -1132,9 +1109,9 @@ foreach ($portableName in @(
     "CODEX_HOME", "CODEX_SQLITE_HOME", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "ALLUSERSPROFILE",
     "TEMP", "TMP", "TMPDIR", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
     "PIP_CACHE_DIR", "PYTHONUSERBASE", "NPM_CONFIG_CACHE", "NPM_CONFIG_PREFIX", "NPM_CONFIG_GLOBALCONFIG", "NPM_CONFIG_USERCONFIG", "NODE_REPL_HISTORY",
-    "YARN_CACHE_FOLDER", "PNPM_HOME", "PNPM_STORE_DIR", "GOPATH", "GOCACHE", "GOMODCACHE",
-    "GRADLE_USER_HOME", "UV_CACHE_DIR", "UV_PYTHON_INSTALL_DIR", "UV_TOOL_DIR", "UV_TOOL_BIN_DIR",
-    "PYTHONPYCACHEPREFIX", "GOROOT", "PSModuleAnalysisCachePath", "CODEX_INSTALL_DIR",
+    "YARN_CACHE_FOLDER", "PNPM_HOME", "PNPM_STORE_DIR",
+    "GRADLE_USER_HOME",
+    "PYTHONPYCACHEPREFIX", "PSModuleAnalysisCachePath", "CODEX_INSTALL_DIR",
     "ANDROID_HOME", "ANDROID_SDK_ROOT", "ANDROID_USER_HOME", "ANDROID_SDK_HOME", "JAVA_HOME", "ADB_VENDOR_KEYS",
     "APKTOOL_FRAMEWORK_DIR", "FRIDA_CACHE_DIR", "MITMPROXY_HOME", "APPIUM_HOME", "APK_LAB_CACHE_DIR", "APK_LAB_TMP_DIR", "APK_LAB_JOBS_DIR"
 )) {
@@ -1450,7 +1427,7 @@ if ($ConfiguredAuthMode -notin @("menu", "last", "api", "account_json", "browser
 }
 
 # 普通模式的持久缓存也不能成为跨会话代码注入点。Python pycache、Gradle
-# user-home、Go module cache、npm/yarn/pnpm store 等都可能保存后续会话会加载或
+# user-home、npm/yarn/pnpm store 等都可能保存后续会话会加载或
 # 执行的内容。因此它们在普通模式全部重定向到本次启动独有的 tmp 子目录；
 # 维护模式才继续使用 cache 下的持久位置。
 $PortableSessionState = $null
@@ -1470,12 +1447,8 @@ if (-not $PortableMaintenanceMode) {
     $env:NODE_REPL_HISTORY = Join-Path $PortableSessionState "node-repl-history"
     $env:YARN_CACHE_FOLDER = Join-Path $PortableSessionState "yarn"
     $env:PNPM_STORE_DIR = Join-Path $PortableSessionState "pnpm-store"
-    $env:GOPATH = Join-Path $PortableSessionState "go"
-    $env:GOCACHE = Join-Path $PortableSessionState "go-build"
-    $env:GOMODCACHE = Join-Path $PortableSessionState "gomod"
     $env:GRADLE_USER_HOME = Join-Path $PortableSessionState "gradle"
     $env:MAVEN_OPTS = "-Dmaven.repo.local=`"" + (Join-Path $PortableSessionState "maven") + "`""
-    $env:UV_CACHE_DIR = Join-Path $PortableSessionState "uv"
     $env:PSModuleAnalysisCachePath = Join-Path $PortableSessionState "powershell\ModuleAnalysisCache"
     $env:APKTOOL_FRAMEWORK_DIR = Join-Path $PortableSessionState "android\apktool-framework"
     $env:FRIDA_CACHE_DIR = Join-Path $PortableSessionState "android\frida"
@@ -1794,8 +1767,8 @@ function Set-CodexChildPortableEnvironment {
         "PATH","CODEX_HOME","CODEX_SQLITE_HOME","HOME","USERPROFILE","HOMEDRIVE","HOMEPATH","APPDATA","LOCALAPPDATA","PROGRAMDATA","ALLUSERSPROFILE",
         "TEMP","TMP","TMPDIR","XDG_CACHE_HOME","XDG_CONFIG_HOME","XDG_DATA_HOME","XDG_STATE_HOME","PIP_CACHE_DIR","PYTHONUSERBASE",
         "NPM_CONFIG_CACHE","NPM_CONFIG_PREFIX","NPM_CONFIG_GLOBALCONFIG","NPM_CONFIG_USERCONFIG","NODE_REPL_HISTORY","YARN_CACHE_FOLDER","PNPM_HOME","PNPM_STORE_DIR",
-        "GOPATH","GOCACHE","GOMODCACHE","GOROOT","GOTOOLCHAIN","GRADLE_USER_HOME","MAVEN_OPTS","POWERSHELL_TELEMETRY_OPTOUT","PSModuleAnalysisCachePath","PSModulePath",
-        "UV_CACHE_DIR","UV_PYTHON_INSTALL_DIR","UV_TOOL_DIR","UV_TOOL_BIN_DIR","PYTHONPYCACHEPREFIX","GIT_CONFIG_NOSYSTEM","CODEX_INSTALL_DIR","CODEX_PYTHON",
+        "GRADLE_USER_HOME","MAVEN_OPTS","POWERSHELL_TELEMETRY_OPTOUT","PSModuleAnalysisCachePath","PSModulePath",
+        "PYTHONPYCACHEPREFIX","GIT_CONFIG_NOSYSTEM","CODEX_INSTALL_DIR","CODEX_PYTHON",
         "ANDROID_HOME","ANDROID_SDK_ROOT","ANDROID_USER_HOME","ANDROID_SDK_HOME","JAVA_HOME","ADB_VENDOR_KEYS","APKTOOL_FRAMEWORK_DIR","FRIDA_CACHE_DIR","MITMPROXY_HOME","APPIUM_HOME",
         "APK_LAB_CACHE_DIR","APK_LAB_TMP_DIR","APK_LAB_JOBS_DIR","HTTP_PROXY","HTTPS_PROXY","ALL_PROXY","NO_PROXY","http_proxy","https_proxy","all_proxy","no_proxy"
     )
@@ -2141,7 +2114,7 @@ if ($ShowStartupMenu) {
     $MenuProxyOn = (-not [string]::IsNullOrWhiteSpace($env:CODEX_PROXY_ENABLED)) -and ($env:CODEX_PROXY_ENABLED.Trim().ToLowerInvariant() -in @("1","true","yes","y","on"))
     if ($MenuNetOn -and $MenuProxyOn) {
         Write-Host ""
-        Write-Host "联网时本机命令是否也走代理（npm/pip/go 下依赖时走 v2ray）:" -ForegroundColor Cyan
+        Write-Host "联网时本机命令是否也走代理（npm/pip 下依赖时走 v2ray）:" -ForegroundColor Cyan
         Write-Host "  1) 否(只代理 API)   2) 是(下依赖也走代理)   [回车=默认: $DefProxySub]" -ForegroundColor Cyan
         $ProxyNetChoice = Read-Host "请选择联网命令是否走代理 (1/2, 回车=默认: $DefProxySub)"
         switch ($ProxyNetChoice.Trim()) {
@@ -3176,19 +3149,10 @@ Append-TomlSet $Builder "NODE_REPL_HISTORY" $env:NODE_REPL_HISTORY
 Append-TomlSet $Builder "YARN_CACHE_FOLDER" $env:YARN_CACHE_FOLDER
 Append-TomlSet $Builder "PNPM_HOME" $env:PNPM_HOME
 Append-TomlSet $Builder "PNPM_STORE_DIR" $env:PNPM_STORE_DIR
-Append-TomlSet $Builder "GOPATH" $env:GOPATH
-Append-TomlSet $Builder "GOCACHE" $env:GOCACHE
-Append-TomlSet $Builder "GOMODCACHE" $env:GOMODCACHE
-Append-TomlSet $Builder "GOROOT" $env:GOROOT
-Append-TomlSet $Builder "GOTOOLCHAIN" $env:GOTOOLCHAIN
 Append-TomlSet $Builder "GRADLE_USER_HOME" $env:GRADLE_USER_HOME
 Append-TomlSet $Builder "MAVEN_OPTS" $env:MAVEN_OPTS
 Append-TomlSet $Builder "POWERSHELL_TELEMETRY_OPTOUT" $env:POWERSHELL_TELEMETRY_OPTOUT
 Append-TomlSet $Builder "PSModuleAnalysisCachePath" $env:PSModuleAnalysisCachePath
-Append-TomlSet $Builder "UV_CACHE_DIR" $env:UV_CACHE_DIR
-Append-TomlSet $Builder "UV_PYTHON_INSTALL_DIR" $env:UV_PYTHON_INSTALL_DIR
-Append-TomlSet $Builder "UV_TOOL_DIR" $env:UV_TOOL_DIR
-Append-TomlSet $Builder "UV_TOOL_BIN_DIR" $env:UV_TOOL_BIN_DIR
 Append-TomlSet $Builder "PYTHONPYCACHEPREFIX" $env:PYTHONPYCACHEPREFIX
 Append-TomlSet $Builder "CODEX_INSTALL_DIR" $env:CODEX_INSTALL_DIR
 Append-TomlSet $Builder "CODEX_PYTHON" $env:CODEX_PYTHON
@@ -3208,7 +3172,7 @@ Append-TomlSet $Builder "APK_LAB_JOBS_DIR" $env:APK_LAB_JOBS_DIR
 if (-not [string]::IsNullOrWhiteSpace($env:HOMEDRIVE)) { Append-TomlSet $Builder "HOMEDRIVE" $env:HOMEDRIVE }
 if (-not [string]::IsNullOrWhiteSpace($env:HOMEPATH)) { Append-TomlSet $Builder "HOMEPATH" $env:HOMEPATH }
 
-# 联网时本机命令也走代理：把代理变量传给沙箱子命令(npm/pip/go)。
+# 联网时本机命令也走代理：把代理变量传给沙箱子命令(npm/pip)。
 # 仅在 代理开 + 选了走代理 + 联网开 时注入（联网关时子命令本就断网，注入无意义）。
 # 外层 IsNullOrWhiteSpace 守卫：socks5 模式下 HTTP_PROXY 为 $null，避免写出空值。
 if ($ProxyEnabled -and $ProxyForSubprocess -and $SandboxNetworkAccess -eq "true") {

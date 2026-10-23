@@ -1,6 +1,6 @@
 ﻿# ============================================================
 # Codex Portable - 工具 / Python 环境一键准备脚本
-# 作用：用 uv 给便携 python 安装 pip 与常用包，全部锁在当前 Codex 包内。
+# 作用：用包内 Python/pip 维护固定运行依赖；只接受 wheel，不在本机编译。
 # 用法：联网后，在 PowerShell 中运行本脚本。可反复运行（补装/重建）。
 # 依赖源：tool\python-packages.in.txt；首次成功解析/安装后会生成含版本与分发 hash 的完整 python-packages.lock.txt。
 # 后续默认 --require-hashes 严格按 lock 重装，避免版本/工件随时间漂移。
@@ -8,32 +8,39 @@
 $ErrorActionPreference = 'Stop'
 
 $ToolDir = $PSScriptRoot
-$Root    = [IO.Path]::GetFullPath((Split-Path -Parent $ToolDir)).TrimEnd('\')
-if (-not ((Test-Path -LiteralPath (Join-Path $Root 'codex.exe') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $Root 'env.ps1') -PathType Leaf))) {
-    throw "当前 tool 目录不属于有效 Codex 便携包：$ToolDir"
+$Root = [IO.Path]::GetFullPath((Split-Path -Parent $ToolDir)).TrimEnd('\')
+
+function Assert-SetupPathAncestors([string]$Path) {
+    # Walk from volume root toward the leaf before probing any descendants.
+    $chain = New-Object 'System.Collections.Generic.List[string]'
+    $cursor = [IO.Path]::GetFullPath($Path)
+    while (-not [string]::IsNullOrWhiteSpace($cursor)) {
+        [void]$chain.Add($cursor)
+        $parent = [IO.Path]::GetDirectoryName($cursor)
+        if ($parent -eq $cursor) { break }
+        $cursor = $parent
+    }
+    for ($index = $chain.Count - 1; $index -ge 0; $index--) {
+        $item = Get-Item -LiteralPath $chain[$index] -Force -ErrorAction SilentlyContinue
+        if ($null -eq $item) { continue }
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Setup path contains a junction/symlink/reparse point.' }
+        if ($index -gt 0 -and -not $item.PSIsContainer) { throw 'Setup path ancestor is not a directory.' }
+    }
 }
-$RootItem = Get-Item -LiteralPath $Root -Force -ErrorAction Stop
-if (($RootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "拒绝以重解析点作为 Codex Portable 根目录：$Root" }
+
+Assert-SetupPathAncestors $PSCommandPath
+foreach ($marker in @('codex.exe','env.ps1')) {
+    $markerPath = Join-Path $Root $marker
+    Assert-SetupPathAncestors $markerPath
+    if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) { throw 'Current tool directory is not a valid portable package.' }
+}
 
 function Resolve-PortableSetupPath([string]$Path) {
     $full = [IO.Path]::GetFullPath($Path).TrimEnd('\')
-    $rootItemNow = Get-Item -LiteralPath $Root -Force -ErrorAction Stop
-    if (($rootItemNow.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "拒绝重解析点包根：$Root" }
     if (-not ($full.Equals($Root,[StringComparison]::OrdinalIgnoreCase) -or $full.StartsWith($Root + '\',[StringComparison]::OrdinalIgnoreCase))) {
         throw "拒绝包外路径：$Path"
     }
-    if (-not $full.Equals($Root,[StringComparison]::OrdinalIgnoreCase)) {
-        $relative = $full.Substring($Root.Length).TrimStart('\')
-        $cursor = $Root
-        foreach ($part in @($relative -split '\\')) {
-            if ([string]::IsNullOrWhiteSpace($part)) { continue }
-            $cursor = Join-Path $cursor $part
-            if (Test-Path -LiteralPath $cursor) {
-                $item = Get-Item -LiteralPath $cursor -Force
-                if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "拒绝重解析点路径：$cursor" }
-            }
-        }
-    }
+    Assert-SetupPathAncestors $full
     return $full
 }
 
@@ -87,8 +94,6 @@ $PyDir   = Join-Path $ToolDir 'python'
 $PyExe   = Join-Path $PyDir 'python.exe'
 $Site    = Join-Path $PyDir 'Lib\site-packages'
 $PyCliBin = Join-Path $Site 'bin'
-$UvExe   = Join-Path $Bin 'uv.exe'
-$CacheUv = Join-Path $Root 'cache\uv'
 $CacheDir = Join-Path $Root 'cache'
 $PortableHome = Join-Path $Root 'home-runtime'
 $PortableAppData = Join-Path $Root 'appdata'
@@ -98,10 +103,9 @@ $PortableTmp = Join-Path $Root 'tmp'
 $RequirementsIn = Join-Path $ToolDir 'python-packages.in.txt'
 $RequirementsLock = Join-Path $ToolDir 'python-packages.lock.txt'
 $RefreshCliShims = Join-Path $ToolDir 'refresh-python-cli-shims.py'
-# First resolution is frozen to the audit date; future package releases are not
-# silently admitted. After that first successful resolution, the exact installed
-# direct+transitive set is captured in python-packages.lock.txt.
-$DependencyExcludeNewer = '2026-09-09T00:00:00Z'
+$LockHelper = Join-Path $ToolDir 'python-lock.py'
+# Direct versions are pinned in the input; the report locks the complete wheel
+# closure by SHA-256. Source builds and implicit optional bundles are excluded.
 
 # 便携环境：缓存与解释器全部指向包内，绝不写出当前 Codex 包
 $env:HOME = $PortableHome
@@ -129,8 +133,6 @@ $psModuleCacheDir = Join-Path $PortableLocalAppData 'Microsoft\Windows\PowerShel
 $env:PSModuleAnalysisCachePath = Join-Path $psModuleCacheDir 'ModuleAnalysisCache'
 $portablePsModules = Resolve-PortableSetupPath (Join-Path $CacheDir 'powershell\modules')
 $env:PSModulePath = $portablePsModules + ';' + (Join-Path $PSHOME 'Modules')
-$env:UV_CACHE_DIR = $CacheUv
-$env:UV_PYTHON_INSTALL_DIR = $PyDir
 $env:PIP_CACHE_DIR = Join-Path $CacheDir 'pip'
 $env:PYTHONUSERBASE = Join-Path $CacheDir 'python-userbase'
 $env:PYTHONPYCACHEPREFIX = Join-Path $CacheDir 'pycache'
@@ -174,6 +176,8 @@ Get-ChildItem Env: | Where-Object {
 $env:GIT_CONFIG_NOSYSTEM = '1'
 $env:PYTHONDONTWRITEBYTECODE = '1'
 $env:PYTHONNOUSERSITE = '1'
+# pip --isolated alone still loads system config; os.devnull disables all files.
+$env:PIP_CONFIG_FILE = 'nul'
 $systemPaths = @(
     (Join-Path $env:SystemRoot 'System32'),
     $env:SystemRoot,
@@ -186,7 +190,7 @@ $portablePaths = @(
     (Resolve-PortableSetupPath (Join-Path $PyDir 'Scripts')),
     (Resolve-PortableSetupPath $PyCliBin)
 )
-# 安装器必须可重复且不依赖宿主 PATH；只使用包内 uv/python + Windows 基础系统目录。
+# 安装器必须可重复且不依赖宿主 PATH；只使用包内 python/pip + Windows 基础系统目录。
 $env:PATH = (($portablePaths + $systemPaths) |
     Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique) -join ';'
 
@@ -230,12 +234,39 @@ function Set-SetupChildPortableEnvironment([System.Diagnostics.ProcessStartInfo]
         'PATH','HOME','USERPROFILE','HOMEDRIVE','HOMEPATH','APPDATA','LOCALAPPDATA','PROGRAMDATA','ALLUSERSPROFILE',
         'TEMP','TMP','TMPDIR','XDG_CACHE_HOME','XDG_CONFIG_HOME','XDG_DATA_HOME','XDG_STATE_HOME',
         'PSModuleAnalysisCachePath','PSModulePath','POWERSHELL_TELEMETRY_OPTOUT',
-        'UV_CACHE_DIR','UV_PYTHON_INSTALL_DIR','PIP_CACHE_DIR','PYTHONUSERBASE','PYTHONPYCACHEPREFIX','PYTHONDONTWRITEBYTECODE','PYTHONNOUSERSITE',
+        'PIP_CONFIG_FILE','PIP_CACHE_DIR','PYTHONUSERBASE','PYTHONPYCACHEPREFIX','PYTHONDONTWRITEBYTECODE','PYTHONNOUSERSITE',
         'NPM_CONFIG_CACHE','NPM_CONFIG_PREFIX','NPM_CONFIG_GLOBALCONFIG','NPM_CONFIG_USERCONFIG','NODE_REPL_HISTORY',
         'CODEX_INSTALL_DIR','CODEX_PYTHON','GIT_CONFIG_NOSYSTEM'
     )) {
         Set-SetupProcessEnvironmentValue $ProcessStartInfo $name ([Environment]::GetEnvironmentVariable($name))
     }
+}
+
+function Assert-SetupInstallTree([string]$Path) {
+    $pending = New-Object 'System.Collections.Generic.Stack[string]'
+    $pending.Push((Resolve-PortableSetupPath $Path))
+    while ($pending.Count -gt 0) {
+        $dir = Resolve-PortableSetupPath $pending.Pop()
+        foreach ($entry in @(Get-ChildItem -LiteralPath $dir -Force -ErrorAction Stop)) {
+            [void](Resolve-PortableSetupPath $entry.FullName)
+            if ($entry.PSIsContainer) { $pending.Push($entry.FullName) }
+            else { [void](Assert-PortableSetupRegularFile 'installed Python file' $entry.FullName) }
+        }
+    }
+}
+
+function Get-SetupPipArguments {
+    param([ValidateSet('Resolve','Install')][string]$Action,[string]$Requirements,[string]$Report='')
+    $arguments = @('-s','-B','-m','pip','--isolated','--disable-pip-version-check','--no-input',
+        '--cache-dir',$env:PIP_CACHE_DIR,'install','--index-url','https://pypi.org/simple',
+        '--only-binary=:all:','--no-compile','--target',$Site,'--requirement',$Requirements)
+    if ($Action -eq 'Resolve') {
+        if ([string]::IsNullOrWhiteSpace($Report)) { throw 'A report path is required for wheel resolution.' }
+        $arguments += @('--dry-run','--ignore-installed','--report',$Report)
+    } else {
+        $arguments += @('--require-hashes','--upgrade')
+    }
+    return $arguments
 }
 
 function Invoke-SetupPortableChild {
@@ -319,7 +350,8 @@ if (Test-Path -LiteralPath $UnsafeNodeInstaller -PathType Leaf) {
 
 try {
     [void](Assert-PortableSetupRegularFile 'portable python' $PyExe)
-    [void](Assert-PortableSetupRegularFile 'uv.exe' $UvExe)
+    [void](Assert-PortableSetupRegularFile 'bundled pip' (Join-Path $Site 'pip\__main__.py'))
+    [void](Assert-PortableSetupRegularFile 'dependency lock helper' $LockHelper)
     [void](Assert-PortableSetupRegularFile 'Python CLI shim refresher' $RefreshCliShims)
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
@@ -340,15 +372,18 @@ if ([string]::IsNullOrWhiteSpace(($requirementsInputText -replace '(?m)^\s*#.*$'
 }
 
 $Site = Resolve-PortableSetupPath $Site
-$CacheUv = Resolve-PortableSetupPath $CacheUv
 $PyExe = Resolve-PortableSetupPath $PyExe
-$UvExe = Resolve-PortableSetupPath $UvExe
 New-Item -ItemType Directory -Force -Path $Site | Out-Null
-New-Item -ItemType Directory -Force -Path $CacheUv | Out-Null
 foreach ($dir in @($PortableHome, $PortableAppData, $PortableLocalAppData, $PortableProgramData, $PortableTmp, $psModuleCacheDir, $portablePsModules, $env:PIP_CACHE_DIR, $env:PYTHONUSERBASE, $env:PYTHONPYCACHEPREFIX, $env:NPM_CONFIG_CACHE, $env:NPM_CONFIG_PREFIX)) {
     $safeDir = Resolve-PortableSetupPath $dir
     New-Item -ItemType Directory -Force -Path $safeDir | Out-Null
 }
+
+Assert-SetupInstallTree $PyDir
+$inputCode = Invoke-SetupPortableChild -Executable $PyExe -Arguments @('-s','-B',$LockHelper,'validate-input','--requirements',$RequirementsIn)
+if ($inputCode -ne 0) { throw 'Python input must contain reviewed exact version pins only.' }
+$runtimeCode = Invoke-SetupPortableChild -Executable $PyExe -Arguments @('-s','-B',$LockHelper,'validate-runtime','--requirements',$RequirementsIn)
+if ($runtimeCode -ne 0) { throw 'Fixed runtime repair refused: use controlled maintenance for version changes, extra packages or custom launchers. No pip installation was started.' }
 
 $hasLock = $false
 if (Test-Path -LiteralPath $RequirementsLock -PathType Leaf) {
@@ -360,62 +395,40 @@ if (Test-Path -LiteralPath $RequirementsLock -PathType Leaf) {
         exit 1
     }
 }
+# Both report and lock candidates are private to this invocation. Existing lock
+# input hashes must match the current manifest; edits never silently reuse stale
+# dependency selections. Keep a previous lock until replacement is validated.
 $LockCandidate = $null
+$ReportCandidate = $null
 $LockForInstall = $RequirementsLock
 try {
     if ($hasLock) {
-        Write-Host "使用现有 hash lock 安装 Python 常用包到 $Site ..." -ForegroundColor Cyan
+        $checkCode = Invoke-SetupPortableChild -Executable $PyExe -Arguments @('-s','-B',$LockHelper,'validate','--lock',$RequirementsLock,'--requirements',$RequirementsIn)
+        if ($checkCode -ne 0) { throw 'Python lock does not match the current pinned input; deliberately regenerate it before installing.' }
+        Write-Host "使用现有 hash lock 安装 Python 运行包到 $Site ..." -ForegroundColor Cyan
     } else {
-        # Resolve against the real bundled Windows Python, freeze the release horizon,
-        # and record hashes before running third-party build/install code. Do not
-        # publish the lock until the exact candidate also installs successfully.
-        $LockCandidate = Resolve-PortableSetupPath (Join-Path $ToolDir ('.python-packages-lock-' + [Guid]::NewGuid().ToString('N') + '.tmp'))
-        Write-Host "首次解析并生成带 hash 的完整依赖锁（release cutoff: $DependencyExcludeNewer）..." -ForegroundColor Cyan
-        $compileArgs = @(
-            'pip','compile',$RequirementsIn,
-            '--python',$PyExe,
-            '--output-file',$LockCandidate,
-            '--exclude-newer',$DependencyExcludeNewer,
-            '--resolution','highest',
-            '--generate-hashes',
-            '--no-header',
-            '--no-annotate'
-        )
-        $compileCode = Invoke-SetupPortableChild -Executable $UvExe -Arguments $compileArgs
-        if ($compileCode -ne 0 -or -not (Test-Path -LiteralPath $LockCandidate -PathType Leaf)) {
-            Write-Host "生成依赖 lock 失败，退出码 $compileCode；未发布不完整 lock。" -ForegroundColor Red
-            exit $(if ($compileCode -ne 0) { $compileCode } else { 2 })
-        }
-        try {
-            [void](Assert-PortableSetupRegularFile 'generated dependency lock' $LockCandidate)
-            if ((Get-Item -LiteralPath $LockCandidate -Force -ErrorAction Stop).Length -eq 0) { throw 'generated lock is empty' }
-        } catch {
-            Write-Host "生成的依赖 lock 不安全或为空：$($_.Exception.Message)" -ForegroundColor Red
-            exit 2
-        }
+        $LockCandidate = Resolve-PortableSetupPath (Join-Path $PortableTmp ('python-lock-' + [Guid]::NewGuid().ToString('N') + '.txt'))
+        $ReportCandidate = Resolve-PortableSetupPath (Join-Path $PortableTmp ('python-report-' + [Guid]::NewGuid().ToString('N') + '.json'))
+        if ((Test-Path -LiteralPath $LockCandidate) -or (Test-Path -LiteralPath $ReportCandidate)) { throw 'Setup staging path already exists.' }
+        Write-Host '解析固定运行依赖并锁定 wheel 摘要；不下载源码构建依赖。' -ForegroundColor Cyan
+        $reportArgs = Get-SetupPipArguments -Action Resolve -Requirements $RequirementsIn -Report $ReportCandidate
+        $reportCode = Invoke-SetupPortableChild -Executable $PyExe -Arguments $reportArgs
+        if ($reportCode -ne 0) { throw "Python wheel resolution failed (exit $reportCode); no lock published." }
+        [void](Assert-PortableSetupRegularFile 'pip wheel report' $ReportCandidate)
+        $buildCode = Invoke-SetupPortableChild -Executable $PyExe -Arguments @('-s','-B',$LockHelper,'build','--report',$ReportCandidate,'--requirements',$RequirementsIn,'--output',$LockCandidate)
+        if ($buildCode -ne 0) { throw 'Python wheel report failed source/hash validation; no lock published.' }
+        [void](Assert-PortableSetupRegularFile 'generated dependency lock' $LockCandidate)
         $LockForInstall = $LockCandidate
     }
 
-    # Hash verification is mandatory for both an existing lock and a freshly
-    # resolved candidate; no dependency may be fetched outside the recorded set.
-    $uvArgs = @('pip','install','--python',$PyExe,'--target',$Site,'--requirements',$LockForInstall,'--require-hashes')
-    $uvCode = Invoke-SetupPortableChild -Executable $UvExe -Arguments $uvArgs
-    if ($uvCode -ne 0) { Write-Host "安装失败，退出码 $uvCode" -ForegroundColor Red; exit $uvCode }
-
-    if (-not $hasLock) {
-        $candidateText = [IO.File]::ReadAllText($LockCandidate)
-        if ([string]::IsNullOrWhiteSpace($candidateText) -or $candidateText -notmatch '--hash=') {
-            Write-Host "候选 lock 缺少依赖 hash，拒绝发布。" -ForegroundColor Red
-            exit 2
-        }
-        $lockHeader = "# Auto-generated by tool\setup-tools.ps1`n# First-resolution cutoff: $DependencyExcludeNewer`n# Exact direct/transitive versions + distribution hashes; install uses --require-hashes.`n# Recreate intentionally by deleting this file and rerunning setup-tools.ps1.`n"
-        Write-SetupUtf8Atomic -Path $RequirementsLock -Text ($lockHeader + $candidateText.Trim() + "`n")
-        Write-Host "已生成带 hash 的锁文件：tool\python-packages.lock.txt" -ForegroundColor Green
-    }
+    $pipArgs = Get-SetupPipArguments -Action Install -Requirements $LockForInstall
+    $pipCode = Invoke-SetupPortableChild -Executable $PyExe -Arguments $pipArgs
+    if ($pipCode -ne 0) { throw "Python wheel installation failed (exit $pipCode); candidate lock not published." }
+} catch {
+    if ($null -ne $LockCandidate -and (Test-Path -LiteralPath $LockCandidate)) { Remove-Item -LiteralPath $LockCandidate -Force }
+    throw
 } finally {
-    if ($null -ne $LockCandidate -and (Test-Path -LiteralPath $LockCandidate)) {
-        Remove-Item -LiteralPath $LockCandidate -Force -ErrorAction SilentlyContinue
-    }
+    if ($null -ne $ReportCandidate -and (Test-Path -LiteralPath $ReportCandidate)) { Remove-Item -LiteralPath $ReportCandidate -Force }
 }
 
 Write-Host "刷新可移动 Python CLI shims ..." -ForegroundColor Cyan
@@ -427,16 +440,21 @@ if ($shimCode -ne 0) {
 }
 
 Write-Host "验证导入 ..." -ForegroundColor Cyan
-$importCode = "import requests, bs4, lxml, pandas, numpy, openpyxl, dateutil, six, yaml, rich, defusedxml, pdfplumber, pdf2image, reportlab, pypdfium2, pytesseract, openai, markitdown; print('import OK')"
+$importCode = "import pip, requests, httpx, bs4, lxml.etree, pandas, numpy, openpyxl, dateutil, six, yaml, rich, docx, pptx, PIL, xlsxwriter, typing_extensions, socks, defusedxml, pymupdf, pymupdf4llm, tabulate, packaging; print('runtime imports OK')"
 $code = Invoke-SetupPortableChild -Executable $PyExe -Arguments @('-c',$importCode)
 
 Write-Host ""
 if ($code -eq 0) {
-    Write-Host "完成：python + pip 常用包已就绪，全部位于 tool\python 内（不出包）。" -ForegroundColor Green
+    if ($null -ne $LockCandidate) {
+        $candidateText = [IO.File]::ReadAllText((Assert-PortableSetupRegularFile 'verified dependency lock' $LockCandidate))
+        Write-SetupUtf8Atomic -Path $RequirementsLock -Text $candidateText
+    }
+    Write-Host "完成：Python 运行依赖已就绪，全部位于 tool\python；未执行源码编译。" -ForegroundColor Green
 } else {
     Write-Host "导入验证未通过（退出码 $code），请查看上面的报错。" -ForegroundColor Yellow
 }
 } finally {
+if ($null -ne $LockCandidate -and (Test-Path -LiteralPath $LockCandidate)) { Remove-Item -LiteralPath $LockCandidate -Force -ErrorAction SilentlyContinue }
 if ($null -ne $SetupFileLock) { try { $SetupFileLock.Dispose() } catch {}; $SetupFileLock = $null }
 if ($SetupMutexHeld) { try { $SetupMutex.ReleaseMutex() } catch {}; $SetupMutexHeld = $false }
 if ($null -ne $SetupMutex) { try { $SetupMutex.Dispose() } catch {} }

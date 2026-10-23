@@ -27,8 +27,7 @@
         "tool/python/Lib/site-packages/defusedxml-0.7.1.dist-info/LICENSE": "b80ce9da8c42a1f91079627fbbe2bf27210ae108a0ffe5f077d5b08e076c24c8",
         "tool/python/Lib/site-packages/defusedxml-0.7.1.dist-info/METADATA": "369d3cef64870daf849fba711cb8d05a7efe3c8d9ab0f763adc34079fe378bb1",
         "tool/python/Lib/site-packages/defusedxml-0.7.1.dist-info/WHEEL": "9064fbe0b5b245466b2f85602e1ebf835d8879597ff6ef5956169dae05d95046",
-        "tool/python/Lib/site-packages/defusedxml-0.7.1.dist-info/top_level.txt": "4061daf74179d2954a856485944448d23b522ada83886c9f7995fb750359000c",
-        "tool/python/Lib/site-packages/defusedxml-0.7.1.dist-info/RECORD": "1c4ec9b1ae138525b07f52247c885bdd05f0ee0f833af74a7a427001b18db63f"
+        "tool/python/Lib/site-packages/defusedxml-0.7.1.dist-info/top_level.txt": "4061daf74179d2954a856485944448d23b522ada83886c9f7995fb750359000c"
       }
     },
     {
@@ -152,8 +151,7 @@
         "tool/python/Lib/site-packages/pymupdf-1.26.6.dist-info/WHEEL": "50d3a8365836c950c31389b47166585f10c0b69085073bc27928af534fcae7a1",
         "tool/python/Lib/site-packages/pymupdf-1.26.6.dist-info/METADATA": "ad71f662e08dab1878ae0728af0702655af3c042c8bf0589c54f0056ee4c479b",
         "tool/python/Lib/site-packages/pymupdf-1.26.6.dist-info/COPYING": "40e60697600535eabfb5ae05f72829d88cfe8d02dd4792f5a754f6f51dabe55b",
-        "tool/python/Lib/site-packages/pymupdf-1.26.6.dist-info/entry_points.txt": "f4d707fc25641d5b8b3711354d86dfc17c0295590c70cf3dd133132770b97c30",
-        "tool/python/Lib/site-packages/pymupdf-1.26.6.dist-info/RECORD": "e80363bb377f8e91b7f9a2564372befdaa845c146dcac3e5faeb68db48cbf97a"
+        "tool/python/Lib/site-packages/pymupdf-1.26.6.dist-info/entry_points.txt": "f4d707fc25641d5b8b3711354d86dfc17c0295590c70cf3dd133132770b97c30"
       }
     },
     {
@@ -182,8 +180,7 @@
         "tool/python/Lib/site-packages/pymupdf4llm-0.2.9.dist-info/licenses/LICENSE": "6f1e622c82a380075843bb084a7ec3b1f1d12a4a02526d75e78b0924a860aa75",
         "tool/python/Lib/site-packages/pymupdf4llm-0.2.9.dist-info/METADATA": "72b3815503fb88a4c4ae769c9a2aa08b359f0043e067a04e90cfa208c1892182",
         "tool/python/Lib/site-packages/pymupdf4llm-0.2.9.dist-info/WHEEL": "ff309ddcdd65ebd02bc724dbf2bcc4a0ff53a5b61792a44548d383e4ebb19d3b",
-        "tool/python/Lib/site-packages/pymupdf4llm-0.2.9.dist-info/top_level.txt": "9b313f0acdd39ce9e1406257318170bff7881d6288f7c5c43867e6d091a221bb",
-        "tool/python/Lib/site-packages/pymupdf4llm-0.2.9.dist-info/RECORD": "a9fce97f8ee458cafa0f3232424ebb27d87bdb786fef122d6168bf864f725e4a"
+        "tool/python/Lib/site-packages/pymupdf4llm-0.2.9.dist-info/top_level.txt": "9b313f0acdd39ce9e1406257318170bff7881d6288f7c5c43867e6d091a221bb"
       }
     },
     {
@@ -203,9 +200,17 @@
         "tool/python/Lib/site-packages/tabulate-0.9.0.dist-info/METADATA": "f2802aade2612091b45951f265af29174f90c3236f68cc8ccdeb646941e62969",
         "tool/python/Lib/site-packages/tabulate-0.9.0.dist-info/WHEEL": "1b5e87e00dc87a84269cead8578b9e6462928e18a95f1f3373c9eef451a5bcc0",
         "tool/python/Lib/site-packages/tabulate-0.9.0.dist-info/entry_points.txt": "f039828416266b69f852a0b556490a6c3e4dbb832b7596ac511a1e4ed1b4255a",
-        "tool/python/Lib/site-packages/tabulate-0.9.0.dist-info/top_level.txt": "a9faa44366b3ecb4f151e45e3ed5fc8209a1dbde0a7f5111748fb5d5a5aa1595",
-        "tool/python/Lib/site-packages/tabulate-0.9.0.dist-info/RECORD": "d0d7f60f74b603df0888069b87b3526bd0573089e8fad81b1dbc6589b5c201f0"
+        "tool/python/Lib/site-packages/tabulate-0.9.0.dist-info/top_level.txt": "a9faa44366b3ecb4f151e45e3ed5fc8209a1dbde0a7f5111748fb5d5a5aa1595"
       }
     }
-  ]
+  ],
+  "file_hash_policy": {
+    "excluded_installer_metadata": [
+      "tool/python/Lib/site-packages/defusedxml-0.7.1.dist-info/RECORD",
+      "tool/python/Lib/site-packages/pymupdf-1.26.6.dist-info/RECORD",
+      "tool/python/Lib/site-packages/pymupdf4llm-0.2.9.dist-info/RECORD",
+      "tool/python/Lib/site-packages/tabulate-0.9.0.dist-info/RECORD"
+    ],
+    "reason": "Installers rewrite installed RECORD files even for the same wheel. Original wheel SHA-256 remains recorded; all other listed runtime, metadata and license bytes remain verified."
+  }
 }

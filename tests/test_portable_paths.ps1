@@ -34,7 +34,7 @@ function Set-SyntheticLocalEnv {
 }
 
 function Invoke-EnvWorker {
-    param([string]$PackageRoot, [string]$RejectedVariable = '')
+    param([string]$PackageRoot, [string]$RejectedVariable = '', [switch]$RuntimeTools)
     $Start = New-Object Diagnostics.ProcessStartInfo
     $Start.FileName = $Engine
     # ProcessStartInfo executes directly, without a command shell. The worker
@@ -51,6 +51,8 @@ function Invoke-EnvWorker {
     $Start.EnvironmentVariables['CODEX_TEST_OLD_ROOT'] = $OldRoot
     $Start.EnvironmentVariables['CODEX_TEST_UNRELATED_ROOT'] = $UnrelatedRoot
     $Start.EnvironmentVariables['CODEX_TEST_REJECTED_VARIABLE'] = $RejectedVariable
+    $Start.EnvironmentVariables['CODEX_TEST_RUNTIME_TOOLS'] = [string][int]$RuntimeTools.IsPresent
+    $Start.EnvironmentVariables['CODEX_TEST_LAUNCHER'] = Join-Path $RepositoryRoot 'run-codex.ps1'
     $Start.EnvironmentVariables.Remove('CODEX_TEST_OLD_LOCAL_READ')
     $Start.EnvironmentVariables.Remove('CODEX_TEST_UNRELATED_LOCAL_READ')
     $Start.EnvironmentVariables['POWERSHELL_TELEMETRY_OPTOUT'] = '1'
@@ -177,6 +179,64 @@ try {
     }
     if ($env:CODEX_MODEL_INSTRUCTIONS_FILE) { throw 'Explicit empty model instructions were not retained.' }
     if ((Get-Location).Path -cne $env:CODEX_TEST_UNRELATED_ROOT) { throw 'Loading env.ps1 changed the working directory.' }
+    if ($env:CODEX_TEST_RUNTIME_TOOLS -eq '1') {
+        # Exercise the real launcher reset and child-environment builder without
+        # running native clients or creating tool/runtime state directories.
+        $Tokens = $null; $Errors = $null
+        $Ast = [Management.Automation.Language.Parser]::ParseFile($env:CODEX_TEST_LAUNCHER, [ref]$Tokens, [ref]$Errors)
+        if ($Errors.Count) { throw 'Launcher parse failure.' }
+        foreach ($Name in @('Reset-PortableInvariantEnvironment','Set-PortableProcessPath',
+                            'Set-CodexChildPortableEnvironment','Set-ProcessEnvironmentValue',
+                            'Get-ConfiguredHeaderEnvironmentVariableNames')) {
+            $Definition = @($Ast.FindAll({param($Node) $Node -is [Management.Automation.Language.FunctionDefinitionAst]}, $true) | Where-Object { $_.Name -eq $Name })
+            if ($Definition.Count -ne 1) { throw 'Missing launcher function.' }
+            . ([scriptblock]::Create($Definition[0].Extent.Text))
+        }
+        $Root = $ExpectedRoot
+        $PortableTool = Join-Path $Root 'tool'; $PortableCache = Join-Path $Root 'cache'
+        $PortableHome = Join-Path $Root 'home-runtime'; $PortableTmp = Join-Path $Root 'tmp'
+        $PortableWork = Join-Path $Root 'work'; $PortableAppData = Join-Path $Root 'appdata'
+        $PortableLocalData = Join-Path $Root 'localappdata'; $PortableProgramData = Join-Path $Root 'programdata'
+        $PortablePsModules = Join-Path $PortableCache 'powershell/modules'
+        $SystemPaths = @()
+        # Path security is covered by dedicated tests; this adapter keeps the
+        # environment-mapping test runnable with Linux path separators too.
+        function Assert-PortablePath {
+            param([string]$Name, [string]$Path)
+            if (-not [IO.Path]::GetFullPath($Path).StartsWith($Root + [IO.Path]::DirectorySeparatorChar)) {
+                throw 'Generated tool path left the synthetic package.'
+            }
+        }
+        $ToolAssignment = @($Ast.FindAll({param($Node) $Node -is [Management.Automation.Language.AssignmentStatementAst]}, $true) | Where-Object { $_.Left.Extent.Text -eq '$ToolPaths' } | Sort-Object { $_.Extent.StartOffset } | Select-Object -First 1)
+        if ($ToolAssignment.Count -ne 1) { throw 'Missing tool PATH definition.' }
+        . ([scriptblock]::Create($ToolAssignment[0].Extent.Text))
+        $GoNames = @('GOPATH','GOCACHE','GOMODCACHE','GOROOT','GOTOOLCHAIN',
+                     'UV_CACHE_DIR','UV_PYTHON_INSTALL_DIR','UV_TOOL_DIR','UV_TOOL_BIN_DIR')
+        foreach ($Name in $GoNames) { [Environment]::SetEnvironmentVariable($Name, (Join-Path $ExpectedOldRoot 'stale-go'), 'Process') }
+        Reset-PortableInvariantEnvironment
+        $Child = New-Object Diagnostics.ProcessStartInfo
+        Set-CodexChildPortableEnvironment $Child
+        foreach ($Name in $GoNames) {
+            if ([Environment]::GetEnvironmentVariable($Name) -or $Child.EnvironmentVariables.ContainsKey($Name)) {
+                throw "Removed compiler state leaked into process environment: $Name"
+            }
+        }
+        $Paths = @($Child.EnvironmentVariables['PATH'] -split ';')
+        foreach ($Required in @((Join-Path $PortableTool 'python'), (Join-Path $PortableTool 'node'))) {
+            if ($Required -notin $Paths) { throw 'Required runtime PATH disappeared.' }
+        }
+        if ((Join-Path $PortableTool 'go\bin') -in $Paths) { throw 'Removed compiler remains on runtime PATH.' }
+        # Custom headers use ordinary variable names, not the protected CODEX_* namespace.
+        $env:CODEX_ENV_HTTP_HEADERS_TOML = '{ "HTTP-Referer" = "MY_HTTP_REFERER", "X-Title" = "MY_X_TITLE" }'
+        $env:MY_HTTP_REFERER = 'https://synthetic.invalid/'
+        $env:MY_X_TITLE = 'synthetic portable task'
+        Set-CodexChildPortableEnvironment $Child
+        if ($Child.EnvironmentVariables['MY_HTTP_REFERER'] -cne $env:MY_HTTP_REFERER -or
+            $Child.EnvironmentVariables['MY_X_TITLE'] -cne $env:MY_X_TITLE) {
+            throw 'Configured custom headers did not reach the client environment.'
+        }
+        if (Test-Path -LiteralPath $PortableTool) { throw 'Environment setup recreated removed compiler/tool directories.' }
+    }
     Write-Output 'worker-ok'
     exit 0
 } catch {
@@ -194,6 +254,9 @@ try {
         Invoke-EnvWorker $MovedRoot
         Assert-Equal $false (Test-Path -LiteralPath $CurrentRoot) 'Original location must no longer exist'
     }
+    Test-Case 'Launcher keeps runtime paths without a Go installation or inherited compiler state' {
+        Invoke-EnvWorker $MovedRoot -RuntimeTools
+    }
     foreach ($ProtectedName in @('CODEX_INSTALL_DIR', 'CODEX_PYTHON', 'ANDROID_HOME', 'APK_LAB_TMP_DIR',
         'CODEX_ROLLOUT_TRACE_ROOT', 'CODEX_TUI_SESSION_LOG_PATH', 'CODEX_MANAGED_PACKAGE_ROOT',
         'CODEX_WINDOWS_REGISTERED_CORE', 'CODEX_FUTURE_UNREVIEWED_PATH')) {
@@ -209,7 +272,7 @@ try {
         Assert-Equal 3 @(Get-ChildItem -LiteralPath $MovedRoot -Force).Count 'env.ps1 created unexpected package files'
     }
     Write-Output "Passed $Passed portable path tests."
-    Write-Output 'Scope: env.ps1 only; Windows PowerShell 5.1, NTFS and launcher/client startup still require Windows validation.'
+    Write-Output 'Scope: env.ps1 and launcher environment mapping; Windows PowerShell 5.1, NTFS and client startup still require Windows validation.'
 } finally {
     # Never clean the shared tmp directory, other test runs or any real package.
     if (Test-Path -LiteralPath $FixtureRoot) {

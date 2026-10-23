@@ -54,7 +54,7 @@ foreach ($dir in @(
     (Join-Path $PortableLocalAppData "Microsoft\Windows\PowerShell"),
     $PortableCache, (Join-Path $PortableCache "pip"), (Join-Path $PortableCache "npm"),
     (Join-Path $PortableCache "npm-prefix"), (Join-Path $PortableCache "python-userbase"),
-    (Join-Path $PortableCache "pycache"), (Join-Path $PortableCache "uv")
+    (Join-Path $PortableCache "pycache")
 )) {
     if (-not (Test-IsUnderDirectory -Path $dir -Directory $Root)) { throw "拒绝包外或重解析点目录：$dir" }
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -70,7 +70,7 @@ $env:PSModuleAnalysisCachePath=Join-Path $PortableLocalAppData "Microsoft\Window
 $env:PIP_CACHE_DIR=Join-Path $PortableCache "pip"; $env:PYTHONUSERBASE=Join-Path $PortableCache "python-userbase"
 $env:PYTHONPYCACHEPREFIX=Join-Path $PortableCache "pycache"; $env:NPM_CONFIG_CACHE=Join-Path $PortableCache "npm"
 $env:NPM_CONFIG_PREFIX=Join-Path $PortableCache "npm-prefix"; $env:NPM_CONFIG_GLOBALCONFIG=Join-Path $PortableCache "npm\global.npmrc"
-$env:NPM_CONFIG_USERCONFIG=Join-Path $PortableHome ".npmrc"; $env:UV_CACHE_DIR=Join-Path $PortableCache "uv"
+$env:NPM_CONFIG_USERCONFIG=Join-Path $PortableHome ".npmrc"
 $env:CODEX_INSTALL_DIR=$Root; $env:POWERSHELL_TELEMETRY_OPTOUT="1"
 
 if ($PromptHostScan -and -not $ScanHostResidue) {

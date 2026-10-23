@@ -47,3 +47,8 @@ home/codex-runtime-instructions.generated.md
 /home/logout-*.block
 /home/portable-extensions.toml
 /home/.codex-global-state*.json
+
+# Regenerable Python bytecode is not part of the portable runtime payload.
+__pycache__/
+*.pyc
+*.pyo

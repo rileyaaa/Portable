@@ -149,7 +149,7 @@ $env:PSModuleAnalysisCachePath = Join-Path $PortableLocalAppData 'Microsoft\Wind
 $env:PIP_CACHE_DIR = Join-Path $PortableCache 'pip'; $env:PYTHONUSERBASE = Join-Path $PortableCache 'python-userbase'
 $env:PYTHONPYCACHEPREFIX = Join-Path $PortableCache 'pycache'; $env:NPM_CONFIG_CACHE = Join-Path $PortableCache 'npm'
 $env:NPM_CONFIG_PREFIX = Join-Path $PortableCache 'npm-prefix'; $env:NPM_CONFIG_GLOBALCONFIG = Join-Path $PortableCache 'npm\global.npmrc'
-$env:NPM_CONFIG_USERCONFIG = Join-Path $PortableHome '.npmrc'; $env:UV_CACHE_DIR = Join-Path $PortableCache 'uv'
+$env:NPM_CONFIG_USERCONFIG = Join-Path $PortableHome '.npmrc'
 $env:CODEX_INSTALL_DIR = $Root; $env:POWERSHELL_TELEMETRY_OPTOUT = '1'
 $env:ANDROID_HOME = Join-Path $Root 'tool\android\sdk'
 $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
@@ -206,9 +206,9 @@ $PersistentHomeFilePaths = @(
 # `.keep` is a package skeleton marker only at known package-owned locations. Do not
 # preserve an arbitrary user/project file merely because its basename is `.keep`.
 $ExpectedKeepFilePaths = @(
-    'appdata\.keep','appdata\go\.keep','appdata\go\telemetry\.keep',
+    'appdata\.keep',
     'cache\.keep','cache\aws\.keep','cache\azure\.keep','cache\cargo\.keep','cache\composer\.keep',
-    'cache\docker\.keep','cache\dotnet\.keep','cache\go\.keep','cache\gradle\.keep','cache\maven\.keep',
+    'cache\docker\.keep','cache\dotnet\.keep','cache\gradle\.keep','cache\maven\.keep',
     'cache\npm\.keep','cache\nuget\.keep','cache\pip\.keep','cache\pnpm\.keep','cache\pycache\.keep',
     'cache\ruby\.keep','cache\rustup\.keep','cache\yarn\.keep',
     'home-runtime\.keep','home\.keep','home\.sandbox\.keep','home\plugins\.keep',

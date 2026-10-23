@@ -22,14 +22,6 @@
       "upstream_path": "codex-path/rg.exe",
       "sha256": "14231169855ec5205cf5a1b6f1db358ff4aed4247c86b69ce8aae647c77f6680"
     },
-    "codex-resources/codex-command-runner.exe": {
-      "upstream_path": "codex-resources/codex-command-runner.exe",
-      "sha256": "fc89dc66c806f25675b9be1e7dafb226807d22761e9741a3bb24b667b803d46c"
-    },
-    "codex-resources/codex-windows-sandbox-setup.exe": {
-      "upstream_path": "codex-resources/codex-windows-sandbox-setup.exe",
-      "sha256": "2efc67f77de2658667c1481e00a1c4c964d3e8f6d4f39b638620d80b9d0f6d8a"
-    },
     "codex-windows-sandbox-setup.exe": {
       "upstream_path": "codex-windows-sandbox-setup.exe",
       "sha256": "2efc67f77de2658667c1481e00a1c4c964d3e8f6d4f39b638620d80b9d0f6d8a"
@@ -44,6 +36,13 @@
       "reason": "This portable package supports text and agent work only; voice chat is intentionally omitted.",
       "upstream_directory": "codex-resources/voice",
       "upstream_file_count": 39
+    },
+    "duplicate_sandbox_resources": {
+      "reason": "Keep the identical root-level helpers used by the pinned Windows lookup; omit duplicate copies in the resources directory. Elevated sandbox helpers remain available.",
+      "upstream_paths": [
+        "codex-resources/codex-command-runner.exe",
+        "codex-resources/codex-windows-sandbox-setup.exe"
+      ]
     }
   }
 }

@@ -2,6 +2,8 @@
 
 将 Codex、启动器、包内工具和运行状态放在同一目录的便携项目，面向 **Windows x86-64、Windows PowerShell 5.1、本地 NTFS**，不支持 32 位 Windows。当前主客户端与 Code Mode Host 均为官方 **0.163.0**，用于文字与 Agent 工作，保留配套执行、搜索和沙箱组件，不包含语音聊天资源；来源和摘要见 [运行包清单](tool/runtime-manifest.json)。
 
+默认面向 DBA 日常工作、爬虫与数据处理，也保留 Python 开发和调试能力。Python、Node 及已有文档/自动化运行依赖留在包内；低频编译和打包交给独立项目的手动 GitHub Actions，不预装 Go 编译器和 Python EXE 打包工具。
+
 **`D:\Codex` 只是常用位置，不是固定路径。** 解压到其他本地目录后，启动器从自身位置确定包根，重新设置工具、配置、用户状态、缓存和临时目录。当前版本已完成离线回归，Windows 客户端、Host、登录及 NTFS 行为仍待真机验收，详见 [开发文档](DEVELOPMENT.md)。
 
 ## 开始使用
@@ -9,7 +11,7 @@
 `codex.exe` 使用 Git LFS 管理。通过 Git 克隆后先执行 `git lfs pull`；使用源码 ZIP 时确认其中包含实际 EXE，而不是文本形式的 LFS 指针。缺少实际工件时按[工具文档](tool/工具更新说明.md)取得并校验完整运行包。
 
 1. 解压到独立目录，例如 `D:\Codex` 或 `E:\Tools\Codex Portable`。不要从压缩包、网络盘或 symlink/junction 路径运行。
-2. 保留根目录 `codex.exe`、`codex-code-mode-host.exe` 及 `codex-package.json`、`codex-path`、`codex-resources` 等配套内容，不要只复制两个 EXE。
+2. 保留清单中的六个运行文件：主客户端、Code Mode Host、两个根目录沙箱助手、`codex-package.json` 和 `codex-path/rg.exe`，以及布局所需的 `codex-resources` 目录，不要只复制两个 EXE。
 3. 按下文配置认证方式。使用自定义 API 时，需要接口地址、Key 和上游实际支持的模型名；官方账号可在启动菜单选择账号 JSON 或浏览器登录。
 4. 双击 `启动Codex.bat`，按菜单选择登录、思考等级、网络和代理。默认工作目录为包内 `work`。
 
@@ -17,18 +19,20 @@
 
 ### Codex 的几个 EXE 分别做什么
 
-它们来自同一官方运行包，承担不同功能，并不是多装了几套 Codex：
+这些程序来自同一官方版本，承担不同的运行职责：
 
 | 文件 | 用途及保留理由 |
 | --- | --- |
 | `codex.exe` | 主客户端，必需。 |
-| `codex-code-mode-host.exe` | 执行 Code Mode 工具调用的配套进程；当前项目保留此能力，必需与主客户端匹配。 |
-| `codex-command-runner.exe` | Windows 沙箱中的命令执行助手；删除会破坏使用它的沙箱执行路径。 |
-| `codex-windows-sandbox-setup.exe` | Windows 沙箱初始化助手，按需使用；不是另一套客户端。 |
+| `codex-code-mode-host.exe` | Code Mode 工具执行进程，文字 Agent 也会用到；保留此能力就需要它，并且必须与主客户端匹配。 |
+| `codex-command-runner.exe` | **提权 Windows 沙箱（elevated）**的命令执行助手；当前默认 unelevated 路径不调用它。 |
+| `codex-windows-sandbox-setup.exe` | **提权 Windows 沙箱**的初始化助手；普通便携启动不因此自动提权或执行系统初始化。 |
 | `codex-path/rg.exe` | Codex 自带的文件内容搜索程序，避免依赖宿主安装。 |
 | `codex-voice-host.exe` 及语音资源 | 已按项目用途移除，并关闭语音、听写和实时会话配置；文字与 Agent 工作不依赖此组件。 |
 
-两个沙箱助手在根目录和 `codex-resources` 中有同字节副本，这是上游 ZIP 的兼容布局，并非四种工具。去掉语音专用的 39 个文件后，Codex 运行包解压体积从约 **491.6 MB** 降为 **472.2 MB**；不含 `tool` 工具链。两份沙箱重复副本共约 **25.9 MB**，因不同启动路径可能使用不同位置，本次保留。进一步精简必须验证受影响功能和查找路径，不能只看 EXE 数量。
+之前只有 Codex 和 Host 也能运行，是因为默认的 `windows.sandbox="unelevated"` 使用客户端内置的受限令牌执行路径。仍保留一对根目录沙箱助手，是因为 TUI 的 `/elevate-sandbox` 入口可达，不能靠普通配置可靠地移除；缺少助手时，上游还可能退回按文件名查找程序。保留包内匹配文件可避免该功能缺件及宿主程序回退。提权沙箱的系统级初始化需要另行明确授权。
+
+已核对查找顺序并删除 `codex-resources` 中两个相同副本，减少约 **25.9 MB**。连同此前移除的语音组件，Codex 运行文件从上游约 **491.6 MB** 精简为 **446.3 MB**，保留六个文件；不含 `tool` 工具和用户状态。
 
 ## 五个 BAT 入口
 
@@ -152,7 +156,9 @@ $env:CODEX_MODEL = "上游实际提供的模型名"
 
 ## 工具、更新与故障处理
 
-完整工作树包含 Python、Node、Go、Skills、Plugins 和部分工具；Git、完整 Android SDK/JDK、Office/PDF 等工具可能仅预留路径。Minimal Runnable 包只保证其清单列出的基础 Codex/认证能力，不应假定具备完整工具链。安装位置、下载来源和更新步骤统一见 [工具下载与更新](tool/工具更新说明.md)。
+当前包保留 Python 的网络、数据、Office/PDF 依赖，支持日常脚本开发和调试；Node 用于已有浏览器工具与账号转换器，Android 已有工具和技能也保留。Git、完整 Android SDK/JDK、Office 渲染和 OCR 等可选工具尚未预置，目录或变量存在不表示工具已安装。
+
+Go、PyInstaller 及其专用构建依赖、uv 系列和可再生 Python 字节码已移出默认包。本地 Python 依赖维护改用包内 pip、固定版本和 wheel 摘要；需要编译或 EXE 打包时，在独立仓库手动运行 GitHub Actions，取回并校验产物后及时清理。安装位置、下载来源和更新步骤统一见 [工具下载与更新](tool/工具更新说明.md)。
 
 | 现象 | 处理 |
 | --- | --- |

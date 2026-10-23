@@ -1,34 +1,42 @@
-# Codex Portable Python direct dependencies.
-# Edit this file only when intentionally changing the tool set, then remove
-# python-packages.lock.txt and run setup-tools.ps1 once to create a new lock.
-pip
-requests
-httpx
-beautifulsoup4
-lxml
-pandas
-numpy
-openpyxl
-python-dateutil
-six
-pyyaml
-rich
-python-docx
-python-pptx
-pillow
-XlsxWriter
-typing-extensions
-pyinstaller
-PySocks
-pypdf
+# Codex Portable default Python runtime dependencies (Windows x64).
+# Keep installed, audited versions pinned. Compilation/packaging belongs in manual CI.
+# Optional PDF/OCR/OpenAI/MarkItDown dependencies are installed only for an explicit task.
+# When changing this input, deliberately regenerate python-packages.lock.txt.
+pip==26.1.2
+requests==2.34.2
+httpx==0.28.1
+beautifulsoup4==4.15.0
+lxml==6.1.1
+pandas==3.0.3
+numpy==2.4.6
+openpyxl==3.1.5
+python-dateutil==2.9.0.post0
+six==1.17.0
+pyyaml==6.0.3
+rich==15.0.0
+python-docx==1.2.0
+python-pptx==1.0.2
+pillow==12.2.0
+XlsxWriter==3.2.9
+typing-extensions==4.15.0
+PySocks==1.7.1
 defusedxml==0.7.1
 PyMuPDF==1.26.6
 pymupdf4llm==0.2.9
 tabulate==0.9.0
-pdfplumber
-pdf2image
-reportlab
-pypdfium2
-pytesseract
-openai
-markitdown[all]
+packaging==26.2
+
+# Pin the existing transitive runtime closure too; no incidental resolver upgrades.
+anyio==4.13.0
+certifi==2026.5.20
+charset-normalizer==3.4.7
+et_xmlfile==2.0.0
+h11==0.16.0
+httpcore==1.0.9
+idna==3.18
+markdown-it-py==4.2.0
+mdurl==0.1.2
+Pygments==2.20.0
+soupsieve==2.8.4
+tzdata==2026.2
+urllib3==2.7.0

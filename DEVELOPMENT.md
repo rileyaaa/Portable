@@ -18,13 +18,31 @@
 12. **按任务启用，默认关闭 Fast。** `CODEX_FAST_MODE=false`；Plugins、用户 MCP 默认关闭，维护模式也不自动启用。扩展配置须同时满足对应开关和本次 `--portable-extensions`。发现、读取技能或进入维护模式不代表授权运行其工具；只有用户明确提出相关任务，才检查依赖、启动服务、连接设备或操作目标。包内安装不等于授权控制整台电脑或模拟器；实际任务仍限已选目标。
 13. **GitHub Actions 只手动运行。** 所有工作流仅允许 `workflow_dispatch`，不添加 push、PR、定时或关联工作流自动触发。临时下载使用短保留期，不建立长期大文件缓存；产物取回并校验后及时删除本次 artifact、临时分支/发行附件及下载缓存。未能执行或清理须明确报告，不能将保留期代替主动清理。
 14. **及时提交并推送。** 每完成一批可独立验证、文档已同步的修改就提交并推送到用户指定仓库，不将大量已完成改动或多个提交长期堆在本地。推送前检查差异和测试，推送后核对远端提交；未完成的功能留待下一批，不能为赶进度发布已知损坏入口。
-15. **控制体积与重复能力。** 同一用途优先复用已装依赖；浏览器统一为一套 Playwright 和一份配套 Chromium，不并装 ChromeDriver、第二套浏览器或 Chrome DevTools MCP。先检查现有 API/CDP 是否能完成任务，再考虑新增工具并说明收益与体积。精简前核对上游查找路径、共享依赖和实际功能；不因文件名相似就删除官方助手或资源，不为体积牺牲已保留功能。所有可配置的 profile、下载、缓存、临时文件随包根移动；不能以“便携”名义隐藏系统权限或工具自身的限制。
+15. **控制体积与重复能力。** 默认面向 DBA、Python 爬虫/数据处理和偶尔开发调试；保留常用运行依赖，低频 Go 编译和 Python EXE 打包优先放独立项目的手动 GitHub Actions，不自动补回编译工具。同一用途优先复用已装依赖；浏览器统一为一套 Playwright 和一份配套 Chromium，不并装 ChromeDriver、第二套浏览器或 Chrome DevTools MCP。先检查现有 API/CDP 是否能完成任务，再考虑新增工具并说明收益与体积。精简前核对上游查找路径、共享依赖和实际功能；不因文件名相似就删除官方助手或资源，不为体积牺牲已保留功能。所有可配置的 profile、下载、缓存、临时文件随包根移动；不能以“便携”名义隐藏系统权限或工具自身的限制。
+
+## 2026-10-23：DBA/Python 用途精简
+
+**原因与结果：** 本地主要使用文字 Agent、Python 爬虫和数据处理，编译频率低。移除 Go、PyInstaller 及其专用依赖、可再生 Python 字节码、uv/uvx/uvw 和两份重复沙箱助手，项目文件由约 1,146 MB 降为 807 MB，减少约 339 MB（30%）；按解压后的受版本管理文件统计，不含 Git 历史、用户状态和尚未下载的浏览器。Python、Node、Office/PDF、现有 Android 和浏览器脚本依赖保留，36 个 Windows Python 运行包的依赖关系闭合。
+
+默认 unelevated 沙箱使用客户端内置执行路径；两个根目录助手用于 elevated 沙箱。保留它们是因为 TUI 提权入口仍可达，缺件时上游可能按裸文件名查找程序；仅删除已核对同根目录优先查找的资源副本。Codex 运行文件现为六个、约 446.3 MB，固定清单和模式副本同步更新。
+
+| 关联问题 | 最终处理 |
+| --- | --- |
+| 删除编译工具后仍导出旧路径、创建空工具目录 | 五个 BAT 和启动器清除继承的 Go/uv 变量，移除 PATH、缓存骨架及生成配置中的对应项；正常和 YOLO 四份模板同步 |
+| 安装器会补回 PyInstaller 和大范围可选依赖 | 改用已有 Python/pip，固定现有 36 个版本；仅接受官方 PyPI wheel，完整依赖加 SHA-256 锁，安装和导入成功后才发布新锁 |
+| pip 覆盖安装会保留旧版本元数据、替换整个 CLI 目录 | 补装前拒绝版本冲突、重复或额外发行包及无法归属的入口；固定运行集可同版修复，跨版本升级另用受控暂存副本，避免静默损坏用户后来添加的工具 |
+| pip 隔离参数仍可能加载系统配置，安装入口漏查包根祖先 | 显式禁用 pip 配置文件并固定索引；完整祖先检查早于 marker 访问，安装前检查 Python 树中的链接 |
+| 文本输入大小限制误用于大型 EXE marker | marker 只检查普通文件与链接；32 MB 上限仅约束锁输入，回归包含大型稀疏 marker 和超限报告 |
+| 依赖安装器会重写 dist-info/RECORD，导致原始字节摘要误报 | 四个 RECORD 从已安装文件摘要中排除；149 个运行/许可文件、官方完整 wheel 和源码摘要继续校验 |
+| 自定义 header 示例使用受保护的 CODEX_* 名称 | 改为普通变量名，验证生成的子进程环境实际接收配置中的 header 值 |
+
+从官方 PyPI 成功解析全部 36 个 Windows x64 / CPython 3.14 wheel，并生成、验证候选哈希锁；只做解析，没有在 Linux 冒充 Windows 安装。综合回归及待验范围见文末。未新增项目说明文档。
 
 ## 2026-10-20：文字/Agent 精简与联动检查
 
 **原因与范围：** 用户确定不使用语音；此前分项回归不足以覆盖新运行包、进程监督和工具入口之间的依赖。本轮核对固定版本上游的资源查找、沙箱助手缓存和原生变量消费点，检查第一方脚本并执行现有综合回归，不将离线检查称为 Windows 全流程验收。
 
-**精简结果：** 删除语音专用的 39 个文件，减少约 19.4 MB；Codex 运行组件现为 8 个文件、约 472.2 MB，保留主程序、Code Mode Host、搜索和两种沙箱助手的官方布局。生成配置明确关闭 `in_app_voice`、`in_app_dictation`、`realtime_conversation`。两份沙箱兼容副本仍保留；用途和取舍见 README。
+**精简结果：** 删除语音专用的 39 个文件，减少约 19.4 MB；保留主程序、Code Mode Host、搜索和两种沙箱助手。生成配置明确关闭 `in_app_voice`、`in_app_dictation`、`realtime_conversation`。资源目录中的重复沙箱副本已在后续 DBA 精简中移除，当前布局和取舍见 README。
 
 | 联动问题 | 修复结果 |
 | --- | --- |
@@ -107,17 +125,19 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 | Maven bootstrap 路径含空格时缺少内部引号 | 五个 BAT 对齐启动器已有的带引号赋值；这是初始化一致性改进，未证实原 Codex 会话中发生 Maven 故障 |
 | Host 回归使用系统临时目录 | 改为仓库 `tmp` 下独立 fixture，隔离子进程临时状态并仅清理本次文件 |
 
-**保留的限制：** 自定义 MCP/插件配置正文不会自动迁移，旧绝对路径需人工核对。直接绕过 BAT 启动 PowerShell 可能先使用宿主缓存；`tool/setup-tools.ps1` 和 Android 路径/bootstrap 的直接入口没有同等完整祖先保护，应从已验证的正常/维护入口使用，不经 junction 直接调用。这些直接入口场景尚待 Windows 专项处理。
+**保留的限制：** 自定义 MCP/插件配置正文不会自动迁移，旧绝对路径需人工核对。直接绕过 BAT 启动 PowerShell 可能先使用宿主缓存；`tool/setup-tools.ps1` 已补完整祖先保护，Android 路径/bootstrap 的直接入口尚无同等保护。应从已验证的正常/维护入口使用，不经 junction 直接调用；直接入口场景仍待 Windows 专项验证。
 
-## 2026-10-20：验证结果与待验范围
+## 2026-10-23：验证结果与待验范围
 
 本次维护在 Linux x86_64、Python 3.12、PowerShell 7.6.7 上执行。所有回归使用合成数据，没有读取真实认证或请求登录服务。
 
 | 检查 | 结果与范围 |
 | --- | --- |
-| Python unittest discovery | 57 项通过：13 项 helper、4 项 HTTP 超时、5 项发行包、17 项 Android、14 项 PDF、2 项可选依赖摘要/架构、2 项模式副本检查 |
+| Python unittest discovery | 67 项通过：13 项 helper、4 项 HTTP 超时、5 项发行包、17 项 Android、14 项 PDF、2 项可选依赖摘要/架构、2 项模式副本、9 项 wheel 锁/修复边界、1 项 Windows 依赖闭合检查 |
 | `test_portable_config.ps1` | 13 项通过，2 项导出检查跳过；升级时另曾用匹配 0.163.0 的实际 bundled JSON 完成全部 15 项 |
-| `test_portable_paths.ps1` | 12 项通过：真实加载 env.ps1，覆盖 15 个派生路径、中文/空格、旧根、无关 cwd、移动目录及 9 个受保护/未审核变量；不是整个启动链测试 |
+| `test_portable_paths.ps1` | 13 项通过：真实加载 env.ps1，覆盖 15 个派生路径、中文/空格、旧根、无关 cwd、移动目录及 9 个受保护/未审核变量；另验证真实启动器函数清除 Go/uv 变量、保留 Python/Node 路径并转发自定义 header，不执行整个启动链 |
+| `test_python_setup.ps1` | 4 组通过：实际 pip 参数、配置禁用与子进程变量筛选、修复范围拒绝早于任何 pip 调用、完整祖先链接拒绝；不执行安装 |
+| 官方 PyPI wheel 解析 | Windows x64 / CPython 3.14 的 36 个固定版本解析成功，候选锁生成和校验通过；未执行 Windows 安装 |
 | `test_instruction_paths.ps1` | 3 项通过：普通文件成功，真实硬链接/符号链接被拒绝；Linux 仅替换 Windows 路径包含判断，链接检查及写入用生产函数 |
 | `test_extension_policy.ps1` | 12 项通过：Fast/扩展默认关闭、语音配置关闭、维护模式、显式开关、命名空间筛选、配置保留及两条模型指令生成路径 |
 | `test_runtime_preflight.ps1` | 10 项合成工件检查通过：清单先校验、文件缺失/替换/链接、沙箱缓存新旧与状态硬链接；不执行客户端，不读取真实凭据 |
@@ -125,7 +145,7 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 | `test_automation_process.ps1` | 生产监督器 C# 编译通过；实际继承/捕获标准流需 Windows，Linux 明确跳过 |
 | `test_automation.js` | 6 项通过：实际固定版 MCP 初始化与工具筛选、拒绝未选任务、路径边界、禁止能力、依赖字节摘要；不启动浏览器 |
 | `test_bootstrap_paths.ps1` | Linux 明确跳过；15 个 Windows BAT 普通/junction 用例未运行，不执行真实客户端 |
-| 语法、格式与 BAT 静态检查 | 本轮全部 30 个第一方 PowerShell 文件解析通过，87 个已跟踪第一方 Python 文件 AST 检查通过；此前 5 个 BAT 的编码、祖先循环及检查顺序检查通过，本轮未修改 BAT。项目差异检查通过；官方 wheel 与 npm payload 保留原字节 |
+| 语法、格式与 BAT 静态检查 | 全部 31 个第一方 PowerShell 文件解析通过，91 个第一方 Python 文件 AST 检查通过；5 个 BAT 的 ASCII/CRLF、Go/uv 变量清除和祖先检查先于目录创建检查通过。按 CRLF 规则检查项目差异；保留的官方运行文件与 npm payload 字节未改写 |
 | 转换器 smoke / static audit | 通过；一个合成 fixture、四账号、17 种输出，命令见子项目 README |
 
 在包根使用 Windows PowerShell 5.1 复验：
@@ -138,6 +158,7 @@ powershell.exe -NoProfile -File .\tests\test_instruction_paths.ps1
 powershell.exe -NoProfile -File .\tests\test_bootstrap_paths.ps1
 powershell.exe -NoProfile -File .\tests\test_extension_policy.ps1
 powershell.exe -NoProfile -File .\tests\test_runtime_preflight.ps1
+powershell.exe -NoProfile -File .\tests\test_python_setup.ps1
 powershell.exe -NoProfile -File .\tests\test_automation_paths.ps1
 powershell.exe -NoProfile -File .\tests\test_automation_process.ps1
 .\tool\node\node.exe --test .\tests\test_automation.js
@@ -145,6 +166,6 @@ powershell.exe -NoProfile -File .\tests\test_automation_process.ps1
 
 配置回归可用匹配客户端的 `debug models --bundled` 成功导出到包内临时 UTF-8 JSON 后，传入 `-BundledModelsPath` 启用另两项检查；先检查导出退出码。Windows 链接回归需 NTFS，创建符号链接可能需要 Developer Mode 或相应权限；Python 无此能力时明确 skip，PowerShell 指令测试会报错，都不算通过。
 
-**Windows 待验：** 正常/维护 BAT 在新盘符、中文、空格路径运行；NTFS 链接、ACL、进程监督、标准流和退出清理；实际 Codex/Host 启动与工具调用；生成配置最终变量；授权条件下的三种登录模式、代理和 Windows 沙箱。语音已排除，不再列为待验功能。旧版本的历史验收记录不代替 0.163.0 的实际结果，也不据离线测试宣称项目没有其他 bug。
+**Windows 待验：** 正常/维护 BAT 在新盘符、中文、空格路径运行；NTFS 链接、ACL、进程监督、标准流和退出清理；实际 Codex/Host 启动与工具调用；生成配置最终变量；Python 安装器的真实重装和导入；授权条件下的三种登录模式、代理和 Windows 沙箱。语音已排除，不再列为待验功能。旧版本的历史验收记录不代替 0.163.0 的实际结果，也不据离线测试宣称项目没有其他 bug。
 
 **已知实现注意点：** PS5.1 的 `File.Replace`、泛型集合和原生空参数传递曾有兼容问题，后续改动应保留对应处理；认证多文件切换依赖 transition/logout 标记与 snapshot 归属，不可猜测回收；缺少 Host 时恢复匹配完整布局，不能用关闭 Code Mode 作为修复。当前 checkout 不包含历史 checker/updater 套件，不引用不存在的脚本或把旧版本哈希当成当前身份。

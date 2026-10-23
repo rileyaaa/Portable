@@ -102,7 +102,7 @@ $env:CODEX_PROXY_HTTP_BRIDGE = "true"
 # 安全限制：bridge 只允许监听 localhost/127.0.0.1/::1。端口留空时每次启动随机选择空闲本地端口；仅在确需固定端口时填写 1-65535。
 $env:CODEX_PROXY_BRIDGE_HOST = "127.0.0.1"
 $env:CODEX_PROXY_BRIDGE_PORT = ""
-# 联网开启时，Codex 在本机跑的命令(npm/pip/go)是否也走上面的代理。
+# 联网开启时，Codex 在本机跑的命令(npm/pip)是否也走上面的代理。
 # 仅在"联网 + 代理"都开时才有意义；双击启动时若两者都开，菜单会再追问一次。
 # false=只代理 API 连接(默认)；true=本机下依赖也走代理。
 $env:CODEX_PROXY_FOR_SUBPROCESS = "false"
@@ -258,7 +258,7 @@ $env:CODEX_PROVIDER_NAME = "My Proxy"
 $env:CODEX_HTTP_HEADERS_TOML = ""
 
 # 从环境变量读取 HTTP headers，必须是 TOML inline table 格式。
-# 示例：'{ "HTTP-Referer" = "CODEX_HTTP_REFERER", "X-Title" = "CODEX_X_TITLE" }'
+# 示例：'{ "HTTP-Referer" = "MY_HTTP_REFERER", "X-Title" = "MY_X_TITLE" }'
 $env:CODEX_ENV_HTTP_HEADERS_TOML = ""
 
 # query 参数，必须是 TOML inline table 格式。
