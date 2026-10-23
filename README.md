@@ -8,7 +8,7 @@
 
 ## 开始使用
 
-优先下载 [Releases](https://github.com/rileyaaa/Codex-Portable/releases) 中命名为 `Codex-Portable-版本-windows-x64.zip` 的发行附件，并用同次发布的 `SHA256SUMS` 核对摘要。GitHub 自动生成的 Source code ZIP 不等同于便携发行包。
+优先下载 [Releases](https://github.com/rileyaaa/Codex-Portable/releases) 中命名为 `Codex-Portable-版本-windows-x64.zip` 的发行附件，并用同次发布的 `SHA256SUMS` 核对摘要。客户发行包不含第一方测试、CI 工作流、Git 配置、开发打包器或用户运行数据；测试保留在 GitHub 源码中。GitHub 自动生成的 Source code ZIP 不等同于便携发行包。
 
 `codex.exe` 使用 Git LFS 管理。通过 Git 克隆后先执行 `git lfs pull`；使用源码 ZIP 时确认其中包含实际 EXE，而不是文本形式的 LFS 指针。缺少实际工件时按[工具文档](tool/工具更新说明.md)取得并校验完整运行包。
 

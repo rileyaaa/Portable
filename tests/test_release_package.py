@@ -16,6 +16,17 @@ ROOT = Path(__file__).absolute().parents[1]
 spec = importlib.util.spec_from_file_location("portable_release", ROOT / "tool/package-release.py")
 release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
+CONVERTER = "Version_History/AI account format conversion/"
+PROJECT_DOCS = {
+    "README.md", "DEVELOPMENT.md", "tool/工具更新说明.md", CONVERTER + "README.md",
+}
+MODE_COPIES = {
+    f"Version_History/{mode}专用包-{script}.ps1"
+    for mode in ("YOLO mode", "常用模式") for script in ("env", "run-codex")
+}
+CONVERTER_RUNTIME = {CONVERTER + name for name in (
+    "index.html", "app/app.js", "app/converter.js", "app/style.css",
+)}
 
 
 def native_exe():
@@ -44,6 +55,18 @@ class ReleasePackageTests(unittest.TestCase):
         self.write(".gitignore", b"/tmp/\nenv.local.ps1\n/home/auth.json\n")
         self.write("env.ps1", b"# synthetic default configuration\n")
         self.write("README.md", "synthetic 便携\n".encode())
+        for name in (PROJECT_DOCS - {"README.md"}) | MODE_COPIES | CONVERTER_RUNTIME:
+            self.write(name, b"synthetic customer content\n")
+        self.development_files = {
+            ".gitignore", ".gitattributes", ".github/workflows/release.yml",
+            "tests/test_synthetic.py", "tests/fixtures/synthetic.json",
+            CONVERTER + "test/smoke.js", CONVERTER + "test/static-audit.js",
+            CONVERTER + "test/multi-array-sample.json",
+        }
+        for name in self.development_files - {".gitignore"}:
+            self.write(name, b"synthetic development content\n")
+        # A third-party file with a test-like name must remain byte-for-byte intact.
+        self.write("tool/vendor/runtime/test.js", b"synthetic vendor runtime\n")
         self.write("codex-resources/.gitkeep", b"")
         self.write("home/.keep", b"")
         self.write("home/.agents/plugins/marketplace.json", b'{"synthetic":true}\n')
@@ -90,11 +113,22 @@ class ReleasePackageTests(unittest.TestCase):
         self.assertNotIn("env.local.ps1", metadata["files"])
         self.assertNotIn("home/auth.json", metadata["files"])
         self.assertEqual(metadata["file_count"], len(metadata["files"]))
+        self.assertEqual(metadata["package_kind"], "customer")
+        excluded = self.development_files | {"tool/package-release.py"}
+        self.assertEqual(set(metadata["excluded_files"]), excluded)
+        self.assertTrue(all(metadata["excluded_files"].values()))
+        self.assertEqual(metadata["excluded_file_count"], len(excluded))
+        self.assertEqual(metadata["source_file_count"], metadata["file_count"] + len(excluded))
+        self.assertTrue(excluded.isdisjoint(metadata["files"]))
+        self.assertTrue((PROJECT_DOCS | MODE_COPIES | CONVERTER_RUNTIME | release.RUNTIME_FILES)
+                        .issubset(metadata["files"]))
         with zipfile.ZipFile(first["archive"]) as archive:
+            self.assertEqual(set(archive.namelist()), {"Codex/" + name for name in metadata["files"]})
             self.assertEqual(archive.read("Codex/README.md"), "synthetic 便携\n".encode())
             self.assertEqual(archive.read("Codex/codex.exe"), native_exe())
             self.assertEqual(archive.read("Codex/home/.agents/plugins/marketplace.json"), b'{"synthetic":true}\n')
             self.assertEqual(archive.read("Codex/home/rules/default.rules"), b"# synthetic committed policy\n")
+            self.assertEqual(archive.read("Codex/tool/vendor/runtime/test.js"), b"synthetic vendor runtime\n")
         self.assertTrue(Path(first["checksums"]).read_text(encoding="ascii").startswith(first["archive_sha256"]))
         environment = os.environ.copy()
         environment["PYTHONIOENCODING"] = "ascii"
@@ -152,6 +186,51 @@ class ReleasePackageTests(unittest.TestCase):
         metadata["files"]["README.md"]["sha256"] = "0" * 64
         with self.assertRaisesRegex(ValueError, "Archive member digest differs"):
             release.verify_zip(Path(built["archive"]), metadata["files"])
+
+    def test_excluded_inputs_are_still_validated_before_filtering(self):
+        name = "tests/test_synthetic.py"
+        self.write(name, release.LFS_HEADER + b"\noid sha256:synthetic\nsize 1\n")
+        self.commit()
+        with self.assertRaisesRegex(ValueError, "Unhydrated Git LFS pointer"):
+            release.build_release(self.root)
+        self.write(name, b"synthetic development content\n")
+        self.commit()
+        other = self.root.parent / "synthetic-excluded-source.txt"
+        other.write_bytes((self.root / name).read_bytes())
+        (self.root / name).unlink()
+        try:
+            os.link(other, self.root / name)
+        except OSError as error:
+            self.skipTest(f"Hard links unavailable: {error}")
+        with self.assertRaisesRegex(ValueError, "single-link"):
+            release.build_release(self.root)
+        self.assertFalse((self.root / "tmp").exists())
+
+    def test_customer_selection_keeps_actual_runtime_and_documentation(self):
+        # Read names only from Git, never recurse through local user state.
+        names = [name.decode("utf-8") for name in release.git(ROOT, "ls-files", "-z").split(b"\0") if name]
+        included, excluded = release.customer_files(names)
+        self.assertEqual(set(included) | set(excluded), set(names))
+        self.assertTrue(set(included).isdisjoint(excluded))
+        self.assertTrue((PROJECT_DOCS | MODE_COPIES | CONVERTER_RUNTIME | release.RUNTIME_FILES
+                         | {"env.ps1", "run-codex.ps1", "tool/setup-tools.ps1", "tool/runtime-manifest.json"})
+                        .issubset(included))
+        self.assertTrue({name for name in names if name.endswith(".bat")}.issubset(included))
+        self.assertTrue({".gitignore", ".gitattributes", "tool/package-release.py",
+                         "tests/test_release_package.py", ".github/workflows/release.yml",
+                         CONVERTER + "test/smoke.js", CONVERTER + "test/static-audit.js",
+                         CONVERTER + "test/multi-array-sample.json"}.issubset(excluded))
+        self.assertFalse(any(name.startswith(("tests/", ".github/", CONVERTER + "test/"))
+                             for name in included))
+        # Preserve all pinned tool payloads, functional skills and their licenses.
+        self.assertEqual({name for name in names if name.startswith(("home/skills/", "home/plugins/"))},
+                         {name for name in included if name.startswith(("home/skills/", "home/plugins/"))})
+        self.assertEqual({name for name in names if name.startswith("tool/")}
+                         - {"tool/package-release.py"},
+                         {name for name in included if name.startswith("tool/")})
+        for name in ("env.local.ps1", "home/auth.json", "tests/../home/auth.json"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                release.customer_files([name])
 
 
 if __name__ == "__main__":

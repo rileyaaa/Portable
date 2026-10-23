@@ -13,6 +13,7 @@ login_json/**/*.csv
 
 # Runtime lock and machine-generated Codex state
 .codex-portable.instance.lock
+.codex-browser.instance.lock
 home/config.toml
 home/model-catalog*.json
 home/model-catalog*.json.version

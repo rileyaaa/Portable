@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and verify a release ZIP from a clean, hydrated portable checkout."""
+"""Build and verify a customer release ZIP from a clean, hydrated checkout."""
 from __future__ import annotations
 
 import argparse
@@ -32,6 +32,20 @@ HOME_SOURCE_FILES = {
     "home/.agents/plugins/marketplace.json",
     "home/rules/default.rules",
 }
+# Match only audited first-party development paths. In particular, do not
+# remove files named "test" or "docs" from pinned third-party runtime packages:
+# those can be imported by tools or covered by their integrity manifests.
+DEVELOPMENT_DIRECTORIES = {
+    "tests/": "Project regression tests; run from the source checkout.",
+    ".github/": "Repository automation and CI configuration.",
+    "Version_History/AI account format conversion/test/":
+        "Converter development audits, regression tests and synthetic fixtures.",
+}
+DEVELOPMENT_FILES = {
+    ".gitignore": "Git checkout configuration.",
+    ".gitattributes": "Git checkout and LFS configuration.",
+    "tool/package-release.py": "Release builder; run from the source checkout.",
+}
 
 
 def ordinary(path: Path, directory: bool = False) -> os.stat_result:
@@ -61,7 +75,7 @@ def safe_name(name: str) -> None:
                 or re.fullmatch(r"(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?", part)):
             raise ValueError("Path is not portable to Windows: " + name)
     lowered = [part.lower() for part in parts]
-    if lowered[0] in {"env.local.ps1", ".codex-portable.instance.lock"}:
+    if lowered[0] in {"env.local.ps1", ".codex-portable.instance.lock", ".codex-browser.instance.lock"}:
         raise ValueError("Private runtime state cannot be released: " + name)
     if lowered[0] in STATE_ROOTS and lowered[-1] not in PLACEHOLDERS:
         raise ValueError("Private runtime state cannot be released: " + name)
@@ -131,6 +145,24 @@ def clean_checkout(root: Path) -> tuple[str, int, list[str]]:
     return commit, timestamp, sorted(names)
 
 
+def customer_files(names: list[str]) -> tuple[list[str], dict[str, str]]:
+    """Select customer files without weakening validation of the source tree."""
+    unique_windows_names(names)
+    included = []
+    excluded = {}
+    for name in sorted(names):
+        safe_name(name)
+        reason = DEVELOPMENT_FILES.get(name)
+        if reason is None:
+            reason = next((reason for prefix, reason in DEVELOPMENT_DIRECTORIES.items()
+                           if name.startswith(prefix)), None)
+        if reason is None:
+            included.append(name)
+        else:
+            excluded[name] = reason
+    return included, excluded
+
+
 def digest_stream(stream) -> str:
     digest = hashlib.sha256()
     for block in iter(lambda: stream.read(CHUNK), b""):
@@ -194,7 +226,10 @@ def verify_zip(archive: Path, files: dict) -> None:
 
 
 def build_release(root: Path, version: str | None = None) -> dict:
-    commit, timestamp, names = clean_checkout(root)
+    # Validate every tracked input, including excluded development files, before
+    # filtering. Exclusion must not hide linked paths, private state or LFS stubs.
+    commit, timestamp, source_names = clean_checkout(root)
+    names, excluded = customer_files(source_names)
     manifest = runtime_identity(root, names)
     version = version or manifest["version"]
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", version):
@@ -239,6 +274,8 @@ def build_release(root: Path, version: str | None = None) -> dict:
         verify_zip(archive, files)
         metadata = {
             "format": 1, "source_commit": commit, "release_version": version,
+            "package_kind": "customer", "source_file_count": len(source_names),
+            "excluded_file_count": len(excluded), "excluded_files": excluded,
             "codex_version": manifest["version"],
             "target": manifest["target"], "archive": archive.name, "file_count": len(files),
             "uncompressed_bytes": sum(record["size"] for record in files.values()),
@@ -254,6 +291,7 @@ def build_release(root: Path, version: str | None = None) -> dict:
         checksum.write_text("".join(f"{digest}  {name}\n" for name, digest in hashes.items()), encoding="ascii")
         return {"output_dir": str(output), "archive": str(archive), "manifest": str(metadata_path),
                 "checksums": str(checksum), "source_commit": commit, "file_count": len(files),
+                "source_file_count": len(source_names), "excluded_file_count": len(excluded),
                 "uncompressed_bytes": metadata["uncompressed_bytes"], "archive_bytes": archive.stat().st_size,
                 "archive_sha256": hashes[archive.name]}
     except BaseException:
@@ -269,9 +307,12 @@ def main() -> None:
     args = parser.parse_args()
     root = Path(os.path.abspath(__file__)).parent.parent
     if args.check:
-        commit, _, names = clean_checkout(root)
+        commit, _, source_names = clean_checkout(root)
+        names, excluded = customer_files(source_names)
         manifest = runtime_identity(root, names)
-        print(json.dumps({"source_commit": commit, "codex_version": manifest["version"], "file_count": len(names)}))
+        print(json.dumps({"source_commit": commit, "codex_version": manifest["version"],
+                          "file_count": len(names), "source_file_count": len(source_names),
+                          "excluded_file_count": len(excluded)}))
     else:
         # ASCII JSON remains parseable through Windows legacy-codepage pipes;
         # JSON readers recover the original Unicode path from escaped strings.

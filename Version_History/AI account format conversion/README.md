@@ -50,6 +50,8 @@
 
 在本目录使用包内 Node 执行：
 
+以下开发检查仅适用于 GitHub 源码检出，客户发行 ZIP 不附带 `test/`。
+
 ```powershell
 & '..\..\tool\node\node.exe' .\test\smoke.js
 & '..\..\tool\node\node.exe' .\test\static-audit.js
