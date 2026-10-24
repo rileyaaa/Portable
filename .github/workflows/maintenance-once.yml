@@ -1,4 +1,4 @@
-# Temporary owner-authorized maintenance bridge; delete before final publication.
+# Temporary owner-authorized review bridge; remove before final publication.
 name: One-time maintenance review
 on:
   push:
@@ -6,69 +6,98 @@ on:
     paths: [.github/workflows/maintenance-once.yml]
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
   review:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 1
           lfs: false
+          filter: blob:none
           sparse-checkout-cone-mode: false
           sparse-checkout: |
+            /README.md
             /DEVELOPMENT.md
-            /tool/portable-process.ps1
-      - name: Recover the exact patch already tested on Windows
+      - name: Inspect complete inventory and first-party source
         shell: python
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
           PYTHONDONTWRITEBYTECODE: '1'
         run: |
-          import base64, json, os, pathlib, subprocess
-          scratch = pathlib.Path('tmp/maintenance-apply')
-          scratch.mkdir(parents=True, exist_ok=False)
-          endpoint = 'repos/' + os.environ['GH_REPO'] + '/contents/.github/workflows/maintenance-once.yml?ref=d024a7279413f927955a35f1ab0453dea5fce539'
-          record = json.loads(subprocess.check_output(['gh','api',endpoint], text=True))
-          text = base64.b64decode(record['content']).decode('utf-8')
-          section = text.split('      - name: Apply only the reviewed compiler entry repair\n',1)[1].split('      - name: Preserve inherited and captured standard streams\n',1)[0]
-          code = section.split('        run: |\n',1)[1]
-          lines = code.splitlines()
-          if not all(not line or line.startswith('          ') for line in lines):
-              raise SystemExit('Unexpected recorded patch indentation')
-          code = '\n'.join(line[10:] if line else '' for line in lines) + '\n'
-          (scratch/'apply.ps1').write_text(code,encoding='utf-8-sig')
-      - name: Apply and check exact resulting source bytes
+          import ast, hashlib, json, pathlib, re, subprocess, urllib.request
+          root=pathlib.Path.cwd()
+          scratch=root/'tmp'/'final-source-review'
+          scratch.mkdir(parents=True,exist_ok=False)
+          paths=subprocess.check_output(['git','ls-tree','-r','--name-only','HEAD'],text=True).splitlines()
+          excluded=('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
+          suffixes={'.ps1','.psm1','.py','.js','.cjs','.mjs','.bat','.md','.json','.yml','.yaml','.txt'}
+          wanted=[p for p in paths if not p.startswith(excluded) and pathlib.PurePosixPath(p).suffix.lower() in suffixes]
+          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+p for p in wanted)+'\n',text=True,check=True)
+          print('TRACKED_FILES',len(paths),'SELECTED_TEXT_FILES',len(wanted))
+          print('ROOTS',json.dumps(sorted(set(p.split('/')[0] for p in paths)),ensure_ascii=False))
+          print('PROJECT_DOCS',[p for p in wanted if p.endswith('.md') and not p.startswith(('home/','tool/licenses/'))])
+          python_count=0; js_count=0
+          for p in wanted:
+              if p.endswith('.py'):
+                  ast.parse((root/p).read_text(encoding='utf-8-sig'),filename=p); python_count+=1
+              elif p.endswith(('.js','.cjs','.mjs')):
+                  subprocess.run(['node','--check',p],check=True,capture_output=True); js_count+=1
+          print('PYTHON_AST_OK',python_count,'JS_PARSE_OK',js_count)
+          for p in [p for p in wanted if '/' not in p and p.endswith('.bat')]:
+              b=(root/p).read_bytes(); b.decode('ascii')
+              assert b'\n' not in b.replace(b'\r\n',b''),p
+          print('ROOT_BAT_ASCII_CRLF_OK')
+          subprocess.run(['python','-B','-m','unittest','discover','-s','tests','-p','test_mode_copies.py','-v'],check=True)
+          manifest=json.loads((root/'tool/runtime-manifest.json').read_text(encoding='utf-8-sig'))
+          version=manifest['version']
+          upstream='https://raw.githubusercontent.com/openai/codex/rust-v'+version+'/codex-rs/'
+          for name,path in [('schema','core/config.schema.json'),('features','features/src/lib.rs'),('provider','model-provider-info/src/lib.rs')]:
+              data=urllib.request.urlopen(upstream+path,timeout=40).read()
+              (scratch/(name+'.txt')).write_bytes(data)
+          schema=json.loads((scratch/'schema.txt').read_text())
+          print('PINNED_SCHEMA_VERSION',version,'TOP_LEVEL_FIELDS',','.join(sorted(schema.get('properties',{}))))
+          texts={p:(root/p).read_text(encoding='utf-8-sig') for p in wanted if p.endswith(('.ps1','.py','.js','.bat'))}
+          env=texts['env.ps1']; runner=texts['run-codex.ps1']
+          defaults=re.findall(r'^\s*\$env:(CODEX_\w+)\s*=\s*"([^"]*)"',env,re.M)
+          print('CODEX_DEFAULT_COUNT',len(defaults))
+          for name,value in defaults:
+              consumers=[]
+              for p,t in texts.items():
+                  if p=='env.ps1' or p.startswith(('tests/','Version_History/')): continue
+                  lines=[i for i,l in enumerate(t.splitlines(),1) if name in l and not l.lstrip().startswith(('#','rem '))]
+                  if lines: consumers.append(p+':'+','.join(map(str,lines[:8])))
+              print('SETTING',name,'DEFAULT',repr(value),'CONSUMERS',';'.join(consumers))
+          print('LAUNCHER_FUNCTIONS')
+          for i,l in enumerate(runner.splitlines(),1):
+              if re.match(r'^function ',l): print(i,l)
+          print('GENERATED_CONFIG_STATEMENTS')
+          for i,l in enumerate(runner.splitlines(),1):
+              if 'AppendLine(' in l and any(x in l for x in (' = ','[features]','[windows]','[sandbox','[model_providers','[shell_environment','[tui')): print(i,l.strip())
+          features=(scratch/'features.txt').read_text()
+          print('PINNED_FEATURE_COMPATIBILITY')
+          for key in sorted(set(re.findall(r'AppendLine\("([a-z_]+) =',runner))):
+              if key in features:
+                  hit=features.find('key: "'+key+'"')
+                  if hit>=0: print(key,features[max(0,hit-60):hit+240].replace('\n',' '))
+          print('FIRST_PARTY_SOURCE_INVENTORY')
+          for p in sorted(texts):
+              if p.startswith('tests/') or p.startswith('Version_History/') or p.startswith('home/.agents/'): continue
+              print(p,len(texts[p].splitlines()))
+      - name: Parse every selected PowerShell script
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          & ./tmp/maintenance-apply/apply.ps1
-          $blob = & git hash-object tool/portable-process.ps1
-          if ($LASTEXITCODE -ne 0 -or $blob -ne '3e659ab70c0ef7f72b24911dccb74a14f1c0d2fd') { throw 'Patch differs from the tested candidate.' }
-      - name: Record compact verified results and commit
-        shell: python
-        env:
-          PYTHONDONTWRITEBYTECODE: '1'
-        run: |
-          import pathlib, subprocess
-          path = pathlib.Path('DEVELOPMENT.md')
-          text = path.read_text(encoding='utf-8')
-          anchor = '## 2026-10-24：Windows 验证与 npm 目录边界'
-          assert text.count(anchor) == 1
-          record = '**完整启动补验：** 新增真实 BAT → 启动器 → 固定原生客户端的离线回归，发现 PS5.1 / .NET Framework CodeDOM 在含中文的包内临时目录编译失败。仅将编译入口改为当前 Windows Framework 自带 csc、Unicode 子进程环境和 UTF-8 参数文件；源码、输出和清理仍限本次包内 `tmp`，监督器 C#、Job、标准流、模式和凭据逻辑不变。Windows 专项运行 40066085104 的普通、中文/空格改名搬迁、旧根仍存在及维护入口三组启动与生成配置、继承/捕获标准流均通过；该任务最后的文档写回失败，不将任务总状态记为成功。修复已按通过测试的精确字节提交，完整启动检查纳入后续正式发布门禁。'
-          text = text.replace(anchor,anchor+'\n\n'+record,1)
-          text = text.replace('Windows 全量复验及发布待执行。','修复后已通过 [Windows 全量运行 40064538870](https://github.com/rileyaaa/Codex-Portable/actions/runs/40064538870)，该次仅验证不发布。')
-          text = text.replace('此前 Windows 专项运行通过；后续全量运行 `40056474654` 因 stderr 诊断匹配失败。已补充精确匹配及 14 个正反例，Windows 继承/捕获标准流待复验','Windows 全量运行 40064538870 及中文编译修复专项均通过；包含 14 个严格诊断正反例和真实继承/捕获标准流')
-          path.write_text(text,encoding='utf-8')
-          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
-          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','add','--','tool/portable-process.ps1','DEVELOPMENT.md'],check=True)
-          subprocess.run(['git','diff','--cached','--check'],check=True)
-          subprocess.run(['git','commit','-m','fix: compile process helper safely in Unicode portable paths'],check=True)
-          subprocess.run(['git','push','origin','HEAD:main'],check=True)
-      - name: Remove this job's temporary material
+          $count=0
+          Get-ChildItem -Recurse -File -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/]tmp[\\/]' } | ForEach-Object {
+            $tokens=$null; $errors=$null
+            $null=[Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
+            if ($errors.Count) { throw ($_.FullName + ': ' + ($errors.Message -join '; ')) }
+            $count++
+          }
+          Write-Output "POWERSHELL_PARSE_OK=$count (not a Windows execution substitute)"
+      - name: Clean owned review downloads
         if: always()
         shell: bash
-        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/maintenance-apply"
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/final-source-review"
