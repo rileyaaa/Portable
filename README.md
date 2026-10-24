@@ -159,7 +159,7 @@ $env:CODEX_MODEL = "上游实际提供的模型名"
 | 网页调试 | `browser-debug` 共用一套 Playwright：任务脚本、可选 MCP、控制台/网络及 CDP 诊断都使用同一份 Chromium，无需 ChromeDriver，也不另装 Chrome DevTools MCP。已包含匹配的 Windows x64 Chromium 155.0.8059.12；同一份浏览器约 458 MB 解压体积。 |
 | Windows 应用调试 | `windows-desktop` 使用系统 UI Automation，仅处理明确指定的进程主窗口。默认读取控件树，点击/赋值需明确选择；不提供全盘 Shell、注册表或整桌面 MCP。实际 Windows 行为待验。 |
 
-维护模式的 `mcp` / `plugin` 管理命令也需对应开关和 `--portable-extensions`，确保命令处理完整的该类配置；缺少时明确拒绝，不会清空保存的配置。成功修改只回写当前类型，另一类保持不变；查看命令结束后不额外回写扩展配置，启动时仍会按原逻辑生成当次配置。
+维护模式的 `mcp` / `plugin` 管理命令也需对应开关和 `--portable-extensions`，确保命令处理完整的该类配置；缺少时明确拒绝，不会清空保存的配置。成功修改只回写当前类型，另一类保持不变；查看无变更不回写。首次迁移旧 config 中的扩展时，先保存到 `home\portable-extensions.toml`，再重建生成配置；即使后续启动失败，也可重试。已有持久文件优先（空文件表示已清空），启动不会用旧配置覆盖它。
 
 需要启用已配置的扩展时，在本机配置中将对应开关设为 `true`，再通过 `.\启动Codex.bat --portable-extensions` 明确选择本次扩展会话；这个启动器参数不会传给官方 CLI。技能本身可按需读取，不要求启用整套插件。扩展配置保存不等于运行授权，实际工具调用仍须符合当前任务。
 

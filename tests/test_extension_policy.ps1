@@ -257,24 +257,18 @@ plugins = true
 '@
     Write-Utf8TextAtomic -Path $ExtensionSourcePath -Text $SourceText
     $SourceHash = (Get-FileHash -LiteralPath $ExtensionSourcePath -Algorithm SHA256).Hash
-    $PersistStart = @($LauncherAst.FindAll({
-        param($Node)
-        $Node -is [System.Management.Automation.Language.IfStatementAst] -and
-        $Node.Extent.Text.StartsWith('if (-not [string]::IsNullOrWhiteSpace($PreservedExtensionToml)) {')
-    }, $true))
-    if ($PersistStart.Count -ne 1) { throw 'Expected one extension persistence block' }
+    # Early migration has its own production-order regression. This assertion
+    # checks the real activation assignment without rewriting a durable sidecar.
     $PersistEnd = Get-Assignment 'EffectiveExtensionToml'
-    $PersistScript = [scriptblock]::Create(
-        $LauncherSource.Substring($PersistStart[0].Extent.StartOffset,
-            $PersistEnd.Extent.EndOffset - $PersistStart[0].Extent.StartOffset) +
-        [Environment]::NewLine + '$EffectiveExtensionToml'
-    )
+    $PersistScript = [scriptblock]::Create($PersistEnd.Extent.Text +
+        [Environment]::NewLine + '$EffectiveExtensionToml')
     Test-Case 'generated config filters namespaces while retaining full extension storage' {
         $PreservedExtensionToml = Get-PersistableCodexExtensionToml -Path $ExtensionSourcePath
         Assert-True ($PreservedExtensionToml.Contains('[mcp_servers.fixture]')) 'MCP config remains persistent'
         Assert-True ($PreservedExtensionToml.Contains('[plugins."fixture#one"]')) 'plugin config remains persistent'
         Assert-True (-not $PreservedExtensionToml.Contains('writable_roots')) 'security namespace cannot be inherited'
         Assert-True (-not $PreservedExtensionToml.Contains('["features"]')) 'feature namespace cannot be inherited'
+        Write-Utf8TextAtomic -Path $ExtensionStorePath -Text $PreservedExtensionToml
         foreach ($Case in @(
             @{ Task = $false; Plugins = 'true'; Mcp = 'true'; ExpectPlugins = $false; ExpectMcp = $false },
             @{ Task = $true; Plugins = 'true'; Mcp = 'false'; ExpectPlugins = $true; ExpectMcp = $false },

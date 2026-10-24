@@ -137,16 +137,21 @@ print('PASS full launcher generated configuration: ' + mode)
     # manage configuration only and must never launch an MCP server.
     $store = Join-Path $fixture 'home/portable-extensions.toml'
     $seed = "[mcp_servers.existing]`ncommand = 'synthetic-never-executed'`n[plugins.'saved@local']`nenabled = false`n"
-    [IO.File]::WriteAllText($store, $seed, $utf8)
-    $seedHash = (Get-FileHash -LiteralPath $store -Algorithm SHA256).Hash
+    if (Test-Path -LiteralPath $store) { throw 'Fresh fixture unexpectedly has an extension store.' }
+    # Simulate upgrading a legacy installation whose only copy is config.toml.
+    [IO.File]::WriteAllText((Join-Path $fixture 'home/config.toml'), $seed, $utf8)
     $start.Arguments = '/d /s /c ""' + (Join-Path $fixture $maintenance) + '" mcp list"'
     $denied = Invoke-OwnedSmokeProcess -StartInfo $start -ExpectFailure
     if ($denied -notmatch 'Extension configuration management requires') { throw 'MCP command failed for an unexpected reason.' }
-    if ((Get-FileHash -LiteralPath $store -Algorithm SHA256).Hash -cne $seedHash) { throw 'Inactive command changed saved extensions.' }
+    $migrated = [IO.File]::ReadAllText($store)
+    if ($migrated -notmatch '\[mcp_servers.existing\]' -or $migrated -notmatch 'saved@local') { throw 'Rejected startup discarded legacy extensions.' }
+    Write-Output 'PASS rejected real launcher preserves legacy extensions for retry'
     [IO.File]::AppendAllText((Join-Path $fixture 'env.local.ps1'), "`n" + '$env:CODEX_PORTABLE_ALLOW_USER_MCP = "true"' + "`n", $utf8)
     foreach ($command in @('mcp add added -- synthetic-never-executed', 'mcp list', 'mcp remove added', 'mcp remove existing')) {
         $start.Arguments = '/d /s /c ""' + (Join-Path $fixture $maintenance) + '" --portable-extensions ' + $command + '"'
+        $beforeStoreHash = (Get-FileHash -LiteralPath $store -Algorithm SHA256).Hash
         $null = Invoke-OwnedSmokeProcess -StartInfo $start
+        if ($command -eq 'mcp list' -and (Get-FileHash -LiteralPath $store -Algorithm SHA256).Hash -cne $beforeStoreHash) { throw 'Read-only native command rewrote persistent settings.' }
         $saved = [IO.File]::ReadAllText($store)
         if ($saved -notmatch '\[plugins\.' -or $saved -notmatch 'saved@local') { throw 'Native MCP command lost the inactive plugin settings.' }
         if ($command -eq 'mcp add added -- synthetic-never-executed' -and ($saved -notmatch '\[mcp_servers.added\]' -or $saved -notmatch '\[mcp_servers.existing\]')) { throw 'Native MCP add did not retain both servers.' }

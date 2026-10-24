@@ -730,14 +730,56 @@ function Save-PortableExtensionCommandResult {
     Write-Utf8TextAtomic -Path $StorePath -Text ($retained + $updated)
 }
 
+# Preserve legacy extension settings before any generated-config removal. A later
+# startup rejection must not leave the only copy in process memory.
+function Initialize-PortableExtensionStore {
+    param([string]$ConfigPath, [string]$StorePath)
+    Assert-PortablePath 'generated config' $ConfigPath
+    Assert-PortablePath 'extension store' $StorePath
+    if (Test-Path -LiteralPath $StorePath) {
+        Assert-PortableRegularInputFile 'extension store' $StorePath
+        # Even an explicitly empty store is authoritative; never resurrect old settings.
+        return (Get-PersistableCodexExtensionToml -Path $StorePath)
+    }
+    $legacy = Get-PersistableCodexExtensionToml -Path $ConfigPath
+    if ([string]::IsNullOrWhiteSpace($legacy)) { return '' }
+    $scratch = Join-Path $Root 'tmp'
+    Assert-PortablePath 'extension migration scratch' $scratch
+    if (-not (Test-Path -LiteralPath $scratch -PathType Container)) { throw 'Extension migration requires the package temporary directory.' }
+    $temporary = Join-Path $scratch ('extension-migration-' + [Guid]::NewGuid().ToString('N') + '.tmp')
+    Assert-PortablePath 'extension migration staging' $temporary
+    $owned = $false
+    try {
+        $stream = [IO.File]::Open($temporary, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        $owned = $true
+        try {
+            $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($legacy)
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+        } finally { $stream.Dispose() }
+        Assert-PortableRegularInputFile 'staged extension migration' $temporary
+        Assert-PortablePath 'extension store commit' $StorePath
+        # File.Move never overwrites a destination created since the first check.
+        # Any failure leaves the original config untouched for a safe retry.
+        [IO.File]::Move($temporary, $StorePath)
+        $owned = $false
+    } finally {
+        if ($owned) {
+            Assert-PortableRegularInputFile 'owned extension migration cleanup' $temporary
+            [IO.File]::Delete($temporary)
+        }
+    }
+    return $legacy
+}
+
 $GeneratedConfigPath = Join-Path $env:CODEX_HOME "config.toml"
 $ExtensionStorePath = Join-Path $env:CODEX_HOME "portable-extensions.toml"
 Assert-PortablePath "generated config" $GeneratedConfigPath
 Assert-PortablePath "extension store" $ExtensionStorePath
-$ExtensionSourcePath = if (Test-Path -LiteralPath $ExtensionStorePath -PathType Leaf) { $ExtensionStorePath } else { $GeneratedConfigPath }
-$PreservedExtensionToml = Get-PersistableCodexExtensionToml -Path $ExtensionSourcePath
+$PreservedExtensionToml = Initialize-PortableExtensionStore -ConfigPath $GeneratedConfigPath -StorePath $ExtensionStorePath
 if (Test-Path -LiteralPath $GeneratedConfigPath -PathType Leaf) {
-    Remove-Item -LiteralPath $GeneratedConfigPath -Force -ErrorAction SilentlyContinue
+    Assert-PortableRegularInputFile 'stale generated config' $GeneratedConfigPath
+    Remove-Item -LiteralPath $GeneratedConfigPath -Force -ErrorAction Stop
 }
 
 # Windows / 通用用户目录变量
@@ -3293,12 +3335,8 @@ if ($ProxyEnabled -and $ProxyForSubprocess -and $SandboxNetworkAccess -eq "true"
 }
 
 # 用户 MCP / Plugin 扩展配置只在生成主体之后追加，且不能覆盖上面的安全命名空间。
-# Persist all sanitized extension text outside generated config; activate only the namespaces requested for this session.
-if (-not [string]::IsNullOrWhiteSpace($PreservedExtensionToml)) {
-    Write-Utf8TextAtomic -Path $ExtensionStorePath -Text $PreservedExtensionToml
-} elseif (Test-Path -LiteralPath $ExtensionStorePath -PathType Leaf) {
-    Write-Utf8TextAtomic -Path $ExtensionStorePath -Text ""
-}
+# Legacy extensions are already durable before early startup can fail. Existing
+# sidecar bytes are not rewritten just to build this session's filtered view.
 $EffectiveExtensionToml = Get-PersistableCodexExtensionToml -Path $ExtensionStorePath -AllowedNamespaces $PortableExtensionPolicy.AllowedNamespaces
 if (-not [string]::IsNullOrWhiteSpace($EffectiveExtensionToml)) {
     [void]$Builder.AppendLine("")
