@@ -51,10 +51,9 @@ def main() -> int:
             or parsed.username is not None
             or parsed.password is not None
             or parsed.port not in (None, 443)
-            or "?" in url
             or "#" in url
         ):
-            raise ValueError("request URL must be credential-free HTTPS on the default port without query/fragment")
+            raise ValueError("request URL must be credential-free HTTPS on the default port without a fragment")
         host = (parsed.hostname or "").lower().rstrip(".")
         if host == "auth.openai.com" and parsed.path == "/oauth/token":
             expected_method = "POST"
@@ -62,6 +61,16 @@ def main() -> int:
             expected_method = "GET"
         else:
             raise ValueError("request URL is outside the fixed Codex login API allowlist")
+        # Match the caller's exact endpoint contract. The models request alone
+        # may carry one numeric release version; never accept arbitrary queries.
+        raw_allowed = re.fullmatch(
+            r"(?i:https://auth\.openai\.com\.?)(?::443)?/oauth/token"
+            r"|(?i:https://chatgpt\.com\.?)(?::443)?/backend-api/wham/usage"
+            r"|(?i:https://chatgpt\.com\.?)(?::443)?/backend-api/codex/models"
+            r"(?:\?client_version=[0-9]+\.[0-9]+\.[0-9]+)?", url
+        )
+        if raw_allowed is None:
+            raise ValueError("request URL or query is outside the fixed login contract")
         if method != expected_method:
             raise ValueError(f"{parsed.path} only permits {expected_method}")
         if expected_method == "GET" and body is not None:

@@ -776,7 +776,7 @@ function ConvertTo-SafeMessage {
 function Assert-AllowedLoginJsonUrl {
     param([Parameter(Mandatory=$true)][string]$Url)
     try { $uri = [System.Uri]$Url } catch { throw "Invalid login API URL." }
-    if (-not $uri.IsAbsoluteUri -or $uri.Scheme -ne 'https' -or -not [string]::IsNullOrEmpty($uri.UserInfo) -or $uri.Port -ne 443 -or $uri.Query -or $uri.Fragment -or $Url -match '[\x00-\x20\x7f?#@]') {
+    if (-not $uri.IsAbsoluteUri -or $uri.Scheme -ne 'https' -or -not [string]::IsNullOrEmpty($uri.UserInfo) -or $uri.Port -ne 443 -or $uri.Fragment -or $Url -match '[\x00-\x20\x7f#@]') {
         throw "Login API URL must be credential-free HTTPS on port 443."
     }
     $apiHost = $uri.DnsSafeHost.TrimEnd('.').ToLowerInvariant()
@@ -784,7 +784,8 @@ function Assert-AllowedLoginJsonUrl {
     $allowed = (($apiHost -eq 'auth.openai.com') -and ($path -eq '/oauth/token')) -or
                (($apiHost -eq 'chatgpt.com') -and ($path -in @('/backend-api/codex/models','/backend-api/wham/usage')))
     $rawAllowed = $Url -cmatch '^(?i:https://auth\.openai\.com\.?)(?::443)?/oauth/token$' -or
-                  $Url -cmatch '^(?i:https://chatgpt\.com\.?)(?::443)?/backend-api/(codex/models|wham/usage)$'
+                  $Url -cmatch '^(?i:https://chatgpt\.com\.?)(?::443)?/backend-api/wham/usage$' -or
+                  $Url -cmatch '^(?i:https://chatgpt\.com\.?)(?::443)?/backend-api/codex/models(?:\?client_version=[0-9]+\.[0-9]+\.[0-9]+)?$'
     if (-not $allowed -or -not $rawAllowed) { throw "Login API URL is outside the fixed Codex allowlist." }
 }
 
