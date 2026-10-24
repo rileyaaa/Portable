@@ -1,5 +1,5 @@
-# Temporary owner-requested verification; no publication or production edits.
-name: Verify current source twice
+# Temporary owner-requested repair and verification; never publishes a release.
+name: Repair SQLite ownership and verify twice
 on:
   push:
     branches: [main]
@@ -9,11 +9,15 @@ permissions:
   contents: read
 concurrency:
   group: portable-independent-review
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
-  source-review:
+  repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      commit: ${{ steps.repair.outputs.commit }}
     env:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
@@ -25,9 +29,70 @@ jobs:
           filter: blob:none
           sparse-checkout-cone-mode: false
           sparse-checkout: |
+            /home/skills/pdf-library/scripts/pdf_library.py
+            /home/skills/pdf/scripts/portable_safety.py
+            /tests/test_pdf_library_database.py
+            /DEVELOPMENT.md
+      - name: Reproduce exactly two failures and apply the minimal reviewed repair
+        id: repair
+        shell: python
+        run: |
+          import hashlib,os,pathlib,subprocess,unittest
+          root=pathlib.Path.cwd()
+          helper=root/'home/skills/pdf-library/scripts/pdf_library.py'
+          raw=helper.read_bytes()
+          blob=lambda data: hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+          assert blob(raw)=='840e4a7237700481f2031e33e68548367c1ae3a9'
+          suite=unittest.defaultTestLoader.discover('tests',pattern='test_pdf_library_database.py')
+          result=unittest.TextTestRunner(verbosity=2).run(suite)
+          expected={'test_pdf_library_database.PdfLibraryDatabaseTests.test_unowned_wal_table_is_rejected_before_journal_mode_change','test_pdf_library_database.PdfLibraryDatabaseTests.test_unowned_view_only_database_is_not_adopted'}
+          assert result.testsRun==7 and not result.errors and not result.skipped
+          assert {case.id() for case,_ in result.failures}==expected
+          old='    connection.execute("PRAGMA journal_mode=DELETE")\n    if identity == 0 and connection.execute(\n        "SELECT count(*) FROM sqlite_master WHERE type=\'table\'"\n    ).fetchone()[0]:\n        connection.close()\n        raise ValueError("Refusing an unrelated SQLite database")\n'
+          new='    # Establish ownership before any persistent PRAGMA. Views and other schema\n    # objects also identify a nonempty, unowned database; do not adopt it.\n    if identity == 0 and connection.execute(\n        "SELECT count(*) FROM sqlite_master"\n    ).fetchone()[0]:\n        connection.close()\n        raise ValueError("Refusing an unrelated SQLite database")\n    connection.execute("PRAGMA journal_mode=DELETE")\n'
+          text=raw.decode('utf-8');assert text.count(old)==1
+          updated=text.replace(old,new,1).encode('utf-8')
+          assert blob(updated)=='cc837a255ef52333ddf023d36887a4ced5831802'
+          helper.write_bytes(updated)
+          subprocess.run(['python','-B','-m','unittest','discover','-s','tests','-p','test_pdf_library_database.py','-v'],check=True)
+          doc=root/'DEVELOPMENT.md';text=doc.read_bytes().decode('utf-8')
+          anchor='## 2026-10-24：0.164.0 配套升级与配置兼容'
+          assert text.count(anchor)==1
+          heading='## 2026-10-25：SQLite 归属检查与发布复查'
+          assert heading not in text
+          note=heading+'\n\n**PDF 手册库数据库保护：** 原归属检查在拒绝无关 SQLite 文件前先设置 journal_mode=DELETE，会改变既有 WAL 数据库；仅检查 table 也会误认领只有 view 的数据库。现先检查 application_id 和所有持久 schema 对象，确认是本工具库或空库后才设置日志模式；拒绝时不改写无关文件。只调整 PDF 手册库的数据库初始化顺序，不改转换内容、索引格式、认证、权限或官方工件。新增 7 项纯合成数据库回归，旧实现稳定复现 2 项失败，修复后 7 项通过，覆盖外部归属、视图库、WAL、空库、既有库和只读打开。修复后两轮独立复查及完整 Windows 验收尚待本轮执行结果，不使用真实数据库或账号。\n\n'
+          doc.write_bytes(text.replace(anchor,note+anchor,1).encode('utf-8'))
+          subprocess.run(['git','diff','--check'],check=True)
+          names=set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
+          assert names=={'DEVELOPMENT.md','home/skills/pdf-library/scripts/pdf_library.py'},names
+          remote=subprocess.check_output(['git','ls-remote','origin','refs/heads/main'],text=True).split()[0]
+          assert remote==os.environ['GITHUB_SHA'],'main changed; do not overwrite concurrent edits'
+          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','add','--','DEVELOPMENT.md','home/skills/pdf-library/scripts/pdf_library.py'],check=True)
+          subprocess.run(['git','commit','-m','fix: establish PDF index ownership before persistent SQLite changes'],check=True)
+          subprocess.run(['git','push','origin','HEAD:main'],check=True)
+          commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as out: out.write('commit='+commit+'\n')
+          print('REPAIRED_COMMIT='+commit)
+  source-review:
+    needs: repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.repair.outputs.commit }}
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
             /README.md
             /DEVELOPMENT.md
-      - name: First pass - inventory, syntax and synthetic regression
+      - name: First clean pass - full source inventory and synthetic regression
         shell: python
         run: |
           import ast,pathlib,subprocess,sys,unittest
@@ -47,7 +112,7 @@ jobs:
           subprocess.run(['git','diff','--check'],check=True)
           print('FIRST_PASS_INVENTORY',len(paths),'SYNTAX',counts,flush=True)
           sys.path.insert(0,str(root/'tests'))
-          modules=['test_android_extension','test_android_guard','test_helper_relocation','test_instruction_installer','test_login_json_http','test_login_url_contract','test_mode_copies','test_office_output_boundaries','test_python_cli_shims','test_python_lock','test_release_package']
+          modules=['test_android_extension','test_android_guard','test_helper_relocation','test_instruction_installer','test_login_json_http','test_login_url_contract','test_mode_copies','test_office_output_boundaries','test_pdf_library_database','test_python_cli_shims','test_python_lock','test_release_package']
           def flatten(suite):
               for item in suite:
                   if isinstance(item,unittest.TestSuite): yield from flatten(item)
@@ -59,7 +124,7 @@ jobs:
           result=unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite(c for c in cases if c.id()!=native))
           if not result.wasSuccessful() or result.skipped: raise SystemExit('First-pass regression failed or skipped tests.')
           print('FIRST_PASS_PYTHON='+str(result.testsRun),flush=True)
-      - name: First pass - production PowerShell policies
+      - name: First clean pass - production PowerShell policies
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -76,13 +141,13 @@ jobs:
           }
           Write-Output "FIRST_PASS_POWERSHELL_PARSE=$count"
   windows-recheck:
-    needs: source-review
+    needs: [repair, source-review]
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.repair.outputs.commit }}
           fetch-depth: 1
           lfs: true
           persist-credentials: false
@@ -108,7 +173,7 @@ jobs:
           $modules=Join-Path $base 'cache/modules'
           New-Item -ItemType Directory -Force -Path $modules | Out-Null
           "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Second pass - all existing Windows validation blocks unchanged
+      - name: Second clean pass - all Windows validation blocks unchanged
         shell: python
         run: |
           import os,pathlib,re,subprocess
@@ -155,3 +220,38 @@ jobs:
             $path=Join-Path $env:GITHUB_WORKSPACE $relative
             if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
           }
+  record-review:
+    needs: [repair, windows-recheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: /DEVELOPMENT.md
+      - name: Record only completed checks in the existing development document
+        shell: python
+        env:
+          VERIFIED_COMMIT: ${{ needs.repair.outputs.commit }}
+        run: |
+          import os,pathlib,subprocess
+          current=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert current==os.environ['VERIFIED_COMMIT'],'main changed; do not overwrite concurrent edits'
+          doc=pathlib.Path('DEVELOPMENT.md');text=doc.read_bytes().decode('utf-8')
+          old='修复后两轮独立复查及完整 Windows 验收尚待本轮执行结果，不使用真实数据库或账号。'
+          assert text.count(old)==1
+          new='修复后独立运行 '+os.environ['GITHUB_RUN_ID']+' 依次在全新 Linux 和 Windows runner 检出同一修复提交：102 项 Python 合成回归、源码解析与生产策略函数检查，以及现有 20 个 Windows 验证组全部通过；新增 7 项数据库检查也在包内 Windows Python 执行通过。第二轮未发现新的可复现问题；不等于所有场景无 bug，真实账号、在线 Agent/Host、提权沙箱及设备操作未测。本任务仅修复和验证，不构建或发布 Release。'
+          doc.write_bytes(text.replace(old,new,1).encode('utf-8'))
+          subprocess.run(['git','diff','--check'],check=True)
+          assert subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()==['DEVELOPMENT.md']
+          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','add','--','DEVELOPMENT.md'],check=True)
+          subprocess.run(['git','commit','-m','docs: record two fresh successful passes after SQLite ownership repair'],check=True)
+          subprocess.run(['git','push','origin','HEAD:main'],check=True)
