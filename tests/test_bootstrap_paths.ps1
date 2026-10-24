@@ -53,9 +53,43 @@ function Invoke-BootstrapFixture {
         $StdoutTask = $Process.StandardOutput.ReadToEndAsync()
         $StderrTask = $Process.StandardError.ReadToEndAsync()
         if (-not $Process.WaitForExit(30000)) {
-            $Process.Kill()
-            $Process.WaitForExit()
-            throw 'The isolated BAT test exceeded 30 seconds.'
+            # Kill this owned cmd.exe tree, not only cmd: its PowerShell child
+            # otherwise keeps the fixture and redirected pipes open. Retain the
+            # Process handle until cleanup finishes; never discover other PIDs.
+            if (-not $Process.HasExited) {
+                $TreeStop = New-Object Diagnostics.Process
+                $TreeStop.StartInfo = New-Object Diagnostics.ProcessStartInfo
+                $TreeStop.StartInfo.FileName = Join-Path $env:SystemRoot 'System32\taskkill.exe'
+                $TreeStop.StartInfo.Arguments = '/PID ' + $Process.Id + ' /T /F'
+                $TreeStop.StartInfo.UseShellExecute = $false
+                $TreeStop.StartInfo.CreateNoWindow = $true
+                $TreeStop.StartInfo.RedirectStandardOutput = $true
+                $TreeStop.StartInfo.RedirectStandardError = $true
+                try {
+                    [void]$TreeStop.Start()
+                    $StopOutput = $TreeStop.StandardOutput.ReadToEndAsync()
+                    $StopError = $TreeStop.StandardError.ReadToEndAsync()
+                    if (-not $TreeStop.WaitForExit(10000)) {
+                        # This process is also owned by the fixture.
+                        try { $TreeStop.Kill() } catch {
+                            if (-not $TreeStop.HasExited) { throw }
+                        }
+                        [void]$TreeStop.WaitForExit(5000)
+                        throw 'Timed out stopping the owned BAT process tree.'
+                    }
+                    # A nonzero taskkill code is harmless when the original
+                    # process exited between HasExited and taskkill startup.
+                    if (-not $Process.WaitForExit(5000)) {
+                        throw 'The owned BAT process tree could not be stopped.'
+                    }
+                    if (-not $StdoutTask.Wait(5000) -or -not $StderrTask.Wait(5000)) {
+                        throw 'Owned BAT child pipes remained open after tree cleanup.'
+                    }
+                } finally {
+                    $TreeStop.Dispose()
+                }
+            }
+            throw 'The isolated BAT test exceeded 30 seconds; its owned process tree was stopped.'
         }
         return [pscustomobject]@{
             ExitCode = $Process.ExitCode

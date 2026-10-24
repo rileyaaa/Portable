@@ -56,8 +56,27 @@ jobs:
           'PYTHONDONTWRITEBYTECODE=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
           'POWERSHELL_TELEMETRY_OPTOUT=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
           "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          $modules = Join-Path $base 'cache/modules'
+          New-Item -ItemType Directory -Force -Path $modules | Out-Null
+          "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Measure isolated Windows PowerShell startup
+        timeout-minutes: 2
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $engine = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+          $watch = [Diagnostics.Stopwatch]::StartNew()
+          & $engine -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '[Console]::WriteLine("Startup OK")'
+          if ($LASTEXITCODE -ne 0) { throw 'PowerShell startup failed.' }
+          Write-Output "Plain Windows PowerShell startup: $($watch.Elapsed.TotalSeconds) seconds"
+          $watch.Restart()
+          & $engine -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command 'Get-Item -LiteralPath $env:GITHUB_WORKSPACE | Out-Null'
+          if ($LASTEXITCODE -ne 0) { throw 'PowerShell filesystem module failed.' }
+          Write-Output "Windows PowerShell with filesystem module: $($watch.Elapsed.TotalSeconds) seconds"
 
       - name: Run bundled Python and Node regression suites
+        timeout-minutes: 5
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -80,27 +99,119 @@ jobs:
           & .\tool\node\node.exe '.\Version_History\AI account format conversion\test\static-audit.js'
           if ($LASTEXITCODE -ne 0) { throw 'Converter audit failure.' }
 
-      - name: Run Windows PowerShell 5.1 and native client checks
+      - name: Windows PowerShell 5.1 - test_portable_config
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        timeout-minutes: 3
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $engine = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-          $testFailures = @()
-          foreach ($test in @('test_portable_config','test_portable_paths','test_instruction_paths',
-              'test_bootstrap_paths','test_extension_policy','test_runtime_preflight',
-              'test_python_setup','test_automation_paths','test_automation_process','test_browser_login_flow','test_npm_entrypoints')) {
-            & $engine -NoProfile -ExecutionPolicy Bypass -File ".\tests\$test.ps1"
-            if ($LASTEXITCODE -ne 0) { $testFailures += $test }
-          }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_config.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_portable_config' }
+
+      - name: Windows PowerShell 5.1 - test_portable_paths
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        timeout-minutes: 3
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_portable_paths' }
+
+      - name: Windows PowerShell 5.1 - test_instruction_paths
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        timeout-minutes: 3
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_instruction_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_instruction_paths' }
+
+      - name: Windows PowerShell 5.1 - test_bootstrap_paths
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        timeout-minutes: 3
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_bootstrap_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_bootstrap_paths' }
+
+      - name: Windows PowerShell 5.1 - test_extension_policy
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        timeout-minutes: 3
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_extension_policy.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_extension_policy' }
+
+      - name: Windows PowerShell 5.1 - test_runtime_preflight
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        timeout-minutes: 3
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_runtime_preflight.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_runtime_preflight' }
+
+      - name: Windows PowerShell 5.1 - test_python_setup
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        timeout-minutes: 3
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_python_setup.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_python_setup' }
+
+      - name: Windows PowerShell 5.1 - test_automation_paths
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        timeout-minutes: 3
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_automation_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_automation_paths' }
+
+      - name: Windows PowerShell 5.1 - test_automation_process
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        timeout-minutes: 3
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_automation_process.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_automation_process' }
+
+      - name: Windows PowerShell 5.1 - test_browser_login_flow
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        timeout-minutes: 3
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_login_flow.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_browser_login_flow' }
+
+      - name: Windows PowerShell 5.1 - test_npm_entrypoints
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        timeout-minutes: 3
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_npm_entrypoints.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_npm_entrypoints' }
+
+      - name: Verify the native Codex version
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        timeout-minutes: 2
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
           $reported = & .\codex.exe --version
           if ($LASTEXITCODE -ne 0) { throw 'Native Codex version check failed.' }
           $expected = (Get-Content .\tool\runtime-manifest.json -Raw | ConvertFrom-Json).version
           if (($reported -join "`n") -notmatch [regex]::Escape($expected)) { throw 'Client version mismatch.' }
           Write-Output $reported
-          if ($testFailures.Count) { throw ('Windows regression failures: ' + ($testFailures -join ', ')) }
 
       - name: Exercise the real browser in an owned relocated fixture
+        timeout-minutes: 5
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         shell: powershell
         run: |
