@@ -24,6 +24,7 @@ jobs:
             /run-codex.ps1
             /Version_History/*-run-codex.ps1
             /tests/test_extension_policy.ps1
+            /tests/test_extension_persistence.ps1
             /tests/test_launcher_smoke.ps1
             /README.md
             /DEVELOPMENT.md
@@ -71,13 +72,12 @@ jobs:
               path.write_bytes(data);seen.add(name)
           assert len(seen)==8
           subprocess.run(['git','config','core.autocrlf','false'],check=True)
-          subprocess.run(['git','add','--',*sorted(seen)],check=True)
+          subprocess.run(['git','add','--sparse','--',*sorted(seen)],check=True)
           staged=[p.decode('utf-8') for p in subprocess.check_output(['git','diff','--cached','--name-only','-z']).split(b'\0') if p]
           assert set(staged)==seen
           for name in staged:
               assert subprocess.check_output(['git','show',':'+name])==(root/name).read_bytes(),name
-          # Accept CR as the CRLF terminator, but keep checks for actual trailing
-          # spaces, tabs and blank EOF lines. Do not rewrite the tested bytes.
+          # CR is a CRLF terminator, not trailing whitespace. Keep other checks.
           subprocess.run(['git','-c','core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol','diff','--cached','--check'],check=True)
           subprocess.run(['git','diff','--cached','--stat','--ignore-space-at-eol'],check=True)
           (scratch/'paths.json').write_text(json.dumps(sorted(seen)),encoding='utf-8')
