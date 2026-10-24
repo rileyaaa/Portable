@@ -1,5 +1,5 @@
-# Temporary owner-requested verification only; remove after recording results.
-name: Two independent reviews (no publication)
+# Temporary owner-requested source inspection; no publication or production changes.
+name: Export current source for review
 on:
   push:
     branches: [main]
@@ -7,18 +7,16 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: portable-independent-review
-  cancel-in-progress: true
 jobs:
-  source-review:
+  export:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     env:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          ref: b83d72740dc26709475aa3f8c8bd3ff60988fefe
           fetch-depth: 1
           lfs: false
           filter: blob:none
@@ -26,183 +24,45 @@ jobs:
           sparse-checkout: |
             /README.md
             /DEVELOPMENT.md
-      - name: First review - complete inventory and source syntax
+      - name: Export tracked non-vendor source with exact byte identities
         shell: python
         run: |
-          import ast, pathlib, subprocess
-          root = pathlib.Path.cwd()
-          paths = [p.decode('utf-8') for p in subprocess.check_output(['git','ls-tree','-rz','--name-only','HEAD']).split(b'\0') if p]
-          excluded = ('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
-          extensions = {'.ps1','.psm1','.psd1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.rules','.toml','.css','.html','.sh'}
-          selected = [p for p in paths if not p.startswith(excluded) and (pathlib.PurePosixPath(p).suffix.lower() in extensions or p in ('.gitignore','.gitattributes'))]
-          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+p for p in selected)+'\n',text=True,check=True)
-          counts = {'python':0,'javascript':0,'bat':0}
-          for name in selected:
-              file = root/name
-              if name.endswith('.py'):
-                  ast.parse(file.read_text(encoding='utf-8-sig'),filename=name); counts['python'] += 1
-              if name.endswith(('.js','.cjs','.mjs')):
-                  subprocess.run(['node','--check',name],check=True,capture_output=True); counts['javascript'] += 1
-              if '/' not in name and name.endswith('.bat'):
-                  data=file.read_bytes(); data.decode('ascii'); assert b'\n' not in data.replace(b'\r\n',b''),name; counts['bat'] += 1
-          assert sum(pathlib.PurePosixPath(p).name.lower()=='codex.exe' for p in paths)==1
-          subprocess.run(['git','diff','--check'],check=True)
-          print('SOURCE_INVENTORY',len(paths),'PARSE',counts)
-      - name: First review - independent synthetic Python suites
-        shell: python
-        run: |
-          import pathlib, sys, unittest
-          sys.path.insert(0,str(pathlib.Path('tests').absolute()))
-          modules=['test_android_extension','test_android_guard','test_helper_relocation','test_instruction_installer','test_login_json_http','test_login_url_contract','test_mode_copies','test_office_output_boundaries','test_python_cli_shims','test_python_lock','test_release_package']
-          def flatten(suite):
-              for item in suite:
-                  if isinstance(item,unittest.TestSuite): yield from flatten(item)
-                  else: yield item
-          cases=list(flatten(unittest.defaultTestLoader.loadTestsFromNames(modules)))
-          native='test_python_lock.PythonLockTests.test_runtime_repair_accepts_current_defaults_and_missing_packages'
-          assert sum(case.id()==native for case in cases)==1
-          print('DEFER_TO_WINDOWS',native)
-          result=unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite(case for case in cases if case.id()!=native))
-          if not result.wasSuccessful() or result.skipped: raise SystemExit('Synthetic review failed or skipped tests.')
-          print('FIRST_REVIEW_PYTHON_PASS',result.testsRun)
-      - name: First review - PowerShell parser and production policy functions
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop'
-          $count=0
-          Get-ChildItem -Recurse -File -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/]tmp[\\/]' } | ForEach-Object {
-            $tokens=$null; $errors=$null
-            $null=[Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
-            if ($errors.Count) { throw ($_.FullName+': '+($errors.Message -join '; ')) }
-            $count++
-          }
-          foreach ($name in @('test_cli_model_options','test_permission_display','test_extension_policy','test_extension_migration','test_browser_login_flow','test_login_input_errors','test_system_policy','test_python_setup')) {
-            & pwsh -NoLogo -NoProfile -File (Join-Path 'tests' ($name+'.ps1'))
-            if ($LASTEXITCODE -ne 0) { throw ('Production policy regression: '+$name) }
-          }
-          Write-Output "FIRST_REVIEW_POWERSHELL_PARSE=$count"
-  windows-recheck:
-    needs: source-review
-    runs-on: windows-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          fetch-depth: 1
-          lfs: true
-          persist-credentials: false
-      - name: Prepare only package-local verification state
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          $base=Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state'
-          $state=@{
-            HOME='home'; USERPROFILE='home'; APPDATA='appdata'; LOCALAPPDATA='localappdata'; PROGRAMDATA='programdata'; ALLUSERSPROFILE='programdata';
-            TEMP='temp'; TMP='temp'; TMPDIR='temp'; XDG_CACHE_HOME='cache'; XDG_CONFIG_HOME='config'; XDG_DATA_HOME='data'; XDG_STATE_HOME='state';
-            CODEX_HOME='codex-home'; CODEX_SQLITE_HOME='sqlite'; GH_CONFIG_DIR='gh'
-          }
-          foreach ($name in $state.Keys) {
-            $path=Join-Path $base $state[$name]
-            New-Item -ItemType Directory -Force -Path $path | Out-Null
-            "$name=$path" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          }
-          'PYTHONDONTWRITEBYTECODE=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          'PIP_CONFIG_FILE=nul' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          'POWERSHELL_TELEMETRY_OPTOUT=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          $modules=Join-Path $base 'cache/modules'
-          New-Item -ItemType Directory -Force -Path $modules | Out-Null
-          "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Second review - run every existing Windows validation block unchanged
-        shell: python
-        run: |
-          import os, pathlib, re, subprocess
+          import hashlib,json,pathlib,subprocess,zipfile
           root=pathlib.Path.cwd()
-          scratch=root/'tmp'/'second-review'
-          scratch.mkdir(exist_ok=False)
-          text=(root/'.github/workflows/release.yml').read_text(encoding='utf-8')
-          sections=re.split(r'^      - name: ',text,flags=re.M)[1:]
-          selected=[]
-          for section in sections:
-              name=section.splitlines()[0]
-              if name not in ('Run bundled Python and Node regression suites','Verify the native Codex version') and not name.startswith('Windows PowerShell 5.1 - '): continue
-              body=section.split('        run: |\n',1)[1]
-              lines=[]
-              for line in body.splitlines():
-                  if line and not line.startswith('          '): break
-                  lines.append(line[10:] if line else '')
-              limit=re.search(r'^        timeout-minutes: ([0-9]+)$',section,re.M)
-              assert limit,name
-              script=scratch/('check-'+str(len(selected))+'.ps1')
-              script.write_text('\n'.join(lines)+'\n',encoding='utf-8-sig')
-              selected.append((name,script,60*int(limit.group(1))))
-          assert len(selected)==20,len(selected)
-          powershell=pathlib.Path(os.environ['SystemRoot'])/'System32/WindowsPowerShell/v1.0/powershell.exe'
-          for name,script,limit in selected:
-              print('::group::'+name,flush=True)
-              child=subprocess.Popen([str(powershell),'-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(script)])
-              try:
-                  code=child.wait(timeout=limit)
-              except subprocess.TimeoutExpired:
-                  subprocess.run(['taskkill.exe','/PID',str(child.pid),'/T','/F'],check=False,timeout=30)
-                  child.wait(timeout=30)
-                  raise
-              finally:
-                  print('::endgroup::',flush=True)
-              if code: raise SystemExit(name+' failed: '+str(code))
-              print('SECOND_REVIEW_PASS '+name,flush=True)
-          print('SECOND_REVIEW_ALL_WINDOWS_GROUPS_PASS='+str(len(selected)),flush=True)
-      - name: Remove only owned verification state
-        if: always()
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          foreach ($relative in @('tmp/second-review','tmp/windows-release-state')) {
-            $path=Join-Path $env:GITHUB_WORKSPACE $relative
-            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
-          }
-  record-review:
-    needs: windows-recheck
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+          commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert commit=='b83d72740dc26709475aa3f8c8bd3ff60988fefe'
+          records=[]
+          for entry in subprocess.check_output(['git','ls-tree','-rz','--full-tree','HEAD']).split(b'\0'):
+              if not entry: continue
+              metadata,path=entry.split(b'\t',1)
+              mode,kind,sha=metadata.decode('ascii').split()
+              records.append({'path':path.decode('utf-8'),'mode':mode,'kind':kind,'blob':sha})
+          excluded=('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
+          suffixes={'.ps1','.psm1','.psd1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.rules','.toml','.css','.html','.sh'}
+          selected=[r for r in records if r['kind']=='blob' and r['mode'] in ('100644','100755') and not r['path'].startswith(excluded) and (pathlib.PurePosixPath(r['path']).suffix.lower() in suffixes or r['path'] in ('.gitignore','.gitattributes'))]
+          for r in selected:
+              p=r['path']; parts=p.lower().split('/')
+              assert parts[0] not in ('tmp','work','logs','cache','appdata','localappdata','sqlite','home-runtime')
+              assert not any(x in ('env.local.ps1','auth.json','auth-account-json.json','auth-browser.json') for x in parts)
+          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+r['path'] for r in selected)+'\n',text=True,check=True)
+          scratch=root/'tmp'/'source-review-export'
+          scratch.mkdir(parents=True,exist_ok=False)
+          with zipfile.ZipFile(scratch/'source-review.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for r in selected:
+                  data=(root/r['path']).read_bytes()
+                  assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==r['blob'],r['path']
+                  r['sha256']=hashlib.sha256(data).hexdigest()
+                  archive.writestr('source/'+r['path'],data)
+              archive.writestr('inventory.json',json.dumps({'commit':commit,'tracked':records,'selected':selected},ensure_ascii=False,indent=2))
+          print('EXPORTED_SOURCE_COMMIT='+commit+' FILES='+str(len(selected)))
+      - name: Retain review transfer for at most one day
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          ref: main
-          fetch-depth: 1
-          lfs: false
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: /DEVELOPMENT.md
-      - name: Record only completed review results in the existing document
-        shell: python
-        run: |
-          import os, pathlib, subprocess
-          expected=os.environ['GITHUB_SHA']
-          current=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          assert current==expected,'main changed during validation; preserve concurrent changes'
-          doc=pathlib.Path('DEVELOPMENT.md')
-          text=doc.read_bytes().decode('utf-8')
-          anchor='## 2026-10-24：Windows 验证与 npm 目录边界\n\n'
-          assert text.count(anchor)==1
-          heading='**Python 命令入口刷新：**'
-          assert heading not in text
-          record=heading+' 修正清理时仅凭 helper 文件名子串判断归属、误删用户自建或改写 CMD，以及当前 vendor 缺少入口元数据时误删原命令的问题；只删除与本工具生成内容逐字节一致且已无对应 vendor 的旧入口，无法确认的文件保留。替换暂存统一放当前包内 tmp，并拒绝链接/硬链接输出；正常 CMD 模板字节不变。本项不改 Python 依赖、启动器、认证、权限或官方工件。11 项新增合成回归中，旧实现有 6 项失败，修复后全部通过；本轮全部修复提交后依次用全新 Linux 与 Windows runner 复查，95 项 Python 合成回归、源码解析与生产策略函数检查，以及现有 20 个 Windows 验证组全部通过。验证运行 '+os.environ['GITHUB_RUN_ID']+'；本任务只验证和记录，不构建或发布 Release，不使用真实凭据。\n\n'
-          text=text.replace(anchor,anchor+record,1)
-          pending='完整 Windows 验收由本轮后续双阶段复查完成后记录，不将 Linux/PS7 代作 Windows 结果。'
-          assert text.count(pending)==1
-          text=text.replace(pending,'修复后的两阶段独立复查 '+os.environ['GITHUB_RUN_ID']+' 已通过，9 项输入异常回归也在真实 Windows PowerShell 5.1 执行通过；测试不访问真实账号或认证服务。',1)
-          pending='完整 Windows 与第二轮复查以随后验证记录为准，不声明真实账号联网已测。'
-          assert text.count(pending)==1
-          text=text.replace(pending,'修复后的两阶段独立复查 '+os.environ['GITHUB_RUN_ID']+' 已通过，Python 与 Windows PowerShell 5.1 均验证共享 URL 用例和实际请求构造；不声明真实账号联网已测。',1)
-          doc.write_bytes(text.encode('utf-8'))
-          subprocess.run(['git','diff','--check'],check=True)
-          names=subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()
-          assert names==['DEVELOPMENT.md'],names
-          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
-          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','add','--','DEVELOPMENT.md'],check=True)
-          subprocess.run(['git','commit','-m','docs: record verified data-preservation and URL fixes after two independent reviews'],check=True)
-          subprocess.run(['git','push','origin','HEAD:main'],check=True)
+          name: current-source-review
+          path: tmp/source-review-export/source-review.zip
+          retention-days: 1
+          if-no-files-found: error
+      - name: Remove only the owned export directory
+        if: always()
+        shell: bash
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/source-review-export"
