@@ -13,6 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Dispatch existing full Windows validation without publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run release.yml --ref main -f version=v2026.10.24 -f publish_release=false -f check_set=full
       - name: Read source without downloading LFS runtimes
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -32,36 +37,55 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: |
-          import hashlib, json, pathlib, subprocess, zipfile
+          import hashlib, json, pathlib, subprocess, urllib.request, zipfile
           root = pathlib.Path.cwd()
           out = root / 'tmp' / 'maintenance-source'
           out.mkdir(parents=True, exist_ok=False)
-          entries = subprocess.check_output(['git', 'ls-tree', '-rlz', '--full-tree', 'HEAD']).split(b'\0')
+          # No -l: sparse checkout must not fetch excluded blobs just to get sizes.
+          entries = subprocess.check_output(['git', 'ls-tree', '-rz', '--full-tree', 'HEAD']).split(b'\0')
           inventory = []
           vendor = ('tool/python/', 'tool/node/node_modules/', 'tool/automation/browsers/', 'tool/automation/playwright/node_modules/')
           state = ('work/', 'tmp/', 'cache/', 'logs/', 'login_json/', 'home/sessions/', 'home/.sandbox/', 'home/.sandbox-bin/')
           private_names = {'env.local.ps1', 'auth.json', 'auth-account-json.json', 'auth-browser.json', 'cap_sid', 'installation_id'}
           text_ext = {'.ps1','.psm1','.bat','.cmd','.py','.js','.cjs','.mjs','.ts','.md','.txt','.json','.toml','.yaml','.yml','.html','.css','.xml','.sh','.cfg','.ini','.conf'}
+          upstream = {
+              'config.schema.json': 'codex-rs/core/config.schema.json',
+              'model-provider-info.rs': 'codex-rs/model-provider-info/src/lib.rs',
+              'features.rs': 'codex-rs/features/src/lib.rs',
+              'config-loader.rs': 'codex-rs/config/src/loader/mod.rs',
+              'windows-unified-exec.rs': 'codex-rs/windows-sandbox-rs/src/unified_exec/mod.rs',
+              'models.json': 'codex-rs/core/models.json',
+          }
+          upstream_results = []
           with zipfile.ZipFile(out / 'source-review.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
               for entry in entries:
                   if not entry: continue
                   metadata, raw_path = entry.split(b'\t', 1)
-                  mode, kind, sha, size = metadata.decode().split()
+                  mode, kind, sha = metadata.decode().split()
                   path = raw_path.decode('utf-8')
-                  item = {'path': path, 'mode': mode, 'git_blob': sha, 'git_size': int(size) if size != '-' else None, 'included': False}
+                  item = {'path': path, 'mode': mode, 'git_blob': sha, 'included': False}
                   inventory.append(item)
                   p = pathlib.PurePosixPath(path)
                   if mode not in ('100644','100755') or path.startswith(vendor + state) or p.name in private_names: continue
                   if p.suffix.lower() not in text_ext and p.name not in {'.gitignore','.gitattributes','npm','npx','LICENSE','NOTICE'}: continue
-                  if item['git_size'] > 2097152: continue
                   local = root.joinpath(*p.parts)
-                  if not local.is_file() or local.is_symlink(): continue
+                  if not local.is_file() or local.is_symlink() or local.stat().st_size > 2097152: continue
                   data = local.read_bytes()
                   if b'\0' in data[:8192]: continue
                   item['included'] = True
                   item['sha256'] = hashlib.sha256(data).hexdigest()
                   archive.writestr('source/' + path, data)
-              archive.writestr('source-inventory.json', json.dumps({'commit': subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip(), 'files': inventory}, ensure_ascii=False, indent=2))
+              for name, path in upstream.items():
+                  url = 'https://raw.githubusercontent.com/openai/codex/rust-v0.164.0/' + path
+                  try:
+                      with urllib.request.urlopen(url, timeout=30) as response:
+                          data = response.read(4194305)
+                      if len(data) > 4194304: raise ValueError('Upstream text too large')
+                      archive.writestr('upstream/' + name, data)
+                      upstream_results.append({'path': path, 'url': url, 'sha256': hashlib.sha256(data).hexdigest()})
+                  except Exception as exc:
+                      upstream_results.append({'path': path, 'error': str(exc)})
+              archive.writestr('source-inventory.json', json.dumps({'commit': subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip(), 'files': inventory, 'upstream': upstream_results}, ensure_ascii=False, indent=2))
           print('Tracked files:', len(inventory), 'Source files:', sum(x['included'] for x in inventory))
       - name: Short-lived private source artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -70,11 +94,6 @@ jobs:
           path: tmp/maintenance-source/source-review.zip
           retention-days: 1
           if-no-files-found: error
-      - name: Dispatch existing full Windows validation without publishing
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: gh workflow run release.yml --ref main -f version=v2026.10.24 -f publish_release=false -f check_set=full
       - name: Remove this job's temporary export
         if: always()
         shell: bash
