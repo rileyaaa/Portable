@@ -53,9 +53,20 @@ jobs:
                   lines.append(line[10:] if line else '')
               assert lines
               return '\n'.join(lines)+'\n'
-          code=extract('Apply only the reviewed status display correction');ast.parse(code)
+          code=extract('Apply only the reviewed status display correction')
+          old="text=text.replace(anchor[0],assign+'\\n'+anchor[0],1)"
+          new="newline='\\r\\n' if '\\r\\n' in text else '\\n'\nassign=assign.replace('\\n',newline)\ntext=text.replace(anchor[0],assign+newline+anchor[0],1)"
+          assert code.count(old)==1
+          code=code.replace(old,new,1)
+          old="['git','diff','--check']"
+          assert code.count(old)==1
+          code=code.replace(old,"['git','-c','core.whitespace=cr-at-eol','diff','--check']",1)
+          ast.parse(code)
           (scratch/'apply.py').write_text(code,encoding='utf-8')
-          (scratch/'commit.ps1').write_text(extract('Commit the bounded correction and existing development record'),encoding='utf-8-sig')
+          commit=extract('Commit the bounded correction and existing development record')
+          assert commit.count('& git diff --cached --check')==1
+          commit=commit.replace('& git diff --cached --check','& git -c core.whitespace=cr-at-eol diff --cached --check',1)
+          (scratch/'commit.ps1').write_text(commit,encoding='utf-8-sig')
       - name: Apply only the reviewed status correction
         shell: python
         run: |
@@ -118,7 +129,14 @@ jobs:
                   lines.append(line[10:] if line else '')
               assert lines
               return '\n'.join(lines)+'\n'
-          code=extract('Fresh source audit and exact production delta verification');ast.parse(code)
+          code=extract('Fresh source audit and exact production delta verification')
+          marker='assert new.count(assign)==1'
+          assert code.count(marker)==1
+          code=code.replace(marker,"newline='\\r\\n' if '\\r\\n' in old else '\\n'\nassign=assign.replace('\\n',newline)\n"+marker,1)
+          old="restored=new.replace(assign+'\\n','',1)"
+          assert code.count(old)==1
+          code=code.replace(old,"restored=new.replace(assign+newline,'',1)",1)
+          ast.parse(code)
           (scratch/'source-review.py').write_text(code,encoding='utf-8')
           (scratch/'regression.ps1').write_text(extract('Independent PowerShell parse and production regression cases'),encoding='utf-8-sig')
       - name: Fresh source audit and exact production delta verification
