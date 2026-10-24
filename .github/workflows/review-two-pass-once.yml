@@ -1,5 +1,5 @@
-# Temporary owner-requested repair and verification; never publishes a release.
-name: Repair SQLite ownership and verify twice
+# Temporary owner-requested source export; does not publish or alter runtime.
+name: Export verified source for final review
 on:
   push:
     branches: [main]
@@ -7,251 +7,62 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: portable-independent-review
-  cancel-in-progress: true
 jobs:
-  repair:
+  export:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: write
-    outputs:
-      commit: ${{ steps.repair.outputs.commit }}
     env:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: ${{ github.sha }}
+          ref: 4b2cd56e68b9d2f6f3f839f1d7d3426aa727bc36
           fetch-depth: 1
           lfs: false
           filter: blob:none
           sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /home/skills/pdf-library/scripts/pdf_library.py
-            /home/skills/pdf/scripts/portable_safety.py
-            /tests/test_pdf_library_database.py
-            /DEVELOPMENT.md
-      - name: Reproduce exactly two failures and apply the minimal reviewed repair
-        id: repair
+          sparse-checkout: /README.md
+      - name: Export committed source and exact Git inventory only
         shell: python
         run: |
-          import hashlib,os,pathlib,subprocess,unittest
+          import hashlib,json,pathlib,subprocess,zipfile
           root=pathlib.Path.cwd()
-          helper=root/'home/skills/pdf-library/scripts/pdf_library.py'
-          raw=helper.read_bytes()
-          blob=lambda data: hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
-          assert blob(raw)=='840e4a7237700481f2031e33e68548367c1ae3a9'
-          suite=unittest.defaultTestLoader.discover('tests',pattern='test_pdf_library_database.py')
-          result=unittest.TextTestRunner(verbosity=2).run(suite)
-          expected={'test_pdf_library_database.PdfLibraryDatabaseTests.test_unowned_wal_table_is_rejected_before_journal_mode_change','test_pdf_library_database.PdfLibraryDatabaseTests.test_unowned_view_only_database_is_not_adopted'}
-          assert result.testsRun==7 and not result.errors and not result.skipped
-          assert {case.id() for case,_ in result.failures}==expected
-          old='    connection.execute("PRAGMA journal_mode=DELETE")\n    if identity == 0 and connection.execute(\n        "SELECT count(*) FROM sqlite_master WHERE type=\'table\'"\n    ).fetchone()[0]:\n        connection.close()\n        raise ValueError("Refusing an unrelated SQLite database")\n'
-          new='    # Establish ownership before any persistent PRAGMA. Views and other schema\n    # objects also identify a nonempty, unowned database; do not adopt it.\n    if identity == 0 and connection.execute(\n        "SELECT count(*) FROM sqlite_master"\n    ).fetchone()[0]:\n        connection.close()\n        raise ValueError("Refusing an unrelated SQLite database")\n    connection.execute("PRAGMA journal_mode=DELETE")\n'
-          text=raw.decode('utf-8');assert text.count(old)==1
-          updated=text.replace(old,new,1).encode('utf-8')
-          assert blob(updated)=='cc837a255ef52333ddf023d36887a4ced5831802'
-          helper.write_bytes(updated)
-          subprocess.run(['python','-B','-m','unittest','discover','-s','tests','-p','test_pdf_library_database.py','-v'],check=True)
-          doc=root/'DEVELOPMENT.md';text=doc.read_bytes().decode('utf-8')
-          anchor='## 2026-10-24：0.164.0 配套升级与配置兼容'
-          assert text.count(anchor)==1
-          heading='## 2026-10-25：SQLite 归属检查与发布复查'
-          assert heading not in text
-          note=heading+'\n\n**PDF 手册库数据库保护：** 原归属检查在拒绝无关 SQLite 文件前先设置 journal_mode=DELETE，会改变既有 WAL 数据库；仅检查 table 也会误认领只有 view 的数据库。现先检查 application_id 和所有持久 schema 对象，确认是本工具库或空库后才设置日志模式；拒绝时不改写无关文件。只调整 PDF 手册库的数据库初始化顺序，不改转换内容、索引格式、认证、权限或官方工件。新增 7 项纯合成数据库回归，旧实现稳定复现 2 项失败，修复后 7 项通过，覆盖外部归属、视图库、WAL、空库、既有库和只读打开。修复后两轮独立复查及完整 Windows 验收尚待本轮执行结果，不使用真实数据库或账号。\n\n'
-          doc.write_bytes(text.replace(anchor,note+anchor,1).encode('utf-8'))
-          subprocess.run(['git','diff','--check'],check=True)
-          names=set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
-          assert names=={'DEVELOPMENT.md','home/skills/pdf-library/scripts/pdf_library.py'},names
-          remote=subprocess.check_output(['git','ls-remote','origin','refs/heads/main'],text=True).split()[0]
-          assert remote==os.environ['GITHUB_SHA'],'main changed; do not overwrite concurrent edits'
-          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
-          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','add','--','DEVELOPMENT.md','home/skills/pdf-library/scripts/pdf_library.py'],check=True)
-          subprocess.run(['git','commit','-m','fix: establish PDF index ownership before persistent SQLite changes'],check=True)
-          subprocess.run(['git','push','origin','HEAD:main'],check=True)
           commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as out: out.write('commit='+commit+'\n')
-          print('REPAIRED_COMMIT='+commit)
-  source-review:
-    needs: repair
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      PYTHONDONTWRITEBYTECODE: '1'
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          ref: ${{ needs.repair.outputs.commit }}
-          fetch-depth: 1
-          lfs: false
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /README.md
-            /DEVELOPMENT.md
-      - name: First clean pass - full source inventory and synthetic regression
-        shell: python
-        run: |
-          import ast,pathlib,subprocess,sys,unittest
-          root=pathlib.Path.cwd()
-          paths=[p.decode('utf-8') for p in subprocess.check_output(['git','ls-tree','-rz','--name-only','HEAD']).split(b'\0') if p]
+          assert commit=='4b2cd56e68b9d2f6f3f839f1d7d3426aa727bc36'
+          files=[]
+          for record in subprocess.check_output(['git','ls-tree','-rz','HEAD']).split(b'\0'):
+              if not record: continue
+              metadata,name=record.split(b'\t',1)
+              mode,kind,sha=metadata.decode('ascii').split()
+              files.append({'path':name.decode('utf-8'),'mode':mode,'type':kind,'sha':sha})
           excluded=('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
-          extensions={'.ps1','.psm1','.psd1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.rules','.toml','.css','.html','.sh'}
-          selected=[p for p in paths if not p.startswith(excluded) and (pathlib.PurePosixPath(p).suffix.lower() in extensions or p in ('.gitignore','.gitattributes'))]
-          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+p for p in selected)+'\n',text=True,check=True)
-          counts={'python':0,'javascript':0,'root_bat':0}
-          for name in selected:
-              data=(root/name).read_bytes()
-              if name.endswith('.py'): ast.parse(data.decode('utf-8-sig'),filename=name); counts['python']+=1
-              if name.endswith(('.js','.cjs','.mjs')): subprocess.run(['node','--check',name],check=True,capture_output=True); counts['javascript']+=1
-              if '/' not in name and name.endswith('.bat'): data.decode('ascii'); assert b'\n' not in data.replace(b'\r\n',b''),name; counts['root_bat']+=1
-          assert sum(pathlib.PurePosixPath(p).name.lower()=='codex.exe' for p in paths)==1
-          subprocess.run(['git','diff','--check'],check=True)
-          print('FIRST_PASS_INVENTORY',len(paths),'SYNTAX',counts,flush=True)
-          sys.path.insert(0,str(root/'tests'))
-          modules=['test_android_extension','test_android_guard','test_helper_relocation','test_instruction_installer','test_login_json_http','test_login_url_contract','test_mode_copies','test_office_output_boundaries','test_pdf_library_database','test_python_cli_shims','test_python_lock','test_release_package']
-          def flatten(suite):
-              for item in suite:
-                  if isinstance(item,unittest.TestSuite): yield from flatten(item)
-                  else: yield item
-          cases=list(flatten(unittest.defaultTestLoader.loadTestsFromNames(modules)))
-          native='test_python_lock.PythonLockTests.test_runtime_repair_accepts_current_defaults_and_missing_packages'
-          assert sum(c.id()==native for c in cases)==1
-          print('REQUIRES_SECOND_PASS_WINDOWS_PAYLOAD',native,flush=True)
-          result=unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite(c for c in cases if c.id()!=native))
-          if not result.wasSuccessful() or result.skipped: raise SystemExit('First-pass regression failed or skipped tests.')
-          print('FIRST_PASS_PYTHON='+str(result.testsRun),flush=True)
-      - name: First clean pass - production PowerShell policies
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop'
-          $count=0
-          Get-ChildItem -Recurse -File -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/]tmp[\\/]' } | ForEach-Object {
-            $tokens=$null; $errors=$null
-            $null=[Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
-            if ($errors.Count) { throw ($_.FullName+': '+($errors.Message -join '; ')) }
-            $count++
-          }
-          foreach ($name in @('test_cli_model_options','test_permission_display','test_extension_policy','test_extension_migration','test_browser_login_flow','test_login_input_errors','test_system_policy','test_python_setup')) {
-            & pwsh -NoLogo -NoProfile -File (Join-Path 'tests' ($name+'.ps1'))
-            if ($LASTEXITCODE -ne 0) { throw ('First-pass production policy failure: '+$name) }
-          }
-          Write-Output "FIRST_PASS_POWERSHELL_PARSE=$count"
-  windows-recheck:
-    needs: [repair, source-review]
-    runs-on: windows-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+          suffixes={'.ps1','.psm1','.psd1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.rules','.toml','.css','.html','.sh'}
+          selected=[entry for entry in files if not entry['path'].startswith(excluded) and (pathlib.PurePosixPath(entry['path']).suffix.lower() in suffixes or entry['path'] in ('.gitignore','.gitattributes'))]
+          forbidden={'env.local.ps1','home/auth.json','home/auth-browser.json','home/auth-account-json.json','home/config.toml'}
+          assert not any(e['path'] in forbidden or e['path'].startswith(('tmp/','cache/','logs/','home/sessions/')) for e in selected)
+          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+e['path'] for e in selected)+'\n',text=True,check=True)
+          scratch=root/'tmp'/'final-source-export'
+          scratch.mkdir(parents=True,exist_ok=False)
+          archive=scratch/'verified-source.zip'
+          with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as output:
+              for entry in selected:
+                  assert entry['mode']=='100644' and entry['type']=='blob',entry['path']
+                  data=(root/entry['path']).read_bytes()
+                  assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==entry['sha'],entry['path']
+                  output.writestr('source/'+entry['path'],data)
+              output.writestr('inventory.json',json.dumps({'commit':commit,'files':files},ensure_ascii=False))
+          print('EXPORTED_SOURCE_FILES='+str(len(selected)))
+          print('SOURCE_COMMIT='+commit)
+          print('ARCHIVE_SHA256='+hashlib.sha256(archive.read_bytes()).hexdigest())
+      - name: Upload short-lived source snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          ref: ${{ needs.repair.outputs.commit }}
-          fetch-depth: 1
-          lfs: true
-          persist-credentials: false
-      - name: Prepare package-local verification state
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          $base=Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state'
-          $state=@{
-            HOME='home'; USERPROFILE='home'; APPDATA='appdata'; LOCALAPPDATA='localappdata'; PROGRAMDATA='programdata'; ALLUSERSPROFILE='programdata';
-            TEMP='temp'; TMP='temp'; TMPDIR='temp'; XDG_CACHE_HOME='cache'; XDG_CONFIG_HOME='config'; XDG_DATA_HOME='data'; XDG_STATE_HOME='state';
-            CODEX_HOME='codex-home'; CODEX_SQLITE_HOME='sqlite'; GH_CONFIG_DIR='gh'
-          }
-          foreach ($name in $state.Keys) {
-            $path=Join-Path $base $state[$name]
-            New-Item -ItemType Directory -Force -Path $path | Out-Null
-            "$name=$path" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          }
-          'PYTHONDONTWRITEBYTECODE=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          'PIP_CONFIG_FILE=nul' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          'POWERSHELL_TELEMETRY_OPTOUT=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          $modules=Join-Path $base 'cache/modules'
-          New-Item -ItemType Directory -Force -Path $modules | Out-Null
-          "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Second clean pass - all Windows validation blocks unchanged
-        shell: python
-        run: |
-          import os,pathlib,re,subprocess
-          root=pathlib.Path.cwd()
-          scratch=root/'tmp'/'second-review'
-          scratch.mkdir(exist_ok=False)
-          text=(root/'.github/workflows/release.yml').read_text(encoding='utf-8')
-          selected=[]
-          for section in re.split(r'^      - name: ',text,flags=re.M)[1:]:
-              name=section.splitlines()[0]
-              if name not in ('Run bundled Python and Node regression suites','Verify the native Codex version') and not name.startswith('Windows PowerShell 5.1 - '): continue
-              body=section.split('        run: |\n',1)[1]
-              lines=[]
-              for line in body.splitlines():
-                  if line and not line.startswith('          '): break
-                  lines.append(line[10:] if line else '')
-              limit=re.search(r'^        timeout-minutes: ([0-9]+)$',section,re.M)
-              assert limit,name
-              script=scratch/('check-'+str(len(selected))+'.ps1')
-              script.write_text('\n'.join(lines)+'\n',encoding='utf-8-sig')
-              selected.append((name,script,60*int(limit.group(1))))
-          assert len(selected)==20,len(selected)
-          powershell=pathlib.Path(os.environ['SystemRoot'])/'System32/WindowsPowerShell/v1.0/powershell.exe'
-          for name,script,limit in selected:
-              print('::group::'+name,flush=True)
-              child=subprocess.Popen([str(powershell),'-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(script)])
-              try:
-                  code=child.wait(timeout=limit)
-              except subprocess.TimeoutExpired:
-                  subprocess.run(['taskkill.exe','/PID',str(child.pid),'/T','/F'],check=False,timeout=30)
-                  child.wait(timeout=30)
-                  raise
-              finally:
-                  print('::endgroup::',flush=True)
-              if code: raise SystemExit(name+' failed: '+str(code))
-              print('SECOND_PASS_OK '+name,flush=True)
-          print('SECOND_PASS_ALL_WINDOWS_GROUPS='+str(len(selected)),flush=True)
-      - name: Remove owned verification state
+          name: verified-source-final-review
+          path: tmp/final-source-export/verified-source.zip
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - name: Remove owned export scratch
         if: always()
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          foreach ($relative in @('tmp/second-review','tmp/windows-release-state')) {
-            $path=Join-Path $env:GITHUB_WORKSPACE $relative
-            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
-          }
-  record-review:
-    needs: [repair, windows-recheck]
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          ref: main
-          fetch-depth: 1
-          lfs: false
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: /DEVELOPMENT.md
-      - name: Record only completed checks in the existing development document
-        shell: python
-        env:
-          VERIFIED_COMMIT: ${{ needs.repair.outputs.commit }}
-        run: |
-          import os,pathlib,subprocess
-          current=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          assert current==os.environ['VERIFIED_COMMIT'],'main changed; do not overwrite concurrent edits'
-          doc=pathlib.Path('DEVELOPMENT.md');text=doc.read_bytes().decode('utf-8')
-          old='修复后两轮独立复查及完整 Windows 验收尚待本轮执行结果，不使用真实数据库或账号。'
-          assert text.count(old)==1
-          new='修复后独立运行 '+os.environ['GITHUB_RUN_ID']+' 依次在全新 Linux 和 Windows runner 检出同一修复提交：102 项 Python 合成回归、源码解析与生产策略函数检查，以及现有 20 个 Windows 验证组全部通过；新增 7 项数据库检查也在包内 Windows Python 执行通过。第二轮未发现新的可复现问题；不等于所有场景无 bug，真实账号、在线 Agent/Host、提权沙箱及设备操作未测。本任务仅修复和验证，不构建或发布 Release。'
-          doc.write_bytes(text.replace(old,new,1).encode('utf-8'))
-          subprocess.run(['git','diff','--check'],check=True)
-          assert subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()==['DEVELOPMENT.md']
-          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
-          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','add','--','DEVELOPMENT.md'],check=True)
-          subprocess.run(['git','commit','-m','docs: record two fresh successful passes after SQLite ownership repair'],check=True)
-          subprocess.run(['git','push','origin','HEAD:main'],check=True)
+        shell: bash
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/final-source-export"
