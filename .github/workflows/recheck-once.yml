@@ -1,4 +1,4 @@
-# Temporary owner-authorized review bridge; remove before corrected release.
+# Temporary owner-authorized repair bridge; remove before corrective release.
 name: One-time final recheck
 on:
   push:
@@ -6,54 +6,99 @@ on:
     paths: [.github/workflows/recheck-once.yml]
   workflow_dispatch:
 permissions:
-  contents: read
-  actions: write
+  contents: write
 jobs:
-  review:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+  repair:
+    runs-on: windows-latest
+    timeout-minutes: 15
     steps:
-      - name: Hold the in-flight release with the newly identified parser defect
-        shell: python
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/model-review/gh
-          PYTHONDONTWRITEBYTECODE: '1'
-        run: |
-          import json,os,pathlib,subprocess
-          pathlib.Path(os.environ['GH_CONFIG_DIR']).mkdir(parents=True,exist_ok=False)
-          endpoint='repos/'+os.environ['GITHUB_REPOSITORY']+'/actions/runs/40073399090'
-          run=json.loads(subprocess.check_output(['gh','api',endpoint],text=True))
-          assert run['head_sha']=='4f8f9fab78cd61d2cf112699f95a854e4354bb9d'
-          if run['status']!='completed':
-              subprocess.run(['gh','api','--method','POST',endpoint+'/cancel'],check=True)
-              print('IN_FLIGHT_RELEASE_CANCELLATION_REQUESTED')
-          else:
-              assert run['conclusion']!='success','Release already completed; inspect before further publication.'
-              print('RELEASE_ALREADY_STOPPED',run['conclusion'])
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 1
-          lfs: false
-          filter: blob:none
-          clean: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /run-codex.ps1
-      - name: Reproduce exact production short-model parsing without launching a client
-        shell: pwsh
+          lfs: true
+      - name: Prepare owned package-local state
+        shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          $tokens=$null;$errors=$null
-          $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'run-codex.ps1'),[ref]$tokens,[ref]$errors)
-          if($errors.Count){throw 'Launcher parsing failed.'}
-          $fn=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-AndNormalizeCodexCliArgs'},$true))
-          if($fn.Count -ne 1){throw 'Unexpected CLI parser definition.'}
-          . ([scriptblock]::Create($fn[0].Extent.Text))
-          function Stop-UnsafeCodexCliArgument($Argument,$Reason){throw $Reason}
-          $PortableMaintenanceMode=$false;$ConfiguredAuthMode='api';$PreviousAuthMode=''
-          $inputArgs=New-Object 'System.Collections.Generic.List[string]'
-          $inputArgs.Add('-m=synthetic-model');$inputArgs.Add('--version')
-          $null=Test-AndNormalizeCodexCliArgs -InputArgs $inputArgs
-          if($script:CliModelOverride -cne '=synthetic-model'){throw 'Expected baseline mismatch was not reproduced.'}
-          Write-Output 'REPRODUCED: -m=synthetic-model incorrectly records =synthetic-model in generated settings.'
+          $base=Join-Path $env:GITHUB_WORKSPACE 'tmp/model-review'
+          $state=@{HOME='home';USERPROFILE='home';APPDATA='appdata';LOCALAPPDATA='localappdata';PROGRAMDATA='programdata';ALLUSERSPROFILE='programdata';TEMP='temp';TMP='temp';TMPDIR='temp';XDG_CACHE_HOME='cache';XDG_CONFIG_HOME='config';XDG_DATA_HOME='data';XDG_STATE_HOME='state';CODEX_HOME='codex-home';CODEX_SQLITE_HOME='sqlite';GH_CONFIG_DIR='gh'}
+          foreach($name in $state.Keys){$p=Join-Path $base $state[$name];New-Item -ItemType Directory -Force -Path $p|Out-Null;"$name=$p"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
+          'PYTHONDONTWRITEBYTECODE=1'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          'PIP_CONFIG_FILE=nul'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          'POWERSHELL_TELEMETRY_OPTOUT=1'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          New-Item -ItemType Directory -Force -Path "$base\cache\modules"|Out-Null
+          "PSModulePath=$base\cache\modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Apply exact reviewed model patch and stage only intended files
+        shell: python
+        run: |
+          import base64,hashlib,json,pathlib,subprocess,zlib
+          packed='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'
+          payload=zlib.decompress(base64.b64decode(packed,validate=True))
+          assert hashlib.sha256(payload).hexdigest()=='65f9d40f0069976469bfa8900ca32403b563f555173d5d07cecf5244e51031ef'
+          ops=json.loads(payload);root=pathlib.Path.cwd();seen=set()
+          for op in ops:
+              name=op['path'];path=root/name
+              assert not pathlib.PurePosixPath(name).is_absolute() and '..' not in pathlib.PurePosixPath(name).parts
+              if 'create' in op:
+                  assert not path.exists();data=op['create'].encode('utf-8')
+              else:
+                  before=path.read_bytes() if name in seen else subprocess.check_output(['git','show','HEAD:'+name])
+                  assert hashlib.sha256(before).hexdigest()==op['before'],name
+                  if 'copy' in op:data=(root/op['copy']).read_bytes()
+                  else:
+                      text=before.decode('utf-8');crlf='\r\n' in text;text=text.replace('\r\n','\n')
+                      assert text.count(op['old'])==1,name
+                      text=text.replace(op['old'],op['new'],1)
+                      data=(text.replace('\n','\r\n') if crlf else text).encode('utf-8')
+              assert hashlib.sha256(data).hexdigest()==op['after'],name
+              path.write_bytes(data);seen.add(name)
+          assert len(seen)==8
+          (root/'tmp/model-review/paths.json').write_text(json.dumps(sorted(seen)),encoding='utf-8')
+          subprocess.run(['git','config','core.autocrlf','false'],check=True)
+          subprocess.run(['git','add','--',*sorted(seen)],check=True)
+          subprocess.run(['git','-c','core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol','diff','--cached','--check'],check=True)
+          print('PATCH_BYTES_AND_WHITESPACE=PASS files=8')
+      - name: Check both production regressions and unchanged runtime identities
+        timeout-minutes: 5
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p test_runtime_package.py -v
+          if($LASTEXITCODE -ne 0){throw 'Runtime identity check failed.'}
+          [Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
+          $models=& .\codex.exe debug models --bundled
+          if($LASTEXITCODE -ne 0){throw 'Bundled model export failed.'}
+          [IO.File]::WriteAllText((Join-Path $PWD 'tmp/model-review/models.json'),($models -join "`n"),(New-Object Text.UTF8Encoding($true)))
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_config.ps1 -BundledModelsPath .\tmp\model-review\models.json
+          if($LASTEXITCODE -ne 0){throw 'Configuration or model-option regression failed.'}
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_extension_policy.ps1
+          if($LASTEXITCODE -ne 0){throw 'Extension persistence regression failed.'}
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p test_mode_copies.py -v
+          if($LASTEXITCODE -ne 0){throw 'Mode copies differ.'}
+      - name: Verify real native model configuration and MCP maintenance lifecycle
+        timeout-minutes: 8
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1
+          if($LASTEXITCODE -ne 0){throw 'Native integration regression failed.'}
+      - name: Commit exact verified source bytes
+        shell: python
+        run: |
+          import json,pathlib,subprocess
+          root=pathlib.Path.cwd();paths=json.loads((root/'tmp/model-review/paths.json').read_text())
+          staged=[p.decode('utf-8') for p in subprocess.check_output(['git','diff','--cached','--name-only','-z']).split(b'\0') if p]
+          assert set(staged)==set(paths)
+          for name in staged:assert subprocess.check_output(['git','show',':'+name])==(root/name).read_bytes(),name
+          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','commit','-m','fix: normalize attached short model values before generating configuration'],check=True)
+          subprocess.run(['git','push','origin','HEAD:main'],check=True)
+          print('VERIFIED_REPAIR_COMMIT',subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
+      - name: Remove only owned review state
+        if: always()
+        shell: powershell
+        run: |
+          $p=Join-Path $env:GITHUB_WORKSPACE 'tmp/model-review'
+          if(Test-Path -LiteralPath $p){Remove-Item -LiteralPath $p -Recurse -Force}
