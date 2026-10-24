@@ -6,81 +6,158 @@ on:
     paths: [.github/workflows/maintenance-once.yml]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   review:
     runs-on: windows-latest
-    timeout-minutes: 6
+    timeout-minutes: 15
     steps:
-      - name: Check out only the process helper
+      - name: Check out real runtime and first-party sources
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          lfs: true
           fetch-depth: 1
-          lfs: false
-          persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /tool/portable-process.ps1
-      - name: Probe compiler paths without credentials or runtime changes
+      - name: Prepare owned package-local state
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $base = Join-Path $env:GITHUB_WORKSPACE ('tmp/compiler-probe-' + [Guid]::NewGuid().ToString('N'))
-          New-Item -ItemType Directory -Path $base | Out-Null
-          $probe = Join-Path $base 'probe.ps1'
-          @'
-          param([string]$Scratch,[string]$Mode)
-          $ErrorActionPreference = 'Stop'
-          [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
-          $env:TEMP=$Scratch; $env:TMP=$Scratch; $env:TMPDIR=$Scratch
-          [Environment]::CurrentDirectory=$Scratch
-          Set-Location -LiteralPath $Scratch
-          $source='public sealed class PortableCompilerProbe { public static int Value { get { return 42; } } }'
-          try {
-            if ($Mode -eq 'default') {
-              Add-Type -TypeDefinition $source -ErrorAction Stop
-            } elseif ($Mode -eq 'parameters') {
-              $cp=New-Object CodeDom.Compiler.CompilerParameters
-              $cp.GenerateInMemory=$true
-              $cp.TempFiles=New-Object CodeDom.Compiler.TempFileCollection($Scratch,$false)
-              [void]$cp.ReferencedAssemblies.Add('System.dll')
-              Add-Type -TypeDefinition $source -CompilerParameters $cp -ErrorAction Stop
-            } else {
-              $runtime=[Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory()
-              $csc=Join-Path $runtime 'csc.exe'
-              $cs=Join-Path $Scratch 'probe.cs'; $dll=Join-Path $Scratch 'probe.dll'; $rsp=Join-Path $Scratch 'probe.rsp'
-              [IO.File]::WriteAllText($cs,$source,(New-Object Text.UTF8Encoding($true)))
-              [IO.File]::WriteAllText($rsp,('/nologo /target:library /utf8output /out:"'+$dll+'" "'+$cs+'"'),(New-Object Text.UTF8Encoding($true)))
-              $si=New-Object Diagnostics.ProcessStartInfo
-              $si.FileName=$csc; $si.Arguments='@"'+$rsp+'"'; $si.WorkingDirectory=$Scratch; $si.UseShellExecute=$false; $si.CreateNoWindow=$true
-              $si.RedirectStandardOutput=$true; $si.RedirectStandardError=$true
-              $si.EnvironmentVariables['TEMP']=$Scratch; $si.EnvironmentVariables['TMP']=$Scratch
-              $p=New-Object Diagnostics.Process; $p.StartInfo=$si
-              [void]$p.Start(); $o=$p.StandardOutput.ReadToEndAsync(); $e=$p.StandardError.ReadToEndAsync()
-              if(-not $p.WaitForExit(30000)){ $p.Kill(); throw 'Compiler timed out.' }
-              if($p.ExitCode -ne 0){throw ($o.Result + $e.Result)}
-              $p.Dispose()
-              [void][Reflection.Assembly]::Load([IO.File]::ReadAllBytes($dll))
-            }
-            Write-Output ('RESULT '+$Mode+' PASS '+[PortableCompilerProbe]::Value)
-          } catch {
-            Write-Output ('RESULT '+$Mode+' FAIL '+$_.Exception.ToString())
+          $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/maintenance-launcher-state'
+          $state = @{ HOME='home'; USERPROFILE='home'; APPDATA='appdata'; LOCALAPPDATA='localappdata'; PROGRAMDATA='programdata'; ALLUSERSPROFILE='programdata'; TEMP='temp'; TMP='temp'; TMPDIR='temp'; XDG_CONFIG_HOME='config'; XDG_CACHE_HOME='cache'; XDG_DATA_HOME='data'; XDG_STATE_HOME='state'; CODEX_HOME='codex-home'; CODEX_SQLITE_HOME='sqlite'; GH_CONFIG_DIR='gh' }
+          foreach ($name in $state.Keys) {
+            $path = Join-Path $base $state[$name]
+            New-Item -ItemType Directory -Path $path -Force | Out-Null
+            "$name=$path" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
           }
-          '@ | Set-Content -LiteralPath $probe -Encoding UTF8
-          try {
-            foreach($mode in @('default','parameters','direct')) {
-              $scratch=Join-Path $base ($mode+' '+[char]0x642c+[char]0x8fc1)
-              New-Item -ItemType Directory -Path $scratch | Out-Null
-              $si=New-Object Diagnostics.ProcessStartInfo
-              $si.FileName=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
-              $si.Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$probe+'" -Scratch "'+$scratch+'" -Mode '+$mode
-              $si.UseShellExecute=$false; $si.CreateNoWindow=$true; $si.RedirectStandardOutput=$true; $si.RedirectStandardError=$true
-              foreach($name in @('TEMP','TMP','TMPDIR','HOME','USERPROFILE','APPDATA','LOCALAPPDATA','PROGRAMDATA','ALLUSERSPROFILE','XDG_CACHE_HOME','XDG_CONFIG_HOME')) { $si.EnvironmentVariables[$name]=$scratch }
-              $si.EnvironmentVariables['PSModuleAnalysisCachePath']=Join-Path $scratch 'ModuleAnalysisCache'
-              $si.EnvironmentVariables['PSModulePath']=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/Modules'
-              $p=New-Object Diagnostics.Process; $p.StartInfo=$si
-              [void]$p.Start(); $o=$p.StandardOutput.ReadToEndAsync(); $e=$p.StandardError.ReadToEndAsync()
-              if(-not $p.WaitForExit(60000)){ & (Join-Path $env:SystemRoot 'System32/taskkill.exe') /PID $p.Id /T /F; throw 'Probe timed out.' }
-              Write-Output $o.Result; Write-Output $e.Result; $p.Dispose()
-            }
-          } finally { Remove-Item -LiteralPath $base -Recurse -Force }
+          'PYTHONDONTWRITEBYTECODE=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'PIP_CONFIG_FILE=nul' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'POWERSHELL_TELEMETRY_OPTOUT=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          $modules = Join-Path $base 'modules'
+          New-Item -ItemType Directory -Path $modules -Force | Out-Null
+          "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Apply only the reviewed compiler entry repair
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tracked = & git rev-parse HEAD:tool/portable-process.ps1
+          if ($LASTEXITCODE -ne 0 -or $tracked -ne '5d668a543fedfbfbfc22c719422ad4a4e3060604') { throw 'Unexpected helper baseline; refusing to patch.' }
+          $path = Join-Path $env:GITHUB_WORKSPACE 'tool/portable-process.ps1'
+          $text = [IO.File]::ReadAllText($path)
+          $newline = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
+          $begin = "        Add-Type -TypeDefinition @'"
+          $end = "'@ -ErrorAction Stop"
+          if (($text.Split(@($begin),[StringSplitOptions]::None).Count -ne 2) -or ($text.Split(@($end),[StringSplitOptions]::None).Count -ne 2)) { throw 'Unexpected compiler anchors.' }
+          $block = @'
+                  if ($PSVersionTable.PSVersion.Major -le 5 -and [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) {
+                      # Framework CodeDOM uses ANSI temporary-directory/environment APIs.
+                      # Invoke the same system compiler with a Unicode ProcessStartInfo and
+                      # a UTF-8 response file instead; every generated byte stays in tmp.
+                      $runtime = [Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory()
+                      $compiler = Join-Path $runtime 'csc.exe'
+                      if (-not [IO.File]::Exists($compiler)) { throw 'Required Windows framework compiler is unavailable.' }
+                      $sourcePath = Join-Path $build 'supervisor.cs'
+                      $assemblyPath = Join-Path $build 'supervisor.dll'
+                      $responsePath = Join-Path $build 'compiler.rsp'
+                      $response = @('/nologo', '/target:library', '/optimize+', '/utf8output', '/nostdlib+',
+                          ('/reference:"' + (Join-Path $runtime 'mscorlib.dll') + '"'),
+                          ('/reference:"' + (Join-Path $runtime 'System.dll') + '"'),
+                          ('/reference:"' + (Join-Path $runtime 'System.Core.dll') + '"'),
+                          ('/out:"' + $assemblyPath + '"'), ('"' + $sourcePath + '"')) -join "`r`n"
+                      foreach ($entry in @(@{ Path = $sourcePath; Text = $source }, @{ Path = $responsePath; Text = $response })) {
+                          $stream = [IO.File]::Open($entry.Path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+                          try {
+                              $writer = New-Object IO.StreamWriter($stream, (New-Object Text.UTF8Encoding($true)))
+                              try { $writer.Write($entry.Text) } finally { $writer.Dispose() }
+                          } finally { $stream.Dispose() }
+                      }
+                      $start = New-Object Diagnostics.ProcessStartInfo
+                      $start.FileName = $compiler
+                      $start.Arguments = '/noconfig @"' + $responsePath + '"'
+                      $start.WorkingDirectory = $build
+                      $start.UseShellExecute = $false; $start.CreateNoWindow = $true
+                      $start.RedirectStandardInput = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+                      $start.StandardOutputEncoding = New-Object Text.UTF8Encoding($false)
+                      $start.StandardErrorEncoding = New-Object Text.UTF8Encoding($false)
+                      $start.EnvironmentVariables.Clear()
+                      $windows = [Environment]::GetFolderPath('Windows')
+                      $start.EnvironmentVariables['SystemRoot'] = $windows
+                      $start.EnvironmentVariables['WINDIR'] = $windows
+                      $start.EnvironmentVariables['PATH'] = $runtime + ';' + (Join-Path $windows 'System32')
+                      foreach ($name in @('TEMP','TMP','TMPDIR','HOME','USERPROFILE','APPDATA','LOCALAPPDATA','PROGRAMDATA','ALLUSERSPROFILE')) {
+                          $start.EnvironmentVariables[$name] = $build
+                      }
+                      $compilerProcess = New-Object Diagnostics.Process
+                      $compilerProcess.StartInfo = $start
+                      try {
+                          [void]$compilerProcess.Start()
+                          $compilerOut = $compilerProcess.StandardOutput.ReadToEndAsync()
+                          $compilerErr = $compilerProcess.StandardError.ReadToEndAsync()
+                          $compilerProcess.StandardInput.Close()
+                          if (-not $compilerProcess.WaitForExit(30000)) { throw 'Process-helper compilation exceeded its finite deadline.' }
+                          [void]$compilerOut.GetAwaiter().GetResult(); [void]$compilerErr.GetAwaiter().GetResult()
+                          if ($compilerProcess.ExitCode -ne 0) { throw ('Process-helper compilation failed; compiler exit code ' + $compilerProcess.ExitCode) }
+                      } finally {
+                          try { if (-not $compilerProcess.HasExited) { $compilerProcess.Kill(); [void]$compilerProcess.WaitForExit(5000) } } catch {}
+                          $compilerProcess.Dispose()
+                      }
+                      $assemblyItem = Get-Item -LiteralPath $assemblyPath -Force -ErrorAction Stop
+                      if ($assemblyItem.PSIsContainer -or ($assemblyItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+                          ($assemblyItem.PSObject.Properties['LinkType'] -and $assemblyItem.LinkType) -or
+                          ([string]$assemblyItem.Mode).Contains('l') -or $assemblyItem.Length -le 0 -or $assemblyItem.Length -gt 4MB) {
+                          throw 'Unsafe process-helper compiler output.'
+                      }
+                      # Loading bytes avoids locking a DLL in the package temporary tree.
+                      [void][Reflection.Assembly]::Load([IO.File]::ReadAllBytes($assemblyPath))
+                      if (-not ('CodexPortable.ProcessJobR20' -as [type]) -or -not ('CodexPortable.SuspendedChildR20' -as [type])) {
+                          throw 'Process-helper compiler output lacks the required types.'
+                      }
+                  } else {
+                      Add-Type -TypeDefinition $source -ErrorAction Stop
+                  }
+          '@
+          $block = $block.Replace("`r`n","`n").Replace("`n",$newline)
+          $updated = $text.Replace($begin,"        `$source = @'").Replace($end,"'@" + $newline + $block)
+          $beforeCs = [regex]::Match($text,"(?s)@'\r?\n(.*?)\r?\n'@").Groups[1].Value
+          $afterCs = [regex]::Match($updated,"(?s)@'\r?\n(.*?)\r?\n'@").Groups[1].Value
+          if ($beforeCs -cne $afterCs) { throw 'Supervisor C# unexpectedly changed.' }
+          [IO.File]::WriteAllText($path,$updated,(New-Object Text.UTF8Encoding($false)))
+          $tokens=$null; $errors=$null
+          $null=[Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)
+          if($errors.Count){throw 'Patched helper failed PowerShell parsing.'}
+      - name: Preserve inherited and captured standard streams
+        shell: powershell
+        timeout-minutes: 3
+        run: |
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_automation_process.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Process supervision regression failed.' }
+      - name: Real ordinary, relocated and maintenance launcher offline smoke
+        shell: powershell
+        timeout-minutes: 10
+        run: |
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Full launcher integration failed.' }
+      - name: Record the verified result and commit only the scoped repair
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path=Join-Path $env:GITHUB_WORKSPACE 'DEVELOPMENT.md'
+          $text=[IO.File]::ReadAllText($path)
+          $anchor='## 2026-10-24：Windows 验证与 npm 目录边界'
+          if(-not $text.Contains($anchor)){throw 'Development section missing.'}
+          $record='**完整启动补验：** 新增真实 BAT → 启动器 → 固定原生客户端的离线回归，发现 Windows PowerShell 5.1 的 CodeDOM 在含中文的包内临时目录创建/调用编译器时失败。仅替换监督器的编译入口：使用当前 Windows .NET Framework 自带 csc、Unicode 子进程环境和 UTF-8 参数文件，源码/输出仍在本次包内 tmp，加载后安全清理；监督器 C#、Job 约束、标准流、模式和凭据逻辑不变。Windows 普通路径、中文/空格改名搬迁、旧根仍存在及维护入口三组实际启动与生成配置通过，继承/捕获标准流及其 14 个严格诊断正反例通过；最终全量发布验收另行执行。'
+          $text=$text.Replace($anchor,$anchor+"`n`n"+$record)
+          [IO.File]::WriteAllText($path,$text,(New-Object Text.UTF8Encoding($false)))
+          & git config user.name 'github-actions[bot]'
+          & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          & git add -- tool/portable-process.ps1 DEVELOPMENT.md
+          & git diff --cached --stat
+          & git commit -m 'fix: compile portable process helper safely in Unicode package paths'
+          if ($LASTEXITCODE -ne 0) { throw 'Scoped repair commit failed.' }
+          & git push origin HEAD:main
+          if ($LASTEXITCODE -ne 0) { throw 'Push rejected; preserve the new remote head before retrying.' }
+      - name: Remove only this job's state
+        if: always()
+        shell: powershell
+        run: |
+          $state=Join-Path $env:GITHUB_WORKSPACE 'tmp/maintenance-launcher-state'
+          if(Test-Path -LiteralPath $state){Remove-Item -LiteralPath $state -Recurse -Force}
