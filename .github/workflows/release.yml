@@ -207,6 +207,14 @@ jobs:
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_automation_process.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_automation_process' }
 
+      - name: Windows PowerShell 5.1 - test_login_input_errors
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_login_input_errors.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_login_input_errors' }
+
       - name: Windows PowerShell 5.1 - test_browser_login_flow
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 3
