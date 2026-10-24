@@ -97,7 +97,9 @@ jobs:
           expected={'login-json.ps1','.github/workflows/release.yml','README.md','DEVELOPMENT.md'}
           changed=set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
           assert changed==expected,changed
-          subprocess.run(['git','diff','--check'],check=True)
+          # The existing PS1 stores CRLF without Git text normalization. Recognize
+          # CR at line end, while continuing to reject other whitespace defects.
+          subprocess.run(['git','-c','core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol','diff','--check'],check=True)
           subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
           subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
           subprocess.run(['git','add','--',*sorted(expected)],check=True)
