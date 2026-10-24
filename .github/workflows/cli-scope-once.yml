@@ -1,0 +1,272 @@
+name: One-time CLI scope review
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/cli-scope-once.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+      actions: write
+    outputs:
+      commit: ${{ steps.commit.outputs.commit }}
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /run-codex.ps1
+            /env.ps1
+            /DEVELOPMENT.md
+            /tests/
+            /Version_History/
+            /tool/automation/portable-automation.ps1
+      - name: Reproduce positional prompts entering lowercased command state
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          . ./tests/test_cli_model_options.ps1
+          $inputArgs=New-Object 'System.Collections.Generic.List[string]'
+          foreach($token in @('MCP','-m=synthetic-scope')){$inputArgs.Add($token)}
+          $null=Test-AndNormalizeCodexCliArgs -InputArgs $inputArgs
+          if($script:CodexRootCommand -cne 'mcp'){throw 'Reviewed MCP prompt defect did not reproduce.'}
+          $inputArgs=New-Object 'System.Collections.Generic.List[string]'
+          foreach($token in @('Logout','-m=synthetic-scope')){$inputArgs.Add($token)}
+          $rejected=$false
+          try{$null=Test-AndNormalizeCodexCliArgs -InputArgs $inputArgs}catch{
+            if($_.Exception.Message -notlike 'MODEL_CLI_REJECT:Logout'){throw};$rejected=$true
+          }
+          if(-not $rejected){throw 'Reviewed logout prompt defect did not reproduce.'}
+          Write-Output 'REPRODUCED: case-sensitive positional prompts incorrectly enter subcommand guards/cleanup state.'
+      - name: Stop publication of the superseded candidate
+        shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/cli-scope-review/gh
+        run: |
+          import json,os,pathlib,subprocess
+          pathlib.Path('tmp/cli-scope-review').mkdir(parents=True,exist_ok=True)
+          repo=os.environ['GITHUB_REPOSITORY']
+          data=json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/actions/runs/40081814149'],text=True))
+          assert data['head_sha']=='82f6e637f335889864dbbe223028f4ba4fa38910'
+          if data['status']!='completed':subprocess.run(['gh','api','--method','POST','repos/'+repo+'/actions/runs/40081814149/cancel'],check=True)
+          releases=json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/releases?per_page=100'],text=True))
+          assert not any(r['tag_name']=='v2026.10.24.2' for r in releases),'Do not overwrite an existing release or draft'
+      - name: Separate prompt state from command-only policies and exit handling
+        shell: python
+        run: |
+          import hashlib,pathlib,subprocess
+          root=pathlib.Path.cwd();path=root/'run-codex.ps1';raw=path.read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()=='dc732af4317fddcd7a4f6e05ad94fb154ea03a8c'
+          text=raw.decode('utf-8-sig');nl='\r\n' if '\r\n' in text else '\n'
+          anchor='            $script:CodexRootCommand = $rootCommand'
+          assert text.count(anchor)==1
+          added=nl.join([
+              '            if ($rootIsPrompt) {',
+              '                # A TUI prompt must not enter subcommand guards or exit cleanup.',
+              "                $rootCommand = '__portable_tui_prompt__'",
+              "                $script:CodexRootCommand = ''",
+              '                $result.Add($arg)',
+              '                continue',
+              '            }',
+          ])+nl
+          text=text.replace(anchor,added+anchor,1)
+          output=(b'\xef\xbb\xbf' if raw.startswith(b'\xef\xbb\xbf') else b'')+text.encode('utf-8')
+          for p in [path]+[root/'Version_History'/(mode+'-run-codex.ps1') for mode in ('YOLO mode专用包','常用模式专用包')]:p.write_bytes(output)
+          path=root/'tests/test_cli_model_options.ps1';text=path.read_text(encoding='utf-8')
+          anchor="    @{ Name = 'empty short equals'; Tokens = @('-m='); Reject = $true },"
+          assert text.count(anchor)==1
+          cases=[
+              "    @{ Name = 'uppercase logout is a prompt'; Tokens = @('Logout', '-m=after-prompt'); Value = 'after-prompt'; Root = '' },",
+              "    @{ Name = 'uppercase MCP is a prompt'; Tokens = @('MCP', '-m=after-prompt'); Value = 'after-prompt'; Root = '' },",
+              "    @{ Name = 'uppercase plugin is a prompt'; Tokens = @('Plugin', '-m=after-prompt'); Value = 'after-prompt'; Root = '' },",
+              "    @{ Name = 'uppercase update is a prompt'; Tokens = @('Update', '-m=after-prompt'); Value = 'after-prompt'; Root = '' },",
+              "    @{ Name = 'native plugin stays a command'; Tokens = @('plugin', 'list'); Value = ''; Root = 'plugin' },",
+              "    @{ Name = 'native logout remains guarded'; Tokens = @('logout'); Reject = $true },",
+          ]
+          text=text.replace(anchor,'\n'.join(cases)+'\n'+anchor,1)
+          anchor="        if ($script:CliModelOverride -cne $case.Value) { throw ('Incorrect model value: ' + $case.Name) }"
+          assert text.count(anchor)==1
+          text=text.replace(anchor,anchor+"\n        if ($case.ContainsKey('Root') -and $script:CodexRootCommand -cne $case.Root) { throw ('Prompt/command state was confused: ' + $case.Name) }",1)
+          path.write_text(text,encoding='utf-8')
+          path=root/'tests/test_launcher_smoke.ps1';raw=path.read_bytes()
+          old=b"$modelArgument = if ($expectedModel) { ' \"Synthetic offline prompt\" -m=' + $expectedModel } else { '' }"
+          new=b"$modelArgument = if ($expectedModel) { ' \"Logout\" -m=' + $expectedModel } else { '' }"
+          assert raw.count(old)==1
+          path.write_bytes(raw.replace(old,new,1))
+          path=root/'DEVELOPMENT.md';text=path.read_text(encoding='utf-8')
+          old='27 项生产解析回归覆盖参数形式、提示词前后顺序与空值拒绝；中文搬迁场景同时验证提示词在前的短参数、生成配置与原生客户端的一致性。'
+          new='同时将 TUI 提示词与子命令生命周期状态分离，避免 `Logout` / `MCP` 等大小写不同的提示词误触退出登录或扩展管理逻辑；真正的小写子命令继续受原有权限约束。33 项生产解析回归覆盖参数形式、顺序、空值及命令边界；中文搬迁场景用 `Logout` 提示词实际验证短参数、生成配置与原生客户端的一致性，不执行真实退出登录。'
+          assert text.count(old)==1
+          path.write_text(text.replace(old,new,1),encoding='utf-8')
+          subprocess.run(['git','-c','core.whitespace=cr-at-eol','diff','--check'],check=True)
+      - name: Verify production parser and unchanged mode semantics
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($name in @('test_cli_model_options','test_permission_display','test_extension_policy','test_extension_migration')){
+            & pwsh -NoProfile -NonInteractive -File (Join-Path $PWD ('tests/'+$name+'.ps1'))
+            if($LASTEXITCODE -ne 0){throw ('Regression failed: '+$name)}
+          }
+          & python -B -m unittest discover -s tests -p test_mode_copies.py -v
+          if($LASTEXITCODE -ne 0){throw 'Mode copies differ.'}
+      - name: Commit only the bounded fix and coverage
+        id: commit
+        shell: python
+        run: |
+          import os,subprocess
+          paths=['run-codex.ps1','tests/test_cli_model_options.ps1','tests/test_launcher_smoke.ps1','DEVELOPMENT.md']
+          paths += ['Version_History/'+mode+'-run-codex.ps1' for mode in ('YOLO mode专用包','常用模式专用包')]
+          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','add','--']+paths,check=True)
+          subprocess.run(['git','-c','core.whitespace=cr-at-eol','diff','--cached','--check'],check=True)
+          subprocess.run(['git','diff','--cached','--stat'],check=True)
+          subprocess.run(['git','commit','-m','fix: keep positional TUI prompts out of subcommand lifecycle handling'],check=True)
+          subprocess.run(['git','push','origin','HEAD:main'],check=True)
+          commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:out.write('commit='+commit+'\n')
+          print('REPAIRED_COMMIT='+commit)
+      - name: Remove owned review state
+        if: always()
+        shell: bash
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/cli-scope-review"
+  recheck:
+    needs: repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.repair.outputs.commit }}
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /README.md
+            /DEVELOPMENT.md
+      - name: Independently review all first-party source and exact production delta
+        shell: python
+        run: |
+          import ast,hashlib,pathlib,re,subprocess
+          root=pathlib.Path.cwd()
+          paths=[p.decode('utf-8') for p in subprocess.check_output(['git','ls-tree','-rz','--name-only','HEAD']).split(b'\0') if p]
+          excluded=('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
+          suffixes={'.ps1','.psm1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.html','.css','.toml','.rules'}
+          selected=[p for p in paths if not p.startswith(excluded) and pathlib.PurePosixPath(p).suffix.lower() in suffixes]
+          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+p for p in selected)+'\n',text=True,check=True)
+          base='82f6e637f335889864dbbe223028f4ba4fa38910'
+          subprocess.run(['git','fetch','--filter=blob:none','--depth=1','origin',base],check=True)
+          changed={p.decode('utf-8') for p in subprocess.check_output(['git','diff','--name-only','-z',base,'HEAD']).split(b'\0') if p}
+          expected={'run-codex.ps1','tests/test_cli_model_options.ps1','tests/test_launcher_smoke.ps1','DEVELOPMENT.md','.github/workflows/cli-scope-once.yml'}
+          expected.update('Version_History/'+mode+'-run-codex.ps1' for mode in ('YOLO mode专用包','常用模式专用包'))
+          assert changed==expected,changed
+          old=subprocess.check_output(['git','show',base+':run-codex.ps1']).decode('utf-8-sig')
+          text=(root/'run-codex.ps1').read_bytes().decode('utf-8-sig');nl='\r\n' if '\r\n' in old else '\n'
+          added=nl.join([
+              '            if ($rootIsPrompt) {',
+              '                # A TUI prompt must not enter subcommand guards or exit cleanup.',
+              "                $rootCommand = '__portable_tui_prompt__'",
+              "                $script:CodexRootCommand = ''",
+              '                $result.Add($arg)',
+              '                continue',
+              '            }',
+          ])+nl
+          assert text.count(added)==1 and text.replace(added,'',1)==old,'Unrelated production logic changed'
+          py=js=bats=0
+          for p in selected:
+              if p.endswith('.py'):ast.parse((root/p).read_text(encoding='utf-8-sig'),filename=p);py+=1
+              elif p.endswith(('.js','.cjs','.mjs')):subprocess.run(['node','--check',p],check=True,capture_output=True,timeout=15);js+=1
+              elif p.endswith('.bat') and '/' not in p:
+                  b=(root/p).read_bytes();b.decode('ascii');assert b'\n' not in b.replace(b'\r\n',b''),p;bats+=1
+          subprocess.run(['python','-B','-m','unittest','discover','-s','tests','-p','test_mode_copies.py','-v'],check=True)
+          settings=re.findall(r'^\s*\$env:(CODEX_\w+)\s*=\s*"([^"]*)"',(root/'env.ps1').read_text(encoding='utf-8-sig'),re.M)
+          consumers=text+(root/'login-json.ps1').read_text(encoding='utf-8-sig')
+          assert len(settings)==42 and all(name in consumers for name,value in settings)
+          manifest=(root/'tool/runtime-manifest.json').read_bytes()
+          pin=re.search(r'\$ExpectedRuntimeManifestSha256\s*=\s*"([0-9a-fA-F]{64})"',text)[1].lower()
+          assert hashlib.sha256(manifest).hexdigest()==pin
+          workflow=(root/'.github/workflows/release.yml').read_text()
+          assert workflow.count('if: $'+"{{ success() && inputs.publish_release && inputs.check_set == 'full' }}")==2
+          for test in ('test_permission_display','test_cli_model_options','test_launcher_smoke','test_extension_migration'):
+              assert workflow.count('      - name: Windows PowerShell 5.1 - '+test+'\n')==1
+          print('INDEPENDENT_SOURCE_REVIEW=PASS python='+str(py)+' javascript='+str(js)+' root_bat='+str(bats)+' settings='+str(len(settings)))
+      - name: Fresh regression plus adversarial prompt and real-command boundaries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop';$count=0
+          Get-ChildItem -Recurse -File -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/]tmp[\\/]' } | ForEach-Object {
+            $tokens=$null;$errors=$null
+            $null=[Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
+            if($errors.Count){throw ($_.FullName+': '+($errors.Message -join '; '))};$count++
+          }
+          foreach($name in @('test_cli_model_options','test_permission_display','test_extension_policy','test_extension_migration')){
+            & pwsh -NoProfile -NonInteractive -File (Join-Path $PWD ('tests/'+$name+'.ps1'))
+            if($LASTEXITCODE -ne 0){throw ('Independent regression failed: '+$name)}
+          }
+          . ./tests/test_cli_model_options.ps1
+          $PortableMaintenanceMode=$false
+          $PortableExtensionPolicy=[pscustomobject]@{AllowedNamespaces=[string[]]@()}
+          foreach($prompt in @('MCP','Plugin','Logout','Login','Update','Sandbox','Debug','Features','App','Agents','Review','ordinary prompt')){
+            $arguments=New-Object 'System.Collections.Generic.List[string]'
+            foreach($argument in @($prompt,'-m=synthetic-independent')){$arguments.Add($argument)}
+            $null=Test-AndNormalizeCodexCliArgs -InputArgs $arguments
+            if($script:CodexRootCommand -cne '' -or $script:CliModelOverride -cne 'synthetic-independent'){throw ('Prompt entered command state: '+$prompt)}
+          }
+          foreach($command in @('mcp','plugin','logout','login','update','sandbox','debug','features','app','agents')){
+            $arguments=New-Object 'System.Collections.Generic.List[string]';$arguments.Add($command)
+            $rejected=$false
+            try{$null=Test-AndNormalizeCodexCliArgs -InputArgs $arguments}catch{
+              if($_.Exception.Message -notlike 'MODEL_CLI_REJECT:*'){throw};$rejected=$true
+            }
+            if(-not $rejected){throw ('Native restricted command became allowed: '+$command)}
+          }
+          Write-Output "INDEPENDENT_BEHAVIOR_REVIEW=PASS parsed=$count prompt_boundaries=12 restricted_commands=10 (Windows execution remains mandatory)"
+  dispatch:
+    needs: [repair, recheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Dispatch full Windows release after removing temporary bridge
+        shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/cli-scope-dispatch/gh
+          REVIEWED_COMMIT: ${{ needs.repair.outputs.commit }}
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          import json,os,pathlib,subprocess,time
+          pathlib.Path('tmp/cli-scope-dispatch').mkdir(parents=True,exist_ok=True)
+          repo=os.environ['GITHUB_REPOSITORY'];reviewed=os.environ['REVIEWED_COMMIT']
+          for attempt in range(90):
+              remote=json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/git/ref/heads/main'],text=True))['object']['sha']
+              if remote!=reviewed:
+                  diff=json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/compare/'+reviewed+'...'+remote],text=True))['files']
+                  assert len(diff)==1 and diff[0]['filename']=='.github/workflows/cli-scope-once.yml' and diff[0]['status']=='removed'
+                  releases=json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/releases?per_page=100'],text=True))
+                  assert not any(r['tag_name']=='v2026.10.24.2' for r in releases)
+                  payload=json.dumps({'ref':'main','inputs':{'version':'v2026.10.24.2','publish_release':'true','check_set':'full'}})
+                  subprocess.run(['gh','api','--method','POST','repos/'+repo+'/actions/workflows/release.yml/dispatches','--input','-'],input=payload,text=True,check=True)
+                  print('FINAL_WINDOWS_DISPATCHED='+remote);break
+              time.sleep(4)
+          else:raise SystemExit('Temporary bridge was not removed within the finite wait')
+      - name: Remove owned dispatch state
+        if: always()
+        shell: bash
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/cli-scope-dispatch"
