@@ -43,7 +43,7 @@ jobs:
           old=subprocess.check_output(['git','show',baseline+':run-codex.ps1']).decode('utf-8-sig')
           new=raw.decode('utf-8-sig')
           start='$WriteScopeDisplay = if ($SandboxMode -eq "danger-full-access") {'
-          anchor='Write-Host "Codex Portable '
+          anchor='Write-Host "Codex Portable 严格便携模式已启动" -ForegroundColor Green'
           assert new.count(start)==1 and new.count(anchor)==1
           i=new.index(start);j=new.index(anchor,i)
           restored=new[:i]+new[j:]
