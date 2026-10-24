@@ -7,102 +7,91 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
-  actions: write
+  actions: read
 jobs:
-  repair:
-    runs-on: windows-latest
-    timeout-minutes: 15
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 1
-          lfs: true
-      - name: Prepare owned package-local test state
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          $base=Join-Path $env:GITHUB_WORKSPACE 'tmp/extension-review'
-          $state=@{HOME='home';USERPROFILE='home';APPDATA='appdata';LOCALAPPDATA='localappdata';PROGRAMDATA='programdata';ALLUSERSPROFILE='programdata';TEMP='temp';TMP='temp';TMPDIR='temp';XDG_CACHE_HOME='cache';XDG_CONFIG_HOME='config';XDG_DATA_HOME='data';XDG_STATE_HOME='state';CODEX_HOME='codex-home';CODEX_SQLITE_HOME='sqlite';GH_CONFIG_DIR='gh'}
-          foreach($name in $state.Keys){$p=Join-Path $base $state[$name];New-Item -ItemType Directory -Force -Path $p|Out-Null;"$name=$p"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
-          'PYTHONDONTWRITEBYTECODE=1'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          'PIP_CONFIG_FILE=nul'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          'POWERSHELL_TELEMETRY_OPTOUT=1'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          New-Item -ItemType Directory -Force -Path "$base\cache\modules"|Out-Null
-          "PSModulePath=$base\cache\modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Apply the byte-checked minimal repair
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.gitattributes
+            /run-codex.ps1
+            /Version_History/*-run-codex.ps1
+            /tests/test_extension_policy.ps1
+            /tests/test_launcher_smoke.ps1
+            /README.md
+            /DEVELOPMENT.md
+      - name: Apply only the exact Windows-tested payload
         shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTHONDONTWRITEBYTECODE: '1'
         run: |
-          import base64, hashlib, json, pathlib, subprocess, zlib
-          packed='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'
-          payload=zlib.decompress(base64.b64decode(packed,validate=True))
+          import base64, hashlib, json, os, pathlib, re, subprocess, zlib
+          repo=os.environ['GITHUB_REPOSITORY']
+          def api(endpoint):
+              return json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/'+endpoint],text=True))
+          tested='aefbbdf911463f09609e036947336ec92c4c3d60'
+          job=api('actions/jobs/120809188630')
+          assert job['head_sha']==tested
+          steps={s['name']:s['conclusion'] for s in job['steps']}
+          for name in ('Apply the byte-checked minimal repair','Check production parsing, namespace regression and mode copies','Test real offline BAT and native MCP lifecycle'):
+              assert steps[name]=='success',name
+          record=api('contents/.github/workflows/recheck-once.yml?ref='+tested)
+          text=base64.b64decode(record['content']).decode('utf-8')
+          matches=re.findall(r"^          packed='([^']+)'$",text,re.M)
+          assert len(matches)==1
+          payload=zlib.decompress(base64.b64decode(matches[0],validate=True))
           assert hashlib.sha256(payload).hexdigest()=='f24366026ce4dd8ae037861a76e7b654aaa078b77f8977fb1c938a69eb36f3c3'
-          ops=json.loads(payload); root=pathlib.Path.cwd(); seen=set()
+          ops=json.loads(payload);root=pathlib.Path.cwd();seen=set()
+          scratch=root/'tmp'/'extension-commit';scratch.mkdir(parents=True,exist_ok=False)
           for op in ops:
-              name=op['path']; path=root/name
+              name=op['path'];path=root/name
               assert not pathlib.PurePosixPath(name).is_absolute() and '..' not in pathlib.PurePosixPath(name).parts
               if 'create' in op:
                   assert not path.exists()
                   data=op['create'].encode('utf-8')
               else:
-                  # Git's raw bytes are the reviewed source of truth, independent of
-                  # Windows checkout EOL conversion. Subsequent edits use our output.
                   before=path.read_bytes() if name in seen else subprocess.check_output(['git','show','HEAD:'+name])
                   assert hashlib.sha256(before).hexdigest()==op['before'],name
                   if 'copy' in op:
                       data=(root/op['copy']).read_bytes()
                   else:
-                      text=before.decode('utf-8'); crlf='\r\n' in text; text=text.replace('\r\n','\n')
+                      text=before.decode('utf-8');crlf='\r\n' in text;text=text.replace('\r\n','\n')
                       assert text.count(op['old'])==1,name
                       text=text.replace(op['old'],op['new'],1)
                       data=(text.replace('\n','\r\n') if crlf else text).encode('utf-8')
-              if 'after' in op: assert hashlib.sha256(data).hexdigest()==op['after'],name
-              path.write_bytes(data); seen.add(name)
-          (root/'tmp/extension-review/paths.json').write_text(json.dumps(sorted(seen)),encoding='utf-8')
-          print('REPAIR_PATH_COUNT',len(seen))
-      - name: Check production parsing, namespace regression and mode copies
-        timeout-minutes: 4
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          $paths=Get-Content .\tmp\extension-review\paths.json -Raw|ConvertFrom-Json
-          foreach($relative in $paths){if($relative.EndsWith('.ps1')){$tokens=$null;$errors=$null;$null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $relative),[ref]$tokens,[ref]$errors);if($errors.Count){throw ($relative+': '+($errors.Message -join '; '))}}}
-          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_extension_policy.ps1
-          if($LASTEXITCODE -ne 0){throw 'Extension regression failed.'}
-          & .\tool\python\python.exe -B -m unittest discover -s tests -p test_mode_copies.py -v
-          if($LASTEXITCODE -ne 0){throw 'Mode copies differ.'}
-      - name: Test real offline BAT and native MCP lifecycle
-        timeout-minutes: 8
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1
-          if($LASTEXITCODE -ne 0){throw 'Native launcher and persistence lifecycle failed.'}
-      - name: Commit only the tested repair and existing documentation
-        shell: python
-        run: |
-          import json, pathlib, subprocess
-          paths=json.loads(pathlib.Path('tmp/extension-review/paths.json').read_text())
-          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
-          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','add','--',*paths],check=True)
+              if 'after' in op:assert hashlib.sha256(data).hexdigest()==op['after'],name
+              path.write_bytes(data);seen.add(name)
+          assert len(seen)==8
+          subprocess.run(['git','config','core.autocrlf','false'],check=True)
+          subprocess.run(['git','add','--',*sorted(seen)],check=True)
           staged=[p.decode('utf-8') for p in subprocess.check_output(['git','diff','--cached','--name-only','-z']).split(b'\0') if p]
-          assert set(staged)==set(paths),(staged,paths)
-          subprocess.run(['git','diff','--cached','--check'],check=True)
-          subprocess.run(['git','commit','-m','fix: preserve inactive extension settings during maintenance commands'],check=True)
-          subprocess.run(['git','push','origin','HEAD:main'],check=True)
-          print('VERIFIED_REPAIR_COMMIT',subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
-      - name: Remove retrieved temporary source artifact
-        if: always()
-        shell: powershell
-        env:
-          GH_TOKEN: ${{ github.token }}
+          assert set(staged)==seen
+          for name in staged:
+              assert subprocess.check_output(['git','show',':'+name])==(root/name).read_bytes(),name
+          # Accept CR as the CRLF terminator, but keep checks for actual trailing
+          # spaces, tabs and blank EOF lines. Do not rewrite the tested bytes.
+          subprocess.run(['git','-c','core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol','diff','--cached','--check'],check=True)
+          subprocess.run(['git','diff','--cached','--stat','--ignore-space-at-eol'],check=True)
+          (scratch/'paths.json').write_text(json.dumps(sorted(seen)),encoding='utf-8')
+          print('EXACT_WINDOWS_TESTED_PAYLOAD=PASS files='+str(len(seen)))
+      - name: Commit the checked source and existing documentation
+        shell: bash
         run: |
-          & gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/actions/artifacts/12551164453"
-          if($LASTEXITCODE -ne 0){throw 'Review artifact cleanup requires attention.'}
-      - name: Remove only owned review state
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: preserve inactive extension settings during maintenance commands'
+          git push origin HEAD:main
+          printf 'REPAIR_COMMIT='
+          git rev-parse HEAD
+      - name: Remove owned commit scratch
         if: always()
-        shell: powershell
-        run: |
-          $p=Join-Path $env:GITHUB_WORKSPACE 'tmp/extension-review'
-          if(Test-Path -LiteralPath $p){Remove-Item -LiteralPath $p -Recurse -Force}
+        shell: bash
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/extension-commit"
