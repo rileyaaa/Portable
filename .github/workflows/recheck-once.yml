@@ -53,7 +53,8 @@ jobs:
           assert 'Write-Utf8TextAtomic -Path $ExtensionStorePath -Text $PreservedExtensionToml' not in launcher
           workflow=(root/'.github/workflows/release.yml').read_text()
           for test in ('test_extension_migration','test_cli_model_options','test_launcher_smoke'):assert '-File .\\tests\\'+test+'.ps1' in workflow
-          assert workflow.count("if: ${{ success() && inputs.publish_release && inputs.check_set == 'full' }}")==2
+          gate='if: $' + "{{ success() && inputs.publish_release && inputs.check_set == 'full' }}"
+          assert workflow.count(gate)==2
           manifest=json.loads((root/'tool/runtime-manifest.json').read_text())
           pin=re.search(r'\$ExpectedRuntimeManifestSha256\s*=\s*"([0-9a-fA-F]{64})"',launcher)[1].lower()
           assert hashlib.sha256((root/'tool/runtime-manifest.json').read_bytes()).hexdigest()==pin
