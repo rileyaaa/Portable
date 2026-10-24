@@ -1,0 +1,36 @@
+# Temporary owner-authorized bridge; removed before the next final publication.
+name: Pause superseded release candidate
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/cli-scope-once.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  pause:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_CONFIG_DIR: ${{ github.workspace }}/tmp/instruction-entry-review/gh
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Stop only the superseded full validation
+        shell: python
+        run: |
+          import json,os,pathlib,subprocess
+          pathlib.Path('tmp/instruction-entry-review').mkdir(parents=True,exist_ok=False)
+          base='repos/'+os.environ['GITHUB_REPOSITORY']
+          run=json.loads(subprocess.check_output(['gh','api',base+'/actions/runs/40085718428'],text=True))
+          assert run['head_sha']=='06b18858aac2344fb20ac7c3d68d725d6701eac9'
+          if run['status']!='completed':
+              subprocess.run(['gh','api','--method','POST',base+'/actions/runs/40085718428/cancel'],check=True)
+          releases=json.loads(subprocess.check_output(['gh','api',base+'/releases?per_page=100'],text=True))
+          assert not any(r['tag_name']=='v2026.10.24.2' for r in releases),'Do not overwrite an existing release or draft.'
+          print('SUPERSEDED_CANDIDATE_PAUSED; instruction helper needs a bounded repair')
+      - name: Remove owned pause state
+        if: always()
+        shell: bash
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/instruction-entry-review"
