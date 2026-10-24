@@ -1,0 +1,196 @@
+name: One-time permission display review
+'on':
+  push:
+    branches: [main]
+    paths: [.github/workflows/permission-display-once.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: write
+    outputs:
+      commit: ${{ steps.commit.outputs.commit }}
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /run-codex.ps1
+            /env.ps1
+            /DEVELOPMENT.md
+            /tests/
+            /Version_History/
+            /.github/workflows/release.yml
+            /tool/automation/portable-automation.ps1
+      - name: Apply only the reviewed status display correction
+        shell: python
+        run: |
+          import pathlib, subprocess
+          root=pathlib.Path.cwd()
+          raw=(root/'run-codex.ps1').read_bytes()
+          assert subprocess.check_output(['git','hash-object','run-codex.ps1'],text=True).strip()=='15c9d9ebdb19f63c33e3102f81b26234a988c61c', 'Launcher changed since review'
+          mode_paths=['Version_History/'+mode+'-run-codex.ps1' for mode in ('YOLO mode专用包','常用模式专用包')]
+          assert all((root/p).read_bytes()==raw for p in mode_paths)
+          text=raw.decode('utf-8-sig')
+          lines=text.splitlines()
+          network=[line for line in lines if line.startswith('Write-Host "ShellNetwork  : ')]
+          scope=[line for line in lines if line.startswith('Write-Host ("写入范围')]
+          anchor=[line for line in lines if line.startswith('Write-Host "Codex Portable ')]
+          assert len(network)==len(scope)==len(anchor)==1
+          assert '$SandboxNetworkAccess' in network[0] and '$PortableMaintenanceMode' in scope[0]
+          assert '$WriteScopeDisplay =' not in text and '$ShellNetworkDisplay =' not in text
+          assign='$WriteScopeDisplay = if ($SandboxMode -eq "danger-full-access") {\n    "YOLO （沙箱关闭；不限制包外写入）"\n} elseif ($SandboxMode -eq "read-only") {\n    "READ-ONLY （只读沙箱；不代表宿主进程完全不写入）"\n} elseif ($PortableMaintenanceMode) {\n    "MAINTENANCE （workspace-write；整个便携包可写，审批提升另计）"\n} else {\n    "SAFE （workspace-write；默认 work/tmp，审批提升另计）"\n}\n$ShellNetworkDisplay = if ($SandboxMode -eq "danger-full-access") {\n    "unrestricted （danger-full-access；沙箱不限制本地命令网络）"\n} elseif ($SandboxMode -eq "read-only") {\n    "policy （read-only；不使用 workspace-write 网络配置）"\n} else {\n    "$SandboxNetworkAccess ($(if ($SandboxNetworkAccess -eq \'true\') { \'本地命令可联网\' } else { \'本地命令默认断网\' }))"\n}\n'
+          text=text.replace(anchor[0],assign+'\n'+anchor[0],1)
+          text=text.replace(network[0],'Write-Host "ShellNetwork  : $ShellNetworkDisplay"',1)
+          text=text.replace(scope[0],scope[0].split(' + $(')[0]+' + $WriteScopeDisplay)',1)
+          updated=(b'\xef\xbb\xbf' if raw.startswith(b'\xef\xbb\xbf') else b'')+text.encode('utf-8')
+          for p in ['run-codex.ps1']+mode_paths:(root/p).write_bytes(updated)
+          test=root/'tests/test_permission_display.ps1'
+          assert not test.exists()
+          test.write_text('#Requires -Version 5.1\n# Evaluate only the production status expressions; no native client or credentials.\n$ErrorActionPreference = \'Stop\'\n$root = Split-Path -Parent $PSScriptRoot\n$source = [IO.File]::ReadAllText((Join-Path $root \'run-codex.ps1\'))\n$tokens = $null; $errors = $null\n$ast = [Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)\nif ($errors.Count) { throw \'Launcher must parse before permission-display checks.\' }\n$expressions = @{}\nforeach ($name in @(\'WriteScopeDisplay\', \'ShellNetworkDisplay\')) {\n    $left = \'$\' + $name\n    $nodes = @($ast.FindAll({ param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] }, $true) | Where-Object { $_.Left.Extent.Text -ceq $left })\n    if ($nodes.Count -ne 1) { throw (\'Expected exactly one production assignment: \' + $name) }\n    $expressions[$name] = [scriptblock]::Create($nodes[0].Extent.Text)\n}\nif (-not $source.Contains(\'Write-Host "ShellNetwork  : $ShellNetworkDisplay"\') -or\n    -not $source.Contains(\' + $WriteScopeDisplay)\')) { throw \'Startup must display the evaluated policy summaries.\' }\n$count = 0\nforeach ($SandboxMode in @(\'workspace-write\', \'read-only\', \'danger-full-access\')) {\n    foreach ($PortableMaintenanceMode in @($false, $true)) {\n        foreach ($SandboxNetworkAccess in @(\'false\', \'true\')) {\n            . $expressions[\'WriteScopeDisplay\']\n            . $expressions[\'ShellNetworkDisplay\']\n            if ($SandboxMode -eq \'danger-full-access\') {\n                if (-not $WriteScopeDisplay.StartsWith(\'YOLO \') -or\n                    -not $ShellNetworkDisplay.StartsWith(\'unrestricted \') -or\n                    $WriteScopeDisplay.Contains(\'SAFE\') -or $ShellNetworkDisplay.StartsWith(\'false\')) {\n                    throw \'Disabled sandbox was incorrectly displayed as restricted.\'\n                }\n            } elseif ($SandboxMode -eq \'read-only\') {\n                if (-not $WriteScopeDisplay.StartsWith(\'READ-ONLY \') -or\n                    -not $ShellNetworkDisplay.StartsWith(\'policy \')) { throw \'Read-only mode inherited a workspace-write claim.\' }\n            } else {\n                $expected = if ($PortableMaintenanceMode) { \'MAINTENANCE \' } else { \'SAFE \' }\n                if (-not $WriteScopeDisplay.StartsWith($expected) -or\n                    -not $ShellNetworkDisplay.StartsWith($SandboxNetworkAccess + \' \')) { throw \'Workspace-write status lost the selected scope or network policy.\' }\n            }\n            $count++\n            Write-Output (\'PASS permission display: \' + $SandboxMode + \', maintenance=\' + $PortableMaintenanceMode + \', workspace-network=\' + $SandboxNetworkAccess)\n        }\n    }\n}\nWrite-Output ($count.ToString() + \' production permission-display combinations passed (offline).\')\n',encoding='utf-8')
+          workflow=root/'.github/workflows/release.yml'
+          text=workflow.read_text()
+          anchor='      - name: Windows PowerShell 5.1 - test_cli_model_options\n'
+          assert text.count(anchor)==1
+          step=anchor.replace('test_cli_model_options','test_permission_display')+'        if: ${{ !cancelled() && steps.prepare.outcome == \'success\' && inputs.check_set == \'full\' }}\n        timeout-minutes: 3\n        run: |\n          $ErrorActionPreference = \'Stop\'\n          & "$env:SystemRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\\tests\\test_permission_display.ps1\n          if ($LASTEXITCODE -ne 0) { throw \'Windows regression failure: test_permission_display\' }\n\n'
+          workflow.write_text(text.replace(anchor,step+anchor,1),encoding='utf-8')
+          doc=root/'DEVELOPMENT.md';text=doc.read_text(encoding='utf-8')
+          heading='## 2026-10-24：Windows 验证与 npm 目录边界';record='**权限状态提示：** 修正 YOLO 仍显示 SAFE/work/tmp 及只读模式套用 workspace-write 网络提示的错误。显示优先按实际 sandbox 模式区分；YOLO 明确不提供包外写入或命令网络限制，只读不冒充宿主进程完全不写入。仅修改提示表达式并同步模式启动器，不改权限、网络、认证和二进制。新增 12 种生产表达式组合回归，与模式副本检查一起通过专项检查；独立复查与完整 Windows 验收作为后续补丁发布前置条件，最终结果以对应 Release 与 Actions 为准。'
+          assert text.count(heading)==1 and record not in text
+          doc.write_text(text.replace(heading,heading+'\n\n'+record,1),encoding='utf-8')
+          subprocess.run(['git','diff','--check'],check=True)
+          print('Changed status display only; policy assignments and official binaries untouched.')
+      - name: Check production display expressions and synchronized modes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & pwsh -NoProfile -NonInteractive -File ./tests/test_permission_display.ps1
+          if($LASTEXITCODE -ne 0){throw 'Display regression failed.'}
+          & python -B -m unittest discover -s tests -p test_mode_copies.py -v
+          if($LASTEXITCODE -ne 0){throw 'Mode copies differ.'}
+      - name: Commit the bounded correction and existing development record
+        id: commit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $modeFiles=@(Get-ChildItem -LiteralPath Version_History -File -Filter '*-run-codex.ps1' | ForEach-Object { $_.FullName })
+          & git config user.name 'github-actions[bot]'
+          & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          & git add -- run-codex.ps1 $modeFiles tests/test_permission_display.ps1 .github/workflows/release.yml DEVELOPMENT.md
+          if($LASTEXITCODE -ne 0){throw 'Cannot stage reviewed files.'}
+          & git diff --cached --check
+          if($LASTEXITCODE -ne 0){throw 'Patch whitespace check failed.'}
+          & git diff --cached --stat
+          & git commit -m 'fix: report actual sandbox scope without misleading YOLO as SAFE'
+          if($LASTEXITCODE -ne 0){throw 'Commit failed.'}
+          & git push origin HEAD:main
+          if($LASTEXITCODE -ne 0){throw 'Push failed.'}
+          $sha=(& git rev-parse HEAD).Trim()
+          "commit=$sha" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+  recheck:
+    needs: apply
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.apply.outputs.commit }}
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /README.md
+            /DEVELOPMENT.md
+      - name: Fresh source audit and exact production delta verification
+        shell: python
+        run: |
+          import ast, hashlib, pathlib, subprocess
+          root=pathlib.Path.cwd()
+          names=[p.decode('utf-8') for p in subprocess.check_output(['git','ls-tree','-rz','--name-only','HEAD']).split(b'\0') if p]
+          excluded=('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
+          suffixes={'.ps1','.psm1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.html','.css','.toml','.rules'}
+          selected=[p for p in names if not p.startswith(excluded) and pathlib.PurePosixPath(p).suffix.lower() in suffixes]
+          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+p for p in selected)+'\n',text=True,check=True)
+          subprocess.run(['git','fetch','--filter=blob:none','--depth=1','origin','b9cddb0243d5eb9410c32590892f2684bd621d8b'],check=True)
+          old=subprocess.check_output(['git','show','b9cddb0243d5eb9410c32590892f2684bd621d8b:run-codex.ps1']).decode('utf-8-sig')
+          new=(root/'run-codex.ps1').read_bytes().decode('utf-8-sig')
+          assign='$WriteScopeDisplay = if ($SandboxMode -eq "danger-full-access") {\n    "YOLO （沙箱关闭；不限制包外写入）"\n} elseif ($SandboxMode -eq "read-only") {\n    "READ-ONLY （只读沙箱；不代表宿主进程完全不写入）"\n} elseif ($PortableMaintenanceMode) {\n    "MAINTENANCE （workspace-write；整个便携包可写，审批提升另计）"\n} else {\n    "SAFE （workspace-write；默认 work/tmp，审批提升另计）"\n}\n$ShellNetworkDisplay = if ($SandboxMode -eq "danger-full-access") {\n    "unrestricted （danger-full-access；沙箱不限制本地命令网络）"\n} elseif ($SandboxMode -eq "read-only") {\n    "policy （read-only；不使用 workspace-write 网络配置）"\n} else {\n    "$SandboxNetworkAccess ($(if ($SandboxNetworkAccess -eq \'true\') { \'本地命令可联网\' } else { \'本地命令默认断网\' }))"\n}\n'
+          old_network=next(line for line in old.splitlines() if line.startswith('Write-Host "ShellNetwork  : '))
+          old_scope=next(line for line in old.splitlines() if line.startswith('Write-Host ("写入范围'))
+          new_scope=old_scope.split(' + $(')[0]+' + $WriteScopeDisplay)'
+          assert new.count(assign)==1
+          restored=new.replace(assign+'\n','',1).replace('Write-Host "ShellNetwork  : $ShellNetworkDisplay"',old_network,1).replace(new_scope,old_scope,1)
+          assert restored==old,'Unexpected production logic changed'
+          py=js=ps=bats=0
+          for p in selected:
+              if p.endswith('.py'):ast.parse((root/p).read_text(encoding='utf-8-sig'),filename=p);py+=1
+              elif p.endswith(('.js','.cjs','.mjs')):subprocess.run(['node','--check',p],capture_output=True,check=True,timeout=15);js+=1
+              elif p.endswith('.bat') and '/' not in p:
+                  raw=(root/p).read_bytes();raw.decode('ascii');assert b'\n' not in raw.replace(b'\r\n',b''),p;bats+=1
+          subprocess.run(['python','-B','-m','unittest','discover','-s','tests','-p','test_mode_copies.py','-v'],check=True,timeout=30)
+          print('FRESH_REVIEW=PASS python='+str(py)+' javascript='+str(js)+' root_bat='+str(bats)+' production_delta=status_display_only')
+      - name: Independent PowerShell parse and production regression cases
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $count=0
+          Get-ChildItem -Recurse -File -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/]tmp[\\/]' } | ForEach-Object {
+            $tokens=$null;$errors=$null
+            $null=[Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
+            if($errors.Count){throw ($_.FullName+': '+($errors.Message -join '; '))}
+            $count++
+          }
+          foreach($test in @('test_permission_display','test_extension_migration','test_extension_policy','test_cli_model_options')) {
+            & pwsh -NoProfile -NonInteractive -File (Join-Path $PWD ('tests/'+$test+'.ps1'))
+            if($LASTEXITCODE -ne 0){throw ('Independent regression failed: '+$test)}
+          }
+          Write-Output "FRESH_POWERSHELL=PASS parsed=$count (Windows validation remains mandatory)"
+  dispatch:
+    needs: [apply, recheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Dispatch full Windows gate after temporary workflow removal
+        shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/permission-dispatch/gh
+          REVIEWED_COMMIT: ${{ needs.apply.outputs.commit }}
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          import json,os,pathlib,subprocess,time
+          scratch=pathlib.Path('tmp/permission-dispatch');scratch.mkdir(parents=True,exist_ok=True)
+          repo=os.environ['GITHUB_REPOSITORY']; reviewed=os.environ['REVIEWED_COMMIT']
+          for attempt in range(90):
+              remote=json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/git/ref/heads/main'],text=True))['object']['sha']
+              if remote!=reviewed:
+                  comparison=json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/compare/'+reviewed+'...'+remote],text=True))
+                  files=comparison.get('files',[])
+                  assert len(files)==1 and files[0]['filename']=='.github/workflows/permission-display-once.yml' and files[0]['status']=='removed','Reviewed source changed before release'
+                  releases=json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/releases?per_page=100'],text=True))
+                  assert not any(r['tag_name']=='v2026.10.24.2' for r in releases),'Do not overwrite an existing release'
+                  payload=json.dumps({'ref':'main','inputs':{'version':'v2026.10.24.2','publish_release':'true','check_set':'full'}})
+                  subprocess.run(['gh','api','--method','POST','repos/'+repo+'/actions/workflows/release.yml/dispatches','--input','-'],input=payload,text=True,check=True)
+                  print('FULL_WINDOWS_RELEASE_DISPATCHED source='+remote+' tag=v2026.10.24.2')
+                  break
+              time.sleep(4)
+          else:raise SystemExit('Temporary bridge removal not observed within finite window')
+      - name: Remove owned dispatch material
+        if: always()
+        shell: bash
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/permission-dispatch"
