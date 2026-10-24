@@ -151,6 +151,22 @@ jobs:
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_extension_policy.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_extension_policy' }
 
+      - name: Windows PowerShell 5.1 - test_extension_migration
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_extension_migration.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_extension_migration' }
+
+      - name: Windows PowerShell 5.1 - test_cli_model_options
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_cli_model_options.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_cli_model_options' }
+
       - name: Windows PowerShell 5.1 - test_runtime_preflight
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 8
