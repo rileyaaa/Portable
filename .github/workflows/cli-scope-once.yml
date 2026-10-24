@@ -28,71 +28,53 @@ jobs:
             /tool/codex-instruct.py
             /tests/
             /DEVELOPMENT.md
-      - name: Reproduce the old guard and apply only the tested helper repair
+      - name: Recover the recorded repair and verification scripts
         shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/instruction-repair-code/gh
         run: |
-          import ast,base64,hashlib,io,pathlib,sys,unittest,zlib
-          root=pathlib.Path.cwd();p=root/'tool/codex-instruct.py';raw=p.read_bytes()
-          blob=lambda b:hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()
-          assert blob(raw)=='ea782ed9c9a9d61f0b89bc558be899b0acb7d193'
-          encoded='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'
-          tests=zlib.decompress(base64.b64decode(encoded))
-          assert hashlib.sha256(tests).hexdigest()=='ec359c25b0bf2c85ef5696358c5112624356589b9502023f758ea79c84ea2c7b'
-          test_path=root/'tests/test_instruction_installer.py'
-          assert not test_path.exists();test_path.write_bytes(tests)
-          sys.path.insert(0,str(root/'tests'))
-          suite=unittest.defaultTestLoader.loadTestsFromName('test_instruction_installer.InstructionInstallerTests.test_linked_ancestor_rejected_before_marker_probe')
-          result=unittest.TextTestRunner(stream=io.StringIO()).run(suite)
-          assert len(result.failures)==1 and not result.errors and not result.skipped,'Baseline must reproduce the reviewed defect.'
-          print('BASELINE_DEFECT_REPRODUCED=PASS')
-          text=raw.decode('utf-8');lines=text.splitlines(keepends=True)
-          node=next(n for n in ast.parse(text).body if isinstance(n,ast.FunctionDef) and n.name=='package_root')
-          new='''def package_root() -> Path:
-              script = Path(os.path.abspath(__file__))
-              raw = script.parents[1]
-              # Inspect from the filesystem root down before probing package markers.
-              # Resolving first would erase a linked ancestor and silently trust its target.
-              for entry in (*reversed(script.parents), script):
-                  if _is_reparse(entry):
-                      raise SystemExit(f"Refusing linked instruction-helper entry path: {entry}")
-                  if entry == script:
-                      _reject_existing_hardlink(entry, "instruction helper")
-                  elif not entry.is_dir():
-                      raise SystemExit(f"Invalid instruction-helper ancestor: {entry}")
-              for name in ("codex.exe", "env.ps1"):
-                  marker = raw / name
-                  if _is_reparse(marker) or not marker.is_file():
-                      raise SystemExit(f"Invalid or linked portable package marker: {marker}")
-                  _reject_existing_hardlink(marker, "package marker")
-              return raw
-          '''
-          new='\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines())+'\n'
-          output=(''.join(lines[:node.lineno-1])+new+''.join(lines[node.end_lineno:])).encode('utf-8')
-          assert blob(output)=='8bdb85803f3de019a8f28991333905400185eba1','Repair differs from tested bytes.'
-          p.write_bytes(output)
+          import ast,base64,hashlib,json,os,pathlib,subprocess
+          scratch=pathlib.Path('tmp/instruction-repair-code');scratch.mkdir(parents=True,exist_ok=False)
+          endpoint='repos/'+os.environ['GITHUB_REPOSITORY']+'/contents/.github/workflows/cli-scope-once.yml?ref=2d825a87f4f102e35c1ac7b966779bdbc7e4dd29'
+          record=json.loads(subprocess.check_output(['gh','api',endpoint],text=True))
+          raw=base64.b64decode(record['content'])
+          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()=='b973b9c8a1af517d7695cddc8d0d999fc4786749'
+          text=raw.decode('utf-8')
+          def extract(name):
+              section=text.split('      - name: '+name+'\n',1)[1]
+              body=section.split('        run: |\n',1)[1]
+              lines=[]
+              for line in body.splitlines():
+                  if line and not line.startswith('          '):break
+                  lines.append(line[10:] if line else '')
+              return '\n'.join(lines)+'\n'
+          apply=extract('Reproduce the old guard and apply only the tested helper repair')
+          assert apply.count('JA/dMya')==1
+          apply=apply.replace('JA/dMya','JA/dzfMya')
+          # YAML has already removed its indentation. Preserve the tested Python
+          # function indentation; the resulting Git blob is checked by apply.py.
+          lines=apply.splitlines(keepends=True)
+          removed=[line for line in lines if line.startswith("new='\\n'.join(")]
+          assert len(removed)==1
+          apply=''.join(line for line in lines if line not in removed)
+          ast.parse(apply)
+          (scratch/'apply.py').write_text(apply,encoding='utf-8')
+          (scratch/'record.py').write_text(extract('Record the cause and bounded repair, then commit'),encoding='utf-8')
+      - name: Reproduce baseline and apply exact tested source bytes
+        shell: bash
+        run: python -B tmp/instruction-repair-code/apply.py
       - name: Run all new synthetic instruction-helper regressions
         shell: bash
         run: python -B -m unittest discover -s tests -p test_instruction_installer.py -v
-      - name: Record the cause and bounded repair, then commit
+      - name: Record and commit only the bounded repair
         id: commit
-        shell: python
-        run: |
-          import os,pathlib,subprocess
-          path=pathlib.Path('DEVELOPMENT.md');text=path.read_text(encoding='utf-8')
-          anchor='## 2026-10-24：Windows 验证与 npm 目录边界'
-          record='**模型指令安装入口：** 单独调用 `tool/codex-instruct.py` 时，旧根目录定位会先解析上级链接，绕过入口祖先检查；已用合成包复现。现从文件系统根向下校验完整入口链，再检查普通、单链接的包标记，不先跟随链接目标；仅修改该助手的根定位，不改变指令内容、持久配置格式、认证或启动器。新增 11 项回归覆盖上级/包根/工具目录链接、脚本与标记硬链接、缺失标记、正常安装、改名搬迁及自定义包内 home；Linux 合成测试通过，随后以全新检出复查和完整 Windows 验收作为发布前置条件。'
-          assert text.count(anchor)==1 and '**模型指令安装入口：**' not in text
-          path.write_text(text.replace(anchor,anchor+'\n\n'+record,1),encoding='utf-8')
-          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
-          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','add','--','tool/codex-instruct.py','tests/test_instruction_installer.py','DEVELOPMENT.md'],check=True)
-          subprocess.run(['git','diff','--cached','--check'],check=True)
-          subprocess.run(['git','diff','--cached','--stat'],check=True)
-          subprocess.run(['git','commit','-m','fix: reject linked instruction-helper entry ancestors before package probes'],check=True)
-          subprocess.run(['git','push','origin','HEAD:main'],check=True)
-          commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          with open(os.environ['GITHUB_OUTPUT'],'a') as out:out.write('commit='+commit+'\n')
-          print('REPAIR_COMMIT='+commit)
+        shell: bash
+        run: python -B tmp/instruction-repair-code/record.py
+      - name: Remove owned repair script copies
+        if: always()
+        shell: bash
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/instruction-repair-code"
   recheck:
     needs: repair
     runs-on: ubuntu-latest
@@ -110,64 +92,42 @@ jobs:
           sparse-checkout: |
             /README.md
             /DEVELOPMENT.md
-      - name: Independently verify exact repair scope and complete source inventory
+      - name: Load the independent review on a fresh checkout
         shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/instruction-review-code/gh
         run: |
-          import ast,hashlib,json,pathlib,re,subprocess
-          root=pathlib.Path.cwd()
-          paths=[p.decode('utf-8') for p in subprocess.check_output(['git','ls-tree','-rz','--name-only','HEAD']).split(b'\0') if p]
-          excluded=('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
-          suffixes={'.ps1','.psm1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.html','.css','.toml','.rules','.sh'}
-          selected=[p for p in paths if not p.startswith(excluded) and (pathlib.PurePosixPath(p).suffix.lower() in suffixes or p in {'.gitattributes','.gitignore'})]
-          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+p for p in selected)+'\n',text=True,check=True)
-          base='44b843da89cc553ef7e2ba3e18b01e955a274687'
-          subprocess.run(['git','fetch','--filter=blob:none','--depth=1','origin',base],check=True)
-          changed={p.decode('utf-8') for p in subprocess.check_output(['git','diff','--name-only','-z',base,'HEAD']).split(b'\0') if p}
-          assert changed=={'tool/codex-instruct.py','tests/test_instruction_installer.py','DEVELOPMENT.md','.github/workflows/cli-scope-once.yml'},changed
-          old=subprocess.check_output(['git','show',base+':tool/codex-instruct.py']).decode('utf-8')
-          new=(root/'tool/codex-instruct.py').read_text()
-          def without_root(text):
-              lines=text.splitlines(keepends=True);node=next(n for n in ast.parse(text).body if isinstance(n,ast.FunctionDef) and n.name=='package_root')
-              return ''.join(lines[:node.lineno-1]+lines[node.end_lineno:])
-          assert without_root(old)==without_root(new),'Unrelated helper code changed.'
-          counts={'python':0,'javascript':0,'json':0,'bat':0}
-          for p in selected:
-              file=root/p
-              if p.endswith('.py'):ast.parse(file.read_text(encoding='utf-8-sig'),filename=p);counts['python']+=1
-              elif p.endswith(('.js','.cjs','.mjs')):subprocess.run(['node','--check',p],check=True,capture_output=True,timeout=15);counts['javascript']+=1
-              elif p.endswith('.json'):json.loads(file.read_text(encoding='utf-8-sig'));counts['json']+=1
-              elif p.endswith('.bat') and '/' not in p:
-                  b=file.read_bytes();b.decode('ascii');assert b'\n' not in b.replace(b'\r\n',b''),p;counts['bat']+=1
-          launcher=(root/'run-codex.ps1').read_text(encoding='utf-8-sig')
-          settings=re.findall(r'^\s*\$env:(CODEX_\w+)\s*=\s*"([^"]*)"',(root/'env.ps1').read_text(encoding='utf-8-sig'),re.M)
-          consumers=launcher+(root/'login-json.ps1').read_text(encoding='utf-8-sig')
-          assert len(settings)==42 and all(name in consumers for name,value in settings)
-          manifest=(root/'tool/runtime-manifest.json').read_bytes()
-          pin=re.search(r'\$ExpectedRuntimeManifestSha256\s*=\s*"([0-9a-fA-F]{64})"',launcher)[1].lower()
-          assert hashlib.sha256(manifest).hexdigest()==pin
-          workflow=(root/'.github/workflows/release.yml').read_text()
-          assert workflow.count('if: $'+"{{ success() && inputs.publish_release && inputs.check_set == 'full' }}")==2
-          assert "-m unittest discover -s tests -p 'test_*.py'" in workflow
-          print('FRESH_SOURCE_REVIEW=PASS '+json.dumps(counts,sort_keys=True))
-      - name: Fresh Python synthetic regression suites
-        shell: python
-        run: |
-          import sys,unittest
-          sys.path.insert(0,'tests')
-          suite=unittest.defaultTestLoader.loadTestsFromNames(['test_instruction_installer','test_mode_copies','test_login_json_http','test_android_guard','test_android_extension','test_helper_relocation','test_office_output_boundaries'])
-          result=unittest.TextTestRunner(verbosity=2).run(suite)
-          assert result.testsRun==58 and result.wasSuccessful() and not result.skipped
-      - name: Fresh PowerShell syntax and production-policy regressions
+          import base64,hashlib,json,os,pathlib,subprocess
+          scratch=pathlib.Path('tmp/instruction-review-code');scratch.mkdir(parents=True,exist_ok=False)
+          endpoint='repos/'+os.environ['GITHUB_REPOSITORY']+'/contents/.github/workflows/cli-scope-once.yml?ref=2d825a87f4f102e35c1ac7b966779bdbc7e4dd29'
+          record=json.loads(subprocess.check_output(['gh','api',endpoint],text=True))
+          raw=base64.b64decode(record['content'])
+          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()=='b973b9c8a1af517d7695cddc8d0d999fc4786749'
+          text=raw.decode('utf-8')
+          def extract(name):
+              section=text.split('      - name: '+name+'\n',1)[1]
+              body=section.split('        run: |\n',1)[1]
+              lines=[]
+              for line in body.splitlines():
+                  if line and not line.startswith('          '):break
+                  lines.append(line[10:] if line else '')
+              return '\n'.join(lines)+'\n'
+          (scratch/'source-review.py').write_text(extract('Independently verify exact repair scope and complete source inventory'),encoding='utf-8')
+          (scratch/'python-tests.py').write_text(extract('Fresh Python synthetic regression suites'),encoding='utf-8')
+          (scratch/'powershell-tests.ps1').write_text(extract('Fresh PowerShell syntax and production-policy regressions'),encoding='utf-8')
+      - name: Independent source, configuration and bounded-diff checks
+        shell: bash
+        run: python -B tmp/instruction-review-code/source-review.py
+      - name: Fresh 58-case Python regression
+        shell: bash
+        run: python -B tmp/instruction-review-code/python-tests.py
+      - name: Fresh PowerShell syntax and policy regression
         shell: pwsh
         run: |
-          $ErrorActionPreference='Stop';$count=0
-          Get-ChildItem -Recurse -File -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/]tmp[\\/]' } | ForEach-Object {
-            $tokens=$null;$errors=$null
-            $null=[Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
-            if($errors.Count){throw ($_.FullName+': '+($errors.Message -join '; '))};$count++
-          }
-          foreach($name in @('test_cli_model_options','test_permission_display','test_extension_policy','test_extension_migration')){
-            & pwsh -NoProfile -NonInteractive -File (Join-Path $PWD ('tests/'+$name+'.ps1'))
-            if($LASTEXITCODE -ne 0){throw ('Fresh regression failed: '+$name)}
-          }
-          Write-Output "FRESH_POWERSHELL_REVIEW=PASS count=$count (Linux/PS7; Windows remains mandatory)"
+          $ErrorActionPreference='Stop'
+          & ./tmp/instruction-review-code/powershell-tests.ps1
+      - name: Remove owned review script copies
+        if: always()
+        shell: bash
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/instruction-review-code"
