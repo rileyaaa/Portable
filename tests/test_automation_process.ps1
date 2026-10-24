@@ -8,6 +8,42 @@ $root = Split-Path -Parent $PSScriptRoot
 $fixture = New-AutomationDirectory -Root $root -Path (Join-Path $root ('tmp\automation-process-' + [Guid]::NewGuid().ToString('N')))
 $process = $null
 try {
+    function Test-SyntheticInheritedStderr {
+        param([AllowEmptyString()][string]$Text)
+        if ($Text -ceq 'synthetic-stderr') { return $true }
+        # The wrapper initializes the real supervisor before launching Node.
+        # CodeDOM may retain its owned scratch directory and report this one
+        # benign diagnostic on stderr. Do not trim, drop arbitrary lines, or
+        # accept this diagnostic in stdout or in the captured-child result.
+        $retained = 'Process-helper compiler scratch was retained because safe cleanup failed: Compiler output subdirectory was not released in time.'
+        return (($Text -ceq ($retained + "`r`nsynthetic-stderr")) -or
+                ($Text -ceq ($retained + "`nsynthetic-stderr")))
+    }
+    # Deterministic positive and negative cases also run off Windows. The real
+    # inherited/captured transport checks below still require Windows.
+    $retained = 'Process-helper compiler scratch was retained because safe cleanup failed: Compiler output subdirectory was not released in time.'
+    $stderrCases = @(
+        @{ Name = 'child only'; Text = 'synthetic-stderr'; Expected = $true },
+        @{ Name = 'known CRLF prelude'; Text = $retained + "`r`nsynthetic-stderr"; Expected = $true },
+        @{ Name = 'known LF prelude'; Text = $retained + "`nsynthetic-stderr"; Expected = $true },
+        @{ Name = 'empty'; Text = ''; Expected = $false },
+        @{ Name = 'missing child'; Text = $retained + "`r`n"; Expected = $false },
+        @{ Name = 'truncated child'; Text = $retained + "`r`nsynthetic-stder"; Expected = $false },
+        @{ Name = 'duplicate child'; Text = 'synthetic-stderrsynthetic-stderr'; Expected = $false },
+        @{ Name = 'unknown diagnostic'; Text = "unexpected failure`r`nsynthetic-stderr"; Expected = $false },
+        @{ Name = 'unsafe cleanup'; Text = "Process-helper compiler scratch was retained because safe cleanup failed: Unsafe compiler output reparse point.`r`nsynthetic-stderr"; Expected = $false },
+        @{ Name = 'duplicate diagnostic'; Text = $retained + "`r`n" + $retained + "`r`nsynthetic-stderr"; Expected = $false },
+        @{ Name = 'trailing output'; Text = "synthetic-stderr`r`nunexpected failure"; Expected = $false },
+        @{ Name = 'trailing newline'; Text = "synthetic-stderr`r`n"; Expected = $false },
+        @{ Name = 'diagnostic after child'; Text = "synthetic-stderr`r`n" + $retained; Expected = $false },
+        @{ Name = 'case mismatch'; Text = 'Synthetic-stderr'; Expected = $false }
+    )
+    foreach ($case in $stderrCases) {
+        if ((Test-SyntheticInheritedStderr -Text $case.Text) -ne $case.Expected) {
+            throw ('Synthetic stderr contract regression: ' + $case.Name)
+        }
+    }
+    Write-Output ('PASS exact inherited stderr contract: ' + $stderrCases.Count + ' positive/negative cases')
     # The production automation initializer must safely bootstrap a fresh tmp.
     $fresh = New-AutomationDirectory -Root $root -Path (Join-Path $fixture 'fresh package')
     $freshTool = New-AutomationDirectory -Root $root -Path (Join-Path $fresh 'tool')
@@ -105,7 +141,7 @@ exit $result.ExitCode
     if (-not $process.WaitForExit(60000)) { throw 'Inherited stdio regression timed out.' }
     $stdout = $out.GetAwaiter().GetResult()
     $stderr = $err.GetAwaiter().GetResult()
-    if ($process.ExitCode -ne 0 -or $stdout -cne '{"echo":"portable-stdio"}' -or $stderr -cne 'synthetic-stderr') {
+    if ($process.ExitCode -ne 0 -or $stdout -cne '{"echo":"portable-stdio"}' -or -not (Test-SyntheticInheritedStderr -Text $stderr)) {
         throw ('Inherited stdio mismatch: ' + (Get-SyntheticIODiagnostic $process.ExitCode $stdout $stderr))
     }
     Write-Output 'PASS inherited MCP-style stdin/stdout/stderr through supervised child'

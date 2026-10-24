@@ -29,6 +29,8 @@
 
 ## 2026-10-24：Windows 验证与 npm 目录边界
 
+**标准流回归修复：** 全量运行 `40056474654` 中，已知编译临时目录保留提示导致 stderr 精确匹配误报。测试现仅接受这条提示出现一次，保留 stdout、退出码及捕获模式的严格检查；新增 14 个正反例。不修改生产监督器，不丢弃未知诊断，不放宽发布门禁。Windows 全量复验及发布待执行。
+
 **原因与结果：** npm 的用户/全局配置虽位于包内，上游仍会从工作目录向父层发现项目 `.npmrc`。六个 npm/npx 入口现统一使用包内 Node 和固定项目根，保留经校验的显式包内 `--prefix`，配置和缓存路径先校验后加载；不依赖增加环境变量来假定隔离。实际 bundled npm 配置加载、参数保留及 Windows 入口纳入发布回归。
 
 **Windows 修复：** 账号检查 BAT 的菜单提示包含未转义的右括号，导致 CMD 在解析分支时中止；现正确转义，保留原菜单行为。首次直接运行浏览器时由监督器安全创建缺失的包内 `tmp`，不再依赖先运行 BAT。进程监督器保守保留未能安全删除的包内编译临时目录，提示改写到 stderr，避免污染 MCP 的 JSON-RPC stdout；残留可由“清理缓存”回收，不进入发行包。Windows 专用入口和进程监督继续通过独立测试验收。
@@ -171,7 +173,7 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 | `test_extension_policy.ps1` | 12 项通过：Fast/扩展默认关闭、语音配置关闭、维护模式、显式开关、命名空间筛选、配置保留及两条模型指令生成路径 |
 | `test_runtime_preflight.ps1` | 10 项合成工件检查通过：清单先校验、文件缺失/替换/链接、沙箱缓存新旧与状态硬链接；不执行客户端，不读取真实凭据 |
 | `test_automation_paths.ps1` | 通过：子进程目录重定向、参数引用、越界/硬链接、先查祖先再遍历、只清理自有目录、任务开关与 PowerShell 解析；没有启动 Windows 程序 |
-| `test_automation_process.ps1` | Windows 生产监督器 C# 编译、真实子进程继承/捕获标准流通过 |
+| `test_automation_process.ps1` | 此前 Windows 专项运行通过；后续全量运行 `40056474654` 因 stderr 诊断匹配失败。已补充精确匹配及 14 个正反例，Windows 继承/捕获标准流待复验 |
 | `test_automation.js` | 10 项通过：实际固定版 MCP 初始化与工具筛选、拒绝未选任务、路径边界、禁止能力、依赖字节摘要；不启动浏览器 |
 | `test_portable_npm.js` / `test_npm_entrypoints.ps1` | 10 项真实 npm 配置回归通过；Windows CMD/PowerShell 入口、显式项目根与包外拒绝已通过 |
 | `test_system_policy.ps1` | 8 项合成检查通过：固定 Registry64/HKLM、值名存在性、授权 gate、异常拒绝与句柄回收；不读真实策略 |
