@@ -1,6 +1,6 @@
 {
   "layoutVersion": 1,
-  "version": "0.163.0",
+  "version": "0.164.0",
   "target": "x86_64-pc-windows-msvc",
   "variant": "codex",
   "entrypoint": "codex.exe",

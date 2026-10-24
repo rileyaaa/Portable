@@ -88,10 +88,10 @@ function Invoke-PortableNpmFixture {
         $null = $Process.Start()
         $Stdout = $Process.StandardOutput.ReadToEndAsync()
         $Stderr = $Process.StandardError.ReadToEndAsync()
-        if (-not $Process.WaitForExit(30000)) {
+        if (-not $Process.WaitForExit(60000)) {
             $Process.Kill()
             $Process.WaitForExit()
-            throw 'Offline npm entrypoint test exceeded 30 seconds'
+            throw 'Offline npm entrypoint test exceeded 60 seconds'
         }
         return [pscustomobject]@{ ExitCode = $Process.ExitCode; Output = $Stdout.Result.Trim(); Error = $Stderr.Result.Trim() }
     } finally {

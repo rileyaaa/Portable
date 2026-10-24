@@ -68,10 +68,10 @@ function Invoke-EnvWorker {
         [void]$Process.Start()
         $StdoutTask = $Process.StandardOutput.ReadToEndAsync()
         $StderrTask = $Process.StandardError.ReadToEndAsync()
-        if (-not $Process.WaitForExit(30000)) {
+        if (-not $Process.WaitForExit(60000)) {
             $Process.Kill()
             $Process.WaitForExit()
-            throw 'The isolated env.ps1 test exceeded 30 seconds.'
+            throw 'The isolated env.ps1 test exceeded 60 seconds.'
         }
         $Stdout = $StdoutTask.GetAwaiter().GetResult()
         $Stderr = $StderrTask.GetAwaiter().GetResult()

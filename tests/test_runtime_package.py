@@ -88,7 +88,7 @@ class RuntimePackageTests(unittest.TestCase):
             self.assertFalse((ROOT / "codex-resources" / name).exists())
 
     def test_all_native_helpers_are_windows_x64(self):
-        # Search, sandbox and voice helpers must match the main client's platform.
+        # Search and sandbox helpers must match the main client's platform.
         for name in self.manifest["files"]:
             if not name.endswith((".exe", ".dll")):
                 continue

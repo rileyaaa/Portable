@@ -192,6 +192,9 @@ function New-AutomationStartInfo {
 function Initialize-AutomationSupervisor {
     param([string]$Root)
     $helper = Assert-AutomationPath -Root $Root -Path (Join-Path $Root 'tool\portable-process.ps1')
+    # Direct tool entry points must also work in a fresh extracted package.
+    # Create only the validated package-local compiler scratch root.
+    [void](New-AutomationDirectory -Root $Root -Path (Join-Path $Root 'tmp'))
     . $helper
     # Dot-source into the caller's script scope, not this function's local scope.
     Set-Item -Path Function:script:Invoke-PortableProcess -Value ${function:Invoke-PortableProcess}

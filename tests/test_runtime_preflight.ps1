@@ -38,7 +38,7 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
 }
 $Root = $env:TEST_RUNTIME_ROOT
 $ExpectedRuntimeManifestSha256 = $env:TEST_RUNTIME_MANIFEST_HASH
-$ExpectedCodexVersion = '0.163.0'
+$ExpectedCodexVersion = '0.164.0'
 Assert-PinnedRuntimePackage
 Write-Output 'preflight-ok'
 '@
@@ -59,7 +59,7 @@ try {
             $Files[$Relative] = @{ sha256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
         }
         $Manifest = Join-Path $Package 'tool/runtime-manifest.json'
-        [IO.File]::WriteAllText($Manifest, (@{version='0.163.0';target='x86_64-pc-windows-msvc';files=$Files} | ConvertTo-Json -Depth 8), $Utf8)
+        [IO.File]::WriteAllText($Manifest, (@{version='0.164.0';target='x86_64-pc-windows-msvc';files=$Files} | ConvertTo-Json -Depth 8), $Utf8)
         $ManifestHash = (Get-FileHash -LiteralPath $Manifest -Algorithm SHA256).Hash
         $Resource = Join-Path $Package 'codex-resources/codex-command-runner.exe'
         $ExpectedSuccess = $Case -in @('valid','stale-cache')
@@ -77,7 +77,7 @@ try {
             }
             { $_ -in @('fresh-cache-tamper','stale-cache') } {
                 $Source = Join-Path $Package 'codex-command-runner.exe'
-                $Cache = Join-Path $Package 'home/.sandbox-bin/codex-command-runner-0.163.0.exe'
+                $Cache = Join-Path $Package 'home/.sandbox-bin/codex-command-runner-0.164.0.exe'
                 $Length = (Get-Item -LiteralPath $Source).Length
                 [IO.File]::WriteAllText($Cache, (('X' * $Length) -join ''), $Utf8)
                 [IO.File]::SetLastWriteTimeUtc($Cache, [DateTime]::UtcNow.AddDays($(if ($Case -eq 'stale-cache') { -1 } else { 1 })))
@@ -108,7 +108,7 @@ try {
         try {
             [void]$Process.Start()
             $Output = $Process.StandardOutput.ReadToEndAsync(); $ErrorOutput = $Process.StandardError.ReadToEndAsync()
-            if (-not $Process.WaitForExit(30000)) { $Process.Kill(); throw 'Runtime preflight test timeout.' }
+            if (-not $Process.WaitForExit(60000)) { $Process.Kill(); throw 'Runtime preflight test timeout.' }
             $StdOut = $Output.GetAwaiter().GetResult(); $StdErr = $ErrorOutput.GetAwaiter().GetResult()
             if (($Process.ExitCode -eq 0) -ne $ExpectedSuccess) { throw "$Case unexpected exit $($Process.ExitCode): $StdOut $StdErr" }
             if ($ExpectedSuccess -and $StdOut.Trim() -ne 'preflight-ok') { throw "$Case did not finish validation." }

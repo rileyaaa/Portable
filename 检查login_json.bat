@@ -84,7 +84,7 @@ if errorlevel 1 exit /b 3
 if "%~1"=="" (
   echo.
   echo Login JSON check proxy mode:
-  echo   1) Direct/TUN   2) Local proxy   [Enter=Direct/TUN]
+  echo   1^) Direct/TUN   2^) Local proxy   [Enter=Direct/TUN]
   set "LOGIN_JSON_PROXY_CHOICE="
   set /p "LOGIN_JSON_PROXY_CHOICE=Use local proxy? (1/2, Enter=1): "
   set LOGIN_JSON_PROXY_CHOICE | "%SystemRoot%\System32\findstr.exe" /x /l /c:"LOGIN_JSON_PROXY_CHOICE=2" >nul

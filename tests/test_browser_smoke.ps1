@@ -55,8 +55,11 @@ module.exports = async ({context}) => ({
 '@, $utf8)
     $entry = Join-Path $fixture 'tool\automation\start-browser.ps1'
     $expected = (Get-Content -LiteralPath (Join-Path $fixture 'tool\automation\versions.json') -Raw | ConvertFrom-Json).browser.version
+    # Exercise a fresh extraction: the production wrapper must create safe tmp.
+    if (Test-Path -LiteralPath (Join-Path $fixture 'tmp')) { throw 'Browser fixture must start without tmp.' }
     $output = & $engine -NoProfile -ExecutionPolicy Bypass -File $entry -Workspace $workspace -TaskScript $first -TaskAuthorized -TaskTimeoutSec 120
-    if ($LASTEXITCODE -ne 0) { throw 'First real browser task failed.' }
+    if ($LASTEXITCODE -ne 0) { throw ('First real browser task failed; exit=' + $LASTEXITCODE) }
+    [void](Assert-AutomationPath -Root $fixture -Path (Join-Path $fixture 'tmp') -Directory)
     $result = ($output -join "`n") | ConvertFrom-Json
     if ($result.title -cne 'Portable smoke' -or $result.cookie -cne 'persisted' -or $result.version -cne $expected) {
         throw 'Real browser navigation, version or cookie write failed.'

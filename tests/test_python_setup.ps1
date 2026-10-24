@@ -73,6 +73,20 @@ try {
     if (-not $Rejected) { throw 'Linked package ancestor was accepted.' }
     Write-Output 'PASS full ancestor chain rejects linked parents before setup marker access'
 } finally {
-    if (Test-Path -LiteralPath (Join-Path $Fixture 'linked')) { Remove-Item -LiteralPath (Join-Path $Fixture 'linked') -Force }
+    Assert-SetupPathAncestors $Fixture
+    $OwnedLink = Join-Path $Fixture 'linked'
+    $LinkItem = $null
+    try { $LinkItem = Get-Item -LiteralPath $OwnedLink -Force -ErrorAction Stop }
+    catch [System.Management.Automation.ItemNotFoundException] {}
+    if ($null -ne $LinkItem) {
+        if (-not $LinkItem.PSIsContainer -or
+            ($LinkItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0 -or
+            [string]$LinkItem.LinkType -ne $Kind) {
+            throw 'Expected the owned directory link during setup-test cleanup.'
+        }
+        # PS5.1 Remove-Item can fail on junctions. Delete only this link name;
+        # never recurse into it or delete its target through the link.
+        [IO.Directory]::Delete($OwnedLink)
+    }
     Remove-Item -LiteralPath $Fixture -Recurse -Force
 }

@@ -145,9 +145,9 @@ try {
             Assert-Equal $Assignments[0].Right.Extent.Text '"false"' "$Setting must default off"
         }
     }
-    Test-Case 'generated feature TOML disables all voice entry points' {
+    Test-Case 'generated TOML disables supported voice flags and unbinds voice hotkeys' {
         $StartMarker = '[void]$Builder.AppendLine("[features]")'
-        $EndMarker = '[void]$Builder.AppendLine("[tui]")'
+        $EndMarker = '[void]$Builder.AppendLine("[analytics]")'
         $StartOffset = $LauncherSource.IndexOf($StartMarker, [StringComparison]::Ordinal)
         $EndOffset = $LauncherSource.IndexOf($EndMarker, $StartOffset, [StringComparison]::Ordinal)
         Assert-True ($StartOffset -ge 0 -and $EndOffset -gt $StartOffset) 'feature generation block must exist'
@@ -161,9 +161,12 @@ try {
             $EnablePluginSharing = $false
             . $FeatureScript
             $Generated = $Builder.ToString()
-            foreach ($Feature in @('in_app_voice','in_app_dictation','realtime_conversation')) {
+            foreach ($Feature in @('in_app_voice','in_app_dictation')) {
                 Assert-True ($Generated -match ('(?m)^' + $Feature + ' = false\r?$')) "$Feature must stay disabled"
             }
+            Assert-True ($Generated -notmatch '(?m)^realtime_conversation\s*=') 'removed feature must not be emitted as a working restriction'
+            Assert-True ($Generated -match '(?ms)^\[tui\.keymap\.chat\]\r?\ntoggle_voice = \[\]\r?\ntoggle_voice_mute = \[\]\r?$') 'voice hotkeys must be explicitly unbound in the correct TOML table'
+            Assert-True ($Generated -match '(?m)^resume_cwd = "current"\r?$') 'existing TUI configuration must remain present'
             Assert-True ($Generated -match '(?m)^fast_mode = false\r?$') 'voice restriction must preserve Fast default'
             Assert-True ($Generated -match ('(?m)^plugins = ' + $ExtensionsEnabled.ToString().ToLowerInvariant() + '\r?$')) 'voice restriction must preserve explicit plugin behavior'
         }

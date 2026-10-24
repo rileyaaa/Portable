@@ -257,13 +257,13 @@ Assert-PortablePath "codex.exe" $CodexExe
 Assert-PortableRegularInputFile "codex.exe" $CodexExe
 Assert-PortablePinnedExecutableAcl "codex.exe" $CodexExe
 
-# This hardened launcher is version-specific.  Never run the 0.163.0 config/schema
+# This hardened launcher is version-specific.  Never run the 0.164.0 config/schema
 # assumptions against an older, newer, zero-byte, or locally modified Codex binary.
-$ExpectedCodexVersion = "0.163.0"
-$ExpectedRuntimeManifestSha256 = "A116B3D64EB5FE8DDE7F380E3551E1FC5065920FA32B2F13E8279D86B92E7C27"
-$ExpectedCodexSha256 = "2692C8C7BB2CF8B0AEFE638741FC90236F4B824C59578CE84994F9DE58200993"
+$ExpectedCodexVersion = "0.164.0"
+$ExpectedRuntimeManifestSha256 = "617ABEE1388B56569AA9F91CEF7F06A9FF0F6FA57B892DED2B068F00311639F5"
+$ExpectedCodexSha256 = "6F267830B029EE25D9339864AA867CD45DE9F8FD4C5EA007D2E63C13A0C66D36"
 $CodeModeHost = Join-Path $Root "codex-code-mode-host.exe"
-$ExpectedCodeModeHostSha256 = "07F3869F0849CD54B31CEC1F86EC796F004501BD3A215135C1FACC883A2B9988"
+$ExpectedCodeModeHostSha256 = "BE52517CA0F9A8EB626EC065ED3A357B5EE150FE1934A254D0126E6D40F29B57"
 $KnownStagingCodexSha256 = "83751F15CB6A0A7B97DF67752C001E3FE1C20E18FFBFEC3FF63567296205EB6C"
 try {
     $actualCodexSha256 = (Get-FileHash -LiteralPath $CodexExe -Algorithm SHA256 -ErrorAction Stop).Hash.ToUpperInvariant()
@@ -274,7 +274,7 @@ try {
 if ($actualCodexSha256 -ne $ExpectedCodexSha256) {
     if ($actualCodexSha256 -eq $KnownStagingCodexSha256) {
         Write-Host "当前仍是完整母版的官方 Codex 0.145.0 staging binary。" -ForegroundColor Yellow
-        Write-Host "Clean Portable 不附带升级工具；请重新解压经过验证的 0.163.0 发行包，或使用维护工作树恢复匹配的 Codex + Host runtime pair。" -ForegroundColor Yellow
+        Write-Host "Clean Portable 不附带升级工具；请重新解压经过验证的 0.164.0 发行包，或使用维护工作树恢复匹配的 Codex + Host runtime pair。" -ForegroundColor Yellow
     } else {
         Write-Host "codex.exe 不是本启动器锁定的官方 Codex $ExpectedCodexVersion。" -ForegroundColor Red
         Write-Host "expected SHA-256: $ExpectedCodexSha256" -ForegroundColor DarkGray
@@ -286,7 +286,7 @@ if ($actualCodexSha256 -ne $ExpectedCodexSha256) {
 # Code Mode is an upstream runtime component of the pinned Codex release. Keep
 # this package-local check fail-closed for every launcher mode.
 function Assert-PinnedCodeModeHost {
-    # 0.163.0 resolves a resource-directory host before the sibling executable.
+    # 0.164.0 resolves a resource-directory host before the sibling executable.
     # Validate every present candidate so another path cannot bypass the root pin.
     $hostCandidates = @($CodeModeHost)
     $resourceHost = Join-Path $Root "codex-resources\codex-code-mode-host.exe"
@@ -1079,7 +1079,7 @@ function Reset-PortableInvariantEnvironment {
 Reset-PortableInvariantEnvironment
 # PATH 已确定，不把原宿主 PATH 快照继续暴露给 Codex/子进程。
 
-# Codex 0.163.0 在进程非常早期会自动读取 $CODEX_HOME\.env，并把除 CODEX_* 外的变量
+# Codex 0.164.0 在进程非常早期会自动读取 $CODEX_HOME\.env，并把除 CODEX_* 外的变量
 # 再次注入自身环境。那一步发生在启动器对子进程完成“清空 + 白名单重建”之后，可能重新带入
 # OPENAI_BASE_URL / OPENAI_API_KEY / 代理 / PYTHONPATH / NODE_OPTIONS / HOME 等值。
 # 严格便携模式因此不允许这个隐式配置入口；请统一使用根目录 env.local.ps1。
@@ -1102,11 +1102,44 @@ if ($PortableProfile -ne "strict") {
     exit 1
 }
 
-# Codex 0.163.0 在 Windows 通过 Known Folder API 读取真实 %ProgramData%\OpenAI\Codex，
+# Codex 0.164.0 also reads a machine policy from the 64-bit registry view.
+# Only enumerate the fixed policy key's value names: do not read RequirementsPath
+# or inspect/open its target before the user has opted into host system policy.
+function Open-CodexSystemPolicyRegistryKey {
+    $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+        [Microsoft.Win32.RegistryHive]::LocalMachine,
+        [Microsoft.Win32.RegistryView]::Registry64)
+    try {
+        return $baseKey.OpenSubKey('SOFTWARE\Policies\OpenAI\Codex', $false)
+    } finally {
+        if ($null -ne $baseKey) { $baseKey.Dispose() }
+    }
+}
+
+function Test-CodexSystemRequirementsRegistryPolicy {
+    $policyKey = Open-CodexSystemPolicyRegistryKey
+    try {
+        if ($null -eq $policyKey) { return $false }
+        return (@($policyKey.GetValueNames()) -icontains 'RequirementsPath')
+    } finally {
+        if ($null -ne $policyKey) { $policyKey.Dispose() }
+    }
+}
+
+function Assert-CodexSystemRequirementsRegistryPolicy {
+    param([bool]$AllowHostSystemConfig = $false)
+    if ($AllowHostSystemConfig) { return }
+    if (Test-CodexSystemRequirementsRegistryPolicy) {
+        throw 'Windows Codex RequirementsPath policy is configured. Portable mode refuses to load system policy by default. To explicitly use administrator policy, set CODEX_ALLOW_HOST_SYSTEM_CONFIG = "true" in env.local.ps1.'
+    }
+}
+
+# Codex 0.164.0 在 Windows 通过 Known Folder API 读取真实 %ProgramData%\OpenAI\Codex，
 # 这不受上面的 $env:PROGRAMDATA 重定向影响。默认拒绝宿主 system config/requirements；
 # 如组织策略明确要求使用，可在 env.local.ps1 写 CODEX_ALLOW_HOST_SYSTEM_CONFIG="true" 显式同意。
 $allowHostSystemConfig = Convert-ToFeatureBool ([string]$env:CODEX_ALLOW_HOST_SYSTEM_CONFIG) $false
 try {
+    Assert-CodexSystemRequirementsRegistryPolicy -AllowHostSystemConfig $allowHostSystemConfig
     $hostProgramData = [Environment]::GetFolderPath([System.Environment+SpecialFolder]::CommonApplicationData)
     if (-not [string]::IsNullOrWhiteSpace($hostProgramData)) {
         $hostCodexSystemDir = Join-Path $hostProgramData "OpenAI\Codex"
@@ -1123,7 +1156,7 @@ try {
         }
     }
 } catch {
-    Write-Host ("无法验证 Windows ProgramData 的 Codex 系统配置：" + $_.Exception.Message) -ForegroundColor Red
+    Write-Host ("无法验证 Windows Codex 系统配置：" + $_.Exception.Message) -ForegroundColor Red
     exit 3
 }
 
@@ -1666,7 +1699,7 @@ function Test-AndNormalizeCodexCliArgs {
             }
         }
 
-        # --image in Codex 0.163.0 accepts 1.. values. Detached form is ambiguous to a wrapper,
+        # --image in Codex 0.164.0 accepts 1.. values. Detached form is ambiguous to a wrapper,
         # so strict mode only accepts an attached comma-delimited list and validates every item.
         $imagePayload = $null
         if ($lower.StartsWith('--image=')) { $imagePayload = $arg.Substring('--image='.Length) }
@@ -2537,7 +2570,7 @@ function New-RuntimeModelInstructions {
 #   背景：旧式静态 model catalog 是某个 codex 版本 schema 的快照，
 #         一旦 codex.exe 升级、schema 变动，旧快照可能因 missing field 启动报错。
 #   方案：从“当前 codex.exe”现场导出 bundled 模型库（schema 必然匹配本版本）。
-#         能按 Codex 0.163.0 规则匹配 bundled 元数据时克隆原 entry，只覆盖明确请求项；
+#         能按 Codex 0.164.0 规则匹配 bundled 元数据时克隆原 entry，只覆盖明确请求项；
 #         真正未知模型才使用 fallback-shaped 最小 entry。
 #   稳健：第三方显式 override 的目录生成失败必须停止，避免配置看似生效其实被 fallback 截断。
 # ------------------------------------------------------------
@@ -2561,7 +2594,7 @@ function Find-BundledModelSource {
     param([object]$Bundled, [string]$ModelSlug)
     if ($null -eq $Bundled -or $null -eq $Bundled.models -or [string]::IsNullOrWhiteSpace($ModelSlug)) { return $null }
 
-    # Mirror Codex 0.163.0 ModelsManager matching: longest starts_with prefix first.
+    # Mirror Codex 0.164.0 ModelsManager matching: longest starts_with prefix first.
     $best = $null
     $bestLength = -1
     foreach ($candidate in @($Bundled.models)) {
@@ -2753,7 +2786,7 @@ if ($ProviderMode -notin @("custom_provider", "local_ollama", "official_chatgpt"
 }
 $UseOfficialModelCatalog = $UseAccountJsonLogin -or $UseBrowserLogin -or ($ProviderMode -eq "official_chatgpt")
 
-# Codex 0.163.0 clamps model_context_window to ModelInfo.max_context_window.
+# Codex 0.164.0 clamps model_context_window to ModelInfo.max_context_window.
 # Unknown-model fallback metadata has max_context_window=272000, so a third-party model
 # that explicitly requests a different context window needs a matching local catalog entry.
 $CustomModelContextWindow = 0
@@ -2789,7 +2822,7 @@ $ModelAllowsImage = (-not $ModelModalitiesKnown) -or [bool]($ModelInputModalitie
 # r15-clean: AUTO normally lets Codex use its own bundled entry or unknown-model fallback.
 # Two explicit compatibility overrides require a local schema-matched catalog:
 #   1) text/text_image modality override;
-#   2) CODEX_MODEL_CONTEXT_WINDOW, because Codex 0.163.0 clamps against fallback max_context_window=272000.
+#   2) CODEX_MODEL_CONTEXT_WINDOW, because Codex 0.164.0 clamps against fallback max_context_window=272000.
 $RequestedModalityMode = if ($UseOfficialModelCatalog) { "auto" } else { [string]$env:CODEX_MODEL_MODALITIES }
 if ([string]::IsNullOrWhiteSpace($RequestedModalityMode)) { $RequestedModalityMode = "auto" }
 $RequestedModalityMode = $RequestedModalityMode.Trim().ToLowerInvariant()
@@ -2835,7 +2868,7 @@ $ApprovalPolicy = $env:CODEX_APPROVAL_POLICY
 if ([string]::IsNullOrWhiteSpace($ApprovalPolicy)) { $ApprovalPolicy = "on-request" }
 $ApprovalPolicy = $ApprovalPolicy.Trim().ToLowerInvariant()
 if ($ApprovalPolicy -eq "untrusted") {
-    Write-Host "CODEX_APPROVAL_POLICY=untrusted 不在 Codex 0.163.0 的 approval_policy schema 中，会被拒绝。请改为 on-request（推荐）或 never。" -ForegroundColor Red
+    Write-Host "CODEX_APPROVAL_POLICY=untrusted 不在 Codex 0.164.0 的 approval_policy schema 中，会被拒绝。请改为 on-request（推荐）或 never。" -ForegroundColor Red
     exit 1
 }
 if ($ApprovalPolicy -notin @("never", "on-request")) {
@@ -3095,10 +3128,10 @@ switch ($ProviderMode) {
 # ------------------------------------------------------------
 [void]$Builder.AppendLine("")
 [void]$Builder.AppendLine("[features]")
-# Text/agent portable edition: no bundled audio runtime and no voice UI.
+# Text/agent edition: disable the supported app voice/dictation features.
+# 0.164 removed the realtime_conversation gate; /voice follows platform support.
 [void]$Builder.AppendLine("in_app_voice = false")
 [void]$Builder.AppendLine("in_app_dictation = false")
-[void]$Builder.AppendLine("realtime_conversation = false")
 if (-not $ModelAllowsImage) {
     # text 模式下不向 Responses 请求注册 image_generation 工具，避免上游 403。
     [void]$Builder.AppendLine("image_generation = false")
@@ -3128,6 +3161,11 @@ if ($StatusLineDirItem -eq "none") {
 } else {
     [void]$Builder.AppendLine(('status_line = ["{0}", "model-with-reasoning"]' -f $StatusLineDirItem))
 }
+[void]$Builder.AppendLine("")
+# Empty bindings prevent accidental voice hotkeys; upstream /voice remains visible.
+[void]$Builder.AppendLine("[tui.keymap.chat]")
+[void]$Builder.AppendLine("toggle_voice = []")
+[void]$Builder.AppendLine("toggle_voice_mute = []")
 [void]$Builder.AppendLine("")
 [void]$Builder.AppendLine("[analytics]")
 [void]$Builder.AppendLine("enabled = false")

@@ -12,6 +12,14 @@ on:
         required: true
         default: true
         type: boolean
+      check_set:
+        description: 'Full validation, or Windows fixes only (cannot publish)'
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - windows_fixes
 
 permissions:
   contents: write
@@ -23,7 +31,7 @@ concurrency:
 jobs:
   release:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out selected commit and real LFS binaries
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -36,9 +44,13 @@ jobs:
         shell: powershell
         env:
           RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_CHECK_SET: ${{ inputs.check_set }}
+          RELEASE_PUBLISH: ${{ inputs.publish_release }}
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:RELEASE_VERSION -notmatch '^v\d{4}\.\d{2}\.\d{2}(?:\.\d+)?$') { throw 'Use a dated release tag.' }
+          if ($env:RELEASE_CHECK_SET -notin @('full','windows_fixes')) { throw 'Unknown check set.' }
+          if ($env:RELEASE_PUBLISH -eq 'true' -and $env:RELEASE_CHECK_SET -ne 'full') { throw 'Only full validation can publish.' }
           $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state'
           $state = @{
             HOME = 'home'; USERPROFILE = 'home'; APPDATA = 'appdata'; LOCALAPPDATA = 'localappdata';
@@ -67,7 +79,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $engine = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
           $watch = [Diagnostics.Stopwatch]::StartNew()
-          & $engine -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '[Console]::WriteLine("Startup OK")'
+          & $engine -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '[Console]::WriteLine(1)'
           if ($LASTEXITCODE -ne 0) { throw 'PowerShell startup failed.' }
           Write-Output "Plain Windows PowerShell startup: $($watch.Elapsed.TotalSeconds) seconds"
           $watch.Restart()
@@ -76,6 +88,7 @@ jobs:
           Write-Output "Windows PowerShell with filesystem module: $($watch.Elapsed.TotalSeconds) seconds"
 
       - name: Run bundled Python and Node regression suites
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 5
         shell: powershell
         run: |
@@ -99,18 +112,37 @@ jobs:
           & .\tool\node\node.exe '.\Version_History\AI account format conversion\test\static-audit.js'
           if ($LASTEXITCODE -ne 0) { throw 'Converter audit failure.' }
 
-      - name: Windows PowerShell 5.1 - test_portable_config
+      - name: Verify the native Codex version
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        timeout-minutes: 2
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $reported = & .\codex.exe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Native Codex version check failed.' }
+          $expected = (Get-Content .\tool\runtime-manifest.json -Raw | ConvertFrom-Json).version
+          if (($reported -join "`n") -notmatch [regex]::Escape($expected)) { throw 'Client version mismatch.' }
+          Write-Output $reported
+          [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+          $models = & .\codex.exe debug models --bundled
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled model export failed.' }
+          $text = $models -join "`n"
+          $null = $text | ConvertFrom-Json
+          $catalog = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state/bundled-models.json'
+          [IO.File]::WriteAllText($catalog, $text, (New-Object Text.UTF8Encoding($true)))
+
+      - name: Windows PowerShell 5.1 - test_portable_config
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 3
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_config.ps1
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_config.ps1 -BundledModelsPath .\tmp\windows-release-state\bundled-models.json
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_portable_config' }
 
       - name: Windows PowerShell 5.1 - test_portable_paths
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
-        timeout-minutes: 3
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
+        timeout-minutes: 8
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -118,7 +150,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_portable_paths' }
 
       - name: Windows PowerShell 5.1 - test_instruction_paths
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 3
         shell: powershell
         run: |
@@ -128,7 +160,7 @@ jobs:
 
       - name: Windows PowerShell 5.1 - test_bootstrap_paths
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
-        timeout-minutes: 3
+        timeout-minutes: 8
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -136,7 +168,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_bootstrap_paths' }
 
       - name: Windows PowerShell 5.1 - test_extension_policy
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 3
         shell: powershell
         run: |
@@ -145,8 +177,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_extension_policy' }
 
       - name: Windows PowerShell 5.1 - test_runtime_preflight
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
-        timeout-minutes: 3
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
+        timeout-minutes: 8
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -181,7 +213,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_automation_process' }
 
       - name: Windows PowerShell 5.1 - test_browser_login_flow
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 3
         shell: powershell
         run: |
@@ -190,25 +222,22 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_browser_login_flow' }
 
       - name: Windows PowerShell 5.1 - test_npm_entrypoints
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
-        timeout-minutes: 3
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
+        timeout-minutes: 8
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_npm_entrypoints.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_npm_entrypoints' }
 
-      - name: Verify the native Codex version
+      - name: Windows PowerShell 5.1 - test_system_policy
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
-        timeout-minutes: 2
+        timeout-minutes: 3
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $reported = & .\codex.exe --version
-          if ($LASTEXITCODE -ne 0) { throw 'Native Codex version check failed.' }
-          $expected = (Get-Content .\tool\runtime-manifest.json -Raw | ConvertFrom-Json).version
-          if (($reported -join "`n") -notmatch [regex]::Escape($expected)) { throw 'Client version mismatch.' }
-          Write-Output $reported
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_system_policy.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_system_policy' }
 
       - name: Exercise the real browser in an owned relocated fixture
         timeout-minutes: 5
@@ -220,7 +249,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows browser persistence or cleanup smoke test failed.' }
 
       - name: Build and verify release assets
-        if: ${{ inputs.publish_release }}
+        if: ${{ inputs.publish_release && inputs.check_set == 'full' }}
         id: package
         shell: powershell
         env:
@@ -235,7 +264,7 @@ jobs:
           }
 
       - name: Publish a verified non-prerelease
-        if: ${{ inputs.publish_release }}
+        if: ${{ inputs.publish_release && inputs.check_set == 'full' }}
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}

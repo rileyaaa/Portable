@@ -11,7 +11,7 @@
 5. **目录边界。** 默认只处理当前包内任务文件，不主动扫描、读写或清理宿主用户目录、其他目录及旧包。包外任务文件按用户已授权的具体范围访问；Windows 必需程序、系统依赖和固定系统策略存在性检查属于明确的系统访问。维护模式扩大包内可写范围，不自动授权包外操作；`workspace-write` 不能保证阻止全部包外读取。
 6. **先验证路径，再访问。** 先检查词法边界，再检查完整祖先及目标的 reparse/junction/symlink、输入硬链接和适用的 ACL；检查应早于创建目录、读取内容或执行程序。保留正常/维护模式分界、受保护变量和 CLI 覆盖限制，不通过关闭身份校验、放开路径或关闭 Code Mode 掩盖故障。MCP/插件的外部命令及绝对路径需另行核对。
 7. **每次升级复核变量。** 更新 Codex、Host 或任何工具后，核对对应变量的声明、默认值、加载/覆盖、生成配置、子进程最终值和新版实际消费点，并查看上游 schema/发行说明。区分启动器私有接口、原生变量、兼容别名和仅预留路径；确认失效时移除或替换并同步文档、回归。变量存在或程序安装成功都不等于功能生效。
-8. **保持工件与工具来源。** Codex/Host 使用同一官方稳定 release 的 Windows x64 工件，校验来源和摘要，更新固定身份、登录版本映射及 `tool/runtime-manifest.json`；保留所需配套资源与许可证，不修改官方 EXE/DLL 字节。本包明确只做文字与 Agent 工作，省略语音组件并关闭语音相关功能；今后升级也保留这一范围。其他工具按 [工具说明](tool/工具更新说明.md) 在包内安装/更新，工具缺失时明确报告，不静默调用宿主或全局包管理器，不永久修改系统/用户 PATH，不运行 Node 随附的系统安装脚本。
+8. **保持工件与工具来源。** Codex/Host 使用同一官方稳定 release 的 Windows x64 工件，校验来源和摘要，更新固定身份、登录版本映射及 `tool/runtime-manifest.json`；保留所需配套资源与许可证，不修改官方 EXE/DLL 字节。本包明确只做文字与 Agent 工作，省略语音组件并关闭仍有效的语音开关；无开关的上游入口如实说明不支持，不能保留失效配置冒充禁用。今后升级也保留文字/Agent 范围。其他工具按 [工具说明](tool/工具更新说明.md) 在包内安装/更新，工具缺失时明确报告，不静默调用宿主或全局包管理器，不永久修改系统/用户 PATH，不运行 Node 随附的系统安装脚本。
 9. **保护状态与清理边界。** 不读取、记录或提交真实账号 JSON、API Key、认证快照、会话、机器私密配置及其内容/哈希。测试使用合成数据，临时文件放包内 `tmp` 的独立目录，创建前检查链接；只清理本次创建的文件和启动的进程。认证 snapshot、transition/logout/recovery 标记及 installation identity 不当作缓存删除，既有用户数据和进程应保留。配套浏览器资料固定在 `cache/browser`，任务退出只关闭进程，默认保留资料；用户运行“清理缓存”时才统一删除 Cookies、网站登录和缓存，并通过专用锁拒绝清理活动会话。
 10. **单一维护来源与模式副本同步。** Android 完整流程统一维护在 `home/plugins/android-apk-lab/skills`，外层只保留精简 `apk-test-router`，保留用户编写的 `mumu-adb`。Office 的 docx/pptx/xlsx 共用 helper 副本保持一致。根 `env.ps1` / `run-codex.ps1` 更新时，必须同步 `Version_History` 下的四份常用/YOLO 模式文件：常用两份与根文件逐字节相同；YOLO 启动脚本与根相同，env 基于根生成，保持 `CODEX_PORTABLE_PROFILE=strict`，仅将 approval 改为 `never`、sandbox 改为 `danger-full-access`，并保留原 YOLO 的 `CODEX_SANDBOX_NETWORK_ACCESS=true`。Fast、扩展默认值及其他修复全部同步，不另维护旧版客户端身份。用回归验证差异仅为这三项赋值。其他真正历史资料不批量替换；账号格式转换器独立维护。
 11. **验证与交付。** 运行与变更相关的回归，明确区分通过、失败、跳过和未运行；不能用假输出或空程序冒充工具可用。保留用户改动，使用现有 checkout，不另建 worktree，除非用户要求。提交/推送前核对差异、引用、Git LFS 工件及私密/临时文件排除；没有执行的 Windows、真实账号或设备流程不得写成已通过。正式包从干净提交的文件清单生成，包含实际 LFS 工件，逐项验证 ZIP，并附来源提交与 SHA-256；不递归打包整个工作目录。
@@ -21,11 +21,19 @@
 15. **控制体积与重复能力。** 默认面向 DBA、Python 爬虫/数据处理和偶尔开发调试；保留常用运行依赖，低频 Go 编译和 Python EXE 打包优先放独立项目的手动 GitHub Actions，不自动补回编译工具。同一用途优先复用已装依赖；浏览器统一为一套 Playwright 和一份配套 Chromium，不并装 ChromeDriver、第二套浏览器或 Chrome DevTools MCP。先检查现有 API/CDP 是否能完成任务，再考虑新增工具并说明收益与体积。精简前核对上游查找路径、共享依赖和实际功能；不因文件名相似就删除官方助手或资源，不为体积牺牲已保留功能。所有可配置的 profile、下载、缓存、临时文件随包根移动；不能以“便携”名义隐藏系统权限或工具自身的限制。
 16. **客户发行内容。** 先在源码检出中完成验证，再从干净提交构建发行 ZIP。第一方测试、CI、Git 配置和开发打包器留在仓库，不进入客户包；临时文件、缓存、账号和本机配置不发布。保留运行依赖、许可证和四篇说明，逐项验证 ZIP 与来源清单。
 
+## 2026-10-24：0.164.0 配套升级与配置兼容
+
+**原因与结果：** 中断期间官方发布 [0.164.0](https://github.com/openai/codex/releases/tag/rust-v0.164.0)，Codex/Host 及配套助手、搜索程序成对更新；六个运行文件约 464.5 MB，官方 ZIP 摘要、PE 架构、许可证与完整布局已核验，保留原始 EXE 字节。继续省略 39 个语音文件和两份重复助手；固定身份、登录版本映射和模式副本同步。
+
+**变量复核：** 44 个有效 `CODEX_*` 默认赋值仍有生产消费者，provider、Fast、扩展、文件凭证存储和默认 unelevated 沙箱映射继续有效。`realtime_conversation` 已成为 Removed feature，删除失效赋值；有效 App 语音/听写开关保持 false，TUI 的 `toggle_voice` / `toggle_voice_mute` 设为空绑定。上游仍可显示 `/voice`，本包不支持语音，不宣称已隐藏该命令。模型目录与上一版一致，Luna 默认仍为 medium。新增的 64 位 HKLM 固定策略键 `SOFTWARE\Policies\OpenAI\Codex` 的 `RequirementsPath` 会改变官方系统策略文件来源；启动器先检查该值名是否存在，未明确允许宿主策略时拒绝启动，不读取它指向的文件。显式允许宿主策略时保持上游行为。参见官方[系统策略加载](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/config/src/loader/mod.rs#L819)、[语音 feature](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/features/src/lib.rs#L432)和[默认 Windows 后端](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/windows-sandbox-rs/src/unified_exec/mod.rs#L59)。
+
 ## 2026-10-24：Windows 验证与 npm 目录边界
 
 **原因与结果：** npm 的用户/全局配置虽位于包内，上游仍会从工作目录向父层发现项目 `.npmrc`。六个 npm/npx 入口现统一使用包内 Node 和固定项目根，保留经校验的显式包内 `--prefix`，配置和缓存路径先校验后加载；不依赖增加环境变量来假定隔离。实际 bundled npm 配置加载、参数保留及 Windows 入口纳入发布回归。
 
-**验证约束：** Windows 工作流使用与便携入口一致的包内/系统 PowerShell 模块路径，各组检查单独显示结果并设有限超时。BAT 合成测试超时时按本次 PID 回收子进程树，避免只杀父进程后阻塞临时目录清理。
+**Windows 修复：** 账号检查 BAT 的菜单提示包含未转义的右括号，导致 CMD 在解析分支时中止；现正确转义，保留原菜单行为。首次直接运行浏览器时由监督器安全创建缺失的包内 `tmp`，不再依赖先运行 BAT。Windows 专用入口和进程监督继续通过独立测试验收。
+
+**验证约束：** Windows 工作流使用与便携入口一致的包内/系统 PowerShell 模块路径，各组检查单独显示结果并设有限超时。新进程在 Windows runner 上出现约 20–30 秒的冷启动，合成测试使用 60 秒有限等待，较长的多进程测试组另设 8 分钟上限，不以无限等待掩盖失败。BAT 合成测试超时时按本次 PID 回收子进程树，避免只杀父进程后阻塞临时目录清理。
 
 ## 2026-10-23：发布复查与打包
 
@@ -45,7 +53,7 @@
 
 **原因与结果：** 本地主要使用文字 Agent、Python 爬虫和数据处理，编译频率低。移除 Go、PyInstaller 及其专用依赖、可再生 Python 字节码、uv/uvx/uvw 和两份重复沙箱助手，项目文件由约 1,146 MB 降为 807 MB，减少约 339 MB（30%）；按解压后的受版本管理文件统计，不含 Git 历史、用户状态和尚未下载的浏览器。Python、Node、Office/PDF、现有 Android 和浏览器脚本依赖保留，36 个 Windows Python 运行包的依赖关系闭合。
 
-默认 unelevated 沙箱使用客户端内置执行路径；两个根目录助手用于 elevated 沙箱。保留它们是因为 TUI 提权入口仍可达，缺件时上游可能按裸文件名查找程序；仅删除已核对同根目录优先查找的资源副本。Codex 运行文件现为六个、约 446.3 MB，固定清单和模式副本同步更新。
+默认 unelevated 沙箱使用客户端内置执行路径；两个根目录助手用于 elevated 沙箱。保留它们是因为 TUI 提权入口仍可达，缺件时上游可能按裸文件名查找程序；仅删除已核对同根目录优先查找的资源副本。当时的 0.163.0 运行文件为六个、约 446.3 MB，固定清单和模式副本同步更新。
 
 | 关联问题 | 最终处理 |
 | --- | --- |
@@ -63,7 +71,7 @@
 
 **原因与范围：** 用户确定不使用语音；此前分项回归不足以覆盖新运行包、进程监督和工具入口之间的依赖。本轮核对固定版本上游的资源查找、沙箱助手缓存和原生变量消费点，检查第一方脚本并执行现有综合回归，不将离线检查称为 Windows 全流程验收。
 
-**精简结果：** 删除语音专用的 39 个文件，减少约 19.4 MB；保留主程序、Code Mode Host、搜索和两种沙箱助手。生成配置明确关闭 `in_app_voice`、`in_app_dictation`、`realtime_conversation`。资源目录中的重复沙箱副本已在后续 DBA 精简中移除，当前布局和取舍见 README。
+**精简结果：** 删除语音专用的 39 个文件，减少约 19.4 MB；保留主程序、Code Mode Host、搜索和两种沙箱助手。当时生成配置关闭 `in_app_voice`、`in_app_dictation`、`realtime_conversation`；最后一项在 0.164.0 已移除，当前处理见最新升级记录。资源目录中的重复沙箱副本已在后续 DBA 精简中移除，当前布局和取舍见 README。
 
 | 联动问题 | 修复结果 |
 | --- | --- |
@@ -166,6 +174,7 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 | `test_automation_process.ps1` | 生产监督器 C# 编译通过；实际继承/捕获标准流需 Windows，Linux 明确跳过 |
 | `test_automation.js` | 10 项通过：实际固定版 MCP 初始化与工具筛选、拒绝未选任务、路径边界、禁止能力、依赖字节摘要；不启动浏览器 |
 | `test_portable_npm.js` / `test_npm_entrypoints.ps1` | 10 项真实 npm 配置回归、入口结构及语法检查通过；Windows 原生入口由手动工作流复验 |
+| `test_system_policy.ps1` | 8 项合成检查通过：固定 Registry64/HKLM、值名存在性、授权 gate、异常拒绝与句柄回收；不读真实策略 |
 | `test_browser_login_flow.ps1` | 7 项离线检查通过：默认设备码、显式系统浏览器、非法值与失败无回退 |
 | `test_bootstrap_paths.ps1` | Linux 明确跳过；15 个 Windows BAT 普通/junction 用例未运行，不执行真实客户端 |
 | 语法、格式与 BAT 静态检查 | 全部 31 个第一方 PowerShell 文件解析通过，94 个第一方 Python 文件 AST 检查通过；5 个 BAT 的 ASCII/CRLF、Go/uv 变量清除、pip 配置禁用和祖先检查先于目录创建检查通过。按 CRLF 规则检查项目差异；保留的官方 EXE/DLL、Playwright 依赖及原始 npm CLI 字节未改写；六个 npm/npx shim 为便携入口 |
@@ -192,6 +201,6 @@ powershell.exe -NoProfile -File .\tests\test_browser_smoke.ps1
 
 配置回归可用匹配客户端的 `debug models --bundled` 成功导出到包内临时 UTF-8 JSON 后，传入 `-BundledModelsPath` 启用另两项检查；先检查导出退出码。Windows 链接回归需 NTFS，创建符号链接可能需要 Developer Mode 或相应权限；Python 无此能力时明确 skip，PowerShell 指令测试会报错，都不算通过。
 
-**Windows 待验：** 正常/维护 BAT 在新盘符、中文、空格路径运行；NTFS 链接、ACL、进程监督、标准流和退出清理；实际 Codex/Host 启动与工具调用；生成配置最终变量；Python 安装器的真实重装和导入；授权条件下的三种登录模式、代理和 Windows 沙箱。语音已排除，不再列为待验功能。旧版本的历史验收记录不代替 0.163.0 的实际结果，也不据离线测试宣称项目没有其他 bug。
+**Windows 待验：** 正常/维护 BAT 在新盘符、中文、空格路径运行；NTFS 链接、ACL、进程监督、标准流和退出清理；实际 Codex/Host 启动与工具调用；生成配置最终变量；Python 安装器的真实重装和导入；授权条件下的三种登录模式、代理和 Windows 沙箱。语音已排除，不再列为待验功能。旧版本的历史验收记录不代替 0.164.0 的实际结果，也不据离线测试宣称项目没有其他 bug。
 
 **已知实现注意点：** PS5.1 的 `File.Replace`、泛型集合和原生空参数传递曾有兼容问题，后续改动应保留对应处理；认证多文件切换依赖 transition/logout 标记与 snapshot 归属，不可猜测回收；缺少 Host 时恢复匹配完整布局，不能用关闭 Code Mode 作为修复。当前 checkout 不包含历史 checker/updater 套件，不引用不存在的脚本或把旧版本哈希当成当前身份。

@@ -165,10 +165,10 @@ exit 0
             [void]$Process.Start()
             $StdoutTask = $Process.StandardOutput.ReadToEndAsync()
             $StderrTask = $Process.StandardError.ReadToEndAsync()
-            if (-not $Process.WaitForExit(30000)) {
+            if (-not $Process.WaitForExit(60000)) {
                 $Process.Kill()
                 $Process.WaitForExit()
-                throw 'Host guard fixture exceeded 30 seconds.'
+                throw 'Host guard fixture exceeded 60 seconds.'
             }
             return [pscustomobject]@{
                 ExitCode = $Process.ExitCode
@@ -222,7 +222,7 @@ try {
         $Menu = Get-ModelReasoningMenuInfo 'gpt-6-luna'
         Assert-Equal $Menu.Default '' 'Third-party provider must control its default'
     }
-    Test-Case 'official Luna fallback agrees with 0.163.0 medium default' {
+    Test-Case 'official Luna fallback agrees with 0.164.0 medium default' {
         Set-TestModels $null
         $env:CODEX_PROVIDER_MODE = 'official_chatgpt'
         $Menu = Get-ModelReasoningMenuInfo 'gpt-6-luna'

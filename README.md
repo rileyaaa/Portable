@@ -1,6 +1,6 @@
 # Codex Portable（Windows x64）
 
-将 Codex、启动器、包内工具和运行状态放在同一目录的便携项目，面向 **Windows x86-64、Windows PowerShell 5.1、本地 NTFS**，不支持 32 位 Windows。当前主客户端与 Code Mode Host 均为官方 **0.163.0**，用于文字与 Agent 工作，保留配套执行、搜索和沙箱组件，不包含语音聊天资源；来源和摘要见 [运行包清单](tool/runtime-manifest.json)。
+将 Codex、启动器、包内工具和运行状态放在同一目录的便携项目，面向 **Windows x86-64、Windows PowerShell 5.1、本地 NTFS**，不支持 32 位 Windows。当前主客户端与 Code Mode Host 均为官方 **0.164.0**，用于文字与 Agent 工作，保留配套执行、搜索和沙箱组件，不包含语音聊天资源；来源和摘要见 [运行包清单](tool/runtime-manifest.json)。
 
 默认面向 DBA 日常工作、爬虫与数据处理，也保留 Python 开发和调试能力。Python、Node 及已有文档/自动化运行依赖留在包内；低频编译和打包交给独立项目的手动 GitHub Actions，不预装 Go 编译器和 Python EXE 打包工具。
 
@@ -30,11 +30,11 @@
 | `codex-command-runner.exe` | **提权 Windows 沙箱（elevated）**的命令执行助手；当前默认 unelevated 路径不调用它。 |
 | `codex-windows-sandbox-setup.exe` | **提权 Windows 沙箱**的初始化助手；普通便携启动不因此自动提权或执行系统初始化。 |
 | `codex-path/rg.exe` | Codex 自带的文件内容搜索程序，避免依赖宿主安装。 |
-| `codex-voice-host.exe` 及语音资源 | 已按项目用途移除，并关闭语音、听写和实时会话配置；文字与 Agent 工作不依赖此组件。 |
+| `codex-voice-host.exe` 及语音资源 | 已按文字/Agent 用途移除；有效的 App 语音/听写开关保持关闭，TUI 语音快捷键解除绑定。上游 0.164.0 仍可显示 `/voice`，本包不支持该语音功能。 |
 
 之前只有 Codex 和 Host 也能运行，是因为默认的 `windows.sandbox="unelevated"` 使用客户端内置的受限令牌执行路径。仍保留一对根目录沙箱助手，是因为 TUI 的 `/elevate-sandbox` 入口可达，不能靠普通配置可靠地移除；缺少助手时，上游还可能退回按文件名查找程序。保留包内匹配文件可避免该功能缺件及宿主程序回退。提权沙箱的系统级初始化需要另行明确授权。
 
-已核对查找顺序并删除 `codex-resources` 中两个相同副本，减少约 **25.9 MB**。连同此前移除的语音组件，Codex 运行文件从上游约 **491.6 MB** 精简为 **446.3 MB**，保留六个文件；不含 `tool` 工具和用户状态。
+已按 0.164.0 核对查找顺序，省略 `codex-resources` 中两份重复助手和语音组件。当前保留六个运行文件，约 **464.5 MB**；不含 `tool` 工具和用户状态。
 
 ## 五个 BAT 入口
 

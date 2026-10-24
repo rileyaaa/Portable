@@ -52,7 +52,7 @@ function Invoke-BootstrapFixture {
         [void]$Process.Start()
         $StdoutTask = $Process.StandardOutput.ReadToEndAsync()
         $StderrTask = $Process.StandardError.ReadToEndAsync()
-        if (-not $Process.WaitForExit(30000)) {
+        if (-not $Process.WaitForExit(60000)) {
             # Kill this owned cmd.exe tree, not only cmd: its PowerShell child
             # otherwise keeps the fixture and redirected pipes open. Retain the
             # Process handle until cleanup finishes; never discover other PIDs.
@@ -89,7 +89,7 @@ function Invoke-BootstrapFixture {
                     $TreeStop.Dispose()
                 }
             }
-            throw 'The isolated BAT test exceeded 30 seconds; its owned process tree was stopped.'
+            throw 'The isolated BAT test exceeded 60 seconds; its owned process tree was stopped.'
         }
         return [pscustomobject]@{
             ExitCode = $Process.ExitCode

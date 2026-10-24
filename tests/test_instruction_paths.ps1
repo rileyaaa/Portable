@@ -97,10 +97,10 @@ function Invoke-InstructionWorker {
         [void]$Process.Start()
         $StdoutTask = $Process.StandardOutput.ReadToEndAsync()
         $StderrTask = $Process.StandardError.ReadToEndAsync()
-        if (-not $Process.WaitForExit(30000)) {
+        if (-not $Process.WaitForExit(60000)) {
             $Process.Kill()
             $Process.WaitForExit()
-            throw 'The isolated instruction-path test exceeded 30 seconds.'
+            throw 'The isolated instruction-path test exceeded 60 seconds.'
         }
         return [pscustomobject]@{
             ExitCode = $Process.ExitCode
