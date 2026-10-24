@@ -10,7 +10,7 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -20,43 +20,55 @@ jobs:
           sparse-checkout: |
             /DEVELOPMENT.md
             /tool/portable-process.ps1
-            /tool/codex-instruct.py
-            /tests/test_codex_instruct.py
-      - name: Apply the exact reviewed repair batch
+      - name: Recover the exact patch already tested on Windows
+        shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          import base64, json, os, pathlib, subprocess
+          scratch = pathlib.Path('tmp/maintenance-apply')
+          scratch.mkdir(parents=True, exist_ok=False)
+          endpoint = 'repos/' + os.environ['GH_REPO'] + '/contents/.github/workflows/maintenance-once.yml?ref=d024a7279413f927955a35f1ab0453dea5fce539'
+          record = json.loads(subprocess.check_output(['gh','api',endpoint], text=True))
+          text = base64.b64decode(record['content']).decode('utf-8')
+          section = text.split('      - name: Apply only the reviewed compiler entry repair\n',1)[1].split('      - name: Preserve inherited and captured standard streams\n',1)[0]
+          code = section.split('        run: |\n',1)[1]
+          lines = code.splitlines()
+          if not all(not line or line.startswith('          ') for line in lines):
+              raise SystemExit('Unexpected recorded patch indentation')
+          code = '\n'.join(line[10:] if line else '' for line in lines) + '\n'
+          (scratch/'apply.ps1').write_text(code,encoding='utf-8-sig')
+      - name: Apply and check exact resulting source bytes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & ./tmp/maintenance-apply/apply.ps1
+          $blob = & git hash-object tool/portable-process.ps1
+          if ($LASTEXITCODE -ne 0 -or $blob -ne '3e659ab70c0ef7f72b24911dccb74a14f1c0d2fd') { throw 'Patch differs from the tested candidate.' }
+      - name: Record compact verified results and commit
         shell: python
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: |
-          import ast, base64, hashlib, json, pathlib, shutil, subprocess, zlib
-          encoded = 'eNrtXHtTG1eW/yp3SWolGT1BgMDFlgnGE2bAUIAzuwUuudW6go6lbk13y8B4XGUnwdiOMTixnTh+xYmJPZlg8g4x2P4uO7Qk/spX2HPu7W71SwJvkqrd2iUOSN33nnuev3PuuS2dbaMLZSrqNN/WR8626YpSTJQVVRdyRRorq4pINS1e1lJwt60r392dEbrSnQWaL+TgP7GjQ+xJ9aY7OoR8WkjTzmQ3/JduixJOSFTydCEmyZier8ad+8F18nbv5f0goTZqA1+Tv44547CE0xWPo+ucIX9V8zPyVhT5480SwX23ccYFN1wKaHq181ymlisVIrHTW1hpLuYw2miDi+viY3ArF0spUJh7GWFcXh2uhOELDLrCoJLLEapnTs64do548+6d9YT7eZv7wn62texnW/M9Iu0oJVUrdHaOjFzWzr3mzlo+g/rZYPQ7Kk0EY+v1IH8M7tlnqcCPEX4An4kIJh3xzJUUC7L68eqqn1MOYmZmUi3Axz9hkj1120T0iYu3bx7GDXJ8rtZ+voM7xRa4luoL3JIH2v178gBqaD2MukAuoDRgauNHXGFopNpc4k45tAZdHZQFdsWz/IJgnhA0iQbtXAkhOZrHqGDNzRMw+Ch4SAphkKTXyDBlumImgbZYFknU4zv/PSjUFCyNMCNJwAUJZpQt+IyUUnMUqJjBCKYbQ2oN22iiAbNYlmw8U0lYKT0mRyKcRb7o6l/QpO/bmT/qjZLsfJ838Kvkwh8w2m6u0Qt1GOALekUumwG+kAYm3X5wR+ykrPPCtdH1XGCDgkdeVXIN3hD/XJEFEVBcI7nWMMujmOvnGlaCPTMeu4TyKBeLliYYcQ=='
-          bundle = json.loads(zlib.decompress(base64.b64decode(encoded)))
-          allowed = {'tool/portable-process.ps1','tool/codex-instruct.py','tests/test_codex_instruct.py','DEVELOPMENT.md'}
-          if set(bundle['expected']) != allowed or set(bundle['result']) != allowed:
-              raise SystemExit('Unexpected patch scope')
-          for name, expected in bundle['expected'].items():
-              found = subprocess.run(['git','rev-parse','HEAD:'+name], capture_output=True, text=True)
-              if expected is None:
-                  if found.returncode == 0: raise SystemExit('New test already exists')
-              elif found.returncode or found.stdout.strip() != expected:
-                  raise SystemExit('Changed baseline: '+name)
-          scratch = pathlib.Path('tmp/maintenance-apply')
-          scratch.mkdir(parents=True, exist_ok=False)
-          try:
-              patch = scratch / 'reviewed.patch'
-              patch.write_text(bundle['patch'], encoding='utf-8')
-              subprocess.run(['git','apply','--check',str(patch)], check=True)
-              subprocess.run(['git','apply',str(patch)], check=True)
-              for name, expected in bundle['result'].items():
-                  data = pathlib.Path(name).read_bytes()
-                  actual = hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
-                  if actual != expected: raise SystemExit('Patched bytes mismatch: '+name)
-                  if name.endswith('.py'): ast.parse(data.decode('utf-8'), filename=name)
-              subprocess.run(['python','-B','-m','unittest','discover','-s','tests','-p','test_codex_instruct.py','-v'], check=True)
-              subprocess.run(['git','config','user.name','github-actions[bot]'], check=True)
-              subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'], check=True)
-              subprocess.run(['git','add','--',*sorted(allowed)], check=True)
-              subprocess.run(['git','diff','--cached','--check'], check=True)
-              subprocess.run(['git','commit','-m','fix: support Unicode launcher paths and reject linked instruction roots'], check=True)
-              subprocess.run(['git','push','origin','HEAD:main'], check=True)
-          finally:
-              shutil.rmtree(scratch)
+          import pathlib, subprocess
+          path = pathlib.Path('DEVELOPMENT.md')
+          text = path.read_text(encoding='utf-8')
+          anchor = '## 2026-10-24：Windows 验证与 npm 目录边界'
+          assert text.count(anchor) == 1
+          record = '**完整启动补验：** 新增真实 BAT → 启动器 → 固定原生客户端的离线回归，发现 PS5.1 / .NET Framework CodeDOM 在含中文的包内临时目录编译失败。仅将编译入口改为当前 Windows Framework 自带 csc、Unicode 子进程环境和 UTF-8 参数文件；源码、输出和清理仍限本次包内 `tmp`，监督器 C#、Job、标准流、模式和凭据逻辑不变。Windows 专项运行 40066085104 的普通、中文/空格改名搬迁、旧根仍存在及维护入口三组启动与生成配置、继承/捕获标准流均通过；该任务最后的文档写回失败，不将任务总状态记为成功。修复已按通过测试的精确字节提交，完整启动检查纳入后续正式发布门禁。'
+          text = text.replace(anchor,anchor+'\n\n'+record,1)
+          text = text.replace('Windows 全量复验及发布待执行。','修复后已通过 [Windows 全量运行 40064538870](https://github.com/rileyaaa/Codex-Portable/actions/runs/40064538870)，该次仅验证不发布。')
+          text = text.replace('此前 Windows 专项运行通过；后续全量运行 `40056474654` 因 stderr 诊断匹配失败。已补充精确匹配及 14 个正反例，Windows 继承/捕获标准流待复验','Windows 全量运行 40064538870 及中文编译修复专项均通过；包含 14 个严格诊断正反例和真实继承/捕获标准流')
+          path.write_text(text,encoding='utf-8')
+          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','add','--','tool/portable-process.ps1','DEVELOPMENT.md'],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          subprocess.run(['git','commit','-m','fix: compile process helper safely in Unicode portable paths'],check=True)
+          subprocess.run(['git','push','origin','HEAD:main'],check=True)
+      - name: Remove this job's temporary material
+        if: always()
+        shell: bash
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/maintenance-apply"
