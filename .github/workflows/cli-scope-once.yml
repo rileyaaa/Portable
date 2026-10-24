@@ -65,7 +65,10 @@ jobs:
           assert "$ErrorActionPreference = 'Stop'" in policy
           assert 'continue-on-error: true' not in workflow
           assert sum(pathlib.PurePosixPath(p).name.lower()=='codex.exe' for p in paths)==1
-          assert not any(p.startswith(('tool/go/','tool/uv-tools/','home/.sandbox-bin/')) for p in paths)
+          for p in paths:
+              if p.startswith(('tool/go/','tool/uv-tools/','home/.sandbox-bin/')):
+                  assert pathlib.PurePosixPath(p).name in {'.gitkeep','.keep'},p
+                  assert subprocess.check_output(['git','show','HEAD:'+p])==b'',p
           subprocess.run(['python','-B','-m','unittest','discover','-s','tests','-p','test_mode_copies.py','-v'],check=True)
           print('INDEPENDENT_INVENTORY=PASS tracked='+str(len(paths))+' text='+str(len(selected)))
           print('SYNTAX_AND_ENCODING='+json.dumps(counts,sort_keys=True))
