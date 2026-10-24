@@ -74,7 +74,7 @@ for key in ('HOME','USERPROFILE','APPDATA','LOCALAPPDATA','TEMP','TMP','CODEX_HO
     assert os.path.commonpath([norm(root), norm(path)]) == norm(root), key
 assert not any(key.startswith(('GO','UV_')) for key in cfg['shell_environment_policy']['set'])
 assert not list((root / 'tmp').glob('session-state-*')), 'Session scratch leaked after launcher exit'
-assert not list((root / 'home').glob('auth*.json')), 'Version-only smoke must not create authentication'
+assert not list((root / 'home').glob('auth*.json')), 'Offline smoke must not create authentication'
 print('PASS full launcher generated configuration: ' + mode)
 '@, $utf8)
     $oldRoot = $fixture
@@ -97,6 +97,25 @@ print('PASS full launcher generated configuration: ' + mode)
         $start.EnvironmentVariables['CODEX_INSTALL_DIR'] = $oldRoot
         $output = Invoke-OwnedSmokeProcess -StartInfo $start
         if ($output -notmatch ('codex-cli ' + [regex]::Escape($manifest.version))) { throw 'Full launcher did not execute the pinned native client.' }
+        # --version alone bypasses native configuration loading. The read-only
+        # features/list implementation in the pinned release actually loads it.
+        # Invoke only that exact command in this synthetic fixture; the production
+        # launcher still rejects general feature-management commands.
+        $consumerState = New-AutomationDirectory -Root $root -Path (Join-Path $fixture 'tmp/config-consumer')
+        $native = New-AutomationStartInfo -Root $fixture -FilePath (Join-Path $fixture 'codex.exe') -WorkingDirectory (Join-Path $fixture 'work') -SessionDirectory $consumerState -CaptureOutput -Arguments @('features','list')
+        $native.EnvironmentVariables['CODEX_HOME'] = Join-Path $fixture 'home'
+        $native.EnvironmentVariables['CODEX_SQLITE_HOME'] = Join-Path $fixture 'sqlite'
+        $native.StandardOutputEncoding = $utf8; $native.StandardErrorEncoding = $utf8
+        $configPath = Join-Path $fixture 'home/config.toml'
+        $configHash = (Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash
+        $features = Invoke-OwnedSmokeProcess -StartInfo $native
+        foreach ($feature in @('apps','plugins','plugin_sharing','fast_mode','in_app_voice','in_app_dictation')) {
+            if ($features -cnotmatch ('(?m)^' + [regex]::Escape($feature) + '\s+[^\r\n]+\s+false\s*$')) {
+                throw ('Native config consumer did not retain the disabled feature: ' + $feature)
+            }
+        }
+        if ((Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash -cne $configHash) { throw 'Read-only config inspection changed the generated configuration.' }
+        Write-Output ('PASS native client consumes generated configuration: ' + $case)
         $python = Join-Path $root 'tool/python/python.exe'
         $policy = if ($case -eq 'maintenance') { 'maintenance' } else { 'normal' }
         & $python -B $validator $fixture $policy
