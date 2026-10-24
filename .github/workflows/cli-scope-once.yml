@@ -1,5 +1,5 @@
-# Temporary owner-authorized repair bridge; removed before final publication.
-name: Instruction helper repair and fresh review
+# Temporary owner-authorized review bridge; remove before final publication.
+name: Final independent source review
 on:
   push:
     branches: [main]
@@ -8,75 +8,7 @@ on:
 permissions:
   contents: read
 jobs:
-  repair:
-    runs-on: ubuntu-latest
-    timeout-minutes: 6
-    permissions:
-      contents: write
-    outputs:
-      commit: ${{ steps.commit.outputs.commit }}
-    env:
-      PYTHONDONTWRITEBYTECODE: '1'
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          fetch-depth: 1
-          lfs: false
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /tool/codex-instruct.py
-            /tests/
-            /DEVELOPMENT.md
-      - name: Recover the recorded repair and verification scripts
-        shell: python
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/instruction-repair-code/gh
-        run: |
-          import ast,base64,hashlib,json,os,pathlib,subprocess
-          scratch=pathlib.Path('tmp/instruction-repair-code');scratch.mkdir(parents=True,exist_ok=False)
-          endpoint='repos/'+os.environ['GITHUB_REPOSITORY']+'/contents/.github/workflows/cli-scope-once.yml?ref=2d825a87f4f102e35c1ac7b966779bdbc7e4dd29'
-          record=json.loads(subprocess.check_output(['gh','api',endpoint],text=True))
-          raw=base64.b64decode(record['content'])
-          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()=='b973b9c8a1af517d7695cddc8d0d999fc4786749'
-          text=raw.decode('utf-8')
-          def extract(name):
-              section=text.split('      - name: '+name+'\n',1)[1]
-              body=section.split('        run: |\n',1)[1]
-              lines=[]
-              for line in body.splitlines():
-                  if line and not line.startswith('          '):break
-                  lines.append(line[10:] if line else '')
-              return '\n'.join(lines)+'\n'
-          apply=extract('Reproduce the old guard and apply only the tested helper repair')
-          assert apply.count('JA/dMya')==1
-          apply=apply.replace('JA/dMya','JA/dzfMya')
-          # YAML has already removed its indentation. Preserve the tested Python
-          # function indentation; the resulting Git blob is checked by apply.py.
-          lines=apply.splitlines(keepends=True)
-          removed=[line for line in lines if line.startswith("new='\\n'.join(")]
-          assert len(removed)==1
-          apply=''.join(line for line in lines if line not in removed)
-          ast.parse(apply)
-          (scratch/'apply.py').write_text(apply,encoding='utf-8')
-          (scratch/'record.py').write_text(extract('Record the cause and bounded repair, then commit'),encoding='utf-8')
-      - name: Reproduce baseline and apply exact tested source bytes
-        shell: bash
-        run: python -B tmp/instruction-repair-code/apply.py
-      - name: Run all new synthetic instruction-helper regressions
-        shell: bash
-        run: python -B -m unittest discover -s tests -p test_instruction_installer.py -v
-      - name: Record and commit only the bounded repair
-        id: commit
-        shell: bash
-        run: python -B tmp/instruction-repair-code/record.py
-      - name: Remove owned repair script copies
-        if: always()
-        shell: bash
-        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/instruction-repair-code"
-  recheck:
-    needs: repair
+  review:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:
@@ -84,7 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: ${{ needs.repair.outputs.commit }}
           fetch-depth: 1
           lfs: false
           filter: blob:none
@@ -92,42 +23,63 @@ jobs:
           sparse-checkout: |
             /README.md
             /DEVELOPMENT.md
-      - name: Load the independent review on a fresh checkout
+      - name: Export exact tracked first-party text and complete inventory
         shell: python
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/instruction-review-code/gh
         run: |
-          import base64,hashlib,json,os,pathlib,subprocess
-          scratch=pathlib.Path('tmp/instruction-review-code');scratch.mkdir(parents=True,exist_ok=False)
-          endpoint='repos/'+os.environ['GITHUB_REPOSITORY']+'/contents/.github/workflows/cli-scope-once.yml?ref=2d825a87f4f102e35c1ac7b966779bdbc7e4dd29'
-          record=json.loads(subprocess.check_output(['gh','api',endpoint],text=True))
-          raw=base64.b64decode(record['content'])
-          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()=='b973b9c8a1af517d7695cddc8d0d999fc4786749'
-          text=raw.decode('utf-8')
-          def extract(name):
-              section=text.split('      - name: '+name+'\n',1)[1]
-              body=section.split('        run: |\n',1)[1]
-              lines=[]
-              for line in body.splitlines():
-                  if line and not line.startswith('          '):break
-                  lines.append(line[10:] if line else '')
-              return '\n'.join(lines)+'\n'
-          (scratch/'source-review.py').write_text(extract('Independently verify exact repair scope and complete source inventory'),encoding='utf-8')
-          (scratch/'python-tests.py').write_text(extract('Fresh Python synthetic regression suites'),encoding='utf-8')
-          (scratch/'powershell-tests.ps1').write_text(extract('Fresh PowerShell syntax and production-policy regressions'),encoding='utf-8')
-      - name: Independent source, configuration and bounded-diff checks
-        shell: bash
-        run: python -B tmp/instruction-review-code/source-review.py
-      - name: Fresh 58-case Python regression
-        shell: bash
-        run: python -B tmp/instruction-review-code/python-tests.py
-      - name: Fresh PowerShell syntax and policy regression
+          import ast, hashlib, json, pathlib, subprocess, zipfile
+          root=pathlib.Path.cwd()
+          scratch=root/'tmp'/'final-review-export'
+          scratch.mkdir(parents=True,exist_ok=False)
+          inventory=[]
+          for record in subprocess.check_output(['git','ls-tree','-rz','--full-tree','HEAD']).split(b'\0'):
+              if not record: continue
+              header,name=record.split(b'\t',1)
+              mode,kind,sha=header.decode('ascii').split()
+              inventory.append({'path':name.decode('utf-8'),'mode':mode,'type':kind,'sha':sha})
+          excluded=('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
+          suffixes={'.ps1','.psm1','.psd1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.rules','.toml','.css','.html','.sh'}
+          wanted=[r for r in inventory if r['type']=='blob' and r['mode'] in ('100644','100755') and not r['path'].startswith(excluded) and (pathlib.PurePosixPath(r['path']).suffix.lower() in suffixes or r['path'] in ('.gitignore','.gitattributes'))]
+          assert not any(r['path']=='env.local.ps1' or r['path'].startswith(('home/auth','login_json/','cache/','tmp/','work/')) for r in wanted)
+          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+r['path'] for r in wanted)+'\n',text=True,check=True)
+          counts={'python':0,'javascript':0}
+          with zipfile.ZipFile(scratch/'source-review.zip','x',compression=zipfile.ZIP_DEFLATED) as out:
+              for r in wanted:
+                  data=(root/r['path']).read_bytes()
+                  assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==r['sha'],r['path']
+                  text=data.decode('utf-8-sig')
+                  if r['path'].endswith('.py'):
+                      ast.parse(text,filename=r['path']);counts['python']+=1
+                  elif r['path'].endswith(('.js','.cjs','.mjs')):
+                      subprocess.run(['node','--check',r['path']],check=True,capture_output=True);counts['javascript']+=1
+                  out.writestr('source/'+r['path'],data)
+              out.writestr('inventory.json',json.dumps({'commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'files':inventory,'exported':[r['path'] for r in wanted]},ensure_ascii=False,indent=2))
+          print('TRACKED_FILES',len(inventory),'EXPORTED_TEXT',len(wanted),'PARSE_OK',counts)
+          print('SOURCE_ARCHIVE_SHA256',hashlib.sha256((scratch/'source-review.zip').read_bytes()).hexdigest())
+      - name: Parse PowerShell and check synchronized mode copies
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          & ./tmp/instruction-review-code/powershell-tests.ps1
-      - name: Remove owned review script copies
+          $count=0
+          Get-ChildItem -Recurse -File -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/]tmp[\\/]' } | ForEach-Object {
+            $tokens=$null; $errors=$null
+            $null=[Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
+            if ($errors.Count) { throw ($_.FullName + ': ' + ($errors.Message -join '; ')) }
+            $count++
+          }
+          Write-Output "POWERSHELL_PARSE_OK=$count (Linux syntax check only)"
+          python -B -m unittest discover -s tests -p test_mode_copies.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Mode copies differ.' }
+          python -B -m unittest discover -s tests -p test_instruction_installer.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Instruction helper regression.' }
+      - name: Upload short-lived private review material
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: final-source-review
+          path: tmp/final-review-export/source-review.zip
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - name: Remove owned export scratch
         if: always()
         shell: bash
-        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/instruction-review-code"
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/final-review-export"
