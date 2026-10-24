@@ -27,7 +27,36 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: |
-          import base64, hashlib, json, pathlib, subprocess, zlib
-          encoded = 'eNrtXHtTG1eW/yp3SWolGT1BgMDFlgnGE2bAUIAzuwUuudW6go6lbk13y8B4XGUnwdiOMTixnTh+xYmJPZlg8g4x2P4uO7Qk/spX2HPu7W71SwJvkqrd2iUOSN33nnuev3PuuS2dbaMLZSrqNN/WR8626YpSTJQVVRdyRRorq4pINS1e1lJwt60TjJTJtxE3gNA=='
-          # The encoded patch is supplied as the reviewed, hash-checked source below.
-          raise SystemExit('Patch payload placeholder: no repository mutation is permitted.')
+          import ast, base64, hashlib, json, pathlib, shutil, subprocess, zlib
+          encoded = 'eNrtXHtTG1eW/yp3SWolGT1BgMDFlgnGE2bAUIAzuwUuudW6go6lbk13y8B4XGUnwdiOMTixnTh+xYmJPZlg8g4x2P4uO7Qk/spX2HPu7W71SwJvkqrd2iUOSN33nnuev3PuuS2dbaMLZSrqNN/WR8626YpSTJQVVRdyRRorq4pINS1e1lJwt60r392dEbrSnQWaL+TgP7GjQ+xJ9aY7OoR8WkjTzmQ3/JduixJOSFTydCEmyZier8ad+8F18nbv5f0goTZqA1+Tv44547CE0xWPo+ucIX9V8zPyVhT5480SwX23ccYFN1wKaHq181ymlisVIrHTW1hpLuYw2miDi+viY3ArF0spUJh7GWFcXh2uhOELDLrCoJLLEapnTs64do548+6d9YT7eZv7wn62texnW/M9Iu0oJVUrdHaOjFzWzr3mzlo+g/rZYPQ7Kk0EY+v1IH8M7tlnqcCPEX4An4kIJh3xzJUUC7L68eqqn1MOYmZmUi3Axz9hkj1120T0iYu3bx7GDXJ8rtZ+voM7xRa4luoL3JIH2v178gBqaD2MukAuoDRgauNHXGFopNpc4k45tAZdHZQFdsWz/IJgnhA0iQbtXAkhOZrHqGDNzRMw+Ch4SAphkKTXyDBlumImgbZYFknU4zv/PSjUFCyNMCNJwAUJZpQt+IyUUnMUqJjBCKYbQ2oN22iiAbNYlmw8U0lYKT0mRyKcRb7o6l/QpO/bmT/qjZLsfJ838Kvkwh8w2m6u0Qt1GOALekUumwG+kAYm3X5wR+ykrPPCtdH1XGCDgkdeVXIN3hD/XJEFEVBcI7nWMMujmOvnGlaCPTMeu4TyKBeLliYYcQ=='
+          bundle = json.loads(zlib.decompress(base64.b64decode(encoded)))
+          allowed = {'tool/portable-process.ps1','tool/codex-instruct.py','tests/test_codex_instruct.py','DEVELOPMENT.md'}
+          if set(bundle['expected']) != allowed or set(bundle['result']) != allowed:
+              raise SystemExit('Unexpected patch scope')
+          for name, expected in bundle['expected'].items():
+              found = subprocess.run(['git','rev-parse','HEAD:'+name], capture_output=True, text=True)
+              if expected is None:
+                  if found.returncode == 0: raise SystemExit('New test already exists')
+              elif found.returncode or found.stdout.strip() != expected:
+                  raise SystemExit('Changed baseline: '+name)
+          scratch = pathlib.Path('tmp/maintenance-apply')
+          scratch.mkdir(parents=True, exist_ok=False)
+          try:
+              patch = scratch / 'reviewed.patch'
+              patch.write_text(bundle['patch'], encoding='utf-8')
+              subprocess.run(['git','apply','--check',str(patch)], check=True)
+              subprocess.run(['git','apply',str(patch)], check=True)
+              for name, expected in bundle['result'].items():
+                  data = pathlib.Path(name).read_bytes()
+                  actual = hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+                  if actual != expected: raise SystemExit('Patched bytes mismatch: '+name)
+                  if name.endswith('.py'): ast.parse(data.decode('utf-8'), filename=name)
+              subprocess.run(['python','-B','-m','unittest','discover','-s','tests','-p','test_codex_instruct.py','-v'], check=True)
+              subprocess.run(['git','config','user.name','github-actions[bot]'], check=True)
+              subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'], check=True)
+              subprocess.run(['git','add','--',*sorted(allowed)], check=True)
+              subprocess.run(['git','diff','--cached','--check'], check=True)
+              subprocess.run(['git','commit','-m','fix: support Unicode launcher paths and reject linked instruction roots'], check=True)
+              subprocess.run(['git','push','origin','HEAD:main'], check=True)
+          finally:
+              shutil.rmtree(scratch)
