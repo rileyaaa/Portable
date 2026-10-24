@@ -29,6 +29,8 @@
 
 ## 2026-10-24：Windows 验证与 npm 目录边界
 
+**收尾复核与发布门禁：** 按固定 0.164.0 上游 schema、feature 定义和当前生产引用复核 42 项字面量默认设置及 2 项派生路径，未将仅预留工具路径当作已安装功能。源码检查 40067858314 通过 97 份 Python AST、11 份 JavaScript 语法、38 份 PowerShell 语法、5 个 BAT 的 ASCII/CRLF 和模式副本检查；其中 PowerShell 解析在 Linux/PS7 执行，不代替 Windows 运行。正式工作流保留原有全量检查，补入真实 BAT/客户端完整启动回归，并以固定客户端的只读 features/list 检查生成配置的实际加载与关闭开关，避免仅靠 --version 推断配置有效。上传先创建 draft，重新下载三个附件、比对 SHA-256 并逐项验证 ZIP/来源清单后才公开为非预发布；测试、下载和验证材料只使用本次包内 tmp。最终发布结果以对应完整 Windows 运行及 Release 附件为准。
+
 **完整启动补验：** 新增真实 BAT → 启动器 → 固定原生客户端的离线回归，发现 PS5.1 / .NET Framework CodeDOM 在含中文的包内临时目录编译失败。仅将编译入口改为当前 Windows Framework 自带 csc、Unicode 子进程环境和 UTF-8 参数文件；源码、输出和清理仍限本次包内 `tmp`，监督器 C#、Job、标准流、模式和凭据逻辑不变。Windows 专项运行 40066085104 的普通、中文/空格改名搬迁、旧根仍存在及维护入口三组启动与生成配置、继承/捕获标准流均通过；该任务最后的文档写回失败，不将任务总状态记为成功。修复已按通过测试的精确字节提交，完整启动检查纳入后续正式发布门禁。
 
 **标准流回归修复：** 全量运行 `40056474654` 中，已知编译临时目录保留提示导致 stderr 精确匹配误报。测试现仅接受这条提示出现一次，保留 stdout、退出码及捕获模式的严格检查；新增 14 个正反例。不修改生产监督器，不丢弃未知诊断，不放宽发布门禁。修复后已通过 [Windows 全量运行 40064538870](https://github.com/rileyaaa/Codex-Portable/actions/runs/40064538870)，该次仅验证不发布。
@@ -167,7 +169,7 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 | 检查 | 结果与范围 |
 | --- | --- |
 | Python unittest discovery | 89 项通过：便携路径、HTTP、运行包、Android、Office/PDF、固定依赖、模式副本、pip 隔离、浏览器安装与发行 ZIP 校验 |
-| `test_portable_config.ps1` | 13 项通过，2 项导出检查跳过；升级时另曾用匹配 0.163.0 的实际 bundled JSON 完成全部 15 项 |
+| `test_portable_config.ps1` | Windows 全量运行 40064538870 中 15 项通过，包含固定 0.164.0 客户端实际导出目录；离线无导出输入时另两项明确跳过 |
 | `test_portable_paths.ps1` | 14 项通过：真实加载 env.ps1，覆盖 15 个派生路径、中文/空格、旧根、无关 cwd、移动目录及受保护/未审核变量；另验证真实启动器函数清除 Go/uv 变量、保留 Python/Node 路径、转发 header，并将 pip 配置禁用传到子进程和 TOML，不执行整个启动链 |
 | `test_python_setup.ps1` | 4 组通过：实际 pip 参数、配置禁用与子进程变量筛选、修复范围拒绝早于任何 pip 调用、完整祖先链接拒绝；不执行安装 |
 | 官方 PyPI wheel 解析 | Windows x64 / CPython 3.14 的 36 个固定版本解析成功，候选锁生成和校验通过；未执行 Windows 安装 |
@@ -181,6 +183,7 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 | `test_system_policy.ps1` | 8 项合成检查通过：固定 Registry64/HKLM、值名存在性、授权 gate、异常拒绝与句柄回收；不读真实策略 |
 | `test_browser_login_flow.ps1` | 7 项离线检查通过：默认设备码、显式系统浏览器、非法值与失败无回退 |
 | `test_bootstrap_paths.ps1` | 15 个 Windows BAT 普通/junction 用例通过；测试入口环境与链接拒绝，不代替完整登录链 |
+| `test_launcher_smoke.ps1` | 普通、中文/空格搬迁及维护入口三组真实 BAT/原生启动已通过专项 40066085104；新增客户端配置消费断言与全部正式门禁一同复验，不使用真实账号 |
 | `test_browser_smoke.ps1` | Windows 实际 Chromium 在搬迁后的合成包启动、截图、关闭后重新打开并保留 Cookie，随后由缓存清理器删除资料且保留工作输出；通过 |
 | 原生客户端与模型目录 | Windows Codex 0.164.0 启动及 `debug models --bundled` 导出通过 |
 | 语法、格式与 BAT 静态检查 | 第一方 PowerShell 解析和 Python AST 检查通过；5 个 BAT 的 ASCII/CRLF、Go/uv 变量清除、pip 配置禁用和祖先检查先于目录创建检查通过。按 CRLF 规则检查项目差异；保留的官方 EXE/DLL、Playwright 依赖及原始 npm CLI 字节未改写；六个 npm/npx shim 为便携入口 |
