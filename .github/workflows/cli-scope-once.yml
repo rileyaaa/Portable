@@ -6,8 +6,7 @@ on:
     paths: [.github/workflows/cli-scope-once.yml]
   workflow_dispatch:
 permissions:
-  contents: read
-  actions: write
+  contents: write
 jobs:
   recheck:
     runs-on: ubuntu-latest
@@ -24,7 +23,7 @@ jobs:
           sparse-checkout: |
             /README.md
             /DEVELOPMENT.md
-      - name: Independently inspect committed inventory and configuration mapping
+      - name: Inspect committed inventory and pinned configuration mapping
         shell: python
         run: |
           import ast,hashlib,json,pathlib,re,subprocess,urllib.request
@@ -59,8 +58,11 @@ jobs:
               assert name in schema['properties'],name
           workflow=(root/'.github/workflows/release.yml').read_text()
           assert workflow.count('if: $'+"{{ success() && inputs.publish_release && inputs.check_set == 'full' }}")==2
-          for test in ('test_permission_display','test_cli_model_options','test_launcher_smoke','test_extension_migration','test_extension_persistence'):
+          for test in ('test_permission_display','test_cli_model_options','test_launcher_smoke','test_extension_migration','test_extension_policy'):
               assert workflow.count('      - name: Windows PowerShell 5.1 - '+test+'\n')==1,test
+          policy=(root/'tests/test_extension_policy.ps1').read_text(encoding='utf-8-sig')
+          assert "& (Join-Path $PSScriptRoot 'test_extension_persistence.ps1')" in policy
+          assert "$ErrorActionPreference = 'Stop'" in policy
           assert 'continue-on-error: true' not in workflow
           assert sum(pathlib.PurePosixPath(p).name.lower()=='codex.exe' for p in paths)==1
           assert not any(p.startswith(('tool/go/','tool/uv-tools/','home/.sandbox-bin/')) for p in paths)
@@ -77,7 +79,7 @@ jobs:
             $null=[Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
             if($errors.Count){throw ($_.FullName+': '+($errors.Message -join '; '))};$count++
           }
-          foreach($name in @('test_cli_model_options','test_permission_display','test_extension_policy','test_extension_migration','test_extension_persistence')){
+          foreach($name in @('test_cli_model_options','test_permission_display','test_extension_policy','test_extension_migration')){
             & pwsh -NoProfile -NonInteractive -File (Join-Path $PWD ('tests/'+$name+'.ps1'))
             if($LASTEXITCODE -ne 0){throw ('Independent regression failed: '+$name)}
           }
@@ -105,20 +107,22 @@ jobs:
           }
           Write-Output "FRESH_POWERSHELL_PARSE=PASS count=$count (Linux/PS7 only)"
           Write-Output "ADDITIONAL_PROMPT_LIFECYCLE=PASS count=$tested"
-      - name: Delete the exact private artifact already downloaded and verified
-        if: always()
+      - name: Update the existing compact verification record only
         shell: python
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/independent-final-review/gh
         run: |
-          import json,os,pathlib,subprocess
-          pathlib.Path('tmp/independent-final-review').mkdir(parents=True,exist_ok=True)
-          endpoint='repos/'+os.environ['GITHUB_REPOSITORY']+'/actions/artifacts/12556756525'
-          record=json.loads(subprocess.check_output(['gh','api',endpoint],text=True))
-          assert record['name']=='final-source-review' and record['workflow_run']['id']==40084580119
-          subprocess.run(['gh','api','--method','DELETE',endpoint],check=True)
-          print('OWNED_REVIEW_ARTIFACT_DELETED=12556756525')
+          import os,pathlib,subprocess
+          p=pathlib.Path('DEVELOPMENT.md');raw=p.read_bytes();text=raw.decode('utf-8')
+          old='修复后重新执行独立复查，再进入完整 Windows 发布验收。'
+          new='修复后从全新检出独立复查源码、固定版本变量、模式副本与扩展迁移/持久化，并增加 23 项提示词/真实子命令边界验证，均通过；本轮未发现新增可复现问题。该复查使用 Linux/PS7，不代替完整 Windows 验收；最终发行仍须全量 Windows 检查和上传附件回读通过。'
+          assert text.count(old)==1
+          p.write_bytes(text.replace(old,new,1).encode('utf-8'))
+          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','add','--','DEVELOPMENT.md'],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          subprocess.run(['git','commit','-m','docs: record independently verified CLI and state regression results'],check=True)
+          subprocess.run(['git','push','origin','HEAD:main'],check=True)
+          print('REVIEWED_SOURCE_COMMIT='+subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
       - name: Remove owned review downloads
         if: always()
         shell: bash
