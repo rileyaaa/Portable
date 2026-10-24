@@ -30,14 +30,14 @@ jobs:
           root=pathlib.Path.cwd()
           scratch=root/'tmp'/'final-source-review'
           scratch.mkdir(parents=True,exist_ok=False)
-          paths=subprocess.check_output(['git','ls-tree','-r','--name-only','HEAD'],text=True).splitlines()
+          paths=[p.decode('utf-8') for p in subprocess.check_output(['git','ls-tree','-rz','--name-only','HEAD']).split(b'\0') if p]
           excluded=('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
           suffixes={'.ps1','.psm1','.py','.js','.cjs','.mjs','.bat','.md','.json','.yml','.yaml','.txt'}
           wanted=[p for p in paths if not p.startswith(excluded) and pathlib.PurePosixPath(p).suffix.lower() in suffixes]
           subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+p for p in wanted)+'\n',text=True,check=True)
           print('TRACKED_FILES',len(paths),'SELECTED_TEXT_FILES',len(wanted))
           print('ROOTS',json.dumps(sorted(set(p.split('/')[0] for p in paths)),ensure_ascii=False))
-          print('PROJECT_DOCS',[p for p in wanted if p.endswith('.md') and not p.startswith(('home/','tool/licenses/'))])
+          print('PROJECT_DOCS',[p for p in wanted if p.endswith('.md') and not p.startswith(('home/','tool/licenses/','tool/node/'))])
           python_count=0; js_count=0
           for p in wanted:
               if p.endswith('.py'):
@@ -45,10 +45,12 @@ jobs:
               elif p.endswith(('.js','.cjs','.mjs')):
                   subprocess.run(['node','--check',p],check=True,capture_output=True); js_count+=1
           print('PYTHON_AST_OK',python_count,'JS_PARSE_OK',js_count)
-          for p in [p for p in wanted if '/' not in p and p.endswith('.bat')]:
+          bats=[p for p in wanted if '/' not in p and p.endswith('.bat')]
+          assert len(bats)==5
+          for p in bats:
               b=(root/p).read_bytes(); b.decode('ascii')
               assert b'\n' not in b.replace(b'\r\n',b''),p
-          print('ROOT_BAT_ASCII_CRLF_OK')
+          print('ROOT_BAT_ASCII_CRLF_OK',len(bats))
           subprocess.run(['python','-B','-m','unittest','discover','-s','tests','-p','test_mode_copies.py','-v'],check=True)
           manifest=json.loads((root/'tool/runtime-manifest.json').read_text(encoding='utf-8-sig'))
           version=manifest['version']
