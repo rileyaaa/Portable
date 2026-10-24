@@ -68,12 +68,23 @@ def _atomic_write_text(path: Path, text: str, *, encoding: str, root: Path) -> N
         raise
 
 def package_root() -> Path:
-    raw = Path(__file__).absolute().parents[1]
-    if _is_reparse(raw):
-        raise SystemExit(f"Refusing reparse-point portable package root: {raw}")
-    if not (raw / "codex.exe").is_file() or not (raw / "env.ps1").is_file():
-        raise SystemExit(f"Invalid Codex Portable package root: {raw}")
-    return raw.resolve()
+    script = Path(os.path.abspath(__file__))
+    raw = script.parents[1]
+    # Inspect from the filesystem root down before probing package markers.
+    # Resolving first would erase a linked ancestor and silently trust its target.
+    for entry in (*reversed(script.parents), script):
+        if _is_reparse(entry):
+            raise SystemExit(f"Refusing linked instruction-helper entry path: {entry}")
+        if entry == script:
+            _reject_existing_hardlink(entry, "instruction helper")
+        elif not entry.is_dir():
+            raise SystemExit(f"Invalid instruction-helper ancestor: {entry}")
+    for name in ("codex.exe", "env.ps1"):
+        marker = raw / name
+        if _is_reparse(marker) or not marker.is_file():
+            raise SystemExit(f"Invalid or linked portable package marker: {marker}")
+        _reject_existing_hardlink(marker, "package marker")
+    return raw
 
 def lexical_under(path: Path, root: Path) -> bool:
     try:
