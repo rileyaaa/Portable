@@ -7,52 +7,80 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  actions: write
 jobs:
   review:
     runs-on: windows-latest
-    timeout-minutes: 12
+    timeout-minutes: 6
     steps:
-      - name: Remove the already downloaded source review artifact
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: gh api --method DELETE "repos/$GH_REPO/actions/artifacts/12547719636"
-      - name: Check out real runtime and first-party sources
+      - name: Check out only the process helper
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          lfs: true
           fetch-depth: 1
+          lfs: false
           persist-credentials: false
-      - name: Prepare owned package-local state
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /tool/portable-process.ps1
+      - name: Probe compiler paths without credentials or runtime changes
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/maintenance-launcher-state'
-          $state = @{ HOME='home'; USERPROFILE='home'; APPDATA='appdata'; LOCALAPPDATA='localappdata'; PROGRAMDATA='programdata'; ALLUSERSPROFILE='programdata'; TEMP='temp'; TMP='temp'; TMPDIR='temp'; XDG_CONFIG_HOME='config'; XDG_CACHE_HOME='cache'; XDG_DATA_HOME='data'; XDG_STATE_HOME='state'; CODEX_HOME='codex-home'; CODEX_SQLITE_HOME='sqlite'; GH_CONFIG_DIR='gh' }
-          foreach ($name in $state.Keys) {
-            $path = Join-Path $base $state[$name]
-            New-Item -ItemType Directory -Path $path -Force | Out-Null
-            "$name=$path" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          $base = Join-Path $env:GITHUB_WORKSPACE ('tmp/compiler-probe-' + [Guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $base | Out-Null
+          $probe = Join-Path $base 'probe.ps1'
+          @'
+          param([string]$Scratch,[string]$Mode)
+          $ErrorActionPreference = 'Stop'
+          [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+          $env:TEMP=$Scratch; $env:TMP=$Scratch; $env:TMPDIR=$Scratch
+          [Environment]::CurrentDirectory=$Scratch
+          Set-Location -LiteralPath $Scratch
+          $source='public sealed class PortableCompilerProbe { public static int Value { get { return 42; } } }'
+          try {
+            if ($Mode -eq 'default') {
+              Add-Type -TypeDefinition $source -ErrorAction Stop
+            } elseif ($Mode -eq 'parameters') {
+              $cp=New-Object CodeDom.Compiler.CompilerParameters
+              $cp.GenerateInMemory=$true
+              $cp.TempFiles=New-Object CodeDom.Compiler.TempFileCollection($Scratch,$false)
+              [void]$cp.ReferencedAssemblies.Add('System.dll')
+              Add-Type -TypeDefinition $source -CompilerParameters $cp -ErrorAction Stop
+            } else {
+              $runtime=[Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory()
+              $csc=Join-Path $runtime 'csc.exe'
+              $cs=Join-Path $Scratch 'probe.cs'; $dll=Join-Path $Scratch 'probe.dll'; $rsp=Join-Path $Scratch 'probe.rsp'
+              [IO.File]::WriteAllText($cs,$source,(New-Object Text.UTF8Encoding($true)))
+              [IO.File]::WriteAllText($rsp,('/nologo /target:library /utf8output /out:"'+$dll+'" "'+$cs+'"'),(New-Object Text.UTF8Encoding($true)))
+              $si=New-Object Diagnostics.ProcessStartInfo
+              $si.FileName=$csc; $si.Arguments='@"'+$rsp+'"'; $si.WorkingDirectory=$Scratch; $si.UseShellExecute=$false; $si.CreateNoWindow=$true
+              $si.RedirectStandardOutput=$true; $si.RedirectStandardError=$true
+              $si.EnvironmentVariables['TEMP']=$Scratch; $si.EnvironmentVariables['TMP']=$Scratch
+              $p=New-Object Diagnostics.Process; $p.StartInfo=$si
+              [void]$p.Start(); $o=$p.StandardOutput.ReadToEndAsync(); $e=$p.StandardError.ReadToEndAsync()
+              if(-not $p.WaitForExit(30000)){ $p.Kill(); throw 'Compiler timed out.' }
+              if($p.ExitCode -ne 0){throw ($o.Result + $e.Result)}
+              $p.Dispose()
+              [void][Reflection.Assembly]::Load([IO.File]::ReadAllBytes($dll))
+            }
+            Write-Output ('RESULT '+$Mode+' PASS '+[PortableCompilerProbe]::Value)
+          } catch {
+            Write-Output ('RESULT '+$Mode+' FAIL '+$_.Exception.ToString())
           }
-          'PYTHONDONTWRITEBYTECODE=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          'PIP_CONFIG_FILE=nul' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          'POWERSHELL_TELEMETRY_OPTOUT=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          $modules = Join-Path $base 'modules'
-          New-Item -ItemType Directory -Path $modules -Force | Out-Null
-          "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Real ordinary, relocated and maintenance launcher offline smoke
-        shell: powershell
-        timeout-minutes: 10
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Full launcher integration failed.' }
-      - name: Remove only this job's state
-        if: always()
-        shell: powershell
-        run: |
-          $state = Join-Path $env:GITHUB_WORKSPACE 'tmp/maintenance-launcher-state'
-          if (Test-Path -LiteralPath $state) { Remove-Item -LiteralPath $state -Recurse -Force }
+          '@ | Set-Content -LiteralPath $probe -Encoding UTF8
+          try {
+            foreach($mode in @('default','parameters','direct')) {
+              $scratch=Join-Path $base ($mode+' '+[char]0x642c+[char]0x8fc1)
+              New-Item -ItemType Directory -Path $scratch | Out-Null
+              $si=New-Object Diagnostics.ProcessStartInfo
+              $si.FileName=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+              $si.Arguments='-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$probe+'" -Scratch "'+$scratch+'" -Mode '+$mode
+              $si.UseShellExecute=$false; $si.CreateNoWindow=$true; $si.RedirectStandardOutput=$true; $si.RedirectStandardError=$true
+              foreach($name in @('TEMP','TMP','TMPDIR','HOME','USERPROFILE','APPDATA','LOCALAPPDATA','PROGRAMDATA','ALLUSERSPROFILE','XDG_CACHE_HOME','XDG_CONFIG_HOME')) { $si.EnvironmentVariables[$name]=$scratch }
+              $si.EnvironmentVariables['PSModuleAnalysisCachePath']=Join-Path $scratch 'ModuleAnalysisCache'
+              $si.EnvironmentVariables['PSModulePath']=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/Modules'
+              $p=New-Object Diagnostics.Process; $p.StartInfo=$si
+              [void]$p.Start(); $o=$p.StandardOutput.ReadToEndAsync(); $e=$p.StandardError.ReadToEndAsync()
+              if(-not $p.WaitForExit(60000)){ & (Join-Path $env:SystemRoot 'System32/taskkill.exe') /PID $p.Id /T /F; throw 'Probe timed out.' }
+              Write-Output $o.Result; Write-Output $e.Result; $p.Dispose()
+            }
+          } finally { Remove-Item -LiteralPath $base -Recurse -Force }
