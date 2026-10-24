@@ -1,0 +1,144 @@
+# Temporary bounded source repair; no publication or workflow dispatch.
+name: Repair versioned login model URL contract
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/login-url-repair-once.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /login-json.ps1
+            /login-json-http.py
+            /tests/test_login_input_errors.ps1
+            /tests/test_login_url_contract.py
+            /tests/fixtures/login-url-contract.json
+            /DEVELOPMENT.md
+      - name: Reproduce the real helper rejecting its caller's version URL
+        shell: python
+        run: |
+          import hashlib,pathlib,subprocess
+          expected={'login-json.ps1':'72ec9eefb5cbc2e2d4042a09231024011f67ca56','login-json-http.py':'30878e7bcfa2f6078bcfd228698613430834a92b'}
+          for name,sha in expected.items():
+              data=pathlib.Path(name).read_bytes();assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha,name
+          result=subprocess.run(['python','-B','-m','unittest','discover','-s','tests','-p','test_login_url_contract.py','-v'],text=True,capture_output=True)
+          assert result.returncode!=0 and 'failures=4' in result.stderr,result.stderr
+          print('BASELINE_REPRODUCED: four valid version URLs rejected; fake HTTP transport only.')
+      - name: Patch only the endpoint contract and offline consumer regression
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib
+          source=Path('login-json.ps1');text=source.read_bytes().decode('utf-8')
+          old="$uri.Port -ne 443 -or $uri.Query -or $uri.Fragment -or $Url -match '[\\x00-\\x20\\x7f?#@]'"
+          new="$uri.Port -ne 443 -or $uri.Fragment -or $Url -match '[\\x00-\\x20\\x7f#@]'"
+          assert text.count(old)==1;text=text.replace(old,new,1)
+          old="                  $Url -cmatch '^(?i:https://chatgpt\\.com\\.?)(?::443)?/backend-api/(codex/models|wham/usage)$'"
+          new="                  $Url -cmatch '^(?i:https://chatgpt\\.com\\.?)(?::443)?/backend-api/wham/usage$' -or\r\n                  $Url -cmatch '^(?i:https://chatgpt\\.com\\.?)(?::443)?/backend-api/codex/models(?:\\?client_version=[0-9]+\\.[0-9]+\\.[0-9]+)?$'"
+          assert text.count(old)==1;text=text.replace(old,new,1);source.write_bytes(text.encode('utf-8'))
+          source=Path('login-json-http.py');text=source.read_text(encoding='utf-8')
+          assert text.count('            or "?" in url\n')==1
+          text=text.replace('            or "?" in url\n','',1).replace('without query/fragment','without a fragment',1)
+          old='        if method != expected_method:\n'
+          new='''        # Match the caller's exact endpoint contract. The models request alone
+                  # may carry one numeric release version; never accept arbitrary queries.
+                  raw_allowed = re.fullmatch(
+                      r"(?i:https://auth\\.openai\\.com\\.?)(?::443)?/oauth/token"
+                      r"|(?i:https://chatgpt\\.com\\.?)(?::443)?/backend-api/wham/usage"
+                      r"|(?i:https://chatgpt\\.com\\.?)(?::443)?/backend-api/codex/models"
+                      r"(?:\\?client_version=[0-9]+\\.[0-9]+\\.[0-9]+)?", url
+                  )
+                  if raw_allowed is None:
+                      raise ValueError("request URL or query is outside the fixed login contract")
+                  if method != expected_method:
+          '''
+          # Remove YAML's extra ten columns from continuation lines only.
+          lines=new.splitlines(keepends=True)
+          new=lines[0]+''.join(line[10:] if line.startswith('          ') else line for line in lines[1:])
+          assert text.count(old)==1;text=text.replace(old,new,1);source.write_text(text,encoding='utf-8',newline='')
+          test=Path('tests/test_login_input_errors.ps1')
+          extra='''
+          # Verify the actual model/usage request builders against BOTH production URL and
+          # request validators. The final transport is a stub; no service is contacted.
+          foreach ($name in @('Assert-AllowedLoginJsonUrl','Assert-AllowedLoginJsonRequest','Invoke-Models','Invoke-Usage')) {
+              $nodes = @($ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $true) | Where-Object { $_.Name -eq $name })
+              if ($nodes.Count -ne 1) { throw ('Expected one URL production function: ' + $name) }
+              . ([scriptblock]::Create($nodes[0].Extent.Text))
+          }
+          $fixtures = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'fixtures/login-url-contract.json') -Raw | ConvertFrom-Json
+          foreach ($case in $fixtures.allow) {
+              Assert-AllowedLoginJsonRequest -Method $case.method -Url $case.url -Headers @{} -Body $null -TimeoutSec 10 -ProxyUrl ''
+          }
+          foreach ($url in $fixtures.deny) {
+              $rejected = $false
+              try { Assert-AllowedLoginJsonUrl -Url $url } catch { $rejected = $true }
+              if (-not $rejected) { throw 'Unsafe synthetic URL/query was accepted.' }
+          }
+          Write-Output ('PASS shared URL contract: '+$fixtures.allow.Count+' accepted, '+$fixtures.deny.Count+' rejected')
+          $script:TransportCalls=0
+          function Invoke-JsonHttp {
+              param([string]$Method,[string]$Url,[hashtable]$Headers=@{},$Body=$null,[int]$TimeoutSec=45)
+              Assert-AllowedLoginJsonUrl -Url $Url
+              Assert-AllowedLoginJsonRequest -Method $Method -Url $Url -Headers $Headers -Body $Body -TimeoutSec $TimeoutSec -ProxyUrl ''
+              $script:TransportCalls++
+              return [pscustomobject]@{ StatusCode=200; Url=$Url; Headers=$Headers; Json=[pscustomobject]@{ models=@() }; Body=''; Error='' }
+          }
+          $synthetic=[pscustomobject]@{ AccessToken='synthetic-not-a-credential'; AccountId='synthetic-account' }
+          foreach ($version in @('0.164.0','0.0.0')) {
+              $response=Invoke-Models -Credential $synthetic -ClientVersion $version
+              Assert-Equal 200 $response.StatusCode 'Versioned model request'
+              Assert-Equal ('https://chatgpt.com/backend-api/codex/models?client_version='+$version) $response.Url 'Builder retains exact client version'
+              Assert-Equal $version $response.Headers['version'] 'Version header is retained'
+          }
+          $response=Invoke-Usage -Credential $synthetic
+          Assert-Equal 'https://chatgpt.com/backend-api/wham/usage' $response.Url 'Usage endpoint remains query-free'
+          Assert-Equal 3 $script:TransportCalls 'All three valid builder requests reach only the fake transport'
+          $rejected=$false
+          try { $null=Invoke-Models -Credential $synthetic -ClientVersion '0.164.0&other=1' } catch { $rejected=$true }
+          if (-not $rejected -or $script:TransportCalls -ne 3) { throw 'Invalid client version was not rejected before transport.' }
+          Write-Output 'PASS actual models/usage builders and both URL/request gates; no real credentials or network'
+          '''
+          test.write_bytes(test.read_bytes()+extra.encode('utf-8'))
+          expected={'login-json.ps1':'960d284acf505e42bee47293086cece51626568a','login-json-http.py':'22d8404cbdc891d2dd2ca754bfed0b0b86b425ff','tests/test_login_input_errors.ps1':'de66c739582b2d05f7c5fe71003899467e3d2a65'}
+          for name,sha in expected.items():
+              data=Path(name).read_bytes();assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha,name
+      - name: Run actual caller and helper guards with shared positive and negative vectors
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & python -B -m unittest discover -s tests -p test_login_url_contract.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'HTTP helper contract failed.' }
+          & pwsh -NoLogo -NoProfile -File tests/test_login_input_errors.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Actual login request builder/gate contract failed.' }
+      - name: Record the verified cause and commit only reviewed source and tests
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess
+          doc=Path('DEVELOPMENT.md');text=doc.read_bytes().decode('utf-8')
+          anchor='## 2026-10-24：Windows 验证与 npm 目录边界\n\n'
+          assert text.count(anchor)==1 and '**模型列表请求契约：**' not in text
+          record='**模型列表请求契约：** 修正生产 Invoke-Models 构造 client_version 查询参数、但 PowerShell 与 Python 双层白名单全部拒绝查询参数的联动错误。仅模型列表固定 HTTPS 端点可带单个数字三段版本；刷新/额度端点仍禁止查询参数，域名、端口、请求方法、请求体、敏感头与禁止重定向规则不变。共享 7 个合法和 26 个非法 URL 用例，Python 额外验证方法/请求体/头限制；PowerShell 直接调用实际模型/额度请求构造函数和实际双层校验，最终传输为合成 stub。旧 helper 的四个合法版本 URL 失败已复现，修复后专项通过；完整 Windows 与第二轮复查以随后验证记录为准，不声明真实账号联网已测。\n\n'
+          doc.write_bytes(text.replace(anchor,anchor+record,1).encode('utf-8'))
+          expected={'login-json.ps1','login-json-http.py','tests/test_login_input_errors.ps1','DEVELOPMENT.md'}
+          changed=set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines());assert changed==expected,changed
+          subprocess.run(['git','-c','core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol','diff','--check'],check=True)
+          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','add','--',*sorted(expected)],check=True)
+          subprocess.run(['git','commit','-m','fix: align login model URL builders with narrow version query guards'],check=True)
+          subprocess.run(['git','push','origin','HEAD:main'],check=True)
