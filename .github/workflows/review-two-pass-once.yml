@@ -53,7 +53,7 @@ jobs:
         run: |
           import pathlib, sys, unittest
           sys.path.insert(0,str(pathlib.Path('tests').absolute()))
-          modules=['test_android_extension','test_android_guard','test_helper_relocation','test_instruction_installer','test_login_json_http','test_mode_copies','test_office_output_boundaries','test_python_cli_shims','test_python_lock','test_release_package']
+          modules=['test_android_extension','test_android_guard','test_helper_relocation','test_instruction_installer','test_login_json_http','test_login_url_contract','test_mode_copies','test_office_output_boundaries','test_python_cli_shims','test_python_lock','test_release_package']
           def flatten(suite):
               for item in suite:
                   if isinstance(item,unittest.TestSuite): yield from flatten(item)
@@ -189,11 +189,14 @@ jobs:
           assert text.count(anchor)==1
           heading='**Python 命令入口刷新：**'
           assert heading not in text
-          record=heading+' 修正清理时仅凭 helper 文件名子串判断归属、误删用户自建或改写 CMD，以及当前 vendor 缺少入口元数据时误删原命令的问题；只删除与本工具生成内容逐字节一致且已无对应 vendor 的旧入口，无法确认的文件保留。替换暂存统一放当前包内 tmp，并拒绝链接/硬链接输出；正常 CMD 模板字节不变。本项不改 Python 依赖、启动器、认证、权限或官方工件。11 项新增合成回归中，旧实现有 6 项失败，修复后全部通过；两处修复提交后依次用全新 Linux 与 Windows runner 复查，92 项 Python 合成回归、源码解析与生产策略函数检查，以及现有 20 个 Windows 验证组全部通过。验证运行 '+os.environ['GITHUB_RUN_ID']+'；本任务只验证和记录，不构建或发布 Release，不使用真实凭据。\n\n'
+          record=heading+' 修正清理时仅凭 helper 文件名子串判断归属、误删用户自建或改写 CMD，以及当前 vendor 缺少入口元数据时误删原命令的问题；只删除与本工具生成内容逐字节一致且已无对应 vendor 的旧入口，无法确认的文件保留。替换暂存统一放当前包内 tmp，并拒绝链接/硬链接输出；正常 CMD 模板字节不变。本项不改 Python 依赖、启动器、认证、权限或官方工件。11 项新增合成回归中，旧实现有 6 项失败，修复后全部通过；本轮全部修复提交后依次用全新 Linux 与 Windows runner 复查，95 项 Python 合成回归、源码解析与生产策略函数检查，以及现有 20 个 Windows 验证组全部通过。验证运行 '+os.environ['GITHUB_RUN_ID']+'；本任务只验证和记录，不构建或发布 Release，不使用真实凭据。\n\n'
           text=text.replace(anchor,anchor+record,1)
           pending='完整 Windows 验收由本轮后续双阶段复查完成后记录，不将 Linux/PS7 代作 Windows 结果。'
           assert text.count(pending)==1
           text=text.replace(pending,'修复后的两阶段独立复查 '+os.environ['GITHUB_RUN_ID']+' 已通过，9 项输入异常回归也在真实 Windows PowerShell 5.1 执行通过；测试不访问真实账号或认证服务。',1)
+          pending='完整 Windows 与第二轮复查以随后验证记录为准，不声明真实账号联网已测。'
+          assert text.count(pending)==1
+          text=text.replace(pending,'修复后的两阶段独立复查 '+os.environ['GITHUB_RUN_ID']+' 已通过，Python 与 Windows PowerShell 5.1 均验证共享 URL 用例和实际请求构造；不声明真实账号联网已测。',1)
           doc.write_bytes(text.encode('utf-8'))
           subprocess.run(['git','diff','--check'],check=True)
           names=subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()
@@ -201,5 +204,5 @@ jobs:
           subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
           subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
           subprocess.run(['git','add','--','DEVELOPMENT.md'],check=True)
-          subprocess.run(['git','commit','-m','docs: record both verified repairs and two independent reviews'],check=True)
+          subprocess.run(['git','commit','-m','docs: record verified data-preservation and URL fixes after two independent reviews'],check=True)
           subprocess.run(['git','push','origin','HEAD:main'],check=True)
