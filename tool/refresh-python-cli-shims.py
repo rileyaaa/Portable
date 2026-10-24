@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import stat
 import sys
+import tempfile
 
 TOOL_DIR = Path(__file__).absolute().parent
 ROOT = TOOL_DIR.parent
@@ -118,14 +119,29 @@ def _canonical_launcher(name: str, console: dict[str, str]) -> str | None:
 
 
 def _atomic_write_cmd(path: Path, content: bytes) -> None:
-    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    fd = os.open(temp, flags, 0o644)
+    path = _under_root_lexical(path)
+    _require_plain_dir(path.parent)
+    if _is_reparse(path):
+        raise RuntimeError("linked shim destination refused")
+    if path.exists():
+        _require_plain_file(path)
+    scratch = ROOT / "tmp"
+    if _is_reparse(scratch):
+        raise RuntimeError("linked shim temporary directory refused")
+    scratch.mkdir(exist_ok=True)
+    _require_plain_dir(scratch)
+    fd, name = tempfile.mkstemp(prefix=".python-cli-", suffix=".tmp", dir=scratch)
+    temp = Path(name)
     try:
         with os.fdopen(fd, "wb", closefd=True) as f:
             f.write(content)
             f.flush()
             os.fsync(f.fileno())
+        _require_plain_dir(path.parent)
+        if _is_reparse(path):
+            raise RuntimeError("linked shim destination refused")
+        if path.exists():
+            _require_plain_file(path)
         os.replace(temp, path)
     finally:
         try:
@@ -144,6 +160,19 @@ def render_cmd(canonical: str) -> bytes:
     ).encode("ascii")
 
 
+def _is_owned_generated_cmd(path: Path, content: bytes) -> bool:
+    # A mention of our helper is not proof of ownership. Preserve user-edited,
+    # unrelated and unrecognized legacy commands; delete only exact output.
+    try:
+        canonical = _safe_command_name(path.stem).lower()
+    except RuntimeError:
+        return False
+    candidates = [canonical]
+    if re.fullmatch(r"pip\d+(?:\.\d+)?", canonical):
+        candidates.append("pip")
+    return any(content == render_cmd(name) for name in candidates)
+
+
 def main() -> int:
     _require_plain_file(Path(__file__).absolute())
     for d in (SITE, VENDOR_BIN, OUT_BIN):
@@ -159,19 +188,19 @@ def main() -> int:
     for exe in vendor:
         _require_plain_file(exe)
         base = _safe_command_name(exe.stem)
+        # Missing console metadata is not evidence that a current shim is obsolete.
+        expected_names.add((base + ".cmd").lower())
         canonical = _canonical_launcher(base, console)
         if canonical is None:
             unresolved.append(base)
             continue
         target = OUT_BIN / f"{base}.cmd"
-        expected_names.add(target.name.lower())
         body = render_cmd(canonical)
         _atomic_write_cmd(target, body)
         created.append(target.name)
 
-    # Remove only shims carrying our exact helper marker that no longer correspond
-    # to a current vendor launcher; leave unrelated user/tool .cmd files untouched.
-    marker = b"portable-python-cli.py"
+    # Remove only unmodified generated shims without a current vendor launcher.
+    # In particular, a user comment mentioning our helper never grants ownership.
     for cmd in OUT_BIN.glob("*.cmd"):
         _require_plain_file(cmd)
         if cmd.name.lower() in expected_names:
@@ -180,7 +209,7 @@ def main() -> int:
             data = cmd.read_bytes()
         except OSError:
             continue
-        if marker in data:
+        if _is_owned_generated_cmd(cmd, data):
             cmd.unlink()
 
     if unresolved:
