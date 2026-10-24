@@ -1,5 +1,5 @@
-# Temporary owner-requested source export; does not publish or alter runtime.
-name: Export verified source for final review
+# One-time cleanup of this review's artifact; no source or release changes.
+name: Remove temporary source review artifact
 on:
   push:
     branches: [main]
@@ -7,62 +7,37 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: write
 jobs:
-  export:
+  cleanup:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    env:
-      PYTHONDONTWRITEBYTECODE: '1'
+    timeout-minutes: 3
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          ref: 4b2cd56e68b9d2f6f3f839f1d7d3426aa727bc36
-          fetch-depth: 1
-          lfs: false
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: /README.md
-      - name: Export committed source and exact Git inventory only
+      - name: Verify artifact identity and delete only this review export
         shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/review-cleanup-gh
         run: |
-          import hashlib,json,pathlib,subprocess,zipfile
-          root=pathlib.Path.cwd()
-          commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          assert commit=='4b2cd56e68b9d2f6f3f839f1d7d3426aa727bc36'
-          files=[]
-          for record in subprocess.check_output(['git','ls-tree','-rz','HEAD']).split(b'\0'):
-              if not record: continue
-              metadata,name=record.split(b'\t',1)
-              mode,kind,sha=metadata.decode('ascii').split()
-              files.append({'path':name.decode('utf-8'),'mode':mode,'type':kind,'sha':sha})
-          excluded=('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
-          suffixes={'.ps1','.psm1','.psd1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.rules','.toml','.css','.html','.sh'}
-          selected=[entry for entry in files if not entry['path'].startswith(excluded) and (pathlib.PurePosixPath(entry['path']).suffix.lower() in suffixes or entry['path'] in ('.gitignore','.gitattributes'))]
-          forbidden={'env.local.ps1','home/auth.json','home/auth-browser.json','home/auth-account-json.json','home/config.toml'}
-          assert not any(e['path'] in forbidden or e['path'].startswith(('tmp/','cache/','logs/','home/sessions/')) for e in selected)
-          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+e['path'] for e in selected)+'\n',text=True,check=True)
-          scratch=root/'tmp'/'final-source-export'
+          import json,os,pathlib,subprocess
+          scratch=pathlib.Path(os.environ['GH_CONFIG_DIR'])
           scratch.mkdir(parents=True,exist_ok=False)
-          archive=scratch/'verified-source.zip'
-          with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as output:
-              for entry in selected:
-                  assert entry['mode']=='100644' and entry['type']=='blob',entry['path']
-                  data=(root/entry['path']).read_bytes()
-                  assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==entry['sha'],entry['path']
-                  output.writestr('source/'+entry['path'],data)
-              output.writestr('inventory.json',json.dumps({'commit':commit,'files':files},ensure_ascii=False))
-          print('EXPORTED_SOURCE_FILES='+str(len(selected)))
-          print('SOURCE_COMMIT='+commit)
-          print('ARCHIVE_SHA256='+hashlib.sha256(archive.read_bytes()).hexdigest())
-      - name: Upload short-lived source snapshot
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: verified-source-final-review
-          path: tmp/final-source-export/verified-source.zip
-          retention-days: 1
-          compression-level: 0
-          if-no-files-found: error
-      - name: Remove owned export scratch
+          endpoint='repos/rileyaaa/Codex-Portable/actions/artifacts/12570072067'
+          result=subprocess.run(['gh','api',endpoint],text=True,capture_output=True)
+          if result.returncode:
+              if 'HTTP 404' not in result.stderr: raise SystemExit('Could not verify the review artifact.')
+              print('REVIEW_ARTIFACT_ALREADY_ABSENT=12570072067')
+          else:
+              record=json.loads(result.stdout)
+              assert record['id']==12570072067
+              assert record['name']=='verified-source-final-review'
+              assert record['workflow_run']['id']==40117796342
+              assert record['workflow_run']['head_sha']=='8335864e85fc17df416318ba9d99177d5d2f1447'
+              subprocess.run(['gh','api','--method','DELETE',endpoint],check=True,capture_output=True)
+              check=subprocess.run(['gh','api',endpoint],text=True,capture_output=True)
+              assert check.returncode and 'HTTP 404' in check.stderr,'Artifact removal could not be confirmed.'
+              print('REVIEW_ARTIFACT_DELETED=12570072067')
+      - name: Remove owned cleanup state
         if: always()
         shell: bash
-        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/final-source-export"
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/review-cleanup-gh"
