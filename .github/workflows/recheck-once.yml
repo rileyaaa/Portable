@@ -1,0 +1,83 @@
+# Temporary owner-authorized review bridge; remove before corrective release.
+name: One-time final recheck
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/recheck-once.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /README.md
+            /DEVELOPMENT.md
+      - name: Export only committed review sources
+        shell: python
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          import pathlib, subprocess, json, zipfile
+          root=pathlib.Path.cwd(); scratch=root/'tmp'/'final-recheck'
+          scratch.mkdir(parents=True,exist_ok=False)
+          paths=[p.decode('utf-8') for p in subprocess.check_output(['git','ls-tree','-rz','--name-only','HEAD']).split(b'\0') if p]
+          excluded=('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
+          suffixes={'.ps1','.psm1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.toml','.rules','.html','.css','.ini'}
+          wanted=[p for p in paths if not p.startswith(excluded) and pathlib.PurePosixPath(p).suffix.lower() in suffixes]
+          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+p for p in wanted)+'\n',text=True,check=True)
+          with zipfile.ZipFile(scratch/'review-source.zip','x',compression=zipfile.ZIP_DEFLATED) as z:
+              for name in wanted: z.writestr(name,(root/name).read_bytes())
+              z.writestr('REVIEW-INVENTORY.json',json.dumps({'commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'tracked_paths':paths,'selected_paths':wanted},ensure_ascii=False))
+          print('SOURCE_FILES',len(wanted),'TRACKED_FILES',len(paths))
+      - name: Reproduce previous extension write-back using synthetic text only
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $source=[IO.File]::ReadAllText((Join-Path $PWD 'run-codex.ps1'))
+          $tokens=$null; $errors=$null
+          $ast=[Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors)
+          if($errors.Count){throw 'Launcher parsing failed.'}
+          $fn=$ast.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-PersistableCodexExtensionToml'},$true)
+          if($fn.Count -ne 1){throw 'Unexpected extension parser definition.'}
+          . ([scriptblock]::Create($fn[0].Extent.Text))
+          # Isolate the production namespace selection/write-back from Windows path
+          # plumbing. Every input here is a new synthetic file owned by this test.
+          $fixture=Join-Path $PWD 'tmp/final-recheck'
+          function Assert-PortableRegularInputFile($Name,$Path){if(-not ([IO.Path]::GetFullPath($Path)).StartsWith($fixture+[IO.Path]::DirectorySeparatorChar)){throw 'Unexpected fixture path.'}}
+          function Write-Utf8TextAtomic($Path,$Text){Assert-PortableRegularInputFile 'output' $Path; [IO.File]::WriteAllText($Path,$Text)}
+          $ConfigPath=Join-Path $fixture 'config.toml'
+          $ExtensionStorePath=Join-Path $fixture 'portable-extensions.toml'
+          $initial="[mcp_servers.synthetic]`ncommand = 'not-executed'`n[plugins.'synthetic@local']`nenabled = true`n"
+          [IO.File]::WriteAllText($ExtensionStorePath,$initial)
+          [IO.File]::WriteAllText($ConfigPath,"model = 'synthetic'`n")
+          $block=$ast.FindAll({param($node) $node -is [Management.Automation.Language.IfStatementAst] -and $node.Extent.Text.Contains('$updatedExtensionToml = Get-PersistableCodexExtensionToml -Path $ConfigPath')},$true)
+          if($block.Count -ne 1){throw 'Unexpected persistence block.'}
+          $script:CodexProcessExitCode=0; $PortableMaintenanceMode=$true; $script:CodexRootCommand='mcp'
+          . ([scriptblock]::Create($block[0].Extent.Text))
+          if([IO.File]::ReadAllText($ExtensionStorePath) -ne ''){throw 'Expected baseline loss was not reproduced.'}
+          Write-Output 'REPRODUCED: successful maintenance mcp command with disabled extensions clears both saved namespaces.'
+          [IO.File]::WriteAllText($ExtensionStorePath,$initial)
+          [IO.File]::WriteAllText($ConfigPath,"[mcp_servers.synthetic]`ncommand = 'not-executed'`n")
+          . ([scriptblock]::Create($block[0].Extent.Text))
+          if([IO.File]::ReadAllText($ExtensionStorePath).Contains('[plugins.')){throw 'Expected inactive namespace loss was not reproduced.'}
+          Write-Output 'REPRODUCED: maintenance mcp-only session drops the stored inactive plugin namespace.'
+          Write-Output 'Scope: production write-back logic with isolated synthetic files; not Windows runtime validation.'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: final-recheck-source
+          path: tmp/final-recheck/review-source.zip
+          retention-days: 1
+          if-no-files-found: error
+      - name: Remove owned review scratch
+        if: always()
+        shell: bash
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/final-recheck"
