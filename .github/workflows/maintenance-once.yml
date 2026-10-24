@@ -10,91 +10,49 @@ permissions:
   actions: write
 jobs:
   review:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: windows-latest
+    timeout-minutes: 12
     steps:
-      - name: Dispatch existing full Windows validation without publishing
+      - name: Remove the already downloaded source review artifact
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh workflow run release.yml --ref main -f version=v2026.10.24 -f publish_release=false -f check_set=full
-      - name: Read source without downloading LFS runtimes
+        run: gh api --method DELETE "repos/$GH_REPO/actions/artifacts/12547719636"
+      - name: Check out real runtime and first-party sources
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          lfs: true
           fetch-depth: 1
-          lfs: false
           persist-credentials: false
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /*
-            !/*.exe
-            !/tool/python/
-            !/tool/node/node_modules/
-            !/tool/automation/browsers/
-            !/tool/automation/playwright/node_modules/
-      - name: Export scoped source and complete tracked inventory
-        shell: python
-        env:
-          PYTHONDONTWRITEBYTECODE: '1'
+      - name: Prepare owned package-local state
+        shell: powershell
         run: |
-          import hashlib, json, pathlib, subprocess, urllib.request, zipfile
-          root = pathlib.Path.cwd()
-          out = root / 'tmp' / 'maintenance-source'
-          out.mkdir(parents=True, exist_ok=False)
-          # No -l: sparse checkout must not fetch excluded blobs just to get sizes.
-          entries = subprocess.check_output(['git', 'ls-tree', '-rz', '--full-tree', 'HEAD']).split(b'\0')
-          inventory = []
-          vendor = ('tool/python/', 'tool/node/node_modules/', 'tool/automation/browsers/', 'tool/automation/playwright/node_modules/')
-          state = ('work/', 'tmp/', 'cache/', 'logs/', 'login_json/', 'home/sessions/', 'home/.sandbox/', 'home/.sandbox-bin/')
-          private_names = {'env.local.ps1', 'auth.json', 'auth-account-json.json', 'auth-browser.json', 'cap_sid', 'installation_id'}
-          text_ext = {'.ps1','.psm1','.bat','.cmd','.py','.js','.cjs','.mjs','.ts','.md','.txt','.json','.toml','.yaml','.yml','.html','.css','.xml','.sh','.cfg','.ini','.conf'}
-          upstream = {
-              'config.schema.json': 'codex-rs/core/config.schema.json',
-              'model-provider-info.rs': 'codex-rs/model-provider-info/src/lib.rs',
-              'features.rs': 'codex-rs/features/src/lib.rs',
-              'config-loader.rs': 'codex-rs/config/src/loader/mod.rs',
-              'windows-unified-exec.rs': 'codex-rs/windows-sandbox-rs/src/unified_exec/mod.rs',
-              'models.json': 'codex-rs/core/models.json',
+          $ErrorActionPreference = 'Stop'
+          $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/maintenance-launcher-state'
+          $state = @{ HOME='home'; USERPROFILE='home'; APPDATA='appdata'; LOCALAPPDATA='localappdata'; PROGRAMDATA='programdata'; ALLUSERSPROFILE='programdata'; TEMP='temp'; TMP='temp'; TMPDIR='temp'; XDG_CONFIG_HOME='config'; XDG_CACHE_HOME='cache'; XDG_DATA_HOME='data'; XDG_STATE_HOME='state'; CODEX_HOME='codex-home'; CODEX_SQLITE_HOME='sqlite'; GH_CONFIG_DIR='gh' }
+          foreach ($name in $state.Keys) {
+            $path = Join-Path $base $state[$name]
+            New-Item -ItemType Directory -Path $path -Force | Out-Null
+            "$name=$path" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
           }
-          upstream_results = []
-          with zipfile.ZipFile(out / 'source-review.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
-              for entry in entries:
-                  if not entry: continue
-                  metadata, raw_path = entry.split(b'\t', 1)
-                  mode, kind, sha = metadata.decode().split()
-                  path = raw_path.decode('utf-8')
-                  item = {'path': path, 'mode': mode, 'git_blob': sha, 'included': False}
-                  inventory.append(item)
-                  p = pathlib.PurePosixPath(path)
-                  if mode not in ('100644','100755') or path.startswith(vendor + state) or p.name in private_names: continue
-                  if p.suffix.lower() not in text_ext and p.name not in {'.gitignore','.gitattributes','npm','npx','LICENSE','NOTICE'}: continue
-                  local = root.joinpath(*p.parts)
-                  if not local.is_file() or local.is_symlink() or local.stat().st_size > 2097152: continue
-                  data = local.read_bytes()
-                  if b'\0' in data[:8192]: continue
-                  item['included'] = True
-                  item['sha256'] = hashlib.sha256(data).hexdigest()
-                  archive.writestr('source/' + path, data)
-              for name, path in upstream.items():
-                  url = 'https://raw.githubusercontent.com/openai/codex/rust-v0.164.0/' + path
-                  try:
-                      with urllib.request.urlopen(url, timeout=30) as response:
-                          data = response.read(4194305)
-                      if len(data) > 4194304: raise ValueError('Upstream text too large')
-                      archive.writestr('upstream/' + name, data)
-                      upstream_results.append({'path': path, 'url': url, 'sha256': hashlib.sha256(data).hexdigest()})
-                  except Exception as exc:
-                      upstream_results.append({'path': path, 'error': str(exc)})
-              archive.writestr('source-inventory.json', json.dumps({'commit': subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip(), 'files': inventory, 'upstream': upstream_results}, ensure_ascii=False, indent=2))
-          print('Tracked files:', len(inventory), 'Source files:', sum(x['included'] for x in inventory))
-      - name: Short-lived private source artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: maintenance-source
-          path: tmp/maintenance-source/source-review.zip
-          retention-days: 1
-          if-no-files-found: error
-      - name: Remove this job's temporary export
+          'PYTHONDONTWRITEBYTECODE=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'PIP_CONFIG_FILE=nul' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'POWERSHELL_TELEMETRY_OPTOUT=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          $modules = Join-Path $base 'modules'
+          New-Item -ItemType Directory -Path $modules -Force | Out-Null
+          "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Real ordinary, relocated and maintenance launcher offline smoke
+        shell: powershell
+        timeout-minutes: 10
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Full launcher integration failed.' }
+      - name: Remove only this job's state
         if: always()
-        shell: bash
-        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/maintenance-source"
+        shell: powershell
+        run: |
+          $state = Join-Path $env:GITHUB_WORKSPACE 'tmp/maintenance-launcher-state'
+          if (Test-Path -LiteralPath $state) { Remove-Item -LiteralPath $state -Recurse -Force }
