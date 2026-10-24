@@ -7,99 +7,18 @@ on:
 permissions:
   contents: read
 jobs:
-  apply:
+  recheck:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
     permissions:
       contents: write
     outputs:
-      commit: ${{ steps.commit.outputs.commit }}
+      commit: ${{ steps.record.outputs.commit }}
     env:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          fetch-depth: 1
-          lfs: false
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /run-codex.ps1
-            /env.ps1
-            /DEVELOPMENT.md
-            /tests/
-            /Version_History/
-            /.github/workflows/release.yml
-            /tool/automation/portable-automation.ps1
-      - name: Recover the pinned reviewed patch without expanding generated expressions
-        shell: python
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/permission-review/gh
-        run: |
-          import ast,base64,json,os,pathlib,subprocess
-          scratch=pathlib.Path('tmp/permission-review');scratch.mkdir(parents=True,exist_ok=False)
-          endpoint='repos/'+os.environ['GITHUB_REPOSITORY']+'/contents/.github/workflows/permission-display-once.yml?ref=1371a7415b8a8ca050adf54c9d2c428da016ee02'
-          record=json.loads(subprocess.check_output(['gh','api',endpoint],text=True))
-          assert record['sha']=='a6d560ee27cac7ab7e0b650e52b30f8062743116'
-          text=base64.b64decode(record['content']).decode('utf-8')
-          def extract(name):
-              marker='      - name: '+name+'\n'
-              assert text.count(marker)==1
-              section=text.split(marker,1)[1].split('        run: |\n',1)[1]
-              lines=[]
-              for line in section.splitlines():
-                  if line and not line.startswith('          '):break
-                  lines.append(line[10:] if line else '')
-              assert lines
-              return '\n'.join(lines)+'\n'
-          code=extract('Apply only the reviewed status display correction')
-          old="text=text.replace(anchor[0],assign+'\\n'+anchor[0],1)"
-          new="newline='\\r\\n' if '\\r\\n' in text else '\\n'\nassign=assign.replace('\\n',newline)\ntext=text.replace(anchor[0],assign+newline+anchor[0],1)"
-          assert code.count(old)==1
-          code=code.replace(old,new,1)
-          old="['git','diff','--check']"
-          assert code.count(old)==1
-          code=code.replace(old,"['git','-c','core.whitespace=cr-at-eol','diff','--check']",1)
-          ast.parse(code)
-          (scratch/'apply.py').write_text(code,encoding='utf-8')
-          commit=extract('Commit the bounded correction and existing development record')
-          assert commit.count('& git diff --cached --check')==1
-          commit=commit.replace('& git diff --cached --check','& git -c core.whitespace=cr-at-eol diff --cached --check',1)
-          (scratch/'commit.ps1').write_text(commit,encoding='utf-8-sig')
-      - name: Apply only the reviewed status correction
-        shell: python
-        run: |
-          import subprocess
-          subprocess.run(['python','-B','tmp/permission-review/apply.py'],check=True)
-      - name: Check production display expressions and synchronized modes
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop'
-          & pwsh -NoProfile -NonInteractive -File ./tests/test_permission_display.ps1
-          if($LASTEXITCODE -ne 0){throw 'Display regression failed.'}
-          & python -B -m unittest discover -s tests -p test_mode_copies.py -v
-          if($LASTEXITCODE -ne 0){throw 'Mode copies differ.'}
-      - name: Commit the verified correction
-        id: commit
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop'
-          & ./tmp/permission-review/commit.ps1
-      - name: Remove owned patch material
-        if: always()
-        shell: bash
-        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/permission-review"
-  recheck:
-    needs: apply
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    env:
-      PYTHONDONTWRITEBYTECODE: '1'
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          ref: ${{ needs.apply.outputs.commit }}
           fetch-depth: 1
           lfs: false
           filter: blob:none
@@ -107,66 +26,98 @@ jobs:
           sparse-checkout: |
             /README.md
             /DEVELOPMENT.md
-      - name: Recover the pinned independent review
-        shell: python
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/permission-review/gh
-        run: |
-          import ast,base64,json,os,pathlib,subprocess
-          scratch=pathlib.Path('tmp/permission-review');scratch.mkdir(parents=True,exist_ok=False)
-          endpoint='repos/'+os.environ['GITHUB_REPOSITORY']+'/contents/.github/workflows/permission-display-once.yml?ref=1371a7415b8a8ca050adf54c9d2c428da016ee02'
-          record=json.loads(subprocess.check_output(['gh','api',endpoint],text=True))
-          assert record['sha']=='a6d560ee27cac7ab7e0b650e52b30f8062743116'
-          text=base64.b64decode(record['content']).decode('utf-8')
-          def extract(name):
-              marker='      - name: '+name+'\n'
-              assert text.count(marker)==1
-              section=text.split(marker,1)[1].split('        run: |\n',1)[1]
-              lines=[]
-              for line in section.splitlines():
-                  if line and not line.startswith('          '):break
-                  lines.append(line[10:] if line else '')
-              assert lines
-              return '\n'.join(lines)+'\n'
-          code=extract('Fresh source audit and exact production delta verification')
-          marker='assert new.count(assign)==1'
-          assert code.count(marker)==1
-          code=code.replace(marker,"newline='\\r\\n' if '\\r\\n' in old else '\\n'\nassign=assign.replace('\\n',newline)\n"+marker,1)
-          old="restored=new.replace(assign+'\\n','',1)"
-          assert code.count(old)==1
-          code=code.replace(old,"restored=new.replace(assign+newline,'',1)",1)
-          ast.parse(code)
-          (scratch/'source-review.py').write_text(code,encoding='utf-8')
-          (scratch/'regression.ps1').write_text(extract('Independent PowerShell parse and production regression cases'),encoding='utf-8-sig')
       - name: Fresh source audit and exact production delta verification
         shell: python
         run: |
-          import subprocess
-          subprocess.run(['python','-B','tmp/permission-review/source-review.py'],check=True)
+          import ast,hashlib,json,pathlib,re,subprocess
+          root=pathlib.Path.cwd()
+          names=[p.decode('utf-8') for p in subprocess.check_output(['git','ls-tree','-rz','--name-only','HEAD']).split(b'\0') if p]
+          excluded=('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
+          suffixes={'.ps1','.psm1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.html','.css','.toml','.rules'}
+          selected=[p for p in names if not p.startswith(excluded) and pathlib.PurePosixPath(p).suffix.lower() in suffixes]
+          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+p for p in selected)+'\n',text=True,check=True)
+          baseline='b9cddb0243d5eb9410c32590892f2684bd621d8b'
+          subprocess.run(['git','fetch','--filter=blob:none','--depth=1','origin',baseline],check=True)
+          raw=(root/'run-codex.ps1').read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()=='c0a3138506154c2d959ca54e3b78b30be62fb6f8'
+          old=subprocess.check_output(['git','show',baseline+':run-codex.ps1']).decode('utf-8-sig')
+          new=raw.decode('utf-8-sig')
+          start='$WriteScopeDisplay = if ($SandboxMode -eq "danger-full-access") {'
+          anchor='Write-Host "Codex Portable '
+          assert new.count(start)==1 and new.count(anchor)==1
+          i=new.index(start);j=new.index(anchor,i)
+          restored=new[:i]+new[j:]
+          old_network=next(line for line in old.splitlines() if line.startswith('Write-Host "ShellNetwork  : '))
+          old_scope=next(line for line in old.splitlines() if line.startswith('Write-Host ("写入范围'))
+          current_scope=next(line for line in restored.splitlines() if line.startswith('Write-Host ("写入范围'))
+          assert current_scope.endswith(' + $WriteScopeDisplay)')
+          restored=restored.replace('Write-Host "ShellNetwork  : $ShellNetworkDisplay"',old_network,1).replace(current_scope,old_scope,1)
+          assert restored==old,'Unexpected production logic or encoding changed'
+          mode_paths=['Version_History/'+mode+'-run-codex.ps1' for mode in ('YOLO mode专用包','常用模式专用包')]
+          assert all((root/p).read_bytes()==raw for p in mode_paths)
+          changed={p.decode('utf-8') for p in subprocess.check_output(['git','diff','--name-only','-z',baseline,'HEAD']).split(b'\0') if p}
+          expected=set(mode_paths+['run-codex.ps1','DEVELOPMENT.md','tests/test_permission_display.ps1','.github/workflows/release.yml','.github/workflows/permission-display-once.yml'])
+          assert changed==expected,changed
+          py=js=bats=0
+          for p in selected:
+              if p.endswith('.py'):ast.parse((root/p).read_text(encoding='utf-8-sig'),filename=p);py+=1
+              elif p.endswith(('.js','.cjs','.mjs')):subprocess.run(['node','--check',p],capture_output=True,check=True,timeout=15);js+=1
+              elif p.endswith('.bat') and '/' not in p:
+                  b=(root/p).read_bytes();b.decode('ascii');assert b'\n' not in b.replace(b'\r\n',b''),p;bats+=1
+          subprocess.run(['python','-B','-m','unittest','discover','-s','tests','-p','test_mode_copies.py','-v'],check=True,timeout=30)
+          env=(root/'env.ps1').read_text(encoding='utf-8-sig')
+          consumers=new+(root/'login-json.ps1').read_text(encoding='utf-8-sig')
+          settings=re.findall(r'^\s*\$env:(CODEX_\w+)\s*=\s*"([^"]*)"',env,re.M)
+          assert len(settings)==42 and all(name in consumers for name,value in settings)
+          manifest=(root/'tool/runtime-manifest.json').read_bytes()
+          pin=re.search(r'\$ExpectedRuntimeManifestSha256\s*=\s*"([0-9a-fA-F]{64})"',new)[1].lower()
+          assert hashlib.sha256(manifest).hexdigest()==pin
+          workflow=(root/'.github/workflows/release.yml').read_text()
+          gate='if: $'+"{{ success() && inputs.publish_release && inputs.check_set == 'full' }}"
+          assert workflow.count(gate)==2
+          name='      - name: Windows PowerShell 5.1 - test_permission_display\n'
+          assert workflow.count(name)==1
+          section=workflow.split(name,1)[1].split('      - name:',1)[0]
+          condition='if: $'+"{{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}"
+          assert condition in section and 'test_permission_display.ps1' in section
+          print('FRESH_REVIEW=PASS python='+str(py)+' javascript='+str(js)+' root_bat='+str(bats)+' settings='+str(len(settings))+' pinned_version='+json.loads(manifest)['version']+' production_delta=status_display_only')
       - name: Independent PowerShell parse and production regression cases
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          & ./tmp/permission-review/regression.ps1
-      - name: Verify the release gate still executes the new Windows regression
+          $count=0
+          Get-ChildItem -Recurse -File -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/]tmp[\\/]' } | ForEach-Object {
+            $tokens=$null;$errors=$null
+            $null=[Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
+            if($errors.Count){throw ($_.FullName+': '+($errors.Message -join '; '))}
+            $count++
+          }
+          foreach($test in @('test_permission_display','test_extension_migration','test_extension_policy','test_cli_model_options')) {
+            & pwsh -NoProfile -NonInteractive -File (Join-Path $PWD ('tests/'+$test+'.ps1'))
+            if($LASTEXITCODE -ne 0){throw ('Independent regression failed: '+$test)}
+          }
+          Write-Output "FRESH_POWERSHELL=PASS parsed=$count (Windows validation remains mandatory)"
+      - name: Record the independent result in the existing paragraph
+        id: record
         shell: python
         run: |
-          import pathlib
-          text=pathlib.Path('.github/workflows/release.yml').read_text()
-          name='      - name: Windows PowerShell 5.1 - test_permission_display\n'
-          assert text.count(name)==1
-          section=text.split(name,1)[1].split('      - name:',1)[0]
-          expected='if: $' + "{{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}"
-          assert expected in section and 'test_permission_display.ps1' in section
-          assert 'if: false' not in section
-          print('WINDOWS_PERMISSION_GATE=PASS')
-      - name: Remove owned review material
-        if: always()
-        shell: bash
-        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/permission-review"
+          import os,pathlib,subprocess
+          path=pathlib.Path('DEVELOPMENT.md');text=path.read_text(encoding='utf-8')
+          old='独立复查与完整 Windows 验收作为后续补丁发布前置条件，最终结果以对应 Release 与 Actions 为准。'
+          new='修复后全新检出的源码及生产函数回归再次通过，未发现新增可复现问题；完整 Windows 验收与附件回读仍为发布前置条件，最终结果以对应 Release 与 Actions 为准。'
+          assert text.count(old)==1
+          path.write_text(text.replace(old,new,1),encoding='utf-8')
+          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','add','--','DEVELOPMENT.md'],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          subprocess.run(['git','commit','-m','docs: record independent permission-status review without overstating Windows coverage'],check=True)
+          subprocess.run(['git','push','origin','HEAD:main'],check=True)
+          commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:out.write('commit='+commit+'\n')
+          print('REVIEWED_SOURCE='+commit)
   dispatch:
-    needs: [apply, recheck]
+    needs: recheck
     runs-on: ubuntu-latest
     timeout-minutes: 7
     permissions:
@@ -178,12 +129,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_CONFIG_DIR: ${{ github.workspace }}/tmp/permission-dispatch/gh
-          REVIEWED_COMMIT: ${{ needs.apply.outputs.commit }}
+          REVIEWED_COMMIT: ${{ needs.recheck.outputs.commit }}
           PYTHONDONTWRITEBYTECODE: '1'
         run: |
           import json,os,pathlib,subprocess,time
           scratch=pathlib.Path('tmp/permission-dispatch');scratch.mkdir(parents=True,exist_ok=True)
-          repo=os.environ['GITHUB_REPOSITORY']; reviewed=os.environ['REVIEWED_COMMIT']
+          repo=os.environ['GITHUB_REPOSITORY'];reviewed=os.environ['REVIEWED_COMMIT']
           for attempt in range(90):
               remote=json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/git/ref/heads/main'],text=True))['object']['sha']
               if remote!=reviewed:
