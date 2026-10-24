@@ -45,13 +45,19 @@ def _reject_existing_hardlink(path: Path, label: str) -> None:
         raise SystemExit(f"Refusing hard-linked {label}: {path}")
 
 def _atomic_write_text(path: Path, text: str, *, encoding: str, root: Path) -> None:
-    parent = path.parent.absolute()
-    if not lexical_under(parent, root) or not resolved_under(parent, root):
+    path = Path(os.path.abspath(path))
+    parent = path.parent
+    if not lexical_under(parent, root):
         raise SystemExit(f"Refusing write outside portable package: {path}")
     reject_reparse_chain(parent, root)
     parent.mkdir(parents=True, exist_ok=True)
     reject_reparse_chain(parent, root)
-    fd, temp_name = tempfile.mkstemp(prefix=".codex-instruct-", suffix=".tmp", dir=parent)
+    scratch = root / "tmp"
+    reject_reparse_chain(scratch, root)
+    scratch.mkdir(exist_ok=True)
+    reject_reparse_chain(scratch, root)
+    # Same-volume rename remains atomic; staging never uses home or the package root.
+    fd, temp_name = tempfile.mkstemp(prefix=".codex-instruct-", suffix=".tmp", dir=scratch)
     temp_path = Path(temp_name)
     try:
         with os.fdopen(fd, "w", encoding=encoding, newline="") as handle:
@@ -60,7 +66,7 @@ def _atomic_write_text(path: Path, text: str, *, encoding: str, root: Path) -> N
             os.fsync(handle.fileno())
         reject_reparse_chain(parent, root)
         os.replace(temp_path, path)
-    except Exception:
+    except BaseException:
         try:
             temp_path.unlink(missing_ok=True)
         except OSError:
@@ -88,31 +94,28 @@ def package_root() -> Path:
 
 def lexical_under(path: Path, root: Path) -> bool:
     try:
-        path.absolute().relative_to(root.absolute())
-        return True
-    except ValueError:
-        return False
-
-def resolved_under(path: Path, root: Path) -> bool:
-    try:
-        path.resolve(strict=False).relative_to(root.resolve())
+        Path(os.path.abspath(path)).relative_to(Path(os.path.abspath(root)))
         return True
     except ValueError:
         return False
 
 def reject_reparse_chain(path: Path, root: Path) -> None:
-    """Reject existing symlink/junction components from root through path."""
-    root = root.resolve()
-    absolute = path.absolute()
+    """Inspect ordinary ancestors without resolving links or probing their targets."""
+    absolute = Path(os.path.abspath(path))
     if not lexical_under(absolute, root):
         raise SystemExit(f"Refusing path outside portable package: {absolute}")
-    relative = absolute.relative_to(root)
-    cursor = root
-    for part in relative.parts:
-        cursor = cursor / part
-        if cursor.exists() or cursor.is_symlink():
-            if _is_reparse(cursor):
-                raise SystemExit(f"Refusing reparse point in portable path: {cursor}")
+    for entry in (*reversed(absolute.parents), absolute):
+        try:
+            info = entry.lstat()
+        except FileNotFoundError:
+            # Later descendants cannot exist under an absent ordinary component.
+            return
+        except OSError as exc:
+            raise SystemExit(f"Unable to inspect portable path: {entry}") from exc
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+            raise SystemExit(f"Refusing reparse point in portable path: {entry}")
+        if entry != absolute and not stat.S_ISDIR(info.st_mode):
+            raise SystemExit(f"Expected an ordinary portable path ancestor: {entry}")
 
 def resolve_codex_home(args: argparse.Namespace) -> Path:
     root = package_root()
@@ -124,8 +127,8 @@ def resolve_codex_home(args: argparse.Namespace) -> Path:
         home = root / "home"
     if not home.is_absolute():
         home = root / home
-    home = home.absolute()
-    if not lexical_under(home, root) or not resolved_under(home, root):
+    home = Path(os.path.abspath(home))
+    if not lexical_under(home, root):
         raise SystemExit(f"Refusing to write outside portable package: {home}")
     reject_reparse_chain(home, root)
     return home
@@ -134,8 +137,8 @@ def read_instructions(source_arg: str, root: Path) -> str:
     source = Path(source_arg)
     if not source.is_absolute():
         source = root / source
-    source = source.absolute()
-    if not lexical_under(source, root) or not resolved_under(source, root):
+    source = Path(os.path.abspath(source))
+    if not lexical_under(source, root):
         raise SystemExit(f"Refusing to read instructions from outside portable package: {source}")
     reject_reparse_chain(source, root)
     if not source.is_file():
@@ -161,9 +164,9 @@ def validate_output_name(requested_name: str) -> str:
     return md_name
 
 def read_utf8_ps1(path: Path, root: Path) -> str:
+    reject_reparse_chain(path, root)
     if not path.exists():
         return ""
-    reject_reparse_chain(path, root)
     _reject_existing_hardlink(path, "env.local.ps1")
     try:
         return path.read_text(encoding="utf-8-sig")
@@ -221,7 +224,7 @@ def main() -> int:
     md_path = (home / md_name).absolute()
     env_local = (root / "env.local.ps1").absolute()
     for target in (md_path, env_local):
-        if not lexical_under(target, root) or not resolved_under(target, root):
+        if not lexical_under(target, root):
             raise SystemExit(f"Refusing to write outside portable package: {target}")
         reject_reparse_chain(target, root)
 

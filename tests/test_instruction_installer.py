@@ -155,6 +155,94 @@ class InstructionInstallerTests(unittest.TestCase):
             self.run_main(self.load())
         self.assertFalse((self.root / "home").exists())
 
+    def assert_no_external_probe(self, operation, outside):
+        inspected = []
+        original = os.lstat
+        def record(path, *args, **kwargs):
+            inspected.append(os.path.abspath(os.fspath(path)))
+            return original(path, *args, **kwargs)
+        with mock.patch('os.lstat', side_effect=record):
+            with self.assertRaises(SystemExit):
+                operation()
+        prefix = str(outside) + os.sep
+        self.assertFalse(any(p == str(outside) or p.startswith(prefix) for p in inspected), inspected)
+
+    def test_input_link_rejected_before_external_target_probe(self):
+        outside = self.base / 'outside sentinel'
+        outside.mkdir()
+        (outside / 'input.md').write_text('Synthetic outside instructions.', encoding='utf-8')
+        self.symlink(outside, self.root / 'linked input', directory=True)
+        module = self.load()
+        self.assert_no_external_probe(lambda: module.read_instructions('linked input/input.md', self.root), outside)
+
+    def test_input_parent_traversal_rejected_before_external_probe(self):
+        outside = self.base / 'outside sentinel'
+        outside.mkdir()
+        module = self.load()
+        self.assert_no_external_probe(lambda: module.read_instructions('../outside sentinel/input.md', self.root), outside)
+
+    def test_custom_home_link_rejected_before_external_target_probe(self):
+        outside = self.base / 'outside sentinel'
+        outside.mkdir()
+        self.symlink(outside, self.root / 'linked home', directory=True)
+        module = self.load()
+        self.assert_no_external_probe(lambda: self.run_main(module, '--codex-dir', 'linked home'), outside)
+        self.assertEqual(list(outside.iterdir()), [])
+
+    def test_local_config_link_rejected_before_external_target_probe(self):
+        outside = self.base / 'outside sentinel'
+        outside.mkdir()
+        target = outside / 'settings.ps1'
+        target.write_text('# Synthetic settings only.', encoding='utf-8')
+        local = self.root / 'env.local.ps1'
+        self.symlink(target, local)
+        module = self.load()
+        self.assert_no_external_probe(lambda: module.read_utf8_ps1(local, self.root), outside)
+
+    def test_normalized_source_is_the_path_actually_read(self):
+        module = self.load()
+        outside = self.base / 'outside sentinel'
+        outside.mkdir()
+        self.symlink(outside, self.root / 'linked input', directory=True)
+        # abspath is lexical. Once normalized, use that SAME path for validation and IO.
+        self.assertEqual(module.read_instructions('linked input/../input.md', self.root), 'Synthetic instructions only.\n')
+
+    def test_atomic_staging_is_exclusively_in_package_tmp(self):
+        module = self.load()
+        directories = []
+        original = module.tempfile.mkstemp
+        def capture(*args, **kwargs):
+            directories.append(Path(kwargs['dir']))
+            return original(*args, **kwargs)
+        with mock.patch.object(module.tempfile, 'mkstemp', side_effect=capture):
+            self.assertEqual(self.run_main(module), 0)
+        self.assertEqual(directories, [self.root / 'tmp', self.root / 'tmp'])
+        self.assertEqual(list((self.root / 'tmp').iterdir()), [])
+
+    def test_linked_tmp_cannot_receive_staged_content(self):
+        outside = self.base / 'outside sentinel'
+        outside.mkdir()
+        self.symlink(outside, self.root / 'tmp', directory=True)
+        with self.assertRaises(SystemExit):
+            self.run_main(self.load())
+        self.assertEqual(list(outside.iterdir()), [])
+        self.assertFalse((self.root / 'home/synthetic.md').exists())
+        self.assertFalse((self.root / 'env.local.ps1').exists())
+
+    def test_failed_atomic_replace_keeps_unrelated_tmp_file(self):
+        module = self.load()
+        scratch = self.root / 'tmp'
+        scratch.mkdir()
+        sentinel = scratch / 'unrelated.txt'
+        sentinel.write_text('Keep synthetic user data.', encoding='utf-8')
+        with mock.patch.object(module.os, 'replace', side_effect=OSError('synthetic replace failure')):
+            with self.assertRaises(OSError):
+                self.run_main(module)
+        self.assertEqual(list(scratch.iterdir()), [sentinel])
+        self.assertEqual(sentinel.read_text(), 'Keep synthetic user data.')
+        self.assertFalse((self.root / 'env.local.ps1').exists())
+
+
 
 if __name__ == "__main__":
     unittest.main()
