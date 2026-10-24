@@ -1,0 +1,163 @@
+# Temporary owner-requested verification only; remove after recording results.
+name: Two independent reviews (no publication)
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/review-two-pass-once.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: portable-independent-review
+  cancel-in-progress: false
+jobs:
+  source-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /README.md
+            /DEVELOPMENT.md
+      - name: First review - complete inventory and source syntax
+        shell: python
+        run: |
+          import ast, pathlib, subprocess
+          root = pathlib.Path.cwd()
+          paths = [p.decode('utf-8') for p in subprocess.check_output(['git','ls-tree','-rz','--name-only','HEAD']).split(b'\0') if p]
+          excluded = ('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
+          extensions = {'.ps1','.psm1','.psd1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.rules','.toml','.css','.html','.sh'}
+          selected = [p for p in paths if not p.startswith(excluded) and (pathlib.PurePosixPath(p).suffix.lower() in extensions or p in ('.gitignore','.gitattributes'))]
+          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+p for p in selected)+'\n',text=True,check=True)
+          counts = {'python':0,'javascript':0,'bat':0}
+          for name in selected:
+              file = root/name
+              if name.endswith('.py'):
+                  ast.parse(file.read_text(encoding='utf-8-sig'),filename=name); counts['python'] += 1
+              if name.endswith(('.js','.cjs','.mjs')):
+                  subprocess.run(['node','--check',name],check=True,capture_output=True); counts['javascript'] += 1
+              if '/' not in name and name.endswith('.bat'):
+                  data=file.read_bytes(); data.decode('ascii'); assert b'\n' not in data.replace(b'\r\n',b''),name; counts['bat'] += 1
+          assert sum(pathlib.PurePosixPath(p).name.lower()=='codex.exe' for p in paths)==1
+          subprocess.run(['git','diff','--check'],check=True)
+          print('SOURCE_INVENTORY',len(paths),'PARSE',counts)
+      - name: First review - independent synthetic Python suites
+        shell: python
+        run: |
+          import pathlib, sys, unittest
+          sys.path.insert(0,str(pathlib.Path('tests').absolute()))
+          modules=['test_android_extension','test_android_guard','test_helper_relocation','test_instruction_installer','test_login_json_http','test_mode_copies','test_office_output_boundaries','test_python_lock','test_release_package']
+          def flatten(suite):
+              for item in suite:
+                  if isinstance(item,unittest.TestSuite): yield from flatten(item)
+                  else: yield item
+          cases=list(flatten(unittest.defaultTestLoader.loadTestsFromNames(modules)))
+          native='test_python_lock.PythonLockTests.test_runtime_repair_accepts_current_defaults_and_missing_packages'
+          assert sum(case.id()==native for case in cases)==1
+          print('DEFER_TO_WINDOWS',native)
+          result=unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite(case for case in cases if case.id()!=native))
+          if not result.wasSuccessful() or result.skipped: raise SystemExit('Synthetic review failed or skipped tests.')
+          print('FIRST_REVIEW_PYTHON_PASS',result.testsRun)
+      - name: First review - PowerShell parser and production policy functions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $count=0
+          Get-ChildItem -Recurse -File -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/]tmp[\\/]' } | ForEach-Object {
+            $tokens=$null; $errors=$null
+            $null=[Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
+            if ($errors.Count) { throw ($_.FullName+': '+($errors.Message -join '; ')) }
+            $count++
+          }
+          foreach ($name in @('test_cli_model_options','test_permission_display','test_extension_policy','test_extension_migration','test_browser_login_flow','test_system_policy','test_python_setup')) {
+            & pwsh -NoLogo -NoProfile -File (Join-Path 'tests' ($name+'.ps1'))
+            if ($LASTEXITCODE -ne 0) { throw ('Production policy regression: '+$name) }
+          }
+          Write-Output "FIRST_REVIEW_POWERSHELL_PARSE=$count"
+  windows-recheck:
+    needs: source-review
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          lfs: true
+          persist-credentials: false
+      - name: Prepare only package-local verification state
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state'
+          $state=@{
+            HOME='home'; USERPROFILE='home'; APPDATA='appdata'; LOCALAPPDATA='localappdata'; PROGRAMDATA='programdata'; ALLUSERSPROFILE='programdata';
+            TEMP='temp'; TMP='temp'; TMPDIR='temp'; XDG_CACHE_HOME='cache'; XDG_CONFIG_HOME='config'; XDG_DATA_HOME='data'; XDG_STATE_HOME='state';
+            CODEX_HOME='codex-home'; CODEX_SQLITE_HOME='sqlite'; GH_CONFIG_DIR='gh'
+          }
+          foreach ($name in $state.Keys) {
+            $path=Join-Path $base $state[$name]
+            New-Item -ItemType Directory -Force -Path $path | Out-Null
+            "$name=$path" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+          'PYTHONDONTWRITEBYTECODE=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'PIP_CONFIG_FILE=nul' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'POWERSHELL_TELEMETRY_OPTOUT=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          $modules=Join-Path $base 'cache/modules'
+          New-Item -ItemType Directory -Force -Path $modules | Out-Null
+          "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Second review - run every existing Windows validation block unchanged
+        shell: python
+        run: |
+          import os, pathlib, re, subprocess
+          root=pathlib.Path.cwd()
+          scratch=root/'tmp'/'second-review'
+          scratch.mkdir(exist_ok=False)
+          text=(root/'.github/workflows/release.yml').read_text(encoding='utf-8')
+          sections=re.split(r'^      - name: ',text,flags=re.M)[1:]
+          selected=[]
+          for section in sections:
+              name=section.splitlines()[0]
+              if name not in ('Run bundled Python and Node regression suites','Verify the native Codex version') and not name.startswith('Windows PowerShell 5.1 - '): continue
+              body=section.split('        run: |\n',1)[1]
+              lines=[]
+              for line in body.splitlines():
+                  if line and not line.startswith('          '): break
+                  lines.append(line[10:] if line else '')
+              limit=re.search(r'^        timeout-minutes: ([0-9]+)$',section,re.M)
+              assert limit,name
+              script=scratch/('check-'+str(len(selected))+'.ps1')
+              script.write_text('\n'.join(lines)+'\n',encoding='utf-8-sig')
+              selected.append((name,script,60*int(limit.group(1))))
+          assert len(selected)==19,len(selected)
+          powershell=pathlib.Path(os.environ['SystemRoot'])/'System32/WindowsPowerShell/v1.0/powershell.exe'
+          for name,script,limit in selected:
+              print('::group::'+name,flush=True)
+              child=subprocess.Popen([str(powershell),'-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(script)])
+              try:
+                  code=child.wait(timeout=limit)
+              except subprocess.TimeoutExpired:
+                  subprocess.run(['taskkill.exe','/PID',str(child.pid),'/T','/F'],check=False,timeout=30)
+                  child.wait(timeout=30)
+                  raise
+              finally:
+                  print('::endgroup::',flush=True)
+              if code: raise SystemExit(name+' failed: '+str(code))
+              print('SECOND_REVIEW_PASS '+name,flush=True)
+          print('SECOND_REVIEW_ALL_WINDOWS_GROUPS_PASS='+str(len(selected)),flush=True)
+      - name: Remove only owned verification state
+        if: always()
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach ($relative in @('tmp/second-review','tmp/windows-release-state')) {
+            $path=Join-Path $env:GITHUB_WORKSPACE $relative
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+          }
