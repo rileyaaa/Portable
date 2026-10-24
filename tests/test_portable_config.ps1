@@ -326,6 +326,7 @@ try {
     } else {
         Write-Output 'SKIP 2 pinned-client export cases: pass -BundledModelsPath to enable them.'
     }
+    & (Join-Path $PSScriptRoot 'test_cli_model_options.ps1')
     Write-Output ("Passed {0} configuration cases. Windows runtime behavior is not exercised." -f $script:Passed)
 } finally {
     $env:CODEX_PROVIDER_MODE = $SavedProviderMode

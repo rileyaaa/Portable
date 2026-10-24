@@ -59,6 +59,8 @@ import os, pathlib, sys, tomllib
 root = pathlib.Path(sys.argv[1]).resolve()
 mode = sys.argv[2]
 cfg = tomllib.loads((root / 'home' / 'config.toml').read_text(encoding='utf-8-sig'))
+if len(sys.argv) > 3 and sys.argv[3]:
+    assert cfg['model'] == sys.argv[3], 'CLI model and generated configuration differ'
 assert cfg['approval_policy'] == 'on-request'
 assert cfg['sandbox_mode'] == 'workspace-write'
 assert cfg['service_tier'] == 'default'
@@ -91,9 +93,11 @@ print('PASS full launcher generated configuration: ' + mode)
             [IO.File]::WriteAllText((Join-Path $oldRoot 'env.local.ps1'), 'SENTINEL - obsolete path must not be read', $utf8)
         }
         $bat = if ($case -eq 'maintenance') { $maintenance } else { $entry }
+        $expectedModel = if ($case -eq 'relocated') { 'portable-model-smoke' } else { '' }
+        $modelArgument = if ($expectedModel) { ' -m=' + $expectedModel } else { '' }
         $start = New-Object Diagnostics.ProcessStartInfo
         $start.FileName = Join-Path $env:SystemRoot 'System32/cmd.exe'
-        $start.Arguments = '/d /s /c ""' + (Join-Path $fixture $bat) + '" --version"'
+        $start.Arguments = '/d /s /c ""' + (Join-Path $fixture $bat) + '"' + $modelArgument + ' --version"'
         $start.WorkingDirectory = $cwd
         $start.UseShellExecute = $false; $start.CreateNoWindow = $true
         $start.RedirectStandardInput = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
@@ -106,7 +110,9 @@ print('PASS full launcher generated configuration: ' + mode)
         # Invoke only that exact command in this synthetic fixture; the production
         # launcher still rejects general feature-management commands.
         $consumerState = New-AutomationDirectory -Root $root -Path (Join-Path $fixture 'tmp/config-consumer')
-        $native = New-AutomationStartInfo -Root $fixture -FilePath (Join-Path $fixture 'codex.exe') -WorkingDirectory (Join-Path $fixture 'work') -SessionDirectory $consumerState -CaptureOutput -Arguments @('features','list')
+        $consumerArgs = @('features','list')
+        if ($expectedModel) { $consumerArgs = @('-m=' + $expectedModel) + $consumerArgs }
+        $native = New-AutomationStartInfo -Root $fixture -FilePath (Join-Path $fixture 'codex.exe') -WorkingDirectory (Join-Path $fixture 'work') -SessionDirectory $consumerState -CaptureOutput -Arguments $consumerArgs
         $native.EnvironmentVariables['CODEX_HOME'] = Join-Path $fixture 'home'
         $native.EnvironmentVariables['CODEX_SQLITE_HOME'] = Join-Path $fixture 'sqlite'
         $native.StandardOutputEncoding = $utf8; $native.StandardErrorEncoding = $utf8
@@ -122,7 +128,7 @@ print('PASS full launcher generated configuration: ' + mode)
         Write-Output ('PASS native client consumes generated configuration: ' + $case)
         $python = Join-Path $root 'tool/python/python.exe'
         $policy = if ($case -eq 'maintenance') { 'maintenance' } else { 'normal' }
-        & $python -B $validator $fixture $policy
+        & $python -B $validator $fixture $policy $expectedModel
         if ($LASTEXITCODE -ne 0) { throw 'Full launcher generated configuration did not match the portable contract.' }
         Write-Output ('PASS real BAT/native launch: ' + $case)
     }

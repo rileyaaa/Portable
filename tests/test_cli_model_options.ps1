@@ -1,0 +1,53 @@
+#Requires -Version 5.1
+# Run production argument parsing only; no client, credential or filesystem IO.
+$ErrorActionPreference = 'Stop'
+$root = Split-Path -Parent $PSScriptRoot
+$tokens = $null; $errors = $null
+$ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'run-codex.ps1'), [ref]$tokens, [ref]$errors)
+if ($errors.Count) { throw 'Launcher parsing failed.' }
+foreach ($name in @('Test-AndNormalizeCodexCliArgs', 'Get-PortableExtensionCommandNamespace')) {
+    $definitions = @($ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $true) | Where-Object { $_.Name -eq $name })
+    if ($definitions.Count -ne 1) { throw ('Expected one production definition: ' + $name) }
+    . ([scriptblock]::Create($definitions[0].Extent.Text))
+}
+function Stop-UnsafeCodexCliArgument($Argument, $Reason) { throw ('MODEL_CLI_REJECT:' + $Argument) }
+$PortableMaintenanceMode = $true
+$PortableExtensionPolicy = [pscustomobject]@{ AllowedNamespaces = @('mcp_servers', 'plugins') }
+$ConfiguredAuthMode = 'api'; $PreviousAuthMode = ''
+$cases = @(
+    @{ Name = 'short separate'; Tokens = @('-m', 'Synthetic/Model', '--version'); Value = 'Synthetic/Model' },
+    @{ Name = 'short attached'; Tokens = @('-mSynthetic/Model', '--version'); Value = 'Synthetic/Model' },
+    @{ Name = 'short equals'; Tokens = @('-m=Synthetic/Model', '--version'); Value = 'Synthetic/Model' },
+    @{ Name = 'long separate'; Tokens = @('--model', 'Synthetic/Model', '--version'); Value = 'Synthetic/Model' },
+    @{ Name = 'long equals'; Tokens = @('--model=Synthetic/Model', '--version'); Value = 'Synthetic/Model' },
+    @{ Name = 'leading literal equals'; Tokens = @('-m==literal', '--version'); Value = '=literal' },
+    @{ Name = 'last model wins'; Tokens = @('-m', 'first', '--model=second', '-m=third', '--version'); Value = 'third' },
+    @{ Name = 'exec scope'; Tokens = @('exec', '-m=synthetic', 'prompt'); Value = 'synthetic' },
+    @{ Name = 'resume scope'; Tokens = @('resume', '-m=synthetic', '--last'); Value = 'synthetic' },
+    @{ Name = 'command-like model'; Tokens = @('-m=update', '--version'); Value = 'update' },
+    @{ Name = 'marketplace is not model'; Tokens = @('plugin', 'add', 'sample@local', '-m=marketplace'); Value = '' },
+    @{ Name = 'terminator leaves literal alone'; Tokens = @('--', '-m='); Value = '' },
+    @{ Name = 'empty short equals'; Tokens = @('-m='); Reject = $true },
+    @{ Name = 'empty long equals'; Tokens = @('--model='); Reject = $true },
+    @{ Name = 'missing short value'; Tokens = @('-m'); Reject = $true },
+    @{ Name = 'missing long value'; Tokens = @('--model'); Reject = $true }
+)
+foreach ($case in $cases) {
+    $inputArgs = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($token in $case.Tokens) { $inputArgs.Add($token) }
+    if ($case.ContainsKey('Reject')) {
+        $rejected = $false
+        try { $null = Test-AndNormalizeCodexCliArgs -InputArgs $inputArgs }
+        catch { if ($_.Exception.Message -notlike 'MODEL_CLI_REJECT:*') { throw }; $rejected = $true }
+        if (-not $rejected) { throw ('Empty/missing model was accepted: ' + $case.Name) }
+    } else {
+        $output = @(Test-AndNormalizeCodexCliArgs -InputArgs $inputArgs)
+        if ($script:CliModelOverride -cne $case.Value) { throw ('Incorrect model value: ' + $case.Name) }
+        if ($output.Count -ne $inputArgs.Count) { throw ('Argument count changed: ' + $case.Name) }
+        for ($i = 0; $i -lt $inputArgs.Count; $i++) {
+            if ($output[$i] -cne $inputArgs[$i]) { throw ('Native argument was modified: ' + $case.Name) }
+        }
+    }
+    Write-Output ('PASS model CLI ' + $case.Name)
+}
+Write-Output ($cases.Count.ToString() + ' production model-option cases passed (offline).')

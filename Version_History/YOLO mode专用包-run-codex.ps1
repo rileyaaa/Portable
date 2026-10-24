@@ -1726,7 +1726,8 @@ function Test-AndNormalizeCodexCliArgs {
                 continue
             }
             if ($lower.StartsWith('-m') -and $lower.Length -gt 2) {
-                $modelValue = $arg.Substring(2)
+                # An attached '=' separates the option from its value.
+                $modelValue = if ($lower.StartsWith('-m=')) { $arg.Substring(3) } else { $arg.Substring(2) }
                 if ([string]::IsNullOrWhiteSpace($modelValue)) { Stop-UnsafeCodexCliArgument $arg '-m 的模型值不能为空。' }
                 $script:CliModelOverride = $modelValue
                 $result.Add($arg)
