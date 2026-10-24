@@ -271,7 +271,7 @@ namespace CodexPortable {
                     Start-Sleep -Milliseconds 100
                 }
             }
-        } catch { Write-Warning ('Process-helper compiler scratch was retained because safe cleanup failed: ' + $_.Exception.Message) }
+        } catch { [Console]::Error.WriteLine('Process-helper compiler scratch was retained because safe cleanup failed: ' + $_.Exception.Message) }
     }
 }
 

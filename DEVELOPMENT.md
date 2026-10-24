@@ -31,9 +31,9 @@
 
 **原因与结果：** npm 的用户/全局配置虽位于包内，上游仍会从工作目录向父层发现项目 `.npmrc`。六个 npm/npx 入口现统一使用包内 Node 和固定项目根，保留经校验的显式包内 `--prefix`，配置和缓存路径先校验后加载；不依赖增加环境变量来假定隔离。实际 bundled npm 配置加载、参数保留及 Windows 入口纳入发布回归。
 
-**Windows 修复：** 账号检查 BAT 的菜单提示包含未转义的右括号，导致 CMD 在解析分支时中止；现正确转义，保留原菜单行为。首次直接运行浏览器时由监督器安全创建缺失的包内 `tmp`，不再依赖先运行 BAT。Windows 专用入口和进程监督继续通过独立测试验收。
+**Windows 修复：** 账号检查 BAT 的菜单提示包含未转义的右括号，导致 CMD 在解析分支时中止；现正确转义，保留原菜单行为。首次直接运行浏览器时由监督器安全创建缺失的包内 `tmp`，不再依赖先运行 BAT。进程监督器保守保留未能安全删除的包内编译临时目录，提示改写到 stderr，避免污染 MCP 的 JSON-RPC stdout；残留可由“清理缓存”回收，不进入发行包。Windows 专用入口和进程监督继续通过独立测试验收。
 
-**验证约束：** Windows 工作流使用与便携入口一致的包内/系统 PowerShell 模块路径，各组检查单独显示结果并设有限超时。新进程在 Windows runner 上出现约 20–30 秒的冷启动，合成测试使用 60 秒有限等待，较长的多进程测试组另设 8 分钟上限，不以无限等待掩盖失败。BAT 合成测试超时时按本次 PID 回收子进程树，避免只杀父进程后阻塞临时目录清理。
+**验证约束：** Windows 工作流使用与便携入口一致的包内/系统 PowerShell 模块路径，各组检查单独显示结果并设有限超时。实测纯 PowerShell 启动约 0.26 秒，首次加载文件系统模块约 25 秒；合成测试使用 60 秒有限等待，较长的多进程测试组另设 8 分钟上限，不以无限等待掩盖失败。BAT 合成测试超时时按本次 PID 回收子进程树，避免只杀父进程后阻塞临时目录清理。
 
 ## 2026-10-23：发布复查与打包
 
@@ -156,9 +156,9 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 
 **保留的限制：** 自定义 MCP/插件配置正文不会自动迁移，旧绝对路径需人工核对。直接绕过 BAT 启动 PowerShell 可能先使用宿主缓存；`tool/setup-tools.ps1` 已补完整祖先保护，Android 路径/bootstrap 的直接入口尚无同等保护。应从已验证的正常/维护入口使用，不经 junction 直接调用；直接入口场景仍待 Windows 专项验证。
 
-## 2026-10-23：验证结果与待验范围
+## 验证结果与待验范围（2026-10-24）
 
-本次维护在 Linux x86_64、Python 3.12、PowerShell 7.6.7 上执行。所有回归使用合成数据，没有读取真实认证或请求登录服务。
+离线回归在 Linux x86_64、Python 3.12、PowerShell 7.6.7 上执行；Windows 实测使用 Windows x64 / PowerShell 5.1 和包内运行时。[专项运行 40055716596](https://github.com/rileyaaa/Codex-Portable/actions/runs/40055716596) 全部通过，但有意跳过了部分长组，不等于全量验收。正式 Release 必须经过 `check_set=full` 的全部门禁。所有回归使用合成数据，没有读取真实认证或请求登录服务。
 
 | 检查 | 结果与范围 |
 | --- | --- |
@@ -171,13 +171,15 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 | `test_extension_policy.ps1` | 12 项通过：Fast/扩展默认关闭、语音配置关闭、维护模式、显式开关、命名空间筛选、配置保留及两条模型指令生成路径 |
 | `test_runtime_preflight.ps1` | 10 项合成工件检查通过：清单先校验、文件缺失/替换/链接、沙箱缓存新旧与状态硬链接；不执行客户端，不读取真实凭据 |
 | `test_automation_paths.ps1` | 通过：子进程目录重定向、参数引用、越界/硬链接、先查祖先再遍历、只清理自有目录、任务开关与 PowerShell 解析；没有启动 Windows 程序 |
-| `test_automation_process.ps1` | 生产监督器 C# 编译通过；实际继承/捕获标准流需 Windows，Linux 明确跳过 |
+| `test_automation_process.ps1` | Windows 生产监督器 C# 编译、真实子进程继承/捕获标准流通过 |
 | `test_automation.js` | 10 项通过：实际固定版 MCP 初始化与工具筛选、拒绝未选任务、路径边界、禁止能力、依赖字节摘要；不启动浏览器 |
-| `test_portable_npm.js` / `test_npm_entrypoints.ps1` | 10 项真实 npm 配置回归、入口结构及语法检查通过；Windows 原生入口由手动工作流复验 |
+| `test_portable_npm.js` / `test_npm_entrypoints.ps1` | 10 项真实 npm 配置回归通过；Windows CMD/PowerShell 入口、显式项目根与包外拒绝已通过 |
 | `test_system_policy.ps1` | 8 项合成检查通过：固定 Registry64/HKLM、值名存在性、授权 gate、异常拒绝与句柄回收；不读真实策略 |
 | `test_browser_login_flow.ps1` | 7 项离线检查通过：默认设备码、显式系统浏览器、非法值与失败无回退 |
-| `test_bootstrap_paths.ps1` | Linux 明确跳过；15 个 Windows BAT 普通/junction 用例未运行，不执行真实客户端 |
-| 语法、格式与 BAT 静态检查 | 全部 31 个第一方 PowerShell 文件解析通过，94 个第一方 Python 文件 AST 检查通过；5 个 BAT 的 ASCII/CRLF、Go/uv 变量清除、pip 配置禁用和祖先检查先于目录创建检查通过。按 CRLF 规则检查项目差异；保留的官方 EXE/DLL、Playwright 依赖及原始 npm CLI 字节未改写；六个 npm/npx shim 为便携入口 |
+| `test_bootstrap_paths.ps1` | 15 个 Windows BAT 普通/junction 用例通过；测试入口环境与链接拒绝，不代替完整登录链 |
+| `test_browser_smoke.ps1` | Windows 实际 Chromium 在搬迁后的合成包启动、截图、关闭后重新打开并保留 Cookie，随后由缓存清理器删除资料且保留工作输出；通过 |
+| 原生客户端与模型目录 | Windows Codex 0.164.0 启动及 `debug models --bundled` 导出通过 |
+| 语法、格式与 BAT 静态检查 | 第一方 PowerShell 解析和 Python AST 检查通过；5 个 BAT 的 ASCII/CRLF、Go/uv 变量清除、pip 配置禁用和祖先检查先于目录创建检查通过。按 CRLF 规则检查项目差异；保留的官方 EXE/DLL、Playwright 依赖及原始 npm CLI 字节未改写；六个 npm/npx shim 为便携入口 |
 | 转换器 smoke / static audit | 通过；一个合成 fixture、四账号、17 种输出，命令见子项目 README |
 
 以下开发测试仅随 GitHub 源码提供，客户发行包不附带。在源码包根使用 Windows PowerShell 5.1 复验：
@@ -195,12 +197,13 @@ powershell.exe -NoProfile -File .\tests\test_automation_paths.ps1
 powershell.exe -NoProfile -File .\tests\test_automation_process.ps1
 .\tool\node\node.exe --test .\tests\test_automation.js .\tests\test_portable_npm.js
 powershell.exe -NoProfile -File .\tests\test_browser_login_flow.ps1
+powershell.exe -NoProfile -File .\tests\test_system_policy.ps1
 powershell.exe -NoProfile -File .\tests\test_npm_entrypoints.ps1
 powershell.exe -NoProfile -File .\tests\test_browser_smoke.ps1
 ```
 
 配置回归可用匹配客户端的 `debug models --bundled` 成功导出到包内临时 UTF-8 JSON 后，传入 `-BundledModelsPath` 启用另两项检查；先检查导出退出码。Windows 链接回归需 NTFS，创建符号链接可能需要 Developer Mode 或相应权限；Python 无此能力时明确 skip，PowerShell 指令测试会报错，都不算通过。
 
-**Windows 待验：** 正常/维护 BAT 在新盘符、中文、空格路径运行；NTFS 链接、ACL、进程监督、标准流和退出清理；实际 Codex/Host 启动与工具调用；生成配置最终变量；Python 安装器的真实重装和导入；授权条件下的三种登录模式、代理和 Windows 沙箱。语音已排除，不再列为待验功能。旧版本的历史验收记录不代替 0.164.0 的实际结果，也不据离线测试宣称项目没有其他 bug。
+**真实使用待验：** 新盘符、中文/空格目录下的完整正常/维护会话及跨电脑迁移；真实 Agent/Host 工具调用与实际命令环境；Python 安装器的真实重装；授权条件下的三种登录模式、刷新凭据、代理和 Windows 沙箱。合成 NTFS、BAT、进程与浏览器检查已覆盖相应自动化行为，不代替上述完整使用流程。语音已排除，不再列为待验功能。旧版本的历史验收记录不代替 0.164.0 的实际结果，也不据离线测试宣称项目没有其他 bug。
 
 **已知实现注意点：** PS5.1 的 `File.Replace`、泛型集合和原生空参数传递曾有兼容问题，后续改动应保留对应处理；认证多文件切换依赖 transition/logout 标记与 snapshot 归属，不可猜测回收；缺少 Host 时恢复匹配完整布局，不能用关闭 Code Mode 作为修复。当前 checkout 不包含历史 checker/updater 套件，不引用不存在的脚本或把旧版本哈希当成当前身份。
