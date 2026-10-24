@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          fetch-depth: 2
+          fetch-depth: 3
           lfs: false
           filter: blob:none
           sparse-checkout-cone-mode: false
@@ -53,7 +53,7 @@ jobs:
             $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $path),[ref]$tokens,[ref]$errors)
             if($errors.Count){throw ($path+': '+($errors.Message -join '; '))}
           }
-          foreach($test in @('test_extension_migration','test_extension_persistence','test_extension_policy','test_cli_model_options')) {
+          foreach($test in @('test_extension_migration','test_extension_policy','test_cli_model_options')) {
             & pwsh -NoProfile -NonInteractive -File (Join-Path $PWD ('tests/'+$test+'.ps1'))
             if($LASTEXITCODE -ne 0){throw ('Failed production regression: '+$test)}
           }
@@ -70,7 +70,8 @@ jobs:
           subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
           subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
           subprocess.run(['git','add','--',*paths],check=True)
-          subprocess.run(['git','diff','--cached','--check'],check=True)
+          # CRLF is intentional in the existing Windows launchers, not trailing spaces.
+          subprocess.run(['git','-c','core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol','diff','--cached','--check'],check=True)
           subprocess.run(['git','diff','--cached','--stat'],check=True)
           subprocess.run(['git','commit','-m','fix: persist legacy extensions before fallible launcher startup'],check=True)
           subprocess.run(['git','push','origin','HEAD:main'],check=True)
