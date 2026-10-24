@@ -1841,7 +1841,10 @@ function Test-CredentialFile {
     $result = New-ScanResult -Path $Path -Entry $Entry
 
     if ($null -ne $Entry -and -not [string]::IsNullOrWhiteSpace($Entry.LoadError)) {
-        Set-DeletedResult -Result $result -Path $Path -Message $Entry.LoadError -Entry $Entry
+        # Inspection/parse failure is not proof of an invalid credential.
+        # ERROR_KEPT also excludes this entry from multi-account pruning.
+        $result.Status = "ERROR_KEPT"
+        $result.Message = "credential input could not be safely read or parsed; kept file"
         return [pscustomobject]$result
     }
 
@@ -1852,7 +1855,11 @@ function Test-CredentialFile {
         $result.Plan = $cred.Plan
         $result.Credential = $cred
     } catch {
-        Set-DeletedResult -Result $result -Path $Path -Message ("invalid json: " + (ConvertTo-SafeMessage $_.Exception.Message)) -Entry $Entry
+        # Includes file access errors and a missing/stale credential index.
+        # Do not delete a whole container when selecting one entry failed.
+        $result.Status = "ERROR_KEPT"
+        $result.Message = "credential input could not be safely read or parsed; kept file"
+        $result.Credential = $null
         return [pscustomobject]$result
     }
 
