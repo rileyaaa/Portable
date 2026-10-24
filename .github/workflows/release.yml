@@ -17,13 +17,10 @@ on:
         required: true
         default: full
         type: choice
-        options:
-          - full
-          - windows_fixes
+        options: [full, windows_fixes]
 
 permissions:
   contents: write
-
 concurrency:
   group: portable-official-release
   cancel-in-progress: false
@@ -32,6 +29,9 @@ jobs:
   release:
     runs-on: windows-latest
     timeout-minutes: 45
+    defaults:
+      run:
+        shell: powershell
     steps:
       - name: Check out selected commit and real LFS binaries
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -41,7 +41,6 @@ jobs:
 
       - name: Prepare package-local test state
         id: prepare
-        shell: powershell
         env:
           RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_CHECK_SET: ${{ inputs.check_set }}
@@ -75,11 +74,8 @@ jobs:
       - name: Run bundled Python and Node regression suites
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 5
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          # Fail on missing optional native PDF support instead of silently
-          # skipping its behavior suite on the actual Windows release runner.
           & .\tool\python\python.exe -B -c "import pymupdf, pymupdf4llm"
           if ($LASTEXITCODE -ne 0) { throw 'Bundled native PDF runtime is unavailable.' }
           & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
@@ -100,13 +96,12 @@ jobs:
       - name: Verify the native Codex version
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         timeout-minutes: 2
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $reported = & .\codex.exe --version
           if ($LASTEXITCODE -ne 0) { throw 'Native Codex version check failed.' }
           $expected = (Get-Content .\tool\runtime-manifest.json -Raw | ConvertFrom-Json).version
-          if (($reported -join "`n") -notmatch [regex]::Escape($expected)) { throw 'Client version mismatch.' }
+          if (($reported -join "`n").Trim() -cne ('codex-cli ' + $expected)) { throw 'Client version mismatch.' }
           Write-Output $reported
           [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
           $models = & .\codex.exe debug models --bundled
@@ -119,7 +114,6 @@ jobs:
       - name: Windows PowerShell 5.1 - test_portable_config
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 3
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_config.ps1 -BundledModelsPath .\tmp\windows-release-state\bundled-models.json
@@ -128,7 +122,6 @@ jobs:
       - name: Windows PowerShell 5.1 - test_portable_paths
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 8
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_paths.ps1
@@ -137,7 +130,6 @@ jobs:
       - name: Windows PowerShell 5.1 - test_instruction_paths
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 3
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_instruction_paths.ps1
@@ -146,7 +138,6 @@ jobs:
       - name: Windows PowerShell 5.1 - test_bootstrap_paths
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         timeout-minutes: 8
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_bootstrap_paths.ps1
@@ -155,7 +146,6 @@ jobs:
       - name: Windows PowerShell 5.1 - test_extension_policy
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 3
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_extension_policy.ps1
@@ -164,7 +154,6 @@ jobs:
       - name: Windows PowerShell 5.1 - test_runtime_preflight
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 8
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_runtime_preflight.ps1
@@ -173,7 +162,6 @@ jobs:
       - name: Windows PowerShell 5.1 - test_python_setup
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         timeout-minutes: 3
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_python_setup.ps1
@@ -182,7 +170,6 @@ jobs:
       - name: Windows PowerShell 5.1 - test_automation_paths
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         timeout-minutes: 3
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_automation_paths.ps1
@@ -191,7 +178,6 @@ jobs:
       - name: Windows PowerShell 5.1 - test_automation_process
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         timeout-minutes: 3
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_automation_process.ps1
@@ -200,7 +186,6 @@ jobs:
       - name: Windows PowerShell 5.1 - test_browser_login_flow
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 3
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_login_flow.ps1
@@ -209,7 +194,6 @@ jobs:
       - name: Windows PowerShell 5.1 - test_npm_entrypoints
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 8
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_npm_entrypoints.ps1
@@ -218,25 +202,30 @@ jobs:
       - name: Windows PowerShell 5.1 - test_system_policy
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         timeout-minutes: 3
-        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_system_policy.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_system_policy' }
 
-      - name: Exercise the real browser in an owned relocated fixture
-        timeout-minutes: 5
+      - name: Windows PowerShell 5.1 - test_launcher_smoke
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
+        timeout-minutes: 10
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_launcher_smoke' }
+
+      - name: Windows PowerShell 5.1 - test_browser_smoke
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
-        shell: powershell
+        timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Stop'
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_smoke.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Windows browser persistence or cleanup smoke test failed.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_browser_smoke' }
 
       - name: Build and verify release assets
-        if: ${{ inputs.publish_release && inputs.check_set == 'full' }}
+        if: ${{ success() && inputs.publish_release && inputs.check_set == 'full' }}
         id: package
-        shell: powershell
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
@@ -247,10 +236,12 @@ jobs:
           foreach ($name in @('output_dir','archive','manifest','checksums','source_commit')) {
             "$name=$($package.$name)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           }
+          Write-Output ("BUILT_ARCHIVE_SHA256=" + $package.archive_sha256)
+          Write-Output ("CUSTOMER_FILE_COUNT=" + $package.file_count)
 
-      - name: Publish a verified non-prerelease
-        if: ${{ inputs.publish_release && inputs.check_set == 'full' }}
-        shell: powershell
+      - name: Upload, read back and publish the verified release
+        if: ${{ success() && inputs.publish_release && inputs.check_set == 'full' }}
+        timeout-minutes: 10
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.version }}
@@ -261,29 +252,71 @@ jobs:
           RELEASE_CHECKSUMS: ${{ steps.package.outputs.checksums }}
         run: |
           $ErrorActionPreference = 'Stop'
-          # Abort on an existing tag or API failure; never overwrite another release.
           $tags = & git ls-remote --tags origin "refs/tags/$env:RELEASE_VERSION"
           if ($LASTEXITCODE -ne 0 -or $tags) { throw 'Release tag exists or could not be checked.' }
           $notes = Join-Path $env:RELEASE_DIRECTORY 'release-notes.txt'
           @(
             'Windows x64 portable package for text/Agent and Python/data workflows.',
             "Source commit: $env:RELEASE_COMMIT",
-            'Download the windows-x64.zip asset, extract it, and start with the BAT entry point.',
-            'SHA256SUMS and release-manifest.json identify the verified package.',
-            'Validated on Windows: bundled Python/Node regressions, PowerShell 5.1, BAT/NTFS fixtures, process stdio and native Codex version.',
-            'The single bundled Chromium passed relocated-path rendering/screenshot, persistent-cookie and explicit-cache-cleanup checks.',
+            "Full validation: https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID",
+            'Download the windows-x64.zip asset and verify it with SHA256SUMS.',
+            'Windows validation includes bundled Python/Node regressions, PowerShell 5.1, BAT/NTFS, process stdio and the pinned native client.',
+            'The complete BAT/launcher/client chain passed normal, Unicode/space-path relocation and maintenance configuration checks.',
+            'The single Chromium passed rendering, screenshot, persistent-cookie and explicit-cache-cleanup tests.',
+            'Uploaded draft assets are downloaded again and verified before publication.',
             'Not exercised: real account login, live Agent/Host tool calls, elevated sandbox initialization or real devices.',
-            'The customer ZIP excludes project tests, CI configuration and release-building scripts. The source checkout retains them.',
-            'Browser profile/cache stays inside cache/browser across tasks and is removed by the package cache cleaner.'
+            'Customer ZIP excludes first-party tests, CI, Git configuration, release builders and user state.',
+            'Browser data remains in cache/browser until the user runs the cache cleaner.'
           ) | Set-Content -LiteralPath $notes -Encoding UTF8
           & gh release create $env:RELEASE_VERSION $env:RELEASE_ARCHIVE $env:RELEASE_MANIFEST $env:RELEASE_CHECKSUMS --repo $env:GITHUB_REPOSITORY --target $env:RELEASE_COMMIT --title "Codex Portable $env:RELEASE_VERSION (Windows x64)" --notes-file $notes --draft
-          if ($LASTEXITCODE -ne 0) { throw 'Release draft/upload failed; inspect this run before retrying.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Release draft/upload failed; do not overwrite an existing release.' }
+          $download = Join-Path $env:RELEASE_DIRECTORY 'download-verification'
+          New-Item -ItemType Directory -Path $download | Out-Null
+          & gh release download $env:RELEASE_VERSION --repo $env:GITHUB_REPOSITORY --dir $download
+          if ($LASTEXITCODE -ne 0) { throw 'Draft asset read-back failed; release remains a draft.' }
+          $originals = @($env:RELEASE_ARCHIVE, $env:RELEASE_MANIFEST, $env:RELEASE_CHECKSUMS)
+          if (@(Get-ChildItem -LiteralPath $download -File -Force).Count -ne 3) { throw 'Unexpected remote asset count.' }
+          foreach ($original in $originals) {
+            $received = Join-Path $download ([IO.Path]::GetFileName($original))
+            if (-not (Test-Path -LiteralPath $received -PathType Leaf)) { throw 'A release asset was not returned.' }
+            $expected = (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash
+            if ((Get-FileHash -LiteralPath $received -Algorithm SHA256).Hash -cne $expected) { throw 'Downloaded asset differs from the tested local artifact.' }
+          }
+          $verifyScript = Join-Path $env:RELEASE_DIRECTORY 'verify-upload.py'
+          @'
+          import importlib.util, json, pathlib, sys
+          root, download, commit = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3]
+          spec = importlib.util.spec_from_file_location('release_builder', root/'tool'/'package-release.py')
+          builder = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(builder)
+          manifest = json.loads((download/'release-manifest.json').read_text(encoding='utf-8'))
+          assert manifest['source_commit'] == commit
+          assert manifest['package_kind'] == 'customer'
+          assert manifest['file_count'] == len(manifest['files'])
+          archive_name = manifest['archive']
+          assert pathlib.Path(archive_name).name == archive_name
+          for name in manifest['files']:
+              builder.safe_name(name)
+          included, excluded = builder.customer_files(list(manifest['files']))
+          assert not excluded
+          assert sum(pathlib.PurePosixPath(name).name.lower() == 'codex.exe' for name in included) == 1
+          builder.verify_zip(download/archive_name, manifest['files'])
+          print('REMOTE_ASSET_READBACK=PASS files=' + str(manifest['file_count']) + ' commit=' + commit)
+          '@ | Set-Content -LiteralPath $verifyScript -Encoding UTF8
+          & .\tool\python\python.exe -B $verifyScript $env:GITHUB_WORKSPACE $download $env:RELEASE_COMMIT
+          if ($LASTEXITCODE -ne 0) { throw 'Uploaded ZIP verification failed; release remains a draft.' }
           & gh release edit $env:RELEASE_VERSION --repo $env:GITHUB_REPOSITORY --draft=false --prerelease=false --latest
-          if ($LASTEXITCODE -ne 0) { throw 'Assets uploaded, but publication failed; the draft remains for review.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Verified upload could not be published; inspect the draft.' }
+          $remoteJson = & gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_VERSION"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not confirm the published release.' }
+          $remote = ($remoteJson -join "`n") | ConvertFrom-Json
+          if ($remote.draft -or $remote.prerelease -or $remote.tag_name -ne $env:RELEASE_VERSION -or @($remote.assets).Count -ne 3) { throw 'Published release metadata does not match.' }
+          Write-Output ("PUBLISHED_RELEASE=" + $remote.html_url)
+          Write-Output ("RELEASE_SOURCE_COMMIT=" + $env:RELEASE_COMMIT)
+          Write-Output ("RELEASE_SHA256=" + (Get-FileHash -LiteralPath $env:RELEASE_ARCHIVE -Algorithm SHA256).Hash)
 
       - name: Remove this runner's release and test files
         if: always()
-        shell: powershell
         env:
           RELEASE_DIRECTORY: ${{ steps.package.outputs.output_dir }}
         run: |
