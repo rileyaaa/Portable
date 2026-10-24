@@ -1,20 +1,23 @@
-:: Created by npm, please don't edit manually.
-@ECHO OFF
-
-SETLOCAL
-
-SET "NODE_EXE=%~dp0\node.exe"
-IF NOT EXIST "%NODE_EXE%" (
-  SET "NODE_EXE=node"
-)
-
-SET "NPM_PREFIX_JS=%~dp0\node_modules\npm\bin\npm-prefix.js"
-SET "NPM_CLI_JS=%~dp0\node_modules\npm\bin\npm-cli.js"
-FOR /F "delims=" %%F IN ('CALL "%NODE_EXE%" "%NPM_PREFIX_JS%"') DO (
-  SET "NPM_PREFIX_NPM_CLI_JS=%%F\node_modules\npm\bin\npm-cli.js"
-)
-IF EXIST "%NPM_PREFIX_NPM_CLI_JS%" (
-  SET "NPM_CLI_JS=%NPM_PREFIX_NPM_CLI_JS%"
-)
-
-"%NODE_EXE%" "%NPM_CLI_JS%" %*
+@echo off
+setlocal DisableDelayedExpansion
+rem Disable PowerShell caches before bootstrap validates any package directory.
+set "POWERSHELL_TELEMETRY_OPTOUT=1"
+set "PSModuleAnalysisCachePath=NUL"
+rem Portable npm entrypoint: never resolve a host Node or global npm installation.
+set "_CODEX_BOOTSTRAP_ROOT=%~dp0..\.."
+set "_CODEX_BOOTSTRAP_ENTRYDIR=%~dp0."
+set "_CODEX_BOOTSTRAP_CODE1=%~dp0node.exe"
+set "_CODEX_BOOTSTRAP_CODE2=%~dp0portable-npm.js"
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; try { function Check([string]$p,[bool]$file) { $p=[IO.Path]::GetFullPath($p); if($p -notmatch '^[A-Za-z]:\\' -or $p.Substring(2).Contains(':')){throw 'path'}; $chain=New-Object 'System.Collections.Generic.Stack[string]'; $c=$p; while($c){$chain.Push($c); $c=[IO.Path]::GetDirectoryName($c)}; while($chain.Count){$c=$chain.Pop(); $i=Get-Item -LiteralPath $c -Force -ErrorAction Stop; if(($i.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'reparse'}; if($c -eq $p -and $file){if($i.PSIsContainer -or $null -eq $i.PSObject.Properties['LinkType'] -or [string]$i.LinkType -eq 'HardLink' -or ([string]$i.Mode).Contains('l')){throw 'file'}}elseif(-not $i.PSIsContainer){throw 'parent'}}; return $p }; $r=Check $env:_CODEX_BOOTSTRAP_ROOT $false; $r=$r.TrimEnd('\'); $e=Check $env:_CODEX_BOOTSTRAP_ENTRYDIR $false; $cwd=[IO.Path]::GetFullPath([Environment]::CurrentDirectory); if(-not ($cwd.Equals($r,[StringComparison]::OrdinalIgnoreCase) -or $cwd.StartsWith($r+'\',[StringComparison]::OrdinalIgnoreCase))){throw 'cwd'}; $null=Check $cwd $false; foreach($raw in @($env:_CODEX_BOOTSTRAP_CODE1,$env:_CODEX_BOOTSTRAP_CODE2)){if($raw){$p=[IO.Path]::GetFullPath($raw); if(-not $p.StartsWith($r+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'boundary'}; $null=Check $p $true}}; exit 0 } catch { [Console]::Error.WriteLine('Safety stop: unsafe package/code/cwd; target NOT EXECUTED.'); exit 3 }"
+if errorlevel 1 exit /b 3
+set "NODE_OPTIONS="
+set "NODE_PATH="
+set "NODE_EXTRA_CA_CERTS="
+set "NODE_COMPILE_CACHE="
+set "NODE_V8_COVERAGE="
+set "NODE_REDIRECT_WARNINGS="
+set "OPENSSL_CONF="
+set "SSL_CERT_FILE="
+set "SSL_CERT_DIR="
+"%~dp0node.exe" "%~dp0portable-npm.js" npm %*
+exit /b %errorlevel%

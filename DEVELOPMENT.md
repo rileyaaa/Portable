@@ -19,8 +19,12 @@
 13. **GitHub Actions 只手动运行。** 所有工作流仅允许 `workflow_dispatch`，不添加 push、PR、定时或关联工作流自动触发。临时下载使用短保留期，不建立长期大文件缓存；产物取回并校验后及时删除本次 artifact、临时分支/发行附件及下载缓存。未能执行或清理须明确报告，不能将保留期代替主动清理。
 14. **及时提交并推送。** 每完成一批可独立验证、文档已同步的修改就提交并推送到用户指定仓库，不将大量已完成改动或多个提交长期堆在本地。推送前检查差异和测试，推送后核对远端提交；未完成的功能留待下一批，不能为赶进度发布已知损坏入口。
 15. **控制体积与重复能力。** 默认面向 DBA、Python 爬虫/数据处理和偶尔开发调试；保留常用运行依赖，低频 Go 编译和 Python EXE 打包优先放独立项目的手动 GitHub Actions，不自动补回编译工具。同一用途优先复用已装依赖；浏览器统一为一套 Playwright 和一份配套 Chromium，不并装 ChromeDriver、第二套浏览器或 Chrome DevTools MCP。先检查现有 API/CDP 是否能完成任务，再考虑新增工具并说明收益与体积。精简前核对上游查找路径、共享依赖和实际功能；不因文件名相似就删除官方助手或资源，不为体积牺牲已保留功能。所有可配置的 profile、下载、缓存、临时文件随包根移动；不能以“便携”名义隐藏系统权限或工具自身的限制。
-
 16. **客户发行内容。** 先在源码检出中完成验证，再从干净提交构建发行 ZIP。第一方测试、CI、Git 配置和开发打包器留在仓库，不进入客户包；临时文件、缓存、账号和本机配置不发布。保留运行依赖、许可证和四篇说明，逐项验证 ZIP 与来源清单。
+
+## 2026-10-24：Windows 验证与 npm 目录边界
+
+**原因与结果：** npm 的用户/全局配置虽位于包内，上游仍会从工作目录向父层发现项目 `.npmrc`。六个 npm/npx 入口现统一使用包内 Node 和固定项目根，保留经校验的显式包内 `--prefix`，配置和缓存路径先校验后加载；不依赖增加环境变量来假定隔离。实际 bundled npm 配置加载、参数保留及 Windows 入口纳入发布回归。
+
 ## 2026-10-23：发布复查与打包
 
 **精简决定：** 复核后没有可无损删去的大块内容。C/C++ PDF 开发文件及两份搜索程序最多约可省 10.5 MB 解压体积；用户明确选择保留现状，修复 bug 后发布。没有删除这些候选；测试保留在源码中，客户 ZIP 排除第一方测试、CI 和打包脚本，模式模板与转换器运行文件继续交付。
@@ -148,7 +152,7 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 
 | 检查 | 结果与范围 |
 | --- | --- |
-| Python unittest discovery | 88 项通过：便携路径、HTTP、运行包、Android、Office/PDF、固定依赖、模式副本、pip 隔离、浏览器安装与发行 ZIP 校验 |
+| Python unittest discovery | 89 项通过：便携路径、HTTP、运行包、Android、Office/PDF、固定依赖、模式副本、pip 隔离、浏览器安装与发行 ZIP 校验 |
 | `test_portable_config.ps1` | 13 项通过，2 项导出检查跳过；升级时另曾用匹配 0.163.0 的实际 bundled JSON 完成全部 15 项 |
 | `test_portable_paths.ps1` | 14 项通过：真实加载 env.ps1，覆盖 15 个派生路径、中文/空格、旧根、无关 cwd、移动目录及受保护/未审核变量；另验证真实启动器函数清除 Go/uv 变量、保留 Python/Node 路径、转发 header，并将 pip 配置禁用传到子进程和 TOML，不执行整个启动链 |
 | `test_python_setup.ps1` | 4 组通过：实际 pip 参数、配置禁用与子进程变量筛选、修复范围拒绝早于任何 pip 调用、完整祖先链接拒绝；不执行安装 |
@@ -159,9 +163,10 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 | `test_automation_paths.ps1` | 通过：子进程目录重定向、参数引用、越界/硬链接、先查祖先再遍历、只清理自有目录、任务开关与 PowerShell 解析；没有启动 Windows 程序 |
 | `test_automation_process.ps1` | 生产监督器 C# 编译通过；实际继承/捕获标准流需 Windows，Linux 明确跳过 |
 | `test_automation.js` | 10 项通过：实际固定版 MCP 初始化与工具筛选、拒绝未选任务、路径边界、禁止能力、依赖字节摘要；不启动浏览器 |
+| `test_portable_npm.js` / `test_npm_entrypoints.ps1` | 10 项真实 npm 配置回归、入口结构及语法检查通过；Windows 原生入口由手动工作流复验 |
 | `test_browser_login_flow.ps1` | 7 项离线检查通过：默认设备码、显式系统浏览器、非法值与失败无回退 |
 | `test_bootstrap_paths.ps1` | Linux 明确跳过；15 个 Windows BAT 普通/junction 用例未运行，不执行真实客户端 |
-| 语法、格式与 BAT 静态检查 | 全部 31 个第一方 PowerShell 文件解析通过，94 个第一方 Python 文件 AST 检查通过；5 个 BAT 的 ASCII/CRLF、Go/uv 变量清除、pip 配置禁用和祖先检查先于目录创建检查通过。按 CRLF 规则检查项目差异；保留的官方运行文件与 npm payload 字节未改写 |
+| 语法、格式与 BAT 静态检查 | 全部 31 个第一方 PowerShell 文件解析通过，94 个第一方 Python 文件 AST 检查通过；5 个 BAT 的 ASCII/CRLF、Go/uv 变量清除、pip 配置禁用和祖先检查先于目录创建检查通过。按 CRLF 规则检查项目差异；保留的官方 EXE/DLL、Playwright 依赖及原始 npm CLI 字节未改写；六个 npm/npx shim 为便携入口 |
 | 转换器 smoke / static audit | 通过；一个合成 fixture、四账号、17 种输出，命令见子项目 README |
 
 以下开发测试仅随 GitHub 源码提供，客户发行包不附带。在源码包根使用 Windows PowerShell 5.1 复验：
@@ -177,7 +182,10 @@ powershell.exe -NoProfile -File .\tests\test_runtime_preflight.ps1
 powershell.exe -NoProfile -File .\tests\test_python_setup.ps1
 powershell.exe -NoProfile -File .\tests\test_automation_paths.ps1
 powershell.exe -NoProfile -File .\tests\test_automation_process.ps1
-.\tool\node\node.exe --test .\tests\test_automation.js
+.\tool\node\node.exe --test .\tests\test_automation.js .\tests\test_portable_npm.js
+powershell.exe -NoProfile -File .\tests\test_browser_login_flow.ps1
+powershell.exe -NoProfile -File .\tests\test_npm_entrypoints.ps1
+powershell.exe -NoProfile -File .\tests\test_browser_smoke.ps1
 ```
 
 配置回归可用匹配客户端的 `debug models --bundled` 成功导出到包内临时 UTF-8 JSON 后，传入 `-BundledModelsPath` 启用另两项检查；先检查导出退出码。Windows 链接回归需 NTFS，创建符号链接可能需要 Developer Mode 或相应权限；Python 无此能力时明确 skip，PowerShell 指令测试会报错，都不算通过。

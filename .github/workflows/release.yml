@@ -73,6 +73,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Pinned browser payload verification failed.' }
           & .\tool\node\node.exe --test .\tests\test_automation.js
           if ($LASTEXITCODE -ne 0) { throw 'Browser tooling regression failure.' }
+          & .\tool\node\node.exe --test .\tests\test_portable_npm.js
+          if ($LASTEXITCODE -ne 0) { throw 'Portable npm regression failure.' }
           & .\tool\node\node.exe '.\Version_History\AI account format conversion\test\smoke.js'
           if ($LASTEXITCODE -ne 0) { throw 'Converter smoke failure.' }
           & .\tool\node\node.exe '.\Version_History\AI account format conversion\test\static-audit.js'
@@ -87,7 +89,7 @@ jobs:
           $testFailures = @()
           foreach ($test in @('test_portable_config','test_portable_paths','test_instruction_paths',
               'test_bootstrap_paths','test_extension_policy','test_runtime_preflight',
-              'test_python_setup','test_automation_paths','test_automation_process','test_browser_login_flow')) {
+              'test_python_setup','test_automation_paths','test_automation_process','test_browser_login_flow','test_npm_entrypoints')) {
             & $engine -NoProfile -ExecutionPolicy Bypass -File ".\tests\$test.ps1"
             if ($LASTEXITCODE -ne 0) { $testFailures += $test }
           }
