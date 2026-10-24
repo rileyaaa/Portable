@@ -1,0 +1,60 @@
+{
+  "allow": [
+    {
+      "url": "https://auth.openai.com/oauth/token",
+      "method": "POST"
+    },
+    {
+      "url": "https://chatgpt.com/backend-api/wham/usage",
+      "method": "GET"
+    },
+    {
+      "url": "https://chatgpt.com/backend-api/codex/models",
+      "method": "GET"
+    },
+    {
+      "url": "https://chatgpt.com/backend-api/codex/models?client_version=0.164.0",
+      "method": "GET"
+    },
+    {
+      "url": "https://chatgpt.com/backend-api/codex/models?client_version=0.0.0",
+      "method": "GET"
+    },
+    {
+      "url": "HTTPS://CHATGPT.COM:443/backend-api/codex/models?client_version=0.164.0",
+      "method": "GET"
+    },
+    {
+      "url": "https://chatgpt.com.:443/backend-api/codex/models?client_version=1.234.5",
+      "method": "GET"
+    }
+  ],
+  "deny": [
+    "https://chatgpt.com/backend-api/codex/models?",
+    "https://chatgpt.com/backend-api/codex/models?client_version=",
+    "https://chatgpt.com/backend-api/codex/models?client_version=0.164",
+    "https://chatgpt.com/backend-api/codex/models?client_version=0.164.0-beta",
+    "https://chatgpt.com/backend-api/codex/models?client_version=0.164.0&redirect=https://example.invalid",
+    "https://chatgpt.com/backend-api/codex/models?client_version=0.164.0&client_version=1.0.0",
+    "https://chatgpt.com/backend-api/codex/models?client_version=0.164.0;other=1",
+    "https://chatgpt.com/backend-api/codex/models?client_version=%30.164.0",
+    "https://chatgpt.com/backend-api/codex/models?client_version=0.164.0#fragment",
+    "https://chatgpt.com/backend-api/codex/models?CLIENT_VERSION=0.164.0",
+    "https://chatgpt.com/backend-api/codex/models?version=0.164.0",
+    "https://chatgpt.com/backend-api/codex/models?client_version=0.164.0?x=1",
+    "https://chatgpt.com/backend-api/codex/models?client_version=0.164.0%0a",
+    "https://chatgpt.com/backend-api/codex/models?client_version=0.164.0+",
+    "https://chatgpt.com/backend-api/codex/models?client_version=0.164.0 ",
+    "https://auth.openai.com/oauth/token?client_version=0.164.0",
+    "https://chatgpt.com/backend-api/wham/usage?client_version=0.164.0",
+    "https://chatgpt.com:444/backend-api/codex/models?client_version=0.164.0",
+    "http://chatgpt.com/backend-api/codex/models?client_version=0.164.0",
+    "https://example.invalid/backend-api/codex/models?client_version=0.164.0",
+    "https://chatgpt.com.example.invalid/backend-api/codex/models?client_version=0.164.0",
+    "https://user@chatgpt.com/backend-api/codex/models?client_version=0.164.0",
+    "https://chatgpt.com../backend-api/codex/models?client_version=0.164.0",
+    "https://chatgpt.com/backend-api/codex/../codex/models?client_version=0.164.0",
+    "https://chatgpt.com/backend-api/codex/models/?client_version=0.164.0",
+    "https://chatgpt.com/backend-api/codex/models?client_version=0.164.0\n"
+  ]
+}
