@@ -1,4 +1,4 @@
-# Temporary owner-authorized repair bridge; remove before corrective release.
+# Temporary owner-authorized dispatch bridge; remove before final release checkout.
 name: One-time final recheck
 on:
   push:
@@ -6,92 +6,40 @@ on:
     paths: [.github/workflows/recheck-once.yml]
   workflow_dispatch:
 permissions:
-  contents: write
-  actions: read
+  contents: read
+  actions: write
 jobs:
-  apply:
+  dispatch:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          fetch-depth: 1
-          lfs: false
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /.gitattributes
-            /run-codex.ps1
-            /Version_History/*-run-codex.ps1
-            /tests/test_extension_policy.ps1
-            /tests/test_extension_persistence.ps1
-            /tests/test_launcher_smoke.ps1
-            /README.md
-            /DEVELOPMENT.md
-      - name: Apply only the exact Windows-tested payload
+      - name: Dispatch the clean reviewed source after connector removal
         shell: python
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/recheck-dispatch
           PYTHONDONTWRITEBYTECODE: '1'
         run: |
-          import base64, hashlib, json, os, pathlib, re, subprocess, zlib
-          repo=os.environ['GITHUB_REPOSITORY']
-          def api(endpoint):
-              return json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/'+endpoint],text=True))
-          tested='aefbbdf911463f09609e036947336ec92c4c3d60'
-          job=api('actions/jobs/120809188630')
-          assert job['head_sha']==tested
-          steps={s['name']:s['conclusion'] for s in job['steps']}
-          for name in ('Apply the byte-checked minimal repair','Check production parsing, namespace regression and mode copies','Test real offline BAT and native MCP lifecycle'):
-              assert steps[name]=='success',name
-          record=api('contents/.github/workflows/recheck-once.yml?ref='+tested)
-          text=base64.b64decode(record['content']).decode('utf-8')
-          matches=re.findall(r"^          packed='([^']+)'$",text,re.M)
-          assert len(matches)==1
-          payload=zlib.decompress(base64.b64decode(matches[0],validate=True))
-          assert hashlib.sha256(payload).hexdigest()=='f24366026ce4dd8ae037861a76e7b654aaa078b77f8977fb1c938a69eb36f3c3'
-          ops=json.loads(payload);root=pathlib.Path.cwd();seen=set()
-          scratch=root/'tmp'/'extension-commit';scratch.mkdir(parents=True,exist_ok=False)
-          for op in ops:
-              name=op['path'];path=root/name
-              assert not pathlib.PurePosixPath(name).is_absolute() and '..' not in pathlib.PurePosixPath(name).parts
-              if 'create' in op:
-                  assert not path.exists()
-                  data=op['create'].encode('utf-8')
-              else:
-                  before=path.read_bytes() if name in seen else subprocess.check_output(['git','show','HEAD:'+name])
-                  assert hashlib.sha256(before).hexdigest()==op['before'],name
-                  if 'copy' in op:
-                      data=(root/op['copy']).read_bytes()
-                  else:
-                      text=before.decode('utf-8');crlf='\r\n' in text;text=text.replace('\r\n','\n')
-                      assert text.count(op['old'])==1,name
-                      text=text.replace(op['old'],op['new'],1)
-                      data=(text.replace('\n','\r\n') if crlf else text).encode('utf-8')
-              if 'after' in op:assert hashlib.sha256(data).hexdigest()==op['after'],name
-              path.write_bytes(data);seen.add(name)
-          assert len(seen)==8
-          subprocess.run(['git','config','core.autocrlf','false'],check=True)
-          subprocess.run(['git','add','--sparse','--',*sorted(seen)],check=True)
-          staged=[p.decode('utf-8') for p in subprocess.check_output(['git','diff','--cached','--name-only','-z']).split(b'\0') if p]
-          assert set(staged)==seen
-          for name in staged:
-              assert subprocess.check_output(['git','show',':'+name])==(root/name).read_bytes(),name
-          # CR is a CRLF terminator, not trailing whitespace. Keep other checks.
-          subprocess.run(['git','-c','core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol','diff','--cached','--check'],check=True)
-          subprocess.run(['git','diff','--cached','--stat','--ignore-space-at-eol'],check=True)
-          (scratch/'paths.json').write_text(json.dumps(sorted(seen)),encoding='utf-8')
-          print('EXACT_WINDOWS_TESTED_PAYLOAD=PASS files='+str(len(seen)))
-      - name: Commit the checked source and existing documentation
-        shell: bash
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix: preserve inactive extension settings during maintenance commands'
-          git push origin HEAD:main
-          printf 'REPAIR_COMMIT='
-          git rev-parse HEAD
-      - name: Remove owned commit scratch
+          import json, os, pathlib, subprocess, time
+          repo=os.environ['GITHUB_REPOSITORY']; bridge=os.environ['GITHUB_SHA']
+          scratch=pathlib.Path(os.environ['GH_CONFIG_DIR']);scratch.mkdir(parents=True,exist_ok=False)
+          def api(path):
+              return json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/'+path],text=True))
+          for attempt in range(36):
+              head=api('git/ref/heads/main')['object']['sha']
+              if head!=bridge:
+                  commit=api('commits/'+head)
+                  assert len(commit['parents'])==1 and commit['parents'][0]['sha']==bridge
+                  files=commit['files']
+                  assert len(files)==1 and files[0]['filename']=='.github/workflows/recheck-once.yml' and files[0]['status']=='removed'
+                  assert api('git/ref/heads/main')['object']['sha']==head
+                  subprocess.run(['gh','workflow','run','release.yml','--repo',repo,'--ref','main','-f','version=v2026.10.24.1','-f','check_set=full','-f','publish_release=true'],check=True)
+                  print('CORRECTIVE_FULL_RELEASE_DISPATCHED source='+head+' version=v2026.10.24.1')
+                  break
+              time.sleep(5)
+          else:
+              raise SystemExit('Temporary bridge removal was not observed within the finite deadline; nothing was dispatched.')
+      - name: Remove owned dispatch state
         if: always()
         shell: bash
-        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/extension-commit"
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/recheck-dispatch"
