@@ -1,0 +1,75 @@
+# Temporary owner-authorized regression bridge; remove before final release.
+name: One-time final recheck
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/recheck-once.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /run-codex.ps1
+      - name: Reproduce actual startup ordering on synthetic legacy configuration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $source=[IO.File]::ReadAllText((Join-Path $PWD 'run-codex.ps1'))
+          $tokens=$null;$errors=$null
+          $ast=[Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors)
+          if($errors.Count){throw 'Launcher parsing failed.'}
+          foreach($name in @('Get-PersistableCodexExtensionToml','Get-PortableExtensionCommandNamespace')) {
+            $fn=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst]},$true)|Where-Object{$_.Name -eq $name})
+            if($fn.Count -ne 1){throw 'Unexpected production function count.'}
+            . ([scriptblock]::Create($fn[0].Extent.Text))
+          }
+          $fixture=Join-Path $PWD 'tmp/legacy-extension-review'
+          $null=New-Item -ItemType Directory -Path $fixture -Force
+          $env:CODEX_HOME=$fixture
+          function Assert-PortablePath($Name,$Path) { if([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Path)) -cne $fixture){throw 'Unexpected fixture path.'} }
+          function Assert-PortableRegularInputFile($Name,$Path) { Assert-PortablePath $Name $Path }
+          $config=Join-Path $fixture 'config.toml'
+          $store=Join-Path $fixture 'portable-extensions.toml'
+          [IO.File]::WriteAllText($config,"[mcp_servers.saved]`ncommand = 'synthetic-not-executed'`n[plugins.'saved@local']`nenabled = false`n")
+          $start=$source.IndexOf('$GeneratedConfigPath = Join-Path')
+          $end=$source.IndexOf('# Windows /', $start)
+          if($start -lt 0 -or $end -le $start){throw 'Unexpected startup section.'}
+          . ([scriptblock]::Create($source.Substring($start,$end-$start)))
+          $rejected=$false
+          try{$null=Get-PortableExtensionCommandNamespace -Command mcp -AllowedNamespaces @()}catch{$rejected=$true}
+          if(-not $rejected -or -not $PreservedExtensionToml.Contains('[mcp_servers.saved]')){throw 'Expected startup state was not reproduced.'}
+          if((Test-Path -LiteralPath $config) -or (Test-Path -LiteralPath $store)){throw 'Expected legacy durability gap was not reproduced.'}
+          Write-Output 'REPRODUCED: legacy extensions exist only in memory after generated config removal; a later startup rejection loses them.'
+      - name: Stop publication of the reproduced legacy defect
+        shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/legacy-extension-review/gh
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          import json,os,pathlib,subprocess
+          pathlib.Path(os.environ['GH_CONFIG_DIR']).mkdir(parents=True,exist_ok=True)
+          endpoint='repos/'+os.environ['GITHUB_REPOSITORY']+'/actions/runs/40074589382'
+          run=json.loads(subprocess.check_output(['gh','api',endpoint],text=True))
+          assert run['head_sha']=='37b0318ea515bb358110ea6c257474beedaa196a'
+          if run['status']!='completed':
+              subprocess.run(['gh','api','--method','POST',endpoint+'/cancel'],check=True)
+              print('RELEASE_HELD_FOR_CONFIRMED_LEGACY_MIGRATION_FIX')
+          else:
+              assert run['conclusion']!='success','Release already completed; inspect before further publication.'
+              print('RELEASE_ALREADY_STOPPED',run['conclusion'])
+      - name: Remove owned synthetic state
+        if: always()
+        shell: bash
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/legacy-extension-review"
