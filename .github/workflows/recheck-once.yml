@@ -1,0 +1,59 @@
+# Temporary owner-authorized review bridge; remove before corrected release.
+name: One-time final recheck
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/recheck-once.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hold the in-flight release with the newly identified parser defect
+        shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/model-review/gh
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          import json,os,pathlib,subprocess
+          pathlib.Path(os.environ['GH_CONFIG_DIR']).mkdir(parents=True,exist_ok=False)
+          endpoint='repos/'+os.environ['GITHUB_REPOSITORY']+'/actions/runs/40073399090'
+          run=json.loads(subprocess.check_output(['gh','api',endpoint],text=True))
+          assert run['head_sha']=='4f8f9fab78cd61d2cf112699f95a854e4354bb9d'
+          if run['status']!='completed':
+              subprocess.run(['gh','api','--method','POST',endpoint+'/cancel'],check=True)
+              print('IN_FLIGHT_RELEASE_CANCELLATION_REQUESTED')
+          else:
+              assert run['conclusion']!='success','Release already completed; inspect before further publication.'
+              print('RELEASE_ALREADY_STOPPED',run['conclusion'])
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          lfs: false
+          filter: blob:none
+          clean: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /run-codex.ps1
+      - name: Reproduce exact production short-model parsing without launching a client
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $tokens=$null;$errors=$null
+          $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'run-codex.ps1'),[ref]$tokens,[ref]$errors)
+          if($errors.Count){throw 'Launcher parsing failed.'}
+          $fn=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-AndNormalizeCodexCliArgs'},$true))
+          if($fn.Count -ne 1){throw 'Unexpected CLI parser definition.'}
+          . ([scriptblock]::Create($fn[0].Extent.Text))
+          function Stop-UnsafeCodexCliArgument($Argument,$Reason){throw $Reason}
+          $PortableMaintenanceMode=$false;$ConfiguredAuthMode='api';$PreviousAuthMode=''
+          $inputArgs=New-Object 'System.Collections.Generic.List[string]'
+          $inputArgs.Add('-m=synthetic-model');$inputArgs.Add('--version')
+          $null=Test-AndNormalizeCodexCliArgs -InputArgs $inputArgs
+          if($script:CliModelOverride -cne '=synthetic-model'){throw 'Expected baseline mismatch was not reproduced.'}
+          Write-Output 'REPRODUCED: -m=synthetic-model incorrectly records =synthetic-model in generated settings.'
