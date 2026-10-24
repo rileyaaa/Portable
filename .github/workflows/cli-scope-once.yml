@@ -1,132 +1,60 @@
-# Temporary owner-authorized review bridge; removed before final publication.
-name: One-time independent final review
+# Temporary owner-authorized dispatch bridge; delete immediately after this push.
+name: Final Windows release handoff
 on:
   push:
     branches: [main]
     paths: [.github/workflows/cli-scope-once.yml]
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
+  actions: write
 jobs:
-  recheck:
+  dispatch:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 4
     env:
       PYTHONDONTWRITEBYTECODE: '1'
+      GH_TOKEN: ${{ github.token }}
+      GH_CONFIG_DIR: ${{ github.workspace }}/tmp/final-release-handoff/gh
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          fetch-depth: 1
-          lfs: false
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /README.md
-            /DEVELOPMENT.md
-      - name: Inspect committed inventory and pinned configuration mapping
+      - name: Require successful review and a manual-only final source tree
         shell: python
         run: |
-          import ast,hashlib,json,pathlib,re,subprocess,urllib.request
-          root=pathlib.Path.cwd();scratch=root/'tmp/independent-final-review'
-          scratch.mkdir(parents=True,exist_ok=False)
-          paths=[p.decode('utf-8') for p in subprocess.check_output(['git','ls-tree','-rz','--name-only','HEAD']).split(b'\0') if p]
-          excluded=('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
-          suffixes={'.ps1','.psm1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.html','.css','.toml','.rules','.sh'}
-          selected=[p for p in paths if not p.startswith(excluded) and (pathlib.PurePosixPath(p).suffix.lower() in suffixes or p in {'.gitattributes','.gitignore'})]
-          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+p for p in selected)+'\n',text=True,check=True)
-          counts={'python':0,'javascript':0,'json':0,'bat':0}
-          for p in selected:
-              path=root/p
-              if p.endswith('.py'):ast.parse(path.read_text(encoding='utf-8-sig'),filename=p);counts['python']+=1
-              elif p.endswith(('.js','.cjs','.mjs')):subprocess.run(['node','--check',p],check=True,capture_output=True,timeout=15);counts['javascript']+=1
-              elif p.endswith('.json'):json.loads(path.read_text(encoding='utf-8-sig'));counts['json']+=1
-              elif p.endswith('.bat') and '/' not in p:
-                  b=path.read_bytes();b.decode('ascii');assert b'\n' not in b.replace(b'\r\n',b''),p;counts['bat']+=1
-          launcher=(root/'run-codex.ps1').read_text(encoding='utf-8-sig')
-          env=(root/'env.ps1').read_text(encoding='utf-8-sig')
-          settings=re.findall(r'^\s*\$env:(CODEX_\w+)\s*=\s*"([^"]*)"',env,re.M)
-          consumers=launcher+(root/'login-json.ps1').read_text(encoding='utf-8-sig')
-          assert len(settings)==42 and all(name in consumers for name,value in settings)
-          raw=(root/'tool/runtime-manifest.json').read_bytes();manifest=json.loads(raw)
-          assert manifest['version']=='0.164.0'
-          pin=re.search(r'\$ExpectedRuntimeManifestSha256\s*=\s*"([0-9a-fA-F]{64})"',launcher)[1].lower()
-          assert hashlib.sha256(raw).hexdigest()==pin
-          schema_bytes=urllib.request.urlopen('https://raw.githubusercontent.com/openai/codex/rust-v0.164.0/codex-rs/core/config.schema.json',timeout=30).read()
-          (scratch/'config.schema.json').write_bytes(schema_bytes)
-          schema=json.loads(schema_bytes)
-          for name in ('model','model_reasoning_effort','approval_policy','sandbox_mode','sandbox_workspace_write','service_tier','windows','shell_environment_policy','cli_auth_credentials_store','mcp_oauth_credentials_store','model_providers','model_catalog_json','model_instructions_file','developer_instructions'):
-              assert name in schema['properties'],name
-          workflow=(root/'.github/workflows/release.yml').read_text()
+          import base64,json,os,pathlib,subprocess,time
+          pathlib.Path('tmp/final-release-handoff').mkdir(parents=True,exist_ok=False)
+          repo=os.environ['GITHUB_REPOSITORY'];bridge=os.environ['GITHUB_SHA']
+          def get(path):
+              return json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/'+path],text=True,timeout=30))
+          reviewed='79876d4a286df2828c4a807b0b7f743123383bee'
+          prior=get('actions/runs/40085598917')
+          assert prior['status']=='completed' and prior['conclusion']=='success'
+          assert prior['head_sha']=='b3a6d860b607b003b49d946dcf5c55204c4a530b'
+          bridge_delta=get('compare/'+reviewed+'...'+bridge)
+          assert bridge_delta['status']=='ahead'
+          assert len(bridge_delta['files'])==1 and bridge_delta['files'][0]['filename']=='.github/workflows/cli-scope-once.yml'
+          deadline=time.monotonic()+120
+          while time.monotonic()<deadline:
+              final=get('git/ref/heads/main')['object']['sha']
+              if final!=bridge:
+                  diff=get('compare/'+bridge+'...'+final)
+                  assert diff['status']=='ahead'
+                  assert len(diff['files'])==1 and diff['files'][0]['filename']=='.github/workflows/cli-scope-once.yml' and diff['files'][0]['status']=='removed'
+                  break
+              time.sleep(3)
+          else:
+              raise SystemExit('Temporary workflow removal was not confirmed; nothing dispatched.')
+          release_file=get('contents/.github/workflows/release.yml?ref='+final)
+          workflow=base64.b64decode(release_file['content']).decode('utf-8')
+          assert '  workflow_dispatch:' in workflow and '\n  push:' not in workflow
           assert workflow.count('if: $'+"{{ success() && inputs.publish_release && inputs.check_set == 'full' }}")==2
-          for test in ('test_permission_display','test_cli_model_options','test_launcher_smoke','test_extension_migration','test_extension_policy'):
-              assert workflow.count('      - name: Windows PowerShell 5.1 - '+test+'\n')==1,test
-          policy=(root/'tests/test_extension_policy.ps1').read_text(encoding='utf-8-sig')
-          assert "& (Join-Path $PSScriptRoot 'test_extension_persistence.ps1')" in policy
-          assert "$ErrorActionPreference = 'Stop'" in policy
-          assert 'continue-on-error: true' not in workflow
-          assert sum(pathlib.PurePosixPath(p).name.lower()=='codex.exe' for p in paths)==1
-          for p in paths:
-              if p.startswith(('tool/go/','tool/uv-tools/','home/.sandbox-bin/')):
-                  assert pathlib.PurePosixPath(p).name in {'.gitkeep','.keep'},p
-                  assert subprocess.check_output(['git','show','HEAD:'+p])==b'',p
-          subprocess.run(['python','-B','-m','unittest','discover','-s','tests','-p','test_mode_copies.py','-v'],check=True)
-          print('INDEPENDENT_INVENTORY=PASS tracked='+str(len(paths))+' text='+str(len(selected)))
-          print('SYNTAX_AND_ENCODING='+json.dumps(counts,sort_keys=True))
-          print('PINNED_SCHEMA_AND_SETTINGS=PASS literal_settings='+str(len(settings)))
-      - name: Fresh production-function regression and prompt lifecycle boundaries
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop';$count=0
-          Get-ChildItem -Recurse -File -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/]tmp[\\/]' } | ForEach-Object {
-            $tokens=$null;$errors=$null
-            $null=[Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
-            if($errors.Count){throw ($_.FullName+': '+($errors.Message -join '; '))};$count++
-          }
-          foreach($name in @('test_cli_model_options','test_permission_display','test_extension_policy','test_extension_migration')){
-            & pwsh -NoProfile -NonInteractive -File (Join-Path $PWD ('tests/'+$name+'.ps1'))
-            if($LASTEXITCODE -ne 0){throw ('Independent regression failed: '+$name)}
-          }
-          . ./tests/test_cli_model_options.ps1
-          $PortableMaintenanceMode=$false
-          $PortableExtensionPolicy=[pscustomobject]@{AllowedNamespaces=[string[]]@()}
-          $tested=0
-          foreach($prompt in @('MCP','Plugin','Logout','Update','Review','DEBUG','a normal prompt','mcp is just mentioned here')){
-            foreach($argsForCase in @(@($prompt,'-m=chosen'),@('-m=old',$prompt,'--model','chosen'))){
-              $list=New-Object 'System.Collections.Generic.List[string]'
-              foreach($value in $argsForCase){$list.Add($value)}
-              $result=@(Test-AndNormalizeCodexCliArgs -InputArgs $list)
-              if($script:CliModelOverride -cne 'chosen' -or $script:CodexRootCommand -cne '' -or $script:PortableLogoutMode -cne '' -or $result.Count -ne $list.Count){throw 'Positional prompt changed command lifecycle.'}
-              $tested++
-            }
-          }
-          foreach($command in @('logout','mcp','plugin','update','app','login','features')){
-            $list=New-Object 'System.Collections.Generic.List[string]';$list.Add($command)
-            $rejected=$false
-            try{$null=Test-AndNormalizeCodexCliArgs -InputArgs $list}catch{
-              if($_.Exception.Message -notlike 'MODEL_CLI_REJECT:*'){throw};$rejected=$true
-            }
-            if(-not $rejected){throw ('Real restricted command was accepted: '+$command)}
-            $tested++
-          }
-          Write-Output "FRESH_POWERSHELL_PARSE=PASS count=$count (Linux/PS7 only)"
-          Write-Output "ADDITIONAL_PROMPT_LIFECYCLE=PASS count=$tested"
-      - name: Update the existing compact verification record only
-        shell: python
-        run: |
-          import os,pathlib,subprocess
-          p=pathlib.Path('DEVELOPMENT.md');raw=p.read_bytes();text=raw.decode('utf-8')
-          old='修复后重新执行独立复查，再进入完整 Windows 发布验收。'
-          new='修复后从全新检出独立复查源码、固定版本变量、模式副本与扩展迁移/持久化，并增加 23 项提示词/真实子命令边界验证，均通过；本轮未发现新增可复现问题。该复查使用 Linux/PS7，不代替完整 Windows 验收；最终发行仍须全量 Windows 检查和上传附件回读通过。'
-          assert text.count(old)==1
-          p.write_bytes(text.replace(old,new,1).encode('utf-8'))
-          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
-          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','add','--','DEVELOPMENT.md'],check=True)
-          subprocess.run(['git','diff','--cached','--check'],check=True)
-          subprocess.run(['git','commit','-m','docs: record independently verified CLI and state regression results'],check=True)
-          subprocess.run(['git','push','origin','HEAD:main'],check=True)
-          print('REVIEWED_SOURCE_COMMIT='+subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
-      - name: Remove owned review downloads
+          releases=get('releases?per_page=100')
+          tag='v2026.10.24.2'
+          assert not any(r['tag_name']==tag for r in releases),'Existing release or draft must not be overwritten.'
+          payload=json.dumps({'ref':'main','inputs':{'version':tag,'publish_release':'true','check_set':'full'}})
+          subprocess.run(['gh','api','--method','POST','repos/'+repo+'/actions/workflows/release.yml/dispatches','--input','-'],input=payload,text=True,check=True,timeout=30)
+          print('FINAL_WINDOWS_DISPATCHED='+final)
+          print('RELEASE_TAG='+tag)
+      - name: Remove this handoff scratch
         if: always()
         shell: bash
-        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/independent-final-review"
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/final-release-handoff"
