@@ -3379,6 +3379,23 @@ function Invoke-CodexChild {
 # ------------------------------------------------------------
 Set-Location $PortableWork
 
+$WriteScopeDisplay = if ($SandboxMode -eq "danger-full-access") {
+    "YOLO （沙箱关闭；不限制包外写入）"
+} elseif ($SandboxMode -eq "read-only") {
+    "READ-ONLY （只读沙箱；不代表宿主进程完全不写入）"
+} elseif ($PortableMaintenanceMode) {
+    "MAINTENANCE （workspace-write；整个便携包可写，审批提升另计）"
+} else {
+    "SAFE （workspace-write；默认 work/tmp，审批提升另计）"
+}
+$ShellNetworkDisplay = if ($SandboxMode -eq "danger-full-access") {
+    "unrestricted （danger-full-access；沙箱不限制本地命令网络）"
+} elseif ($SandboxMode -eq "read-only") {
+    "policy （read-only；不使用 workspace-write 网络配置）"
+} else {
+    "$SandboxNetworkAccess ($(if ($SandboxNetworkAccess -eq 'true') { '本地命令可联网' } else { '本地命令默认断网' }))"
+}
+
 Write-Host "Codex Portable 严格便携模式已启动" -ForegroundColor Green
 Write-Host "Root          : $Root"
 Write-Host "Auth          : $CodexAuthDisplay"
@@ -3390,7 +3407,7 @@ Write-Host "Fast          : $(if ($FastModeEnabled) { 'ON (service_tier=priority
 Write-Host "Reasoning     : $(if ([string]::IsNullOrWhiteSpace($ReasoningEffort)) { '默认 — 未指定,用模型自带默认(codex 界面显示 default)' } else { $ReasoningEffort + ' (来源: ' + $ReasoningSettingSource + ')' })"
 $ModalitiesDisplay = if ($ModelModalitiesKnown) { $ModelInputModalities -join "+" } else { "auto (unknown model -> Codex compatibility default)" }
 Write-Host "Modalities    : $ModalitiesDisplay ($(if ($ModelAllowsImage) { 'image_generation 按 Codex 默认' } else { 'image_generation 已禁用' }))"
-Write-Host "ShellNetwork  : $SandboxNetworkAccess ($(if ($SandboxNetworkAccess -eq 'true') { '本地命令可联网' } else { '本地命令默认断网' }))"
+Write-Host "ShellNetwork  : $ShellNetworkDisplay"
 if ($ProviderMode -eq "local_ollama") {
     Write-Host "Transport     : HTTP/SSE（local_ollama 固定 supports_websockets=false）"
 } elseif ($ProviderMode -eq "custom_provider") {
@@ -3414,7 +3431,7 @@ if ($EnablePlugins -and (Test-Path -LiteralPath $PluginRoot) -and (Test-Path -Li
 }
 Write-Host "Proxy         : $ProxyDisplay"
 Write-Host "CODEX_HOME    : $env:CODEX_HOME"
-Write-Host ("写入范围      : " + $(if ($PortableMaintenanceMode) { "MAINTENANCE（整个便携包可写）" } else { "SAFE（仅 work/tmp；缓存按会话隔离）" }))
+Write-Host ("写入范围      : " + $WriteScopeDisplay)
 if (-not $PortableMaintenanceMode -and -not [string]::IsNullOrWhiteSpace($PortableSessionState)) { Write-Host "SessionCache  : $PortableSessionState" }
 Write-Host "Config        : $ConfigPath"
 Write-Host "Workdir       : $(Get-Location)"
