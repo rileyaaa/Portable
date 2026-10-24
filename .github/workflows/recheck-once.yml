@@ -1,4 +1,4 @@
-# Temporary owner-authorized repair bridge; remove before final publication.
+# Temporary owner-authorized review/dispatch bridge; remove before publication.
 name: One-time final recheck
 on:
   push:
@@ -7,77 +7,129 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  actions: write
 jobs:
-  repair:
+  recheck:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          fetch-depth: 3
+          fetch-depth: 1
           lfs: false
           filter: blob:none
           sparse-checkout-cone-mode: false
           sparse-checkout: |
-            /run-codex.ps1
-            /env.ps1
             /README.md
             /DEVELOPMENT.md
-            /Version_History/*.ps1
-            /tests/
-            /tool/automation/portable-automation.ps1
-      - name: Apply exact reviewed payload with a strict digest guard
+      - name: Fresh committed-source and pinned configuration review
         shell: python
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: |
-          import base64,hashlib,pathlib,subprocess,zlib
-          recorded=subprocess.check_output(['git','show','b30c1c9c9ebf32a44593b164f99709941678b0bb:.github/workflows/recheck-once.yml'],text=True)
-          encoded=recorded.split("encoded = '",1)[1].split("'",1)[0]
-          assert encoded.count('gKxKitEN')==1 and encoded.count('lu4GPELk')==1
-          encoded=encoded.replace('gKxKitEN','gKxadlako0sGSUGvLeL5jbiuLLtVivw7UOquAiqXHVcYlouIJEBlbtIiWUaK0SxKitEN').replace('lu4GPELk','lu4GgPELk')
-          assert len(encoded)==8316,'Unexpected payload length'
-          raw=zlib.decompress(base64.b64decode(encoded,validate=True))
-          assert hashlib.sha256(raw).hexdigest()=='c935f056463107f1745452b7c33e00ba40b53b869954486aa8eced30579e6af5','Patch digest mismatch'
-          scratch=pathlib.Path('tmp/migration-repair')
+          import ast,hashlib,json,pathlib,re,subprocess,urllib.request
+          root=pathlib.Path.cwd();scratch=root/'tmp'/'second-review'
           scratch.mkdir(parents=True,exist_ok=False)
-          (scratch/'apply.py').write_bytes(raw)
-          exec(compile(raw,str(scratch/'apply.py'),'exec'),{})
-      - name: Parse changed scripts and execute production lifecycle regressions
+          names=[p.decode('utf-8') for p in subprocess.check_output(['git','ls-tree','-rz','--name-only','HEAD']).split(b'\0') if p]
+          excluded=('tool/python/','tool/node/node_modules/','tool/automation/playwright/','tool/automation/browsers/')
+          suffixes={'.ps1','.psm1','.py','.js','.cjs','.mjs','.bat','.cmd','.md','.json','.yml','.yaml','.txt','.html','.css','.toml','.rules','.in','.lock'}
+          selected=[p for p in names if not p.startswith(excluded) and (pathlib.PurePosixPath(p).suffix.lower() in suffixes or p in ('.gitattributes','.gitignore','tool/node/npm','tool/node/npx'))]
+          subprocess.run(['git','sparse-checkout','set','--no-cone','--stdin'],input='\n'.join('/'+p for p in selected)+'\n',text=True,check=True)
+          expected={'run-codex.ps1':'2437256dc1c58070fe826f5f6a9ad8d6877b40d50401bd7c30d88bb86ea19051','tests/test_extension_migration.ps1':'059e5352746db5f502b1b374945fe121378cc38a0f07de180ee7cbe771b90040','tests/test_extension_policy.ps1':'45f73f42a9647d24ec5d6524fbc103cafb8305e69a52689cb72b4c6857ee3e31','tests/test_launcher_smoke.ps1':'e9b6db42c19550dc1df3ba8543575d1c0c0db0c1bbd3af769c98471341210497'}
+          for p,digest in expected.items():assert hashlib.sha256((root/p).read_bytes()).hexdigest()==digest,p
+          py=js=bats=0
+          for p in selected:
+              if p.endswith('.py'):ast.parse((root/p).read_text(encoding='utf-8-sig'),filename=p);py+=1
+              elif p.endswith(('.js','.cjs','.mjs')):subprocess.run(['node','--check',p],capture_output=True,check=True,timeout=15);js+=1
+              elif p.endswith('.bat') and '/' not in p:
+                  b=(root/p).read_bytes();b.decode('ascii');assert b'\n' not in b.replace(b'\r\n',b''),p;bats+=1
+          subprocess.run(['python','-B','-m','unittest','discover','-s','tests','-p','test_mode_copies.py','-v'],check=True,timeout=30)
+          launcher=(root/'run-codex.ps1').read_text(encoding='utf-8-sig')
+          env=(root/'env.ps1').read_text(encoding='utf-8-sig')
+          consumers=launcher+(root/'login-json.ps1').read_text(encoding='utf-8-sig')
+          settings=re.findall(r'^\s*\$env:(CODEX_\w+)\s*=\s*"([^"]*)"',env,re.M)
+          assert len(settings)==42 and all(name in consumers for name,value in settings)
+          assert launcher.index('$PreservedExtensionToml = Initialize-PortableExtensionStore')<launcher.index('Remove-Item -LiteralPath $GeneratedConfigPath')
+          assert 'Write-Utf8TextAtomic -Path $ExtensionStorePath -Text $PreservedExtensionToml' not in launcher
+          workflow=(root/'.github/workflows/release.yml').read_text()
+          for test in ('test_extension_migration','test_cli_model_options','test_launcher_smoke'):assert '-File .\\tests\\'+test+'.ps1' in workflow
+          assert workflow.count("if: ${{ success() && inputs.publish_release && inputs.check_set == 'full' }}")==2
+          manifest=json.loads((root/'tool/runtime-manifest.json').read_text())
+          pin=re.search(r'\$ExpectedRuntimeManifestSha256\s*=\s*"([0-9a-fA-F]{64})"',launcher)[1].lower()
+          assert hashlib.sha256((root/'tool/runtime-manifest.json').read_bytes()).hexdigest()==pin
+          upstream='https://raw.githubusercontent.com/openai/codex/rust-v'+manifest['version']+'/codex-rs/'
+          for name,path in (('schema','core/config.schema.json'),('features','features/src/lib.rs')):
+              with urllib.request.urlopen(upstream+path,timeout=30) as response:data=response.read()
+              (scratch/(name+'.txt')).write_bytes(data)
+          schema=json.loads((scratch/'schema.txt').read_text());features=(scratch/'features.txt').read_text()
+          for key in ('model','model_context_window','model_catalog_json','model_instructions_file','model_reasoning_effort','sandbox_mode','approval_policy','service_tier','shell_environment_policy','sandbox_workspace_write','windows','cli_auth_credentials_store','mcp_oauth_credentials_store'):assert key in schema['properties'],key
+          for key in ('fast_mode','apps','plugins','plugin_sharing','in_app_voice','in_app_dictation','image_generation'):
+              spec=re.search(r'key:\s*"'+key+r'",\s*stage:\s*Stage::(\w+)',features)
+              assert spec and spec[1] not in ('Removed','Deprecated'),key
+          print('SECOND_REVIEW_SOURCE=PASS python='+str(py)+' javascript='+str(js)+' bat='+str(bats)+' settings='+str(len(settings))+' pinned_version='+manifest['version'])
+      - name: Fresh PowerShell parse and production regression round
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $paths=Get-Content -LiteralPath tmp/review-patched-paths.json -Raw | ConvertFrom-Json
-          foreach($path in $paths | Where-Object { $_ -like '*.ps1' }) {
+          $count=0
+          Get-ChildItem -Recurse -File -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/]tmp[\\/]' } | ForEach-Object {
             $tokens=$null;$errors=$null
-            $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $path),[ref]$tokens,[ref]$errors)
-            if($errors.Count){throw ($path+': '+($errors.Message -join '; '))}
+            $null=[Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$tokens,[ref]$errors)
+            if($errors.Count){throw ($_.FullName+': '+($errors.Message -join '; '))}
+            $count++
           }
           foreach($test in @('test_extension_migration','test_extension_policy','test_cli_model_options')) {
             & pwsh -NoProfile -NonInteractive -File (Join-Path $PWD ('tests/'+$test+'.ps1'))
-            if($LASTEXITCODE -ne 0){throw ('Failed production regression: '+$test)}
+            if($LASTEXITCODE -ne 0){throw ('Fresh regression failed: '+$test)}
           }
-          & python -B -m unittest discover -s tests -p test_mode_copies.py -v
-          if($LASTEXITCODE -ne 0){throw 'Mode-copy regression failed.'}
-      - name: Commit only the verified repair and existing documentation
+          Write-Output "SECOND_REVIEW_POWERSHELL=PASS parsed=$count (Windows execution still required)"
+      - name: Record one concise result in the existing development paragraph
         shell: python
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: |
-          import json,pathlib,subprocess
-          paths=json.loads(pathlib.Path('tmp/review-patched-paths.json').read_text())
-          assert len(paths)==8 and len(set(paths))==8
+          import pathlib,subprocess
+          path=pathlib.Path('DEVELOPMENT.md');text=path.read_text(encoding='utf-8')
+          key='**扩展配置回写复查：**'
+          lines=text.splitlines(keepends=True);hits=[i for i,line in enumerate(lines) if line.startswith(key)]
+          assert len(hits)==1
+          i=hits[0]
+          addition='修复后从新检出的提交再次核对启动失败恢复、命名空间回写、CLI、模式副本、固定版本变量与发行门禁，专项回归均通过，未发现新增可复现问题；Linux/PS7 结果不替代随后完整 Windows 发布验收。'
+          assert addition not in text
+          lines[i]=lines[i].rstrip('\n')+' '+addition+'\n'
+          path.write_text(''.join(lines),encoding='utf-8')
           subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
           subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','add','--',*paths],check=True)
-          # CRLF is intentional in the existing Windows launchers, not trailing spaces.
-          subprocess.run(['git','-c','core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol','diff','--cached','--check'],check=True)
-          subprocess.run(['git','diff','--cached','--stat'],check=True)
-          subprocess.run(['git','commit','-m','fix: persist legacy extensions before fallible launcher startup'],check=True)
+          subprocess.run(['git','add','--','DEVELOPMENT.md'],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          subprocess.run(['git','commit','-m','docs: record independent post-fix review without overstating Windows coverage'],check=True)
           subprocess.run(['git','push','origin','HEAD:main'],check=True)
-      - name: Remove owned repair scratch
+          print('REVIEWED_DOCUMENT_COMMIT='+subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
+      - name: Dispatch full validation only after this temporary bridge is removed
+        shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_CONFIG_DIR: ${{ github.workspace }}/tmp/second-review/gh
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          import json,os,subprocess,time
+          repo=os.environ['GITHUB_REPOSITORY']
+          reviewed=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          for attempt in range(180):
+              remote=json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/git/ref/heads/main'],text=True))['object']['sha']
+              if remote!=reviewed:
+                  subprocess.run(['git','fetch','--depth=1','origin',remote],check=True)
+                  diff=subprocess.check_output(['git','diff','--name-status',reviewed,remote],text=True).strip()
+                  if diff!='D\t.github/workflows/recheck-once.yml':raise SystemExit('Source changed after review; release not dispatched.')
+                  release=json.loads(subprocess.check_output(['gh','api','repos/'+repo+'/releases?per_page=100'],text=True))
+                  assert not any(r['tag_name']=='v2026.10.24.1' for r in release),'Release already exists; never overwrite it.'
+                  payload=json.dumps({'ref':'main','inputs':{'version':'v2026.10.24.1','publish_release':'true','check_set':'full'}})
+                  subprocess.run(['gh','api','--method','POST','repos/'+repo+'/actions/workflows/release.yml/dispatches','--input','-'],input=payload,text=True,check=True)
+                  print('FULL_WINDOWS_RELEASE_DISPATCHED source='+remote+' version=v2026.10.24.1')
+                  break
+              time.sleep(2)
+          else:raise SystemExit('Temporary bridge was not removed within the bounded dispatch window.')
+      - name: Remove owned review downloads
         if: always()
         shell: bash
-        run: |
-          rm -rf -- "$GITHUB_WORKSPACE/tmp/migration-repair"
-          rm -f -- "$GITHUB_WORKSPACE/tmp/review-patched-paths.json"
+        run: rm -rf -- "$GITHUB_WORKSPACE/tmp/second-review"
