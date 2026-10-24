@@ -66,9 +66,6 @@ jobs:
                       raise ValueError("request URL or query is outside the fixed login contract")
                   if method != expected_method:
           '''
-          # Remove YAML's extra ten columns from continuation lines only.
-          lines=new.splitlines(keepends=True)
-          new=lines[0]+''.join(line[10:] if line.startswith('          ') else line for line in lines[1:])
           assert text.count(old)==1;text=text.replace(old,new,1);source.write_text(text,encoding='utf-8',newline='')
           test=Path('tests/test_login_input_errors.ps1')
           extra='''
