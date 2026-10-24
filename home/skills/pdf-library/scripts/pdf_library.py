@@ -251,12 +251,14 @@ def _database(library: Path, *, create=False):
     if not create:
         connection.execute("PRAGMA query_only=ON")
         return connection
-    connection.execute("PRAGMA journal_mode=DELETE")
+    # Establish ownership before any persistent PRAGMA. Views and other schema
+    # objects also identify a nonempty, unowned database; do not adopt it.
     if identity == 0 and connection.execute(
-        "SELECT count(*) FROM sqlite_master WHERE type='table'"
+        "SELECT count(*) FROM sqlite_master"
     ).fetchone()[0]:
         connection.close()
         raise ValueError("Refusing an unrelated SQLite database")
+    connection.execute("PRAGMA journal_mode=DELETE")
     connection.executescript(f"""
         PRAGMA application_id={APPLICATION_ID};
         CREATE TABLE IF NOT EXISTS documents(
