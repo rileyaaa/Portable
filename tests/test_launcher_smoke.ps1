@@ -12,7 +12,7 @@ $utf8 = New-Object Text.UTF8Encoding($false)
 $entry = ([string][char]0x542f + [char]0x52a8 + 'Codex.bat')
 $maintenance = ([string][char]0x542f + [char]0x52a8 + 'Codex-' + [char]0x7ef4 + [char]0x62a4 + [char]0x6a21 + [char]0x5f0f + '.bat')
 function Invoke-OwnedSmokeProcess {
-    param([Diagnostics.ProcessStartInfo]$StartInfo)
+    param([Diagnostics.ProcessStartInfo]$StartInfo, [switch]$ExpectFailure)
     $p = New-Object Diagnostics.Process
     $p.StartInfo = $StartInfo
     try {
@@ -24,6 +24,10 @@ function Invoke-OwnedSmokeProcess {
             throw 'Owned launcher smoke process exceeded its finite deadline.'
         }
         $stdout = $out.GetAwaiter().GetResult(); $stderr = $err.GetAwaiter().GetResult()
+        if ($ExpectFailure) {
+            if ($p.ExitCode -eq 0) { throw 'Expected launcher rejection did not occur.' }
+            return ($stdout + "`n" + $stderr)
+        }
         if ($p.ExitCode -ne 0) { throw ('Synthetic launcher smoke failed; exit=' + $p.ExitCode + "`n" + $stdout + "`n" + $stderr) }
         return $stdout
     } finally {
@@ -122,6 +126,27 @@ print('PASS full launcher generated configuration: ' + mode)
         if ($LASTEXITCODE -ne 0) { throw 'Full launcher generated configuration did not match the portable contract.' }
         Write-Output ('PASS real BAT/native launch: ' + $case)
     }
+    # A real offline maintenance lifecycle must keep the inactive plugin sidecar.
+    # These stdio entries are synthetic non-existent commands; add/list/remove
+    # manage configuration only and must never launch an MCP server.
+    $store = Join-Path $fixture 'home/portable-extensions.toml'
+    $seed = "[mcp_servers.existing]`ncommand = 'synthetic-never-executed'`n[plugins.'saved@local']`nenabled = false`n"
+    [IO.File]::WriteAllText($store, $seed, $utf8)
+    $seedHash = (Get-FileHash -LiteralPath $store -Algorithm SHA256).Hash
+    $start.Arguments = '/d /s /c ""' + (Join-Path $fixture $maintenance) + '" mcp list"'
+    $denied = Invoke-OwnedSmokeProcess -StartInfo $start -ExpectFailure
+    if ($denied -notmatch 'Extension configuration management requires') { throw 'MCP command failed for an unexpected reason.' }
+    if ((Get-FileHash -LiteralPath $store -Algorithm SHA256).Hash -cne $seedHash) { throw 'Inactive command changed saved extensions.' }
+    [IO.File]::AppendAllText((Join-Path $fixture 'env.local.ps1'), "`n" + '$env:CODEX_PORTABLE_ALLOW_USER_MCP = "true"' + "`n", $utf8)
+    foreach ($command in @('mcp add added -- synthetic-never-executed', 'mcp list', 'mcp remove added', 'mcp remove existing')) {
+        $start.Arguments = '/d /s /c ""' + (Join-Path $fixture $maintenance) + '" --portable-extensions ' + $command + '"'
+        $null = Invoke-OwnedSmokeProcess -StartInfo $start
+        $saved = [IO.File]::ReadAllText($store)
+        if ($saved -notmatch '\[plugins\.' -or $saved -notmatch 'saved@local') { throw 'Native MCP command lost the inactive plugin settings.' }
+        if ($command -eq 'mcp add added -- synthetic-never-executed' -and ($saved -notmatch '\[mcp_servers.added\]' -or $saved -notmatch '\[mcp_servers.existing\]')) { throw 'Native MCP add did not retain both servers.' }
+    }
+    if ([IO.File]::ReadAllText($store) -match '\[mcp_servers\.') { throw 'Deleted last MCP entry was resurrected.' }
+    Write-Output 'PASS real maintenance MCP add/list/remove and inactive plugin preservation'
     if ([IO.File]::ReadAllText((Join-Path $oldRoot 'env.local.ps1')) -cne 'SENTINEL - obsolete path must not be read') { throw 'Old fixture was modified.' }
 } finally {
     Remove-AutomationSession -Root $root -Path $owned

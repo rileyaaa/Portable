@@ -324,6 +324,7 @@ plugins = true
         } finally { $env:CODEX_HOME = $OldCodexHome }
     }
     Write-Output "$script:Passed extension-policy checks passed."
+    & (Join-Path $PSScriptRoot 'test_extension_persistence.ps1')
 } finally {
     if (Test-Path -LiteralPath $FixtureRoot -PathType Container) {
         Remove-Item -LiteralPath $FixtureRoot -Recurse -Force

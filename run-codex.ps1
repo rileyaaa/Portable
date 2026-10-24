@@ -695,6 +695,41 @@ function Get-PersistableCodexExtensionToml {
     if ($out.Count -eq 0) { return "" }
     return (($out -join [Environment]::NewLine).Trim() + [Environment]::NewLine)
 }
+# A maintenance command must see its complete namespace, not a filtered view.
+function Get-PortableExtensionCommandNamespace {
+    param(
+        [ValidateSet('mcp','plugin')][string]$Command,
+        [AllowEmptyCollection()][string[]]$AllowedNamespaces = @()
+    )
+    $namespace = if ($Command -eq 'mcp') { 'mcp_servers' } else { 'plugins' }
+    if ($namespace -cnotin @($AllowedNamespaces)) {
+        $setting = if ($Command -eq 'mcp') { 'CODEX_PORTABLE_ALLOW_USER_MCP' } else { 'CODEX_ENABLE_PLUGINS' }
+        throw ("Extension configuration management requires --portable-extensions and " + $setting + "=true; saved configuration was not changed.")
+    }
+    return $namespace
+}
+
+function Save-PortableExtensionCommandResult {
+    param(
+        [string]$ConfigPath, [string]$StorePath,
+        [ValidateSet('mcp','plugin')][string]$Command,
+        [AllowEmptyCollection()][string[]]$AllowedNamespaces = @()
+    )
+    $namespace = Get-PortableExtensionCommandNamespace -Command $Command -AllowedNamespaces $AllowedNamespaces
+    if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
+        throw 'Extension command did not leave a readable generated configuration; saved configuration was not changed.'
+    }
+    $updated = Get-PersistableCodexExtensionToml -Path $ConfigPath -AllowedNamespaces @($namespace)
+    $previous = Get-PersistableCodexExtensionToml -Path $StorePath -AllowedNamespaces @($namespace)
+    # Read-only commands must not rewrite or reorder the durable sidecar.
+    if ($updated -ceq $previous) { return }
+    $otherNamespaces = @('mcp_servers','plugins') | Where-Object { $_ -cne $namespace }
+    $retained = Get-PersistableCodexExtensionToml -Path $StorePath -AllowedNamespaces @($otherNamespaces)
+    # Replacing only the edited namespace preserves inactive settings, while an
+    # explicit removal of its last entry remains a removal (never resurrect it).
+    Write-Utf8TextAtomic -Path $StorePath -Text ($retained + $updated)
+}
+
 $GeneratedConfigPath = Join-Path $env:CODEX_HOME "config.toml"
 $ExtensionStorePath = Join-Path $env:CODEX_HOME "portable-extensions.toml"
 Assert-PortablePath "generated config" $GeneratedConfigPath
@@ -1736,6 +1771,9 @@ function Test-AndNormalizeCodexCliArgs {
             }
             if (-not $PortableMaintenanceMode -and $rootCommand -in @('mcp','plugin')) {
                 Stop-UnsafeCodexCliArgument $arg '该 Codex 子命令可直接修改 MCP 或 Plugin 状态；SAFE 模式禁止绕过便携配置持久化边界。请使用维护模式。'
+            }
+            if ($rootCommand -in @('mcp','plugin')) {
+                [void](Get-PortableExtensionCommandNamespace -Command $rootCommand -AllowedNamespaces $PortableExtensionPolicy.AllowedNamespaces)
             }
             $result.Add($arg)
             continue
@@ -3373,8 +3411,7 @@ try {
     # commands may rewrite generated config.toml. Persist only the allowlisted
     # extension namespaces back to the sidecar after a successful command.
     if ($script:CodexProcessExitCode -eq 0 -and $PortableMaintenanceMode -and $script:CodexRootCommand -in @('mcp','plugin')) {
-        $updatedExtensionToml = Get-PersistableCodexExtensionToml -Path $ConfigPath
-        Write-Utf8TextAtomic -Path $ExtensionStorePath -Text $updatedExtensionToml
+        Save-PortableExtensionCommandResult -ConfigPath $ConfigPath -StorePath $ExtensionStorePath -Command $script:CodexRootCommand -AllowedNamespaces $PortableExtensionPolicy.AllowedNamespaces
     }
 } finally {
     # Credential snapshots are part of Codex-run cleanup.  Host resource cleanup is
