@@ -38,6 +38,12 @@ $cases = @(
     @{ Name = 'prompt terminator preserves literal'; Tokens = @('Inspect this project', '--', '-m=literal'); Value = '' },
     @{ Name = 'prompt then empty model'; Tokens = @('Inspect this project', '-m='); Reject = $true },
     @{ Name = 'prompt then missing model'; Tokens = @('Inspect this project', '--model'); Reject = $true },
+    @{ Name = 'uppercase logout is a prompt'; Tokens = @('Logout', '-m=after-prompt'); Value = 'after-prompt'; Root = '' },
+    @{ Name = 'uppercase MCP is a prompt'; Tokens = @('MCP', '-m=after-prompt'); Value = 'after-prompt'; Root = '' },
+    @{ Name = 'uppercase plugin is a prompt'; Tokens = @('Plugin', '-m=after-prompt'); Value = 'after-prompt'; Root = '' },
+    @{ Name = 'uppercase update is a prompt'; Tokens = @('Update', '-m=after-prompt'); Value = 'after-prompt'; Root = '' },
+    @{ Name = 'native plugin stays a command'; Tokens = @('plugin', 'list'); Value = ''; Root = 'plugin' },
+    @{ Name = 'native logout remains guarded'; Tokens = @('logout'); Reject = $true },
     @{ Name = 'empty short equals'; Tokens = @('-m='); Reject = $true },
     @{ Name = 'empty long equals'; Tokens = @('--model='); Reject = $true },
     @{ Name = 'missing short value'; Tokens = @('-m'); Reject = $true },
@@ -54,6 +60,7 @@ foreach ($case in $cases) {
     } else {
         $output = @(Test-AndNormalizeCodexCliArgs -InputArgs $inputArgs)
         if ($script:CliModelOverride -cne $case.Value) { throw ('Incorrect model value: ' + $case.Name) }
+        if ($case.ContainsKey('Root') -and $script:CodexRootCommand -cne $case.Root) { throw ('Prompt/command state was confused: ' + $case.Name) }
         if ($output.Count -ne $inputArgs.Count) { throw ('Argument count changed: ' + $case.Name) }
         for ($i = 0; $i -lt $inputArgs.Count; $i++) {
             if ($output[$i] -cne $inputArgs[$i]) { throw ('Native argument was modified: ' + $case.Name) }

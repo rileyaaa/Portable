@@ -94,7 +94,7 @@ print('PASS full launcher generated configuration: ' + mode)
         }
         $bat = if ($case -eq 'maintenance') { $maintenance } else { $entry }
         $expectedModel = if ($case -eq 'relocated') { 'portable-model-smoke' } else { '' }
-        $modelArgument = if ($expectedModel) { ' "Synthetic offline prompt" -m=' + $expectedModel } else { '' }
+        $modelArgument = if ($expectedModel) { ' "Logout" -m=' + $expectedModel } else { '' }
         $start = New-Object Diagnostics.ProcessStartInfo
         $start.FileName = Join-Path $env:SystemRoot 'System32/cmd.exe'
         $start.Arguments = '/d /s /c ""' + (Join-Path $fixture $bat) + '"' + $modelArgument + ' --version"'
