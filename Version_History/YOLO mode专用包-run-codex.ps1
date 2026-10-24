@@ -1695,6 +1695,7 @@ function Test-AndNormalizeCodexCliArgs {
     $result = New-Object System.Collections.Generic.List[string]
     $scanOptions = $true
     $rootCommand = ""
+    $rootIsPrompt = $false
     $pluginSubcommand = ""
     $expectModelValue = $false
     $script:CliModelOverride = ""
@@ -1750,7 +1751,7 @@ function Test-AndNormalizeCodexCliArgs {
         # For example, `codex plugin add ... -m NAME` uses -m for --marketplace.
         # Treat it as a model override only in scopes that actually flatten Codex
         # SharedCliOptions/TuiCli; otherwise leave the token to the subcommand parser.
-        $modelOptionApplies = [string]::IsNullOrWhiteSpace($rootCommand) -or
+        $modelOptionApplies = $rootIsPrompt -or [string]::IsNullOrWhiteSpace($rootCommand) -or
                               $rootCommand -in @('exec','e','resume','fork','queue','archive','delete','unarchive')
         if ($modelOptionApplies) {
             # Model consumes exactly one following value; do this before root-subcommand
@@ -1800,6 +1801,9 @@ function Test-AndNormalizeCodexCliArgs {
         # Root subcommand: only the first positional token before -- can be one.
         if ([string]::IsNullOrWhiteSpace($rootCommand) -and -not $arg.StartsWith('-')) {
             $rootCommand = $lower
+            # A positional TUI prompt is not a subcommand; later -m still applies.
+            # Match the pinned CLI command spelling case-sensitively, not prompt text.
+            $rootIsPrompt = $arg -cnotin @('agents','tcp-tunnel','exec','e','review','login','logout','mcp','plugin','app-server','remote-control','app','completion','update','doctor','sandbox','debug','execpolicy','apply','a','resume','queue','archive','delete','migrate-rollouts','migrate-nfs-db','unarchive','fork','cloud','cloud-tasks','responses-api-proxy','stdio-to-uds','exec-server','features','mcp-server','help')
             $script:CodexRootCommand = $rootCommand
             if ($rootCommand -in @('app','app-server','update','sandbox','debug','execpolicy','agents','remote-control','responses-api-proxy','stdio-to-uds','exec-server','mcp-server','features','login')) {
                 Stop-UnsafeCodexCliArgument $arg '该 Codex 子命令具有安装/更新、直接沙箱调试、隐藏规则文件读取、共享 daemon、远程控制、服务端模式、非标准宿主 I/O、会修改由 env.ps1 管理的固定 feature 配置，或会绕过便携包受控登录流程，因此不从严格便携入口开放。官方账号登录请使用便携启动器的认证菜单。'
