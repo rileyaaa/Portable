@@ -43,7 +43,8 @@ def _under_root_lexical(path: Path) -> Path:
 def _require_plain_dir(path: Path) -> Path:
     candidate = _under_root_lexical(path)
     root = Path(os.path.abspath(ROOT))
-    for ancestor in (ROOT, *ROOT.parents):
+    # Inspect from the filesystem root down before probing a linked target.
+    for ancestor in (*reversed(root.parents), root):
         if _is_reparse(ancestor):
             raise RuntimeError("portable root has a linked parent")
     rel = candidate.relative_to(root)

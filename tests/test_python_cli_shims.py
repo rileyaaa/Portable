@@ -150,6 +150,40 @@ class PythonCliShimTests(unittest.TestCase):
         self.assertEqual(command.read_bytes(), b"Synthetic existing command.")
         self.assertEqual(alias.read_bytes(), b"Synthetic existing command.")
 
+    def assert_linked_ancestor_rejected_before_descendant_probe(self, module, alias):
+        inspected = []
+        original = os.lstat
+
+        def record(path, *args, **kwargs):
+            inspected.append(Path(os.path.abspath(os.fspath(path))))
+            return original(path, *args, **kwargs)
+
+        with mock.patch.object(module.os, "lstat", side_effect=record):
+            with self.assertRaises(RuntimeError):
+                module._require_plain_dir(module.OUT_BIN)
+        self.assertIn(alias, inspected)
+        self.assertFalse(any(alias in path.parents for path in inspected),
+                         "Inspected a descendant through a linked package ancestor")
+        self.assertFalse((self.root / "tmp").exists())
+        self.assertEqual(list(self.output.glob("*.cmd")), [])
+
+    def test_linked_package_parent_rejected_before_descendant_probe(self):
+        alias = self.base / "linked parent"
+        self.symlink(self.base, alias, directory=True)
+        module = self.load(alias / self.root.name)
+        self.assert_linked_ancestor_rejected_before_descendant_probe(module, alias)
+
+    def test_linked_package_grandparent_rejected_before_descendant_probe(self):
+        alias = self.base / "linked grandparent"
+        self.symlink(self.base, alias, directory=True)
+        nested = self.base / "nested" / self.root.name
+        nested.parent.mkdir()
+        self.root.rename(nested)
+        self.root = nested
+        self.output = nested / "tool/bin"
+        module = self.load(alias / "nested" / nested.name)
+        self.assert_linked_ancestor_rejected_before_descendant_probe(module, alias)
+
     def test_actual_relocation_ignores_stale_root_environment(self):
         self.add_vendor()
         old = self.root
