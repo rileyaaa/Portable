@@ -1,4 +1,4 @@
-name: Stop failed release before further runner use
+name: Verify SQLite test cleanup and native packaging
 on:
   push:
     branches: [main]
@@ -6,24 +6,248 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  actions: write
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  GIT_LFS_SKIP_SMUDGE: '1'
 jobs:
-  stop-failed-release:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 4
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.repair.outputs.sha }}
     steps:
-      - name: Cancel only the verified failed release run
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          lfs: false
+      - name: Reproduce and repair only four test-owned SQLite connection lifetimes
+        id: repair
         shell: bash
         run: |
-          set -euo pipefail
-          target='repos/rileyaaa/Codex-Portable/actions/runs/40206266734'
-          test "$(gh api "$target" --jq '.head_sha')" = '34a88527ef5c0bac9e08d04928323521412d0596'
-          test "$(gh api "$target/jobs" --jq '[.jobs[].steps[] | select(.name == "Run bundled Python and Node regression suites" and .conclusion == "failure")] | length')" = '1'
-          if [ "$(gh api "$target" --jq '.status')" != 'completed' ]; then
-            gh api --method POST "$target/cancel"
-            echo 'FAILED_RELEASE_CANCEL_REQUESTED=true'
-          else
-            echo 'FAILED_RELEASE_ALREADY_STOPPED=true'
-          fi
+          python3 -B - <<'PY'
+          import json,os,pathlib,subprocess,sys
+          root=pathlib.Path.cwd()
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          assert os.environ['GITHUB_REPOSITORY']=='rileyaaa/Codex-Portable'
+          assert git('rev-parse','HEAD^')=='a6d49a03ba637cd34eedc8e1e69633c530331bfe'
+          assert git('rev-parse','HEAD:tests/test_pdf_library_database.py')=='d6b69a806acd20bd3dc11075cd5c462a74e30837'
+          assert git('rev-parse','HEAD:DEVELOPMENT.md')=='7e26d296fd87da8a12ad5e210e94d2ed7ae9ecfe'
+          assert git('rev-parse','HEAD:.github/workflows/release.yml')=='fa42137dd0c29138a7280126d3833ab514c9da96'
+          probe="""import json,sqlite3,sys,unittest
+          sys.path.insert(0,'tests')
+          connections=[]
+          def audit(event,args):
+           if event=='sqlite3.connect/handle':connections.append(args[0])
+          sys.addaudithook(audit)
+          result=unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromName('test_pdf_library_database'))
+          leaked=0
+          for connection in connections:
+           try:connection.execute('SELECT 1')
+           except sqlite3.ProgrammingError:continue
+           else:leaked+=1;connection.close()
+          print(json.dumps({'tests':result.testsRun,'failed':len(result.failures),'errors':len(result.errors),'skips':len(result.skipped),'open_connections':leaked}))
+          assert result.wasSuccessful() and not result.skipped
+          """
+          def verify(expected):
+           completed=subprocess.run([sys.executable,'-B','-c',probe],cwd=root,check=True,capture_output=True,text=True)
+           result=json.loads(completed.stdout.splitlines()[-1])
+           assert result['tests']==19 and result['open_connections']==expected,result
+           print('SQLITE_CONNECTION_PROBE='+json.dumps(result))
+          verify(4)
+          path=root/'tests/test_pdf_library_database.py';text=path.read_bytes().decode('utf-8')
+          assert text.count('import importlib.util\n')==1
+          text=text.replace('import importlib.util\n','from contextlib import closing\nimport importlib.util\n',1)
+          old='with sqlite3.connect(self.database) as connection:'
+          assert text.count(old)==4
+          text=text.replace(old,'with closing(sqlite3.connect(self.database)) as connection:')
+          path.write_bytes(text.encode('utf-8'))
+          verify(0)
+          path=root/'DEVELOPMENT.md';text=path.read_bytes().decode('utf-8')
+          old='**复核结果：** Actions `40205843737`'
+          assert text.count(old)==1
+          start=text.index(old);end=text.index('\n\n**发布边界：**',start)
+          record='**复核与测试修正：** 首轮三个全新 Linux runner 对相同源码的 164 项回归均通过。随后完整 Windows 工作流 `40206266734` 发现 4 条 PDF 测试在清理阶段报 WinError 32：测试自身用于核对索引的 `with sqlite3.connect(...)` 只结束事务、未关闭连接。现仅将这四处改为 `contextlib.closing`，原有数据保护断言、生产脚本、官方组件及发布门禁不变；未通过的发布已提前取消，没有打包或上传。独立连接审计在原测试复现 4 个未关闭连接，修改后为 0。\n\n**重新复核：** REVIEW_SQLITE_CLEAN_PENDING_20261025'
+          text=text[:start]+record+text[end:]
+          path.write_bytes(text.encode('utf-8'))
+          changed=set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
+          assert changed=={'tests/test_pdf_library_database.py','DEVELOPMENT.md'},changed
+          subprocess.run(['git','diff','--check'],check=True)
+          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','add','--',*sorted(changed)],check=True)
+          subprocess.run(['git','commit','-m','test: close PDF verification SQLite connections before fixture cleanup'],check=True)
+          subprocess.run(['git','push','origin','HEAD:main'],check=True)
+          sha=git('rev-parse','HEAD')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as stream:stream.write('sha='+sha+'\n')
+          print('REVIEW_SOURCE_COMMIT='+sha)
+          PY
+  source-review:
+    name: Source review - ${{ matrix.order }}
+    needs: prepare
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        order: [forward, reverse, shuffle]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      REVIEW_SHA: ${{ needs.prepare.outputs.sha }}
+      REVIEW_ORDER: ${{ matrix.order }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          lfs: false
+          persist-credentials: false
+      - name: Independent source and dependency checks with explicit SQLite lifetime audit
+        shell: bash
+        run: |
+          python3 -B - <<'PY'
+          import ast,json,os,pathlib,random,sqlite3,subprocess,sys,unittest
+          root=pathlib.Path.cwd()
+          sys.path.insert(0,str(root/'tool/python/Lib/site-packages'))
+          sys.path.insert(0,str(root/'tests'))
+          sys.dont_write_bytecode=True
+          order=os.environ['REVIEW_ORDER']
+          exclude={'test_runtime_package','test_optional_python_payload','test_pip_config_isolation','test_pdf_library'}
+          exclude_cases={'test_browser_install.BrowserInstallTests.test_pinned_browser_inventory_matches_installed_official_bytes','test_python_runtime_dependencies.PythonRuntimeDependencyTests.test_bundled_pyinstaller_version_without_compilation'}
+          def flatten(suite):
+           for case in suite:
+            if isinstance(case,unittest.TestSuite):yield from flatten(case)
+            else:yield case
+          cases=[]
+          for path in sorted((root/'tests').glob('test_*.py')):
+           if path.stem not in exclude:cases.extend(c for c in flatten(unittest.defaultTestLoader.loadTestsFromName(path.stem)) if c.id() not in exclude_cases)
+          if order=='reverse':cases.reverse()
+          elif order=='shuffle':random.Random(20261025).shuffle(cases)
+          else:assert order=='forward'
+          connections=[]
+          def offline(event,args):
+           if event=='socket.connect':raise AssertionError('External networking is not part of source review')
+           if event=='sqlite3.connect/handle':connections.append(args[0])
+          sys.addaudithook(offline)
+          result=unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite(cases))
+          leaked=0
+          for connection in connections:
+           try:connection.execute('SELECT 1')
+           except sqlite3.ProgrammingError:continue
+           else:leaked+=1;connection.close()
+          summary={'order':order,'tests':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),'skips':len(result.skipped),'open_sqlite_connections':leaked,'commit':os.environ['REVIEW_SHA'],'deferred_modules':sorted(exclude),'deferred_cases':sorted(exclude_cases)}
+          print('SOURCE_REVIEW_RESULT='+json.dumps(summary),flush=True)
+          assert result.wasSuccessful() and not result.skipped and result.testsRun==164 and leaked==0
+          count=0
+          for raw in subprocess.check_output(['git','ls-files','-z']).split(b'\0'):
+           if not raw:continue
+           name=raw.decode('utf-8')
+           if name.endswith('.py') and not name.startswith(('tool/python/','tool/git/','tool/node/')) and '/node_modules/' not in name:
+            ast.parse((root/name).read_text(encoding='utf-8-sig'),filename=name);count+=1
+          print('FIRST_PARTY_PYTHON_PARSED='+str(count))
+          copies=[(root/f'home/skills/{kind}/scripts/office/helpers/__init__.py').read_bytes() for kind in ('docx','pptx','xlsx')]
+          assert len(set(copies))==1
+          assert not (root/'tool/bin/pyinstaller.cmd').exists()
+          assert not (root/'tests/test_pyinstaller_portable.py').exists()
+          assert subprocess.check_output(['git','hash-object','tool/bin/portable-python-cli.py'],text=True).strip()=='6c8ec9f327fc3cfd6dd0461d88a5cf3b8a294563'
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          PY
+          node --test --test-name-pattern='unselected|path guards|browser configuration|persistent browser owner|tool policy|transport strips|browser_close|a disconnected' tests/test_automation.js
+          node 'Version_History/AI account format conversion/test/smoke.js'
+          node 'Version_History/AI account format conversion/test/static-audit.js'
+      - name: PowerShell source and offline production checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $names=& git -c core.quotepath=false ls-files
+          if($LASTEXITCODE -ne 0){throw 'Could not enumerate source'}
+          $count=0
+          foreach($name in $names){
+            if($name -notlike '*.ps1' -or $name -match '^(tool/(python|git|node)/)' -or $name -match '/node_modules/'){continue}
+            $tokens=$null;$errors=$null
+            $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE $name),[ref]$tokens,[ref]$errors)
+            if($errors.Count){throw ('PowerShell parse failure: '+$name)}
+            $count++
+          }
+          Write-Output ('FIRST_PARTY_POWERSHELL_PARSED='+$count)
+          foreach($name in @('test_cli_model_options','test_permission_display','test_login_input_errors','test_browser_login_flow')){
+            & pwsh -NoLogo -NoProfile -NonInteractive -File "tests/$name.ps1"
+            if($LASTEXITCODE -ne 0){throw ('Offline contract failure: '+$name)}
+          }
+          & git diff --exit-code
+          if($LASTEXITCODE -ne 0){throw 'Tests altered tracked source'}
+  finalize:
+    needs: [prepare, source-review]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REVIEW_SHA: ${{ needs.prepare.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          lfs: false
+      - name: Record all clean rounds, clean temporary workflow and request existing full release gate
+        shell: bash
+        run: |
+          python3 -B - <<'PY'
+          import json,os,pathlib,re,subprocess
+          root=pathlib.Path.cwd();repo=os.environ['GITHUB_REPOSITORY'];sha=os.environ['REVIEW_SHA']
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          def api(path):return json.loads(subprocess.check_output(['gh','api',path]))
+          assert repo=='rileyaaa/Codex-Portable'
+          assert api(f'repos/{repo}/git/ref/heads/main')['object']['sha']==sha
+          assert git('rev-parse','HEAD')==sha
+          jobs=api(f'repos/{repo}/actions/runs/{os.environ["GITHUB_RUN_ID"]}/jobs?per_page=100')['jobs']
+          reports=[]
+          for order in ('forward','reverse','shuffle'):
+           matches=[j for j in jobs if j['name']=='Source review - '+order]
+           assert len(matches)==1 and matches[0]['conclusion']=='success'
+           raw=subprocess.check_output(['gh','api','--allow-escape-sequences',f'repos/{repo}/actions/jobs/{matches[0]["id"]}/logs'])
+           log=re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]','',raw.decode('utf-8-sig'))
+           valid=[]
+           for line in log.splitlines():
+            if 'SOURCE_REVIEW_RESULT=' not in line:continue
+            try:result=json.loads(line.split('SOURCE_REVIEW_RESULT=',1)[1])
+            except json.JSONDecodeError:continue
+            valid.append(result)
+           assert len(valid)==1
+           result=valid[0]
+           assert result['commit']==sha and result['order']==order and result['tests']==164
+           assert result['failures']==result['errors']==result['skips']==result['open_sqlite_connections']==0
+           reports.append(result)
+          path=root/'DEVELOPMENT.md';text=path.read_bytes().decode('utf-8')
+          marker='REVIEW_SQLITE_CLEAN_PENDING_20261025'
+          assert text.count(marker)==1
+          record=f'测试修正后重新计数：Actions `{os.environ["GITHUB_RUN_ID"]}` 的三个全新 Linux runner 对固定提交 `{sha}` 分别正序、逆序和固定随机顺序执行 164 项源码／元数据回归，失败、错误、跳过和遗留 SQLite 连接均为 0；每轮浏览器离线策略、转换器、源码解析和 PowerShell 离线契约均通过。Windows 原生项目留待同一最终提交的完整发布门禁，不借用此前未完成的 Windows 结果。'
+          path.write_bytes(text.replace(marker,record).encode('utf-8'))
+          workflow='.github/workflows/review-three-pass-once.yml';(root/workflow).unlink()
+          changed=set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
+          assert changed=={'DEVELOPMENT.md',workflow}
+          subprocess.run(['git','diff','--check'],check=True)
+          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','add','--','DEVELOPMENT.md',workflow],check=True)
+          subprocess.run(['git','commit','-m','docs: record three clean cleanup reviews and remove temporary workflow'],check=True)
+          subprocess.run(['git','push','origin','HEAD:main'],check=True)
+          final_sha=git('rev-parse','HEAD')
+          assert api(f'repos/{repo}/git/ref/heads/main')['object']['sha']==final_sha
+          assert sorted(p.name for p in (root/'.github/workflows').glob('*.yml'))==['download-browser.yml','release.yml']
+          assert git('rev-parse','HEAD:.github/workflows/release.yml')=='fa42137dd0c29138a7280126d3833ab514c9da96'
+          refs=api(f'repos/{repo}/git/matching-refs/tags/v2026.10.25')
+          releases=api(f'repos/{repo}/releases?per_page=100')
+          used={r['ref'].removeprefix('refs/tags/') for r in refs}|{r['tag_name'] for r in releases}
+          n=4
+          while f'v2026.10.25.{n}' in used:n+=1
+          version=f'v2026.10.25.{n}'
+          body={'ref':'main','inputs':{'version':version,'publish_release':True,'check_set':'full'}}
+          subprocess.run(['gh','api','--method','POST',f'repos/{repo}/actions/workflows/release.yml/dispatches','--input','-'],input=json.dumps(body).encode(),check=True)
+          print('FINAL_SOURCE_COMMIT='+final_sha)
+          print('FULL_RELEASE_REQUESTED='+version)
+          print('THREE_SOURCE_REVIEWS='+json.dumps(reports))
+          PY
