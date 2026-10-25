@@ -2,9 +2,9 @@
 
 将 Codex、启动器、包内工具和运行状态放在同一目录的便携项目，面向 **Windows x86-64、Windows PowerShell 5.1、本地 NTFS**，不支持 32 位 Windows。当前主客户端与 Code Mode Host 均为官方 **0.164.0**，用于文字与 Agent 工作，保留配套执行、搜索和沙箱组件，不包含语音聊天资源；来源和摘要见 [运行包清单](tool/runtime-manifest.json)。
 
-默认面向 DBA 日常工作、爬虫与数据处理，也保留 Python 开发和调试能力。Python、Node 及已有文档/自动化运行依赖留在包内；低频编译和打包交给独立项目的手动 GitHub Actions，不预装 Go 编译器和 Python EXE 打包工具。
+默认面向 DBA 日常工作、爬虫与数据处理，也保留 Python 开发和调试能力。Python、Node 及已有文档/自动化运行依赖留在包内；Go 编译仍交给独立项目的手动 GitHub Actions，不预装 Go 编译器。Python EXE 打包已按用户授权恢复历史 PyInstaller，通过包内专用入口按任务使用，Windows 实际打包验收尚未执行。
 
-**`D:\Codex` 只是常用位置，不是固定路径。** 解压到其他本地目录后，启动器从自身位置确定包根，重新设置工具、配置、用户状态、缓存和临时目录。当前版本已通过 Windows 客户端启动、BAT/NTFS 专项、工具进程通信及真实浏览器持久化/清理检查；正式发布还须通过完整 Windows 工作流。真实账号、在线 Agent/Host 和跨电脑迁移仍需本机验收，详见 [开发文档](DEVELOPMENT.md)。
+**`D:\Codex` 只是常用位置，不是固定路径。** 解压到其他本地目录后，启动器从自身位置确定包根，重新设置工具、配置、用户状态、缓存和临时目录。最近正式发行版已通过 Windows 客户端启动、BAT/NTFS 专项、工具进程通信及真实浏览器持久化/清理检查；正式发布还须通过完整 Windows 工作流。真实账号、在线 Agent/Host 和跨电脑迁移仍需本机验收，详见 [开发文档](DEVELOPMENT.md)。
 
 ## 开始使用
 
@@ -169,7 +169,7 @@ $env:CODEX_MODEL = "上游实际提供的模型名"
 
 当前包保留 Python 的网络、数据、Office/PDF 依赖，支持日常脚本开发和调试；Node 用于已有浏览器工具与账号转换器，Android 已有工具和技能也保留。Git、完整 Android SDK/JDK、Office 渲染和 OCR 等可选工具尚未预置，目录或变量存在不表示工具已安装。
 
-Go、PyInstaller 及其专用构建依赖、uv 系列和可再生 Python 字节码已移出默认包。本地 Python 依赖维护改用包内 pip、固定版本和 wheel 摘要；需要编译或 EXE 打包时，在独立仓库手动运行 GitHub Actions，取回并校验产物后及时清理。安装位置、下载来源和更新步骤统一见 [工具下载与更新](tool/工具更新说明.md)。
+Go、uv 系列和可再生 Python 字节码仍不包含在默认包中。按用户明确要求，已从历史版本恢复 PyInstaller 6.21.0、配套 hooks 和必要依赖；使用 `tool\bin\pyinstaller.cmd`，不直接运行带旧安装路径的 vendor EXE。该入口将构建暂存放在包内 `tmp`、持久缓存放在 `cache/pyinstaller`，默认产物和 spec 分别放在 `work/dist`、`work/spec`。本次只恢复源码与组件并做本地路由回归，没有编译 EXE 或重新发布发行包；实际 Windows 打包仍待验证。依赖维护继续使用包内 pip、固定版本和 wheel 摘要；安装位置与使用边界见 [工具下载与更新](tool/工具更新说明.md)。
 
 启动器固定 `PIP_CONFIG_FILE=nul`，日常 Agent 命令与安装器均不读取宿主的 `pip.ini`；依赖维护参数按工具文档显式指定。
 
