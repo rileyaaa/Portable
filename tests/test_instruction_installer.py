@@ -244,5 +244,166 @@ class InstructionInstallerTests(unittest.TestCase):
 
 
 
+    def prepare_existing_instructions(self):
+        home = self.root / "home"
+        home.mkdir()
+        target = home / "synthetic.md"
+        target.write_bytes(b"Keep the existing synthetic instructions.\n")
+        return target
+
+    def test_invalid_local_encoding_preserves_existing_instructions(self):
+        target = self.prepare_existing_instructions()
+        original = target.read_bytes()
+        local = self.root / "env.local.ps1"
+        local.write_bytes(b"\xff\xfeInvalid synthetic UTF-8")
+        original_local = local.read_bytes()
+        with self.assertRaises(SystemExit):
+            self.run_main(self.load())
+        self.assertEqual(target.read_bytes(), original)
+        self.assertEqual(local.read_bytes(), original_local)
+        self.assertFalse((self.root / "tmp").exists())
+
+    def test_hardlinked_local_config_preserves_existing_instructions(self):
+        target = self.prepare_existing_instructions()
+        original = target.read_bytes()
+        local = self.root / "env.local.ps1"
+        local.write_bytes(b"# Synthetic local settings.\n")
+        alias = self.base / "local-alias.ps1"
+        os.link(local, alias)
+        with self.assertRaises(SystemExit):
+            self.run_main(self.load())
+        self.assertEqual(target.read_bytes(), original)
+        self.assertEqual(local.read_bytes(), b"# Synthetic local settings.\n")
+        self.assertEqual(alias.read_bytes(), local.read_bytes())
+        self.assertFalse((self.root / "tmp").exists())
+
+    def test_local_read_failure_preserves_existing_instructions(self):
+        target = self.prepare_existing_instructions()
+        original = target.read_bytes()
+        local = self.root / "env.local.ps1"
+        local.write_bytes(b"# Synthetic local settings.\n")
+        read_text = Path.read_text
+        def unreadable(path, *args, **kwargs):
+            if path == local:
+                raise PermissionError("Synthetic config read failure")
+            return read_text(path, *args, **kwargs)
+        with mock.patch.object(Path, "read_text", autospec=True, side_effect=unreadable):
+            with self.assertRaises(PermissionError):
+                self.run_main(self.load())
+        self.assertEqual(target.read_bytes(), original)
+        self.assertFalse((self.root / "tmp").exists())
+
+    def test_directory_local_config_preserves_existing_instructions(self):
+        target = self.prepare_existing_instructions()
+        original = target.read_bytes()
+        (self.root / "env.local.ps1").mkdir()
+        with self.assertRaises(SystemExit):
+            self.run_main(self.load())
+        self.assertEqual(target.read_bytes(), original)
+        self.assertFalse((self.root / "tmp").exists())
+
+    def test_hardlinked_instruction_output_is_rejected(self):
+        target = self.prepare_existing_instructions()
+        alias = self.base / "instruction-alias.md"
+        os.link(target, alias)
+        original = target.read_bytes()
+        with self.assertRaises(SystemExit):
+            self.run_main(self.load())
+        self.assertEqual(target.read_bytes(), original)
+        self.assertEqual(alias.read_bytes(), original)
+        self.assertEqual(target.stat().st_nlink, 2)
+        self.assertFalse((self.root / "env.local.ps1").exists())
+        self.assertFalse((self.root / "tmp").exists())
+
+    def test_dry_run_validates_local_encoding_without_writing(self):
+        local = self.root / "env.local.ps1"
+        local.write_bytes(b"\xffSynthetic invalid settings")
+        with self.assertRaises(SystemExit):
+            self.run_main(self.load(), "--dry-run")
+        self.assertFalse((self.root / "home").exists())
+        self.assertFalse((self.root / "tmp").exists())
+        self.assertEqual(local.read_bytes(), b"\xffSynthetic invalid settings")
+
+    def test_invalid_config_does_not_create_home_or_tmp(self):
+        local = self.root / "env.local.ps1"
+        local.write_bytes(b"\xffInvalid synthetic config")
+        with self.assertRaises(SystemExit):
+            self.run_main(self.load())
+        self.assertFalse((self.root / "home").exists())
+        self.assertFalse((self.root / "tmp").exists())
+        self.assertEqual(local.read_bytes(), b"\xffInvalid synthetic config")
+
+    def test_atomic_helper_rejects_existing_hardlinked_destination(self):
+        target = self.prepare_existing_instructions()
+        original = target.read_bytes()
+        alias = self.base / "instruction-alias.md"
+        os.link(target, alias)
+        with self.assertRaises(SystemExit):
+            self.load()._atomic_write_text(target, "New synthetic instructions", encoding="utf-8", root=self.root)
+        self.assertEqual(target.read_bytes(), original)
+        self.assertEqual(alias.read_bytes(), original)
+        self.assertEqual(target.stat().st_nlink, 2)
+        self.assertFalse((self.root / "tmp").exists())
+
+    def test_atomic_helper_rejects_existing_linked_destination(self):
+        target = self.root / "home/synthetic.md"
+        target.parent.mkdir()
+        outside = self.base / "outside-instructions.md"
+        outside.write_bytes(b"Preserve synthetic external instructions.")
+        self.symlink(outside, target)
+        with self.assertRaises(SystemExit):
+            self.load()._atomic_write_text(target, "New synthetic instructions", encoding="utf-8", root=self.root)
+        self.assertTrue(target.is_symlink())
+        self.assertEqual(outside.read_bytes(), b"Preserve synthetic external instructions.")
+        self.assertFalse((self.root / "tmp").exists())
+
+    def test_output_hardlinked_during_staging_is_rejected(self):
+        target = self.prepare_existing_instructions()
+        original = target.read_bytes()
+        alias = self.base / "late-instruction-alias.md"
+        module = self.load()
+        fsync = module.os.fsync
+        def hardlink(fd):
+            fsync(fd)
+            os.link(target, alias)
+        with mock.patch.object(module.os, "fsync", side_effect=hardlink):
+            with self.assertRaises(SystemExit):
+                module._atomic_write_text(target, "New synthetic instructions", encoding="utf-8", root=self.root)
+        self.assertEqual(target.read_bytes(), original)
+        self.assertEqual(alias.read_bytes(), original)
+        self.assertEqual(target.stat().st_nlink, 2)
+        self.assertEqual(list((self.root / "tmp").iterdir()), [])
+
+    def test_output_linked_during_staging_is_rejected(self):
+        target = self.prepare_existing_instructions()
+        outside = self.base / "outside-instructions.md"
+        outside.write_bytes(b"Preserve synthetic external instructions.")
+        # Verify symlink support before installing the injected filesystem event.
+        probe = self.base / "link-probe"
+        self.symlink(outside, probe)
+        probe.unlink()
+        module = self.load()
+        fsync = module.os.fsync
+        def link(fd):
+            fsync(fd)
+            target.unlink()
+            target.symlink_to(outside)
+        with mock.patch.object(module.os, "fsync", side_effect=link):
+            with self.assertRaises(SystemExit):
+                module._atomic_write_text(target, "New synthetic instructions", encoding="utf-8", root=self.root)
+        self.assertTrue(target.is_symlink())
+        self.assertEqual(outside.read_bytes(), b"Preserve synthetic external instructions.")
+        self.assertEqual(list((self.root / "tmp").iterdir()), [])
+
+    def test_valid_dry_run_preserves_existing_output_and_settings(self):
+        target = self.prepare_existing_instructions()
+        original = target.read_bytes()
+        local = self.root / "env.local.ps1"
+        local.write_bytes(b"# Preserve the synthetic local settings.\r\n")
+        self.assertEqual(self.run_main(self.load(), "--dry-run"), 0)
+        self.assertEqual(target.read_bytes(), original)
+        self.assertEqual(local.read_bytes(), b"# Preserve the synthetic local settings.\r\n")
+        self.assertFalse((self.root / "tmp").exists())
+
 if __name__ == "__main__":
     unittest.main()

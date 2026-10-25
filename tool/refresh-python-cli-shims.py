@@ -118,13 +118,16 @@ def _canonical_launcher(name: str, console: dict[str, str]) -> str | None:
     return None
 
 
-def _atomic_write_cmd(path: Path, content: bytes) -> None:
+def _atomic_write_cmd(path: Path, content: bytes) -> bool:
     path = _under_root_lexical(path)
     _require_plain_dir(path.parent)
     if _is_reparse(path):
         raise RuntimeError("linked shim destination refused")
     if path.exists():
         _require_plain_file(path)
+        # Refreshing is destructive too: an existing name is not ownership.
+        if not _is_owned_generated_cmd(path, path.read_bytes()):
+            return False
     scratch = ROOT / "tmp"
     if _is_reparse(scratch):
         raise RuntimeError("linked shim temporary directory refused")
@@ -142,7 +145,11 @@ def _atomic_write_cmd(path: Path, content: bytes) -> None:
             raise RuntimeError("linked shim destination refused")
         if path.exists():
             _require_plain_file(path)
+            # Recheck after staging so a newly created/edited user file survives.
+            if not _is_owned_generated_cmd(path, path.read_bytes()):
+                return False
         os.replace(temp, path)
+        return True
     finally:
         try:
             temp.unlink()
@@ -196,7 +203,9 @@ def main() -> int:
             continue
         target = OUT_BIN / f"{base}.cmd"
         body = render_cmd(canonical)
-        _atomic_write_cmd(target, body)
+        if not _atomic_write_cmd(target, body):
+            unresolved.append(base + " (existing command preserved)")
+            continue
         created.append(target.name)
 
     # Remove only unmodified generated shims without a current vendor launcher.

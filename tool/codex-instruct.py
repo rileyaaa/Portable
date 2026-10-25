@@ -49,7 +49,8 @@ def _atomic_write_text(path: Path, text: str, *, encoding: str, root: Path) -> N
     parent = path.parent
     if not lexical_under(parent, root):
         raise SystemExit(f"Refusing write outside portable package: {path}")
-    reject_reparse_chain(parent, root)
+    reject_reparse_chain(path, root)
+    _reject_existing_hardlink(path, "instruction/config output")
     parent.mkdir(parents=True, exist_ok=True)
     reject_reparse_chain(parent, root)
     scratch = root / "tmp"
@@ -64,7 +65,8 @@ def _atomic_write_text(path: Path, text: str, *, encoding: str, root: Path) -> N
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        reject_reparse_chain(parent, root)
+        reject_reparse_chain(path, root)
+        _reject_existing_hardlink(path, "instruction/config output")
         os.replace(temp_path, path)
     except BaseException:
         try:
@@ -227,9 +229,13 @@ def main() -> int:
         if not lexical_under(target, root):
             raise SystemExit(f"Refusing to write outside portable package: {target}")
         reject_reparse_chain(target, root)
+        _reject_existing_hardlink(target, "instruction/config output")
 
     content = read_instructions(args.file, root)
     persisted_path = os.path.relpath(md_path, root / "home")
+    # Validate existing settings before creating home or replacing instructions.
+    # The actual update rereads them rather than overwriting a stale snapshot.
+    update_env_local(env_local, persisted_path, root, dry_run=True)
     if args.dry_run:
         print(f"Package root : {root}")
         print(f"CODEX_HOME   : {home}")

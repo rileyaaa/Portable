@@ -117,7 +117,7 @@ class PythonCliShimTests(unittest.TestCase):
     def test_failed_replace_preserves_destination_and_unrelated_tmp(self):
         self.add_vendor()
         command = self.output / "synthetic.cmd"
-        command.write_bytes(b"Preserve existing synthetic command.")
+        command.write_bytes(self.module.render_cmd("synthetic"))
         scratch = self.root / "tmp"
         scratch.mkdir()
         sentinel = scratch / "unrelated.txt"
@@ -125,7 +125,7 @@ class PythonCliShimTests(unittest.TestCase):
         with mock.patch.object(self.module.os, "replace", side_effect=OSError("Synthetic failure")):
             with self.assertRaises(OSError):
                 self.run_refresh()
-        self.assertEqual(command.read_bytes(), b"Preserve existing synthetic command.")
+        self.assertEqual(command.read_bytes(), self.module.render_cmd("synthetic"))
         self.assertEqual(list(scratch.iterdir()), [sentinel])
         self.assertFalse(list(self.output.glob("*.tmp")))
 
@@ -164,6 +164,144 @@ class PythonCliShimTests(unittest.TestCase):
         self.assertTrue((moved / "tool/bin/synthetic.cmd").is_file())
         self.assertEqual(list(old.iterdir()), [sentinel])
 
+
+    def test_refresh_preserves_same_name_user_command(self):
+        self.add_vendor()
+        command = self.output / "synthetic.cmd"
+        original = b"@echo off\r\necho User-owned command\r\n"
+        command.write_bytes(original)
+        status = self.run_refresh()
+        self.assertEqual(command.read_bytes(), original)
+        self.assertEqual(status, 3)
+        self.assertFalse((self.root / "tmp").exists())
+
+    def test_refresh_preserves_same_name_modified_generated_command(self):
+        self.add_vendor()
+        command = self.output / "synthetic.cmd"
+        original = self.module.render_cmd("synthetic") + b"rem User customization\r\n"
+        command.write_bytes(original)
+        status = self.run_refresh()
+        self.assertEqual(command.read_bytes(), original)
+        self.assertEqual(status, 3)
+
+    def test_refresh_preserves_user_pip_alias(self):
+        self.add_vendor("pip")
+        self.add_vendor("pip3.11", metadata=False)
+        command = self.output / "pip3.11.cmd"
+        original = b"@echo off\r\necho Custom pip settings\r\n"
+        command.write_bytes(original)
+        status = self.run_refresh()
+        self.assertEqual(command.read_bytes(), original)
+        self.assertEqual(status, 3)
+        self.assertEqual((self.output / "pip.cmd").read_bytes(), self.module.render_cmd("pip"))
+
+    def test_owned_current_command_can_still_be_refreshed(self):
+        self.add_vendor()
+        command = self.output / "synthetic.cmd"
+        original = self.module.render_cmd("synthetic")
+        command.write_bytes(original)
+        self.assertEqual(self.run_refresh(), 0)
+        self.assertEqual(command.read_bytes(), original)
+
+    def test_unowned_command_does_not_prevent_other_refreshes(self):
+        self.add_vendor("alpha")
+        self.add_vendor("zeta")
+        command = self.output / "alpha.cmd"
+        original = b"@echo off\r\nrem portable-python-cli.py is not proof of ownership\r\n"
+        command.write_bytes(original)
+        status = self.run_refresh()
+        self.assertEqual(command.read_bytes(), original)
+        self.assertEqual((self.output / "zeta.cmd").read_bytes(), self.module.render_cmd("zeta"))
+        self.assertEqual(status, 3)
+
+    def test_command_edited_during_staging_is_preserved(self):
+        self.add_vendor()
+        command = self.output / "synthetic.cmd"
+        command.write_bytes(self.module.render_cmd("synthetic"))
+        edited = b"@echo off\r\necho Concurrent synthetic customization\r\n"
+        fsync = self.module.os.fsync
+        def edit(fd):
+            fsync(fd)
+            command.write_bytes(edited)
+        with mock.patch.object(self.module.os, "fsync", side_effect=edit):
+            status = self.run_refresh()
+        self.assertEqual(command.read_bytes(), edited)
+        self.assertEqual(status, 3)
+        self.assertEqual(list((self.root / "tmp").iterdir()), [])
+
+    def test_command_created_during_staging_is_preserved(self):
+        self.add_vendor()
+        command = self.output / "synthetic.cmd"
+        created = b"@echo off\r\necho Newly created user command\r\n"
+        fsync = self.module.os.fsync
+        def create(fd):
+            fsync(fd)
+            command.write_bytes(created)
+        with mock.patch.object(self.module.os, "fsync", side_effect=create):
+            status = self.run_refresh()
+        self.assertEqual(command.read_bytes(), created)
+        self.assertEqual(status, 3)
+        self.assertEqual(list((self.root / "tmp").iterdir()), [])
+
+    def test_unreadable_current_command_is_not_overwritten(self):
+        self.add_vendor()
+        command = self.output / "synthetic.cmd"
+        original = self.module.render_cmd("synthetic")
+        command.write_bytes(original)
+        read_bytes = Path.read_bytes
+        def unreadable(path):
+            if path == command:
+                raise PermissionError("Synthetic command read failure")
+            return read_bytes(path)
+        with mock.patch.object(Path, "read_bytes", autospec=True, side_effect=unreadable):
+            with self.assertRaises(PermissionError):
+                self.run_refresh()
+        self.assertEqual(command.read_bytes(), original)
+        self.assertFalse((self.root / "tmp").exists())
+
+    def test_read_failure_after_staging_cleans_only_owned_temp(self):
+        self.add_vendor()
+        command = self.output / "synthetic.cmd"
+        original = self.module.render_cmd("synthetic")
+        command.write_bytes(original)
+        scratch = self.root / "tmp"
+        scratch.mkdir()
+        sentinel = scratch / "unrelated.txt"
+        sentinel.write_bytes(b"Keep synthetic user data.")
+        read_bytes = Path.read_bytes
+        reads = 0
+        def unreadable(path):
+            nonlocal reads
+            if path == command:
+                reads += 1
+                if reads == 2:
+                    raise PermissionError("Synthetic post-staging read failure")
+            return read_bytes(path)
+        with mock.patch.object(Path, "read_bytes", autospec=True, side_effect=unreadable):
+            with self.assertRaises(PermissionError):
+                self.run_refresh()
+        self.assertEqual(command.read_bytes(), original)
+        self.assertEqual(list(scratch.iterdir()), [sentinel])
+        self.assertEqual(sentinel.read_bytes(), b"Keep synthetic user data.")
+
+    def test_linked_current_command_is_rejected_without_target_changes(self):
+        self.add_vendor()
+        outside = self.base / "outside-command.cmd"
+        outside.write_bytes(b"Keep the synthetic external command.")
+        command = self.output / "synthetic.cmd"
+        self.symlink(outside, command)
+        with self.assertRaises(RuntimeError):
+            self.run_refresh()
+        self.assertTrue(command.is_symlink())
+        self.assertEqual(outside.read_bytes(), b"Keep the synthetic external command.")
+        self.assertFalse((self.root / "tmp").exists())
+
+    def test_owned_pip_alias_can_change_to_explicit_entrypoint(self):
+        self.add_vendor("pip3.11")
+        command = self.output / "pip3.11.cmd"
+        command.write_bytes(self.module.render_cmd("pip"))
+        self.assertEqual(self.run_refresh(), 0)
+        self.assertEqual(command.read_bytes(), self.module.render_cmd("pip3.11"))
 
 if __name__ == "__main__":
     unittest.main()
