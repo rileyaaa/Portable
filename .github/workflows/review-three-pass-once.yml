@@ -1,4 +1,4 @@
-name: Repair converter bugs and independently verify source and Windows browser
+name: Finalize renewed three-pass review and request full Windows release
 
 on:
   push:
@@ -10,315 +10,113 @@ permissions:
   contents: read
 
 jobs:
-  repair:
+  finalize:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     permissions:
       contents: write
-    outputs:
-      source: ${{ steps.commit.outputs.source }}
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERIFIED_SOURCE: 3c0f043b2f3749c1492f30c87fa9d0925c7e121c
+      VERSION: v2026.10.25.1
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           lfs: false
           fetch-depth: 1
-      - name: Reproduce old failures and apply exact reviewed repairs
+      - name: Require successful independent source and real Windows browser reviews
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p tmp/converter-repair
+          test "$(gh api "repos/$GH_REPO" --jq .private)" = true
+          test "$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)" = "$GITHUB_SHA"
+          mkdir -p tmp/finalize-reviewed-release
+          gh api "repos/$GH_REPO/actions/runs/40161313406" > tmp/finalize-reviewed-release/run.json
+          gh api "repos/$GH_REPO/actions/runs/40161313406/jobs" > tmp/finalize-reviewed-release/jobs.json
           python3 -B - <<'PY'
-          import hashlib, pathlib, subprocess
-          base=pathlib.Path('Version_History/AI account format conversion')
-          expected={str(base/'app/app.js'):'cf223950ab803b162da689f581b38733bd1b272d',str(base/'test/static-audit.js'):'4d08167bcfd05d1c2c3fe456d4fdf59786316daa','tests/test_browser_smoke.ps1':'5704a99f95ea1c8caa0b5683d0f1a7bb4f011d58'}
-          def sha(raw):return hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()
-          for name,identity in expected.items():assert sha(pathlib.Path(name).read_bytes())==identity,name
-          tests=r'''// Use the real page handlers with inert DOM objects. Only synthetic accounts
-          // are supplied, and no DOM event, browser, network or clipboard is executed.
-          const assert=require('node:assert/strict');
-          function converterPageFixture(){
-            const elements=new Map();
-            const element=selector=>{
-              if(!elements.has(selector)) elements.set(selector, {
-                value:'', checked:false, innerHTML:'', textContent:'',
-                classList:{add(){},remove(){},toggle(){}}, addEventListener(){},
-                querySelectorAll(){return [];}, click(){},
-              });
-              return elements.get(selector);
-            };
-            const page={document:{querySelector:element,querySelectorAll(){return [];}},
-              console:{log(){},error(){},warn(){}}, setTimeout(){}, TextEncoder, TextDecoder,
-              atob:s=>Buffer.from(s,'base64').toString('binary'),
-              btoa:s=>Buffer.from(s,'binary').toString('base64'), crypto:{}};
-            page.window=page; vm.createContext(page);
-            vm.runInContext(fs.readFileSync('app/converter.js','utf8'),page);
-            vm.runInContext(fs.readFileSync('app/app.js','utf8'),page);
-            return {page,element};
-          }
-          const uiChecks=[
-            ['imported account type is text, not HTML',()=>{
-              const {element}=converterPageFixture();
-              const marker='<img src="data:,synthetic" onerror="window.__synthetic_type_marker=1">';
-              element('#inputText').value=JSON.stringify({accounts:[{
-                name:'synthetic',type:marker,credentials:{api_key:'synthetic-not-a-key'},
-              }]});
-              element('#convertBtn').onclick();
-              const html=element('#detected').innerHTML;
-              assert.ok(html.includes('synthetic'));
-              assert.ok(html.includes('&lt;img'));
-              assert.ok(!html.includes(marker));
-              assert.equal(JSON.parse(element('#inputText').value).accounts[0].type,marker);
-            }],
-            ['ordinary and mixed account types still render',()=>{
-              const {element}=converterPageFixture();
-              element('#inputText').value=JSON.stringify({accounts:[
-                {name:'api',type:'api_key',credentials:{api_key:'synthetic-not-a-key'}},
-                {name:'oauth',type:'oauth',credentials:{access_token:'synthetic-not-a-token'}},
-              ]});
-              element('#convertBtn').onclick();
-              assert.ok(element('#detected').innerHTML.includes('api_key/oauth'));
-              assert.ok(element('#cards').innerHTML.includes('data-i="0"'));
-            }],
-            ['ZIP declares UTF-8 for local and central names',()=>{
-              const {page}=converterPageFixture();
-              const names=['plain/account.json','\u4fbf\u643a/\u8d26\u53f7.json','emoji-\ud83d\udce6.json'];
-              page.syntheticFiles=Object.fromEntries(names.map(name=>[name,'synthetic-'+name]));
-              const bytes=Buffer.from(vm.runInContext('makeZip(syntheticFiles)',page));
-              const end=bytes.length-22;
-              assert.equal(bytes.readUInt32LE(end),0x06054b50);
-              assert.equal(bytes.readUInt16LE(end+10),names.length);
-              let cursor=bytes.readUInt32LE(end+16);
-              for(const name of names){
-                assert.equal(bytes.readUInt32LE(cursor),0x02014b50);
-                assert.equal(bytes.readUInt16LE(cursor+8)&0x800,0x800);
-                const nameLength=bytes.readUInt16LE(cursor+28);
-                assert.equal(bytes.subarray(cursor+46,cursor+46+nameLength).toString('utf8'),name);
-                const local=bytes.readUInt32LE(cursor+42);
-                assert.equal(bytes.readUInt32LE(local),0x04034b50);
-                assert.equal(bytes.readUInt16LE(local+6)&0x800,0x800);
-                assert.equal(bytes.readUInt16LE(local+26),nameLength);
-                assert.equal(bytes.subarray(local+30,local+30+nameLength).toString('utf8'),name);
-                const dataStart=local+30+nameLength+bytes.readUInt16LE(local+28);
-                const dataSize=bytes.readUInt32LE(local+22);
-                assert.equal(bytes.subarray(dataStart,dataStart+dataSize).toString('utf8'),'synthetic-'+name);
-                assert.equal(bytes.readUInt32LE(local+14),bytes.readUInt32LE(cursor+16));
-                cursor+=46+nameLength+bytes.readUInt16LE(cursor+30)+bytes.readUInt16LE(cursor+32);
-              }
-              assert.equal(cursor,end);
-            }],
-            ['empty ZIP remains a valid empty archive',()=>{
-              const {page}=converterPageFixture();
-              const bytes=Buffer.from(vm.runInContext('makeZip({})',page));
-              assert.equal(bytes.length,22);
-              assert.equal(bytes.readUInt32LE(0),0x06054b50);
-              assert.equal(bytes.readUInt16LE(10),0);
-            }],
-          ];
-          for(const [name,check] of uiChecks){
-            try{check(); console.log('PASS converter UI/ZIP: '+name);}
-            catch(error){ok=false; console.error('[CONVERTER_UI_ZIP] '+name+': '+error.message);}
-          }
-          '''
-          audit=base/'test/static-audit.js'; raw=audit.read_bytes(); marker=b'if(!ok) process.exit(1);'
-          assert raw.count(marker)==1
-          raw=raw.replace(marker,tests.encode()+b'\n'+marker)
-          assert sha(raw)=='10da6c1e18f0236e0001f45b4cf1694c9458f9ad'
-          audit.write_bytes(raw)
-          before=subprocess.run(['node',str(audit)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
-          print(before.stdout)
-          assert before.returncode==1 and before.stdout.count('[CONVERTER_UI_ZIP]')==2
-          app=base/'app/app.js'; raw=app.read_bytes()
-          old=b"${[...new Set(accs.map(a=>a.type))].join('/')}"
-          new=b"${escapeHtml([...new Set(accs.map(a=>a.type))].join('/'))}"
-          assert raw.count(old)==1;raw=raw.replace(old,new)
-          old=b'...u16(20),...u16(0),...u16(0),...u16(0),...u16(0)'
-          new=b'...u16(20),...u16(0x800),...u16(0),...u16(0),...u16(0)'
-          assert raw.count(old)==2;raw=raw.replace(old,new)
-          assert sha(raw)=='84709ae43ca5b17521855e076973e4b87189a034'
-          app.write_bytes(raw)
-          browser=r'''  // Exercise the actual offline converter UI with synthetic fields only.
-            const fs = require('node:fs');
-            const converterRoot = path.resolve(workspace, '../..', 'Version_History/AI account format conversion');
-            const converterPage = await context.newPage();
-            try {
-              const html = fs.readFileSync(path.join(converterRoot, 'index.html'), 'utf8')
-                .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
-                .replace(/<link\b[^>]*>/gi, '');
-              await converterPage.setContent(html);
-              for (const script of ['converter.js', 'app.js']) {
-                await converterPage.addScriptTag({content: fs.readFileSync(path.join(converterRoot, 'app', script), 'utf8')});
-              }
-              const marker = '<img src="data:,synthetic" onerror="window.__synthetic_type_marker=1">';
-              await converterPage.locator('#inputText').fill(JSON.stringify({accounts:[{
-                name:'synthetic',type:marker,credentials:{api_key:'synthetic-not-a-key'},
-              }]}));
-              await converterPage.locator('#convertBtn').click();
-              if (!(await converterPage.locator('#detected').textContent()).includes(marker) ||
-                  await converterPage.locator('#detected img').count() !== 0 ||
-                  await converterPage.evaluate(() => Boolean(window.__synthetic_type_marker))) {
-                throw new Error('Converter treated an imported type as executable HTML.');
-              }
-              const zipNamesOk = await converterPage.evaluate(() => {
-                const name = '\u4fbf\u643a/\u8d26\u53f7.json';
-                const data = makeZip({[name]:'synthetic'});
-                const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-                const central = view.getUint32(data.length-6, true);
-                return (view.getUint16(6,true)&0x800) === 0x800 &&
-                  (view.getUint16(central+8,true)&0x800) === 0x800 &&
-                  new TextDecoder().decode(data.slice(30,30+view.getUint16(26,true))) === name;
-              });
-              if (!zipNamesOk) throw new Error('Converter ZIP Unicode filename contract failed.');
-            } finally {
-              await converterPage.close();
-            }
-          '''
-          p=pathlib.Path('tests/test_browser_smoke.ps1'); raw=p.read_bytes()
-          old=b"'tool/automation/versions.json', 'tool/node/node.exe')) {"
-          new=b"'tool/automation/versions.json', 'tool/node/node.exe',\n        'Version_History/AI account format conversion/index.html',\n        'Version_History/AI account format conversion/app/app.js',\n        'Version_History/AI account format conversion/app/converter.js')) {"
-          assert raw.count(old)==1;raw=raw.replace(old,new)
-          old=b'  return {title: await page.title(), version,\n'
-          new=browser.encode()+b'  return {title: await page.title(), version, converterUiAndZip: true,\n'
-          assert raw.count(old)==1;raw=raw.replace(old,new)
-          old=b'$result.version -cne $expected) {';new=b'$result.version -cne $expected -or $result.converterUiAndZip -ne $true) {'
-          assert raw.count(old)==1;raw=raw.replace(old,new)
-          old=b"    Write-Output 'PASS real bundled Chromium, relocated path with spaces, page rendering, screenshot and persistent cookie'"
-          new=old+b"\n    Write-Output 'PASS real converter UI escapes imported types and emits UTF-8 ZIP filenames'"
-          assert raw.count(old)==1;raw=raw.replace(old,new)
-          assert sha(raw)=='9edda6e55c6725fb1a7cf7e6f0ceafab01f89953'
-          p.write_bytes(raw)
-          for script in ('test/smoke.js','test/static-audit.js'):subprocess.run(['node',str(base/script)],check=True)
+          import json,pathlib
+          root=pathlib.Path('tmp/finalize-reviewed-release')
+          run=json.loads((root/'run.json').read_text())
+          assert run['status']=='completed' and run['conclusion']=='success'
+          assert run['head_sha']=='a3df79faa409ccea212811c2d92e22f83ad51274'
+          jobs=json.loads((root/'jobs.json').read_text())['jobs']
+          assert {j['name'] for j in jobs}=={'repair','source-review','windows-browser'}
+          assert all(j['status']=='completed' and j['conclusion']=='success' for j in jobs)
+          assert all(s['conclusion']=='success' for j in jobs for s in j['steps'])
           PY
-      - name: Update existing documentation and commit only reviewed changes
-        id: commit
+          gh run view 40161313406 --job 121073349906 --log > tmp/finalize-reviewed-release/windows.log
+          grep -F 'PASS real converter UI escapes imported types and emits UTF-8 ZIP filenames' tmp/finalize-reviewed-release/windows.log
+          grep -F 'PASS explicit cache cleanup removes browser profile while preserving work output' tmp/finalize-reviewed-release/windows.log
+          git fetch --no-tags --depth=1 origin "$VERIFIED_SOURCE"
+          python3 -B - <<'PY'
+          import os,subprocess
+          changed=subprocess.check_output(['git','diff','--name-only',os.environ['VERIFIED_SOURCE'],'HEAD'],text=True).splitlines()
+          assert changed==['.github/workflows/review-three-pass-once.yml'],changed
+          expected={
+              'tool/refresh-python-cli-shims.py':'d306913f0fc971850aa59f9d583a0f0aa4df9aeb',
+              'tests/test_python_cli_shims.py':'cdf4d3c9fd8a77afa52976ce6f12e6bf86325253',
+              'tool/codex-instruct.py':'d5047c6131562d21794d5b8cd9bc0166944b262d',
+              'Version_History/AI account format conversion/app/app.js':'84709ae43ca5b17521855e076973e4b87189a034',
+              'Version_History/AI account format conversion/test/static-audit.js':'10da6c1e18f0236e0001f45b4cf1694c9458f9ad',
+              'tests/test_browser_smoke.ps1':'9edda6e55c6725fb1a7cf7e6f0ceafab01f89953',
+              '.github/workflows/release.yml':'fa42137dd0c29138a7280126d3833ab514c9da96',
+          }
+          for name,sha in expected.items():
+              assert subprocess.check_output(['git','rev-parse','HEAD:'+name],text=True).strip()==sha,name
+          PY
+          test -z "$(git ls-remote --tags origin "refs/tags/$VERSION")"
+          test -z "$(gh api "repos/$GH_REPO/releases?per_page=100" --jq '.[]|select(.tag_name == "v2026.10.25.1")|.id')"
+          test "$(gh api "repos/$GH_REPO/actions/runs/40158618545/artifacts" --jq '.artifacts|length')" = 0
+      - name: Consolidate the actual final review record and remove temporary workflow
         shell: bash
         run: |
           set -euo pipefail
           python3 -B - <<'PY'
           from pathlib import Path
-          p=Path('Version_History/AI account format conversion/README.md');text=p.read_text(encoding='utf-8')
-          a='转换结果在内存中生成；';b='导入的账号类型按纯文本显示，不作为 HTML 执行。转换结果在内存中生成；'
-          assert text.count(a)==1;text=text.replace(a,b)
-          a='ZIP 在浏览器内存生成，不创建工具临时文件。'
-          assert text.count(a)==1;text=text.replace(a,a+' 文件名使用 UTF-8，并在本地文件头及中央目录显式标记，保留中文和其他 Unicode 账号名。')
-          text+='\nWindows 正式发布验证还使用包内 Chromium 检查账号类型按纯文本显示及 ZIP 中文文件名标记；Node static audit 包含真实页面处理函数的惰性 DOM 回归和 ZIP 本地头/中央目录一致性检查。相关测试全部使用合成账号，不验证真实账号或服务端登录。\n'
-          p.write_text(text,encoding='utf-8',newline='')
           p=Path('DEVELOPMENT.md');text=p.read_text(encoding='utf-8')
-          anchor='**发布门禁与边界：** 三轮源码复查不冒充 Windows 原生验收。'
-          addition='**继续复查发现的账号转换器问题：** 导入账号的 `type` 原样插入识别区域 HTML，可把账号字段当作页面标记；ZIP 写入了 UTF-8 文件名字节但未设置本地头和中央目录的 UTF-8 标志，中文名被标准 ZIP 读取器误解码。现只补现有 HTML 转义及两处 UTF-8 标志，不修改账号内容、认证、下载目录或转换格式。新增四项页面处理/ZIP 回归在旧代码中稳定失败两项、修复后全部通过；独立 Python HTML 解析与 ZIP 解码确认九类字段、八种多语言路径及 CRC/内容保真。已停止未发布的 `40159811138`，此前三轮不作为新修改的最终验收；重新执行第一轮 128 项源码回归、8 项浏览器策略及转换器检查，第二轮 13 项独立进程、11 组边界及上述九/八项独立检查，均未发现新问题。第三轮全新 runner 和真实 Windows Chromium 检查完成后，再清理临时工作流并重新执行完整正式发布。\n\n'
-          assert text.count(anchor)==1;p.write_text(text.replace(anchor,addition+anchor),encoding='utf-8',newline='')
+          start=text.index('## 2026-10-25：Python 辅助工具修复与三轮复查\n')
+          end=text.index('## 2026-10-25：SQLite 归属检查与发布复查\n',start)
+          section='''## 2026-10-25：辅助工具、账号转换器修复与三轮复查
+
+          **Python 用户文件保护：** `88967f671569296a3fdcc5b8c155201f53805582` 修复刷新器覆盖同名用户 CMD，以及指令安装在无效本地配置被拒绝前覆盖旧指令的问题。刷新前和原子替换前核对生成内容归属；用户修改保留，并以既有状态码 3 报告未完成项。指令安装先预检本地配置，再写入指令；写入和替换前拒绝链接、硬链接及非普通输出。原 30 项测试通过；新增 23 项后旧实现有 19 项失败，修复后 53 项通过。配置预检不等于跨两个文件的事务保证，也不声称完全消除并发竞争。
+
+          **本轮祖先检查修复：** `6cf2e4d618beec24350643224f5aa4c0e6e0f7fe` 修复命令刷新器从包根向上检查、先查询链接后方目录再拒绝的问题；改为从文件系统根向下检查。两项父级/更高层链接回归在旧代码稳定失败，修复后命令刷新 24 项及指令安装 31 项全部通过。正常 CMD 模板、认证、普通/YOLO 权限、Fast、扩展开关、模式副本和官方 0.164.0 工件均未改变。
+
+          **本轮账号转换器修复：** `3c0f043b2f3749c1492f30c87fa9d0925c7e121c` 修复导入账号 `type` 直接进入识别区域 HTML，以及 ZIP 的 UTF-8 文件名字节未设置编码标志、中文名被误解码的问题。仅补现有 HTML 转义及 ZIP 本地头/中央目录的 UTF-8 标志，不更改账号内容或转换格式。新增四项真实页面处理函数/ZIP 回归，旧代码稳定失败两项、修复后全部通过。既有 Windows 浏览器测试增加真实页面文本显示、无注入节点及 Unicode ZIP 检查，并保留原版本、渲染、截图、跨进程 Cookie 持久化和显式缓存清理检查。
+
+          **最终重新计数的三轮复查：** 发现转换器问题后停止尚未打包的 `40159811138`，此前三轮不再作为新修改的最终验收。第一轮对最新修复的源码副本重新执行 128 项 Python 回归、8 项浏览器策略、账号转换器 smoke 和四项 UI/ZIP 检查，均通过。第二轮重新执行 13 个独立 Python 进程场景、11 组代理/路径/发行清单边界；另以独立 Python HTML 解析器检查九类导入字段，以标准 ZIP 解码器检查八种多语言路径、原始内容和 CRC，全部通过。第三轮 Actions `40161313406` 在全新 Linux 和 Windows runner 检出上述同一转换器修复提交：129 项源码回归无失败/错误/跳过，8 项浏览器策略、转换器测试、101 份 Python 与 41 份 PowerShell 解析，以及 33 项模型参数、12 项权限显示、9 项登录输入保护、7 项登录流程和共享 URL 契约检查均通过；Windows PowerShell 5.1 和真实配套 Chromium 的新增页面/ZIP、截图、Cookie 持久化与清理检查也通过。129 与 128 的差异为完整 Git checkout 额外执行实际跟踪清单测试，不是重复引用旧日志。三轮均未发现新的可复现问题。
+
+          **发布门禁与边界：** 清理临时审核工作流并更新本记录后，既有 `release.yml` 必须对最终提交重新执行 `check_set=full`；完整 Windows 启动链、中文/空格路径、权限、MCP、Python/Node、浏览器、干净 Git/LFS 打包及上传附件回读全部通过后，才允许发布 `v2026.10.25.1`。实际发布状态、来源提交和完整验证链接以对应 Release 为准，不覆盖 `v2026.10.25`。本次私有源码 artifact 已主动删除，不长期保留自动触发入口。测试只使用合成账号/传输/设备输入；真实账号刷新、全部在线 Agent/Host、提权沙箱及真实设备仍未测。三轮通过不代表所有场景绝对没有 Bug。
+
+          '''
+          section='\n'.join(line[10:] if line.startswith('          ') else line for line in section.split('\n'))
+          p.write_text(text[:start]+section+text[end:],encoding='utf-8',newline='')
           PY
           git diff --check
+          git rm -- .github/workflows/review-three-pass-once.yml
+          git add -- DEVELOPMENT.md
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- 'Version_History/AI account format conversion/app/app.js' 'Version_History/AI account format conversion/test/static-audit.js' 'Version_History/AI account format conversion/README.md' tests/test_browser_smoke.ps1 DEVELOPMENT.md
-          git commit -m 'fix: escape imported account types and preserve Unicode ZIP filenames'
+          git commit -m 'docs: finalize three clean review passes and remove temporary workflow'
           git push origin HEAD:main
-          echo "source=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "CONVERTER_REPAIR_COMMIT=$(git rev-parse HEAD)"
-      - name: Remove only own scratch
-        if: always()
-        run: rm -rf -- tmp/converter-repair
-  source-review:
-    needs: repair
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      PYTHONDONTWRITEBYTECODE: '1'
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          ref: ${{ needs.repair.outputs.source }}
-          lfs: false
-          persist-credentials: false
-      - name: Reverse-order source regressions and syntax validation
+          echo "RELEASE_SOURCE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "FINAL_REVIEWED_COMMIT=$(git rev-parse HEAD)"
+      - name: Dispatch unchanged full Windows release gates for final clean source
         shell: bash
         run: |
           set -euo pipefail
-          python3 -B - <<'PY'
-          import ast,pathlib,subprocess,sys,unittest
-          root=pathlib.Path.cwd();sys.path.insert(0,str(root/'tool/python/Lib/site-packages'));sys.path.insert(0,str(root/'tests'))
-          omitted={'test_runtime_package','test_optional_python_payload','test_python_runtime_dependencies','test_pip_config_isolation','test_pdf_library'}
-          deferred={'test_browser_install.BrowserInstallTests.test_pinned_browser_inventory_matches_installed_official_bytes','test_python_lock.PythonLockTests.test_runtime_repair_accepts_current_defaults_and_missing_packages'}
-          def flatten(s):
-              for x in s:
-                  if isinstance(x,unittest.TestSuite):yield from flatten(x)
-                  else:yield x
-          cases=[]
-          for p in sorted((root/'tests').glob('test_*.py')):
-              if p.stem not in omitted:cases.extend(c for c in flatten(unittest.defaultTestLoader.loadTestsFromName(p.stem)) if c.id() not in deferred)
-          result=unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite(reversed(cases)))
-          assert result.wasSuccessful() and not result.skipped and result.testsRun==129
-          count=0
-          for raw in subprocess.check_output(['git','ls-files','-z']).split(b'\0'):
-              if not raw:continue
-              name=raw.decode()
-              if name.endswith('.py') and not name.startswith(('tool/python/','tool/git/','tool/node/','tool/automation/node_modules/')) and '/node_modules/' not in name:
-                  ast.parse(pathlib.Path(name).read_text(encoding='utf-8-sig'),filename=name);count+=1
-          print('THIRD_SOURCE_PYTHON=129 failures=0 skipped=0 parsed='+str(count))
-          PY
-          node --test --test-name-pattern='unselected|path guards|browser configuration|persistent browser owner|tool policy|transport strips|browser_close|a disconnected' tests/test_automation.js
-          node 'Version_History/AI account format conversion/test/smoke.js'
-          node 'Version_History/AI account format conversion/test/static-audit.js'
-      - name: PowerShell syntax and offline production policy checks
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop';$count=0
-          foreach($name in (& git -c core.quotepath=false ls-files)){
-            if($name -notlike '*.ps1' -or $name -match '^(tool/(python|git|node)/|tool/automation/node_modules/)' -or $name -match '/node_modules/'){continue}
-            $tokens=$null;$errors=$null
-            $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE $name),[ref]$tokens,[ref]$errors)
-            if($errors.Count){throw ('PowerShell parse failure: '+$name)};$count++
-          }
-          Write-Output ('POWERSHELL_PARSED='+$count)
-          foreach($name in @('test_cli_model_options','test_permission_display','test_login_input_errors','test_browser_login_flow')){
-            & pwsh -NoLogo -NoProfile -NonInteractive -File "tests/$name.ps1"
-            if($LASTEXITCODE -ne 0){throw ('Offline policy regression failed: '+$name)}
-          }
-          & git diff --exit-code
-          if($LASTEXITCODE -ne 0){throw 'Review changed tracked files.'}
-          Write-Output 'THIRD_SOURCE_REVIEW=PASS'
-  windows-browser:
-    needs: repair
-    runs-on: windows-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        shell: powershell
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          ref: ${{ needs.repair.outputs.source }}
-          lfs: true
-          persist-credentials: false
-      - name: Prepare package-local Windows state
-        run: |
-          $ErrorActionPreference='Stop'
-          $base=Join-Path $env:GITHUB_WORKSPACE 'tmp/converter-windows-state'
-          $state=@{HOME='home';USERPROFILE='home';APPDATA='appdata';LOCALAPPDATA='localappdata';PROGRAMDATA='programdata';ALLUSERSPROFILE='programdata';TEMP='temp';TMP='temp';TMPDIR='temp';XDG_CACHE_HOME='cache';XDG_CONFIG_HOME='config';XDG_DATA_HOME='data';XDG_STATE_HOME='state';CODEX_HOME='codex-home';CODEX_SQLITE_HOME='sqlite'}
-          foreach($name in $state.Keys){$path=Join-Path $base $state[$name];New-Item -ItemType Directory -Force -Path $path|Out-Null;"$name=$path"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
-          'PYTHONDONTWRITEBYTECODE=1'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          'POWERSHELL_TELEMETRY_OPTOUT=1'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          $modules=Join-Path $base 'cache/modules';New-Item -ItemType Directory -Force $modules|Out-Null
-          "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Native Node converter regressions and pinned browser verification
-        run: |
-          & .\tool\node\node.exe 'Version_History/AI account format conversion/test/smoke.js'
-          if($LASTEXITCODE -ne 0){throw 'Converter smoke failed.'}
-          & .\tool\node\node.exe 'Version_History/AI account format conversion/test/static-audit.js'
-          if($LASTEXITCODE -ne 0){throw 'Converter UI/ZIP regressions failed.'}
-          & .\tool\python\python.exe -B .\tool\automation\install-browser.py --check
-          if($LASTEXITCODE -ne 0){throw 'Pinned browser payload verification failed.'}
-      - name: Actual Windows Chromium UI, Unicode ZIP, persistence and cleanup
-        timeout-minutes: 5
-        run: |
-          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_smoke.ps1
-          if($LASTEXITCODE -ne 0){throw 'Real converter/browser regression failed.'}
-          & git diff --exit-code
-          if($LASTEXITCODE -ne 0){throw 'Windows review changed tracked source.'}
-          Write-Output 'THIRD_WINDOWS_BROWSER_REVIEW=PASS'
-      - name: Remove only own Windows state
+          test "$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)" = "$RELEASE_SOURCE"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          test "$(find .github/workflows -maxdepth 1 -type f | wc -l)" = 2
+          git diff --exit-code "$VERIFIED_SOURCE" HEAD -- . ':!DEVELOPMENT.md' ':!.github/workflows/review-three-pass-once.yml'
+          gh workflow run release.yml --ref main -f version="$VERSION" -f publish_release=true -f check_set=full
+          echo "REQUESTED_RELEASE_VERSION=$VERSION"
+          echo "REQUESTED_RELEASE_SOURCE=$RELEASE_SOURCE"
+          echo 'Publication still requires every full Windows, package and remote read-back gate.'
+      - name: Remove only finalizer scratch
         if: always()
-        run: |
-          $path=Join-Path $env:GITHUB_WORKSPACE 'tmp/converter-windows-state'
-          if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}
+        shell: bash
+        run: rm -rf -- tmp/finalize-reviewed-release
