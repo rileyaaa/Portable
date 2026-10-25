@@ -9,7 +9,7 @@
 3. 选择输出格式，复制、下载单个结果，或点击“下载ZIP”保存批量结果。
 4. 使用后清空输入并关闭页面，妥善保管剪贴板和下载文件。
 
-工具业务代码不发送网络请求，也不使用 localStorage、sessionStorage、IndexedDB、Service Worker 或 Cache API。转换结果在内存中生成；主动复制会写入剪贴板，主动下载会交给浏览器保存。下载位置由浏览器决定，需要留在便携包内时，请选择包内工作目录。
+工具业务代码不发送网络请求，也不使用 localStorage、sessionStorage、IndexedDB、Service Worker 或 Cache API。导入的账号类型按纯文本显示，不作为 HTML 执行。转换结果在内存中生成；主动复制会写入剪贴板，主动下载会交给浏览器保存。下载位置由浏览器决定，需要留在便携包内时，请选择包内工作目录。
 
 ## 输入与输出
 
@@ -23,7 +23,7 @@
 
 输出包括 Codex auth、OAuth、sub2api、`.env`、OpenAI-compatible JSON、LiteLLM YAML、One API / New API、Cherry Studio、Chatbox、LobeChat、cURL、VSCode REST Client `.http` 及识别报告。平台模板属于配置草稿，需按目标软件版本核对字段。
 
-单个 Codex auth 默认选择第一个 OAuth 账号；多账号使用批量数组、文件包 JSON 或 ZIP。ZIP 中 `outputs/` 保存各格式结果，账号子目录保存拆分文件；ZIP 在浏览器内存生成，不创建工具临时文件。
+单个 Codex auth 默认选择第一个 OAuth 账号；多账号使用批量数组、文件包 JSON 或 ZIP。ZIP 中 `outputs/` 保存各格式结果，账号子目录保存拆分文件；ZIP 在浏览器内存生成，不创建工具临时文件。 文件名使用 UTF-8，并在本地文件头及中央目录显式标记，保留中文和其他 Unicode 账号名。
 
 ## 辅助功能
 
@@ -60,3 +60,5 @@
 独立使用本子项目时也可通过已准备好的 Node 执行同一测试。当前合成 fixture 为 `test/multi-array-sample.json`，包含四个账号；smoke 检查格式输出、账号数量、报告和规则映射，static audit 检查资源引用、页面元素及指定的网络/存储调用等模式。测试还会读取本目录根下的 `.json`，不要将真实账号文件放在这里作为测试输入。
 
 这些脚本不覆盖浏览器交互、剪贴板权限或 Web Crypto 的实际运行，相关功能修改后需另做浏览器验收。
+
+Windows 正式发布验证还使用包内 Chromium 检查账号类型按纯文本显示及 ZIP 中文文件名标记；Node static audit 包含真实页面处理函数的惰性 DOM 回归和 ZIP 本地头/中央目录一致性检查。相关测试全部使用合成账号，不验证真实账号或服务端登录。

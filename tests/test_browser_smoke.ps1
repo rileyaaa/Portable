@@ -14,7 +14,10 @@ try {
     foreach ($relative in @('env.ps1', 'run-codex.ps1', '清理缓存.ps1', 'tool/portable-process.ps1',
         'tool/automation/portable-automation.ps1', 'tool/automation/start-browser.ps1',
         'tool/automation/browser-task.js', 'tool/automation/browser-bridge.js',
-        'tool/automation/versions.json', 'tool/node/node.exe')) {
+        'tool/automation/versions.json', 'tool/node/node.exe',
+        'Version_History/AI account format conversion/index.html',
+        'Version_History/AI account format conversion/app/app.js',
+        'Version_History/AI account format conversion/app/converter.js')) {
         $source = Assert-AutomationPath -Root $root -Path (Join-Path $root $relative)
         $target = Join-Path $fixture $relative
         [void](New-AutomationDirectory -Root $root -Path (Split-Path -Parent $target))
@@ -43,7 +46,42 @@ module.exports = async ({page, context, workspace}) => {
   const cdp = await context.newCDPSession(page);
   const version = (await cdp.send('Browser.getVersion')).product.split('/').pop();
   await cdp.detach();
-  return {title: await page.title(), version,
+  // Exercise the actual offline converter UI with synthetic fields only.
+  const fs = require('node:fs');
+  const converterRoot = path.resolve(workspace, '../..', 'Version_History/AI account format conversion');
+  const converterPage = await context.newPage();
+  try {
+    const html = fs.readFileSync(path.join(converterRoot, 'index.html'), 'utf8')
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<link\b[^>]*>/gi, '');
+    await converterPage.setContent(html);
+    for (const script of ['converter.js', 'app.js']) {
+      await converterPage.addScriptTag({content: fs.readFileSync(path.join(converterRoot, 'app', script), 'utf8')});
+    }
+    const marker = '<img src="data:,synthetic" onerror="window.__synthetic_type_marker=1">';
+    await converterPage.locator('#inputText').fill(JSON.stringify({accounts:[{
+      name:'synthetic',type:marker,credentials:{api_key:'synthetic-not-a-key'},
+    }]}));
+    await converterPage.locator('#convertBtn').click();
+    if (!(await converterPage.locator('#detected').textContent()).includes(marker) ||
+        await converterPage.locator('#detected img').count() !== 0 ||
+        await converterPage.evaluate(() => Boolean(window.__synthetic_type_marker))) {
+      throw new Error('Converter treated an imported type as executable HTML.');
+    }
+    const zipNamesOk = await converterPage.evaluate(() => {
+      const name = '\u4fbf\u643a/\u8d26\u53f7.json';
+      const data = makeZip({[name]:'synthetic'});
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      const central = view.getUint32(data.length-6, true);
+      return (view.getUint16(6,true)&0x800) === 0x800 &&
+        (view.getUint16(central+8,true)&0x800) === 0x800 &&
+        new TextDecoder().decode(data.slice(30,30+view.getUint16(26,true))) === name;
+    });
+    if (!zipNamesOk) throw new Error('Converter ZIP Unicode filename contract failed.');
+  } finally {
+    await converterPage.close();
+  }
+  return {title: await page.title(), version, converterUiAndZip: true,
     cookie: (await context.cookies()).find(cookie => cookie.name === 'portable_release')?.value};
 };
 '@, $utf8)
@@ -61,7 +99,7 @@ module.exports = async ({context}) => ({
     if ($LASTEXITCODE -ne 0) { throw ('First real browser task failed; exit=' + $LASTEXITCODE) }
     [void](Assert-AutomationPath -Root $fixture -Path (Join-Path $fixture 'tmp') -Directory)
     $result = ($output -join "`n") | ConvertFrom-Json
-    if ($result.title -cne 'Portable smoke' -or $result.cookie -cne 'persisted' -or $result.version -cne $expected) {
+    if ($result.title -cne 'Portable smoke' -or $result.cookie -cne 'persisted' -or $result.version -cne $expected -or $result.converterUiAndZip -ne $true) {
         throw 'Real browser navigation, version or cookie write failed.'
     }
     $screenshot = Assert-AutomationPath -Root $fixture -Path (Join-Path $workspace 'smoke.png')
@@ -75,6 +113,7 @@ module.exports = async ({context}) => ({
         throw 'Browser profile did not persist across separate task processes.'
     }
     Write-Output 'PASS real bundled Chromium, relocated path with spaces, page rendering, screenshot and persistent cookie'
+    Write-Output 'PASS real converter UI escapes imported types and emits UTF-8 ZIP filenames'
     $cleaner = Join-Path $fixture '清理缓存.ps1'
     & $engine -NoProfile -ExecutionPolicy Bypass -File $cleaner -Yes
     if ($LASTEXITCODE -ne 0) { throw 'Fixture cache cleaner failed.' }

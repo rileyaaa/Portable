@@ -55,5 +55,91 @@ for (const f of cases) {
     if(a.extra && oldKey in a.extra) { console.error(`[OLD_HINT_FIELD] ${f}/${a.name}`); ok=false; }
   }
 }
+// Use the real page handlers with inert DOM objects. Only synthetic accounts
+// are supplied, and no DOM event, browser, network or clipboard is executed.
+const assert=require('node:assert/strict');
+function converterPageFixture(){
+  const elements=new Map();
+  const element=selector=>{
+    if(!elements.has(selector)) elements.set(selector, {
+      value:'', checked:false, innerHTML:'', textContent:'',
+      classList:{add(){},remove(){},toggle(){}}, addEventListener(){},
+      querySelectorAll(){return [];}, click(){},
+    });
+    return elements.get(selector);
+  };
+  const page={document:{querySelector:element,querySelectorAll(){return [];}},
+    console:{log(){},error(){},warn(){}}, setTimeout(){}, TextEncoder, TextDecoder,
+    atob:s=>Buffer.from(s,'base64').toString('binary'),
+    btoa:s=>Buffer.from(s,'binary').toString('base64'), crypto:{}};
+  page.window=page; vm.createContext(page);
+  vm.runInContext(fs.readFileSync('app/converter.js','utf8'),page);
+  vm.runInContext(fs.readFileSync('app/app.js','utf8'),page);
+  return {page,element};
+}
+const uiChecks=[
+  ['imported account type is text, not HTML',()=>{
+    const {element}=converterPageFixture();
+    const marker='<img src="data:,synthetic" onerror="window.__synthetic_type_marker=1">';
+    element('#inputText').value=JSON.stringify({accounts:[{
+      name:'synthetic',type:marker,credentials:{api_key:'synthetic-not-a-key'},
+    }]});
+    element('#convertBtn').onclick();
+    const html=element('#detected').innerHTML;
+    assert.ok(html.includes('synthetic'));
+    assert.ok(html.includes('&lt;img'));
+    assert.ok(!html.includes(marker));
+    assert.equal(JSON.parse(element('#inputText').value).accounts[0].type,marker);
+  }],
+  ['ordinary and mixed account types still render',()=>{
+    const {element}=converterPageFixture();
+    element('#inputText').value=JSON.stringify({accounts:[
+      {name:'api',type:'api_key',credentials:{api_key:'synthetic-not-a-key'}},
+      {name:'oauth',type:'oauth',credentials:{access_token:'synthetic-not-a-token'}},
+    ]});
+    element('#convertBtn').onclick();
+    assert.ok(element('#detected').innerHTML.includes('api_key/oauth'));
+    assert.ok(element('#cards').innerHTML.includes('data-i="0"'));
+  }],
+  ['ZIP declares UTF-8 for local and central names',()=>{
+    const {page}=converterPageFixture();
+    const names=['plain/account.json','\u4fbf\u643a/\u8d26\u53f7.json','emoji-\ud83d\udce6.json'];
+    page.syntheticFiles=Object.fromEntries(names.map(name=>[name,'synthetic-'+name]));
+    const bytes=Buffer.from(vm.runInContext('makeZip(syntheticFiles)',page));
+    const end=bytes.length-22;
+    assert.equal(bytes.readUInt32LE(end),0x06054b50);
+    assert.equal(bytes.readUInt16LE(end+10),names.length);
+    let cursor=bytes.readUInt32LE(end+16);
+    for(const name of names){
+      assert.equal(bytes.readUInt32LE(cursor),0x02014b50);
+      assert.equal(bytes.readUInt16LE(cursor+8)&0x800,0x800);
+      const nameLength=bytes.readUInt16LE(cursor+28);
+      assert.equal(bytes.subarray(cursor+46,cursor+46+nameLength).toString('utf8'),name);
+      const local=bytes.readUInt32LE(cursor+42);
+      assert.equal(bytes.readUInt32LE(local),0x04034b50);
+      assert.equal(bytes.readUInt16LE(local+6)&0x800,0x800);
+      assert.equal(bytes.readUInt16LE(local+26),nameLength);
+      assert.equal(bytes.subarray(local+30,local+30+nameLength).toString('utf8'),name);
+      const dataStart=local+30+nameLength+bytes.readUInt16LE(local+28);
+      const dataSize=bytes.readUInt32LE(local+22);
+      assert.equal(bytes.subarray(dataStart,dataStart+dataSize).toString('utf8'),'synthetic-'+name);
+      assert.equal(bytes.readUInt32LE(local+14),bytes.readUInt32LE(cursor+16));
+      cursor+=46+nameLength+bytes.readUInt16LE(cursor+30)+bytes.readUInt16LE(cursor+32);
+    }
+    assert.equal(cursor,end);
+  }],
+  ['empty ZIP remains a valid empty archive',()=>{
+    const {page}=converterPageFixture();
+    const bytes=Buffer.from(vm.runInContext('makeZip({})',page));
+    assert.equal(bytes.length,22);
+    assert.equal(bytes.readUInt32LE(0),0x06054b50);
+    assert.equal(bytes.readUInt16LE(10),0);
+  }],
+];
+for(const [name,check] of uiChecks){
+  try{check(); console.log('PASS converter UI/ZIP: '+name);}
+  catch(error){ok=false; console.error('[CONVERTER_UI_ZIP] '+name+': '+error.message);}
+}
+
 if(!ok) process.exit(1);
 console.log('static audit passed');
