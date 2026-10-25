@@ -1,0 +1,86 @@
+name: Requested one-off source audit and Windows baseline
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/review-three-pass-once.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 88967f671569296a3fdcc5b8c155201f53805582
+          lfs: false
+          persist-credentials: false
+      - name: Export only committed review inputs with Git identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/three-pass-review
+          python3 -B - <<'PY'
+          import hashlib, importlib.util, json, pathlib, subprocess, zipfile
+          root = pathlib.Path.cwd()
+          spec = importlib.util.spec_from_file_location('builder', root/'tool/package-release.py')
+          builder = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(builder)
+          commit = subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
+          assert commit == '88967f671569296a3fdcc5b8c155201f53805582'
+          records = subprocess.check_output(['git','ls-tree','-rz','--full-tree','HEAD']).split(b'\0')
+          inventory, included = {}, {}
+          excluded = ('tool/git/', 'tool/node/', 'tool/python/Lib/site-packages/', 'tool/automation/browsers/', 'tool/automation/node_modules/')
+          output = root/'tmp/three-pass-review/verified-source.zip'
+          with zipfile.ZipFile(output, 'x', compression=zipfile.ZIP_DEFLATED) as archive:
+              for record in records:
+                  if not record:
+                      continue
+                  header, raw_name = record.split(b'\t', 1)
+                  mode, kind, sha = (item.decode() for item in header.split())
+                  name = raw_name.decode('utf-8')
+                  builder.safe_name(name)
+                  assert mode in ('100644','100755') and kind == 'blob'
+                  inventory[name] = {'mode':mode, 'sha':sha}
+                  if name.startswith(excluded) or '/node_modules/' in name:
+                      continue
+                  path = builder.package_file(root, name)
+                  if path.stat().st_size > 2000000:
+                      continue
+                  data = path.read_bytes()
+                  actual = hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+                  if actual != sha:
+                      raise RuntimeError('Checkout bytes do not match Git: '+name)
+                  archive.writestr(name, data)
+                  included[name] = {'sha':sha, 'sha256':hashlib.sha256(data).hexdigest(), 'size':len(data)}
+              archive.writestr('_review-inventory.json', json.dumps({'commit':commit,'included':included,'tracked':inventory}, ensure_ascii=False, indent=2))
+          print('REVIEW_SOURCE_COMMIT='+commit)
+          print('REVIEW_SOURCE_FILES='+str(len(included)))
+          print('REVIEW_SOURCE_ZIP_SHA256='+hashlib.sha256(output.read_bytes()).hexdigest())
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-review-source-88967f
+          path: tmp/three-pass-review/verified-source.zip
+          retention-days: 1
+          if-no-files-found: error
+      - name: Remove owned export staging
+        if: always()
+        shell: bash
+        run: rm -rf -- tmp/three-pass-review
+  windows-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Request existing full Windows validation without publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run release.yml --ref main -f version=v2026.10.25.1 -f publish_release=false -f check_set=full
