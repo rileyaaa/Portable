@@ -107,7 +107,7 @@
       hints.push('sub2api accounts 数组：已按全部账号批量读取。');
     } else if(Array.isArray(obj.data) || Array.isArray(obj.items) || Array.isArray(obj.tokens)){
       source='wrapped_array';
-      const arr=obj.data||obj.items||obj.tokens;
+      const arr=[obj.data,obj.items,obj.tokens].find(Array.isArray);
       arr.forEach((x,i)=>{ const r=identify(x, `${label}-${i+1}`); accounts.push(...r.accounts); hints.push(...r.hints); });
       hints.push('检测到 data/items/tokens 包装数组：已展开批量读取。');
     } else if(obj.accessToken && obj.user && obj.account){
@@ -196,8 +196,8 @@
     if(!obj||typeof obj!=='object') return obj;
     const out={};
     for(const [k,v] of Object.entries(obj)){
-      const nk=rules[k]||k;
-      out[nk]=ruleMapObject(v,rules);
+      const nk=Object.prototype.hasOwnProperty.call(rules,k)?(rules[k]||k):k;
+      Object.defineProperty(out,nk,{value:ruleMapObject(v,rules),enumerable:true,writable:true,configurable:true});
     }
     return out;
   }

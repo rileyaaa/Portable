@@ -19,7 +19,7 @@
 | OAuth / API Key | 通用 token JSON、`sk-...` / `sk-proj-...`、`.env` |
 | 代理配置 | `base_url + api_key`、Bearer Header、Cookie/Header 文本 |
 | sub2api | 单账号对象或 `{ accounts: [...] }` |
-| 多账号 | 纯数组、`data` / `items` / `tokens` 包装数组；可混合以上格式 |
+| 多账号 | 纯数组、`data` / `items` / `tokens` 包装数组；依次选取实际数组，忽略非数组的同名元数据；可混合以上格式 |
 
 输出包括 Codex auth、OAuth、sub2api、`.env`、OpenAI-compatible JSON、LiteLLM YAML、One API / New API、Cherry Studio、Chatbox、LobeChat、cURL、VSCode REST Client `.http` 及识别报告。平台模板属于配置草稿，需按目标软件版本核对字段。
 
@@ -31,7 +31,7 @@
 | --- | --- |
 | 识别报告 | 展示账号类型、身份字段、token 是否存在、有效期及重复提示；评分只基于输入字段，不验证服务端可用性 |
 | JWT 解码 | 查看 token payload；只解码、不验签，不证明 token 真实或仍然有效 |
-| 规则编辑器 | 将特殊字段名映射到标准名，例如 `{"token":"access_token","mail":"email"}`；仅适用于可解析 JSON |
+| 规则编辑器 | 将特殊字段名映射到标准名，例如 `{"token":"access_token","mail":"email"}`；仅使用规则自有字段，未映射字段保留，`__proto__` 等名称作为普通数据键；仅适用于可解析 JSON |
 | 字段补全 | 修改 name、email、account_id、user_id、base_url、plan 后重新生成输出 |
 | 加密账号库 | 用密码导出/导入 vault 文件，使用 PBKDF2-SHA256（150000 次）和 AES-GCM；依赖浏览器 Web Crypto，不自动保存 |
 | 离线自检 | 展示工具的网络/存储设计说明；不是动态网络监测或对浏览器扩展的检查 |

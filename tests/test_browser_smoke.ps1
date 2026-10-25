@@ -78,6 +78,25 @@ module.exports = async ({page, context, workspace}) => {
         new TextDecoder().decode(data.slice(30,30+view.getUint16(26,true))) === name;
     });
     if (!zipNamesOk) throw new Error('Converter ZIP Unicode filename contract failed.');
+    // Exercise rule mapping through the actual UI, not just isolated helpers.
+    await converterPage.locator('#rulesToggle').check();
+    await converterPage.locator('#rulesText').fill('{"token":"api_key"}');
+    await converterPage.locator('#inputText').fill(
+      '{"data":{"count":1},"items":[{"name":"synthetic-wrapped","token":"synthetic-only","constructor":"preserved","__proto__":{"note":"preserved"}}]}');
+    await converterPage.locator('#convertBtn').click();
+    const inputRulesOk = await converterPage.evaluate(() => {
+      const account = state.canon && state.canon.accounts[0];
+      const mapped = AccountConverter.ruleMapObject(
+        {metadata:{syntheticFlag:true}}, {metadata:'__proto__'});
+      return state.canon && state.canon.accounts.length === 1 &&
+        account.name === 'synthetic-wrapped' && account.api_key === 'synthetic-only' &&
+        Object.hasOwn(account.raw, 'constructor') && account.raw.constructor === 'preserved' &&
+        Object.hasOwn(account.raw, '__proto__') && account.raw.__proto__.note === 'preserved' &&
+        account.raw.note === undefined && Object.hasOwn(mapped, '__proto__') &&
+        mapped.syntheticFlag === undefined &&
+        JSON.parse(JSON.stringify(mapped)).__proto__.syntheticFlag === true;
+    });
+    if (!inputRulesOk) throw new Error('Converter wrapper/rule mapping lost data or inherited a field.');
   } finally {
     await converterPage.close();
   }
@@ -114,6 +133,7 @@ module.exports = async ({context}) => ({
     }
     Write-Output 'PASS real bundled Chromium, relocated path with spaces, page rendering, screenshot and persistent cookie'
     Write-Output 'PASS real converter UI escapes imported types and emits UTF-8 ZIP filenames'
+    Write-Output 'PASS real converter UI preserves wrapped arrays and prototype-named mapping fields'
     $cleaner = Join-Path $fixture '清理缓存.ps1'
     & $engine -NoProfile -ExecutionPolicy Bypass -File $cleaner -Yes
     if ($LASTEXITCODE -ne 0) { throw 'Fixture cache cleaner failed.' }
