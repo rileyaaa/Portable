@@ -78,10 +78,6 @@ jobs:
                   self.assert_linked_ancestor_rejected_before_descendant_probe(module, alias)
 
           '''
-          # The YAML block preserves the first line; remove only the extra
-          # indentation used above to make the embedded Python easy to audit.
-          added = added.splitlines(keepends=True)
-          added = added[0] + ''.join(line[6:] if line.startswith('      ') else line for line in added[1:])
           assert old.count(marker) == 1
           tests.write_text(old.replace(marker, added+marker), encoding='utf-8', newline='')
           raw = tests.read_bytes()
