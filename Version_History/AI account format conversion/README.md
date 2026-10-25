@@ -23,6 +23,8 @@
 
 输出包括 Codex auth、OAuth、sub2api、`.env`、OpenAI-compatible JSON、LiteLLM YAML、One API / New API、Cherry Studio、Chatbox、LobeChat、cURL、VSCode REST Client `.http` 及识别报告。平台模板属于配置草稿，需按目标软件版本核对字段。
 
+LiteLLM 的动态字段按 YAML 字符串编码，避免账号名、密钥被解释为注释或其他类型。cURL 草稿使用 POSIX shell 语法，对 URL 和已有凭据进行字面量引用；多行账号名仍保持为注释，只有缺失凭据时的 `$OPENAI_API_KEY` 占位会展开环境变量，不应直接作为 PowerShell 脚本运行。
+
 单个 Codex auth 默认选择第一个 OAuth 账号；多账号使用批量数组、文件包 JSON 或 ZIP。ZIP 中 `outputs/` 保存各格式结果，账号子目录保存拆分文件；ZIP 在浏览器内存生成，不创建工具临时文件。 文件名使用 UTF-8，并在本地文件头及中央目录显式标记，保留中文和其他 Unicode 账号名。
 
 ## 辅助功能

@@ -100,5 +100,67 @@ for(const [name,check] of inputCases){
 }
 console.log('CONVERTER_INPUT_RULE_CASES='+inputPassed+'/'+inputCases.length);
 
+// Dynamic template fields must remain data, never YAML types or shell syntax.
+const templateOutputs=account=>C.convertAll(C.canonicalize(JSON.stringify(account)));
+const template= (account,id)=>templateOutputs(account).find(output=>output.id===id).content;
+function yamlFields(account){
+  return template(account,'litellm').split('\n')
+    .filter(line=>/^\s+(?:- )?(?:model_name|api_base|api_key): /.test(line))
+    .map(line=>JSON.parse(line.slice(line.indexOf(': ')+2)));
+}
+const templateCases=[
+  ['YAML comment-like names and boolean-like keys remain strings',()=>{
+    const account={name:'#team',api_key:'true',base_url:'https://example.invalid/v1'};
+    assert.deepEqual(yamlFields(account),[account.name,account.base_url,account.api_key]);
+  }],
+  ['YAML quotes numeric, null and date-like scalars',()=>{
+    for(const name of ['true','null','42','2026-10-25']){
+      assert.deepEqual(yamlFields({name,api_key:'00123',base_url:'https://example.invalid'}),
+        [name,'https://example.invalid','00123']);
+    }
+  }],
+  ['YAML preserves quotes, backslashes and YAML-specific line breaks',()=>{
+    for(const key of ['synthetic-"quoted"','synthetic-\\path','synthetic-\nline','synthetic-\u0085line','synthetic-\u2028line']){
+      assert.deepEqual(yamlFields({name:'fixture',api_key:key}),['fixture','https://api.openai.com/v1',key]);
+      assert.ok(!/[\u007f-\u009f\u2028\u2029]/.test(template({name:'fixture',api_key:key},'litellm')));
+    }
+  }],
+  ['cURL quotes URL metacharacters and literal credential variables',()=>{
+    const text=template({name:'fixture',api_key:'synthetic-${SYNTHETIC_ENV}',base_url:'https://example.invalid/api&v1'},'curl');
+    assert.ok(text.includes("curl 'https://example.invalid/api&v1/models'"));
+    assert.ok(text.includes("-H 'Authorization: Bearer synthetic-${SYNTHETIC_ENV}'"));
+  }],
+  ['cURL single quotes in credentials and URLs remain literal',()=>{
+    const text=template({name:'fixture',api_key:"synthetic-'quoted'",base_url:"https://example.invalid/it's"},'curl');
+    assert.ok(text.includes(`curl 'https://example.invalid/it'"'"'s/models'`));
+    assert.ok(text.includes(`-H 'Authorization: Bearer synthetic-'"'"'quoted'"'"''`));
+  }],
+  ['cURL multiline account names remain comment lines',()=>{
+    const text=template({name:'first\r\nsecond\nthird',api_key:'synthetic-key'},'curl');
+    assert.ok(text.startsWith('# 1. first\n# second\n# third\ncurl '));
+  }],
+  ['cURL missing credential keeps explicit environment placeholder',()=>{
+    const text=template({name:'fixture',base_url:'https://example.invalid'},'curl');
+    assert.ok(text.includes('-H "Authorization: Bearer $OPENAI_API_KEY"'));
+    assert.ok(text.includes("curl 'https://example.invalid/models'"));
+  }],
+  ['templates preserve account data and all other output formats',()=>{
+    const canon=C.canonicalize(JSON.stringify([{name:'first',api_key:'synthetic-key-a'},{name:'second',api_key:'synthetic-key-b'}]));
+    const before=JSON.stringify(canon),outputs=C.convertAll(canon);
+    assert.equal(JSON.stringify(canon),before);
+    const json=JSON.parse(outputs.find(output=>output.id==='proxy-json').content);
+    assert.equal(json[0].api_key,'synthetic-key-a');assert.equal(json[1].api_key,'synthetic-key-b');
+    const pack=JSON.parse(outputs.find(output=>output.id==='batch-files-pack').content);
+    assert.ok(pack.files['01-first/curl.txt'].includes("-H 'Authorization: Bearer synthetic-key-a'"));
+    assert.ok(outputs.find(output=>output.id==='curl').content.includes('# 2. second'));
+  }],
+];
+let templatePassed=0;
+for(const [name,check] of templateCases){
+  try{check();templatePassed++;console.log('PASS converter templates: '+name);}
+  catch(error){ok=false;console.error('FAIL converter templates: '+name+' ('+error.name+')');}
+}
+console.log('CONVERTER_TEMPLATE_CASES='+templatePassed+'/'+templateCases.length);
+
 if(!ok) process.exit(1);
 
