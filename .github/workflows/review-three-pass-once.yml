@@ -1,4 +1,4 @@
-name: Requested current-source audit snapshot
+name: Stop superseded release and remove verified audit snapshot
 
 on:
   push:
@@ -8,57 +8,35 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
-  snapshot:
+  protect-release:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          ref: fd915c83521bf7b1de786ac9334a6c9d8749c580
-          fetch-depth: 1
-          lfs: false
-      - name: Export only reviewed text changes and Git inventory
-        shell: bash
+      - name: Cancel only the superseded release if it is still running
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin 88967f671569296a3fdcc5b8c155201f53805582
-          mkdir -p tmp/current-source-audit
-          python3 -B - <<'PY'
-          import hashlib, json, pathlib, subprocess, zipfile
-          base='88967f671569296a3fdcc5b8c155201f53805582'
-          head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          assert head=='fd915c83521bf7b1de786ac9334a6c9d8749c580'
-          allowed={'DEVELOPMENT.md','tool/refresh-python-cli-shims.py','tests/test_python_cli_shims.py','tests/test_browser_smoke.ps1','Version_History/AI account format conversion/README.md','Version_History/AI account format conversion/app/app.js','Version_History/AI account format conversion/app/converter.js','Version_History/AI account format conversion/test/static-audit.js','Version_History/AI account format conversion/test/smoke.js'}
-          changed=[p.decode('utf-8') for p in subprocess.check_output(['git','diff','--name-only','-z',base,head]).split(b'\0') if p]
-          assert set(changed)==allowed, changed
-          tracked={}
-          for raw in subprocess.check_output(['git','ls-tree','-rz','HEAD']).split(b'\0'):
-              if not raw: continue
-              header,name=raw.split(b'\t',1)
-              mode,kind,sha=header.decode().split()
-              assert kind=='blob' and mode in ('100644','100755')
-              tracked[name.decode('utf-8')]={'mode':mode,'sha':sha}
-          records={}
-          with zipfile.ZipFile('tmp/current-source-audit/current-delta.zip','x',compression=zipfile.ZIP_DEFLATED) as z:
-              for name in sorted(changed):
-                  data=subprocess.check_output(['git','cat-file','blob',tracked[name]['sha']])
-                  data.decode('utf-8-sig')
-                  assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==tracked[name]['sha']
-                  z.writestr('changes/'+name,data)
-                  records[name]={'sha':tracked[name]['sha'],'sha256':hashlib.sha256(data).hexdigest(),'size':len(data)}
-              z.writestr('_review-delta.json',json.dumps({'base':base,'commit':head,'changes':records,'tracked':tracked},ensure_ascii=False))
-          print('SNAPSHOT_COMMIT='+head)
-          print('DELTA_FILE_COUNT='+str(len(records)))
-          print('TRACKED_COUNT='+str(len(tracked)))
-          PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: current-audit-source-fd915c8
-          path: tmp/current-source-audit/current-delta.zip
-          retention-days: 1
-          if-no-files-found: error
-      - name: Remove only this staging directory
+          run_json=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/40174253552")
+          test "$(printf '%s' "$run_json" | jq -r .head_sha)" = 'fd915c83521bf7b1de786ac9334a6c9d8749c580'
+          status=$(printf '%s' "$run_json" | jq -r .status)
+          if [ "$status" != completed ]; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/40174253552/cancel"
+            echo 'SUPERSEDED_RELEASE_CANCEL_REQUESTED=40174253552'
+          else
+            echo 'SUPERSEDED_RELEASE_ALREADY_COMPLETED_NO_CHANGE'
+          fi
+      - name: Delete only this downloaded and SHA-verified source artifact
         if: always()
-        run: rm -rf -- tmp/current-source-audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          info=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/12591598149")
+          test "$(printf '%s' "$info" | jq -r .name)" = 'current-audit-source-fd915c8'
+          test "$(printf '%s' "$info" | jq -r .workflow_run.id)" = '40175077262'
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/12591598149"
+          echo 'OWNED_SOURCE_ARTIFACT_DELETED=12591598149'
