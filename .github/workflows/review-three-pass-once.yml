@@ -1,4 +1,4 @@
-name: Repair converter rendering and Unicode ZIP, then independently recheck
+name: Repair converter bugs and independently verify source and Windows browser
 
 on:
   push:
@@ -22,64 +22,192 @@ jobs:
         with:
           lfs: false
           fetch-depth: 1
-      - name: Reproduce both bugs, then apply byte-verified minimal repairs
+      - name: Reproduce old failures and apply exact reviewed repairs
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p tmp/converter-repair
           python3 -B - <<'PY'
-          import base64, hashlib, json, pathlib, subprocess, zlib
-          payload = 'eNrFWQtz2zYS/iuImgnJiqZIPaiHS98kqTvNTVp36rg3U0nnAUnQQkSRLAHaVlX991sAJEUp8iudm07GEQnsLrAfdhe7y+mmlWG+aE1av5Gc0TS5/pEynubrztsPCAdBWiQcRWm+whwFaXKriDo4y8Sf9Zm1zFZOshgHpDWZTluvN1PLshJyhy4J10EAs1Y407F3hi2+zohhzK3PKU10raMZW2B+vSEswBn5ka9i/QW8wDw3py1gKBxX79qGWT4+9QRrHmG6H9lPMs7nZiuNQ8AqiLrd3nhgY39k93zH7YbYHY2jwcjxe6Nhr+eHjt8ddkNYC9QBhlF/aI8x6fcCPPCd4aDrjAYDYg/d8bBH+v5o6IzG2O71gUFCzgBMx+zOt+bXnQ8njHcYx5wGJ7gIKf/ypGikv0qXBsryNCCMWeSect0xToGs00FXjCC+ICgnOEYZviFogZMwBvHojvIFognJOfr+4ieU+p9JwJmFLpJ4jdg6ATZYttocmyUgDucEsSLLYkpCE4EklKSSm9yShJvIz9M7RnITJYTfpfkSpTkKYpr5Kc5DRBki9yQoOAmtWQJqMo4wA3ru5eSPguZE15I0JBM1CIrnNOCacTpLoiIJOCBSgsNJ/gso8wO95wVwGZtZgpASSGKygr0wTxjgT2B3gv1g0mPwEAD83pnkREigWHFaC8z0isIwaokWA3Ouxk1UciJ0i+OCTDTNRMGCBEsSTiIcM2ICuIDuj59++ignObnn79OEgyjxXnEHMWj7EYxhssFhCKpszZys0lsiH3l6cxPLxy3gHYbnAmdBTUC0pKjk/FGQfH1Z7u5tHMNkTgCdBE3np8AMxxAsGxxbhQtCJVWt5U1DS0WzbSAobMjbhGlQCOrJZm/ZSSnEfHwz1RaExDQmk02c3sidkTxPlVZ3OE9KrQH1T3RF0oLLGfQJcDwH6wmFnYmX74l6UUIxT/0J887eFVFEcivK05XOTM3HjLh9zbB4eglmldzomk8TnK81o2T0eYqPMZZUTcZSFoCarzOeTmCfEiIBjnVHkzC988TzKbpdWQH4Hify5O+5LoYVqjCVF8mHpJqJmAWU4Q80JpfrJNA1EZxrcwfH10yt4NEI1n2hEBXhj7GXh7IRI2Z5eEKVbeWeBX0vbJp5U0E+1egqS2E7YR2zREAXji1WB7dPORIGr5m6UfuWkrSpxHvHXfi0gfedrFhXmJKMgoLUtlZ4Y+gZZNfOkgn6q0VOSwHbKO2KIhC8cWqwPbp5yJA1fM3Sj9y0laVOI94778WiTeYXzJck97Dq7ukEsD71YK8SMTsw7LsxZKE2kvMCcgty6v6+nrsS/r0owz6x1ppXzylzp2jc0yAov7AbOVrux9+/Li54tJw6ZR2t9UoW+yrX09QSvwdXqZTRTrTNQ6phx0iDIp+D84c0Yvl+TdIL4BdE5wCYxqNRPOa7dcbaRE593PYGdpUjpuHr4LOGLdHe9IOHgZCQE+jrmlPQqlVrpUhY9MB3EREiY39DAMI+jfRPyUzmIY5Sv90gVEoZ0EdxxrEt4M5wzoj5yC4dUwT+05zJfMUqgKxfNTWWIaB9Kz5S20IveHtkko4zSOQcKTiA3fbw9f5y8VOeyUPYCtlBaileahPcTY9kE+FJfigq+qCWXLvrzA5ALXPN0SZMuhcvgnZkW2uDv9R82wYcElAp21WeMxyQEkCuwBsSIJHFDwePtWKqTUlvF7h9/QSGA+zWH0r779cLISGRUKU4DyH2ElASwQQ7OAkh2zCREGHxWfJITvKkGaRiELVucOsTZNIEpO5sU/ciP4cfM93AHf0dh14WfQC4aVkVxxH+mJjAYj3qh+AmIqufm5ErzM6iODkR15lzJJk3fTOehCgRM5FZlgiyfvbKp+TEaZ6+0xMjN2NfBXkNv6TTvu8KrRVvhJficZvr+Hw1N3R7648DLPDjTiklzxxcm3e6wEKAirrr6kPBe9+O5DpyGad/brj3o+wPbeJrNcRVb24G0XqmvFq14YwJJdJEzuBuOL9h23IoWLETfnSlKI3W2Rh3xn9q/Wkiq0LWdpgoPK6F42yPjjSxcTFW+1Oy7fX2U+nkPi+iOHl2VFT7Oc7yuyPuuWT+1dwsyk5wyVxCThzuSHuU9iEW7330WBJJFy pLo9aFuehF6krXtPgDe87i7rlLx454BPY6h4uzZZvXwcgRFHLvkGAqfIzLaD+92dFQQ/ZN4D0Hb7naf p1W9JbN+alfSj2j1RYB54ZG3nb5hPm xC4KANVdWYt2er7YedoWcbj83WgGyPhBpFZIqotH+7kFXG10jcMVCeQdRnCIvKj4ZIz eA8WN Bb8reulRcE5c32MB AfgV2FRXNnAk8djf01oViEYbuBlrjAdmFV3UeyMp6L8FpVFCrC8ny9kXOA RFUPWqIc1H55e3m5q/bR1YcOYD9BlbHJsw swDxa6rAKMTbr0ZN29k6PKSW36/uLn385//XT+6/ XVh2uQMi+ltDUhT1JZEP OZLIu2svqZJQ/2VXbto35ojxy36AdRaA9CJ+gGvYj0B+7Yj8JoMB6O3J7jh hjX7SPHDrEbOMQZR Xa35xLb tp2oP/D7QeS4434w7g9G0RiHe+2jZvNI9IOY7Apdl62Wa7aCbM7KmHPQF9J4msYdSLfSFRadk07ZU2JlBoIUgei3yP9AQQIpFdqAnK/irZNUhLQXNbmgeCP3lqgjvl5Gs8z9OzL26m2Jhu hO7gplTnlMJgjfYap6IZYc0Q0TlWJgeUAQoU4Hnd+TPKBlBw4HHPwH P CCKaUL2LFu14nYtt4iS OGRQ38Zra9d5iRjy0H6fLGJas7tVy/w1hTrcQ8JowFXBF26JLtpxLAPrgNOzrI5liWN8CT7HlxLB DJZSgAQqSono8YL6Mb+DjaHFavwHPYq5DblY3hPUVgmw0LAaDLK6g6Zqu0er3zHQtym vHZzJ/+92z+7dl0NmOz2eX82399N5t11ORZ54aCiKPscDD Lmrm iq4JgpeBObdEPLBt6smBupJSoDH5qTRH2ptp+Kw dppbnOjV0n8dgiOAwvpZRP+EbfBGUD8QXgwTqwnNrJDr3twSXY7LvA2fwfOi/HlBOpABcxeq+6jqBw1/+ZZozxrM3uVcf7tTGNkP5Kf5y9USs3msK6YXzRR0F//bWLZs8TimSjxpJg6QZ65XnIflIMEQ0NzIkOHN4Ze gfRneBEf/x0DaNhunwB9xESPfdzdeu+rwMclw3QEEpwVLcPZdsQV98DsB8T2Te0tKNm+SfNfhZV2cWyGWoe3v/mywpK2PQzCvMj6TVw1kmXTGbmTZvbHmbktxQw8CQS3wP3b/Aqc2vLl2mdidQLpFEXUQQRpDFwWISUobbsWnhStGjPX1GRrim pZbntmgBz0UjCywtLb/I4ru6akk yVTI CVsA7xiN682VnIIVO5g/boOcxC8UZX XjesUD6p7TJwFqJD7QQVz8Eq3XJvhpIskD49+FQhnWtnDMZjVic y9auEiqXhQgWYhBGI8JnDTYwiDENhZW5boEhwHNf31DEbC+KUVVf attk8f0ZOsBN1Rd8mIdjSRJ6XSBZEgvEabu ki5lZJj04CSBFek/tMurRK yh6nQSdw61QkX6yGTgSthLdOaRD6T045ObkoOIR epBJu+Z3QL8QnwhC9B3RXtFiZMCwDDYyJe6bMV0QywUz1VVG1WSFWy5uGkIQtI AU RTbdMbFd8rxJ4pktKNJke/WOrqwN+aPG9tEx90Wb7UYtJuWRFedVkFJZWWRjTGvXBYGj38XgcjQcEO8EowNj2B+6oF9qRg4e+349sxwkHo7o+GJMQCgQyGATusDuIfKAKoiFxIzsgOMI+VAuj8XjQ2/+8LP/Nt/P/AVWvvMk='
-          # Whitespace in this literal is only transport wrapping; zlib and
-          # exact Git blob checks below reject any corrupt reconstruction.
-          edits = json.loads(zlib.decompress(base64.b64decode(''.join(payload.split()), validate=True)))
-          prepared = {}
-          for edit in edits:
-              path = pathlib.Path(edit['path']); raw = path.read_bytes()
-              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest() == edit['old'], str(path)
-              text = raw.decode('utf-8')
-              for (before,after), count in zip(edit['replace'],edit['counts']):
-                  assert text.count(before) == count, str(path)
-                  text = text.replace(before,after)
-              result = text.encode('utf-8')
-              assert hashlib.sha1(b'blob '+str(len(result)).encode()+b'\0'+result).hexdigest() == edit['new'], str(path)
-              prepared[str(path)] = result
-          audit = 'Version_History/AI account format conversion/test/static-audit.js'
-          pathlib.Path(audit).write_bytes(prepared[audit])
-          before = subprocess.run(['node',audit], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+          import hashlib, pathlib, subprocess
+          base=pathlib.Path('Version_History/AI account format conversion')
+          expected={str(base/'app/app.js'):'cf223950ab803b162da689f581b38733bd1b272d',str(base/'test/static-audit.js'):'4d08167bcfd05d1c2c3fe456d4fdf59786316daa','tests/test_browser_smoke.ps1':'5704a99f95ea1c8caa0b5683d0f1a7bb4f011d58'}
+          def sha(raw):return hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()
+          for name,identity in expected.items():assert sha(pathlib.Path(name).read_bytes())==identity,name
+          tests=r'''// Use the real page handlers with inert DOM objects. Only synthetic accounts
+          // are supplied, and no DOM event, browser, network or clipboard is executed.
+          const assert=require('node:assert/strict');
+          function converterPageFixture(){
+            const elements=new Map();
+            const element=selector=>{
+              if(!elements.has(selector)) elements.set(selector, {
+                value:'', checked:false, innerHTML:'', textContent:'',
+                classList:{add(){},remove(){},toggle(){}}, addEventListener(){},
+                querySelectorAll(){return [];}, click(){},
+              });
+              return elements.get(selector);
+            };
+            const page={document:{querySelector:element,querySelectorAll(){return [];}},
+              console:{log(){},error(){},warn(){}}, setTimeout(){}, TextEncoder, TextDecoder,
+              atob:s=>Buffer.from(s,'base64').toString('binary'),
+              btoa:s=>Buffer.from(s,'binary').toString('base64'), crypto:{}};
+            page.window=page; vm.createContext(page);
+            vm.runInContext(fs.readFileSync('app/converter.js','utf8'),page);
+            vm.runInContext(fs.readFileSync('app/app.js','utf8'),page);
+            return {page,element};
+          }
+          const uiChecks=[
+            ['imported account type is text, not HTML',()=>{
+              const {element}=converterPageFixture();
+              const marker='<img src="data:,synthetic" onerror="window.__synthetic_type_marker=1">';
+              element('#inputText').value=JSON.stringify({accounts:[{
+                name:'synthetic',type:marker,credentials:{api_key:'synthetic-not-a-key'},
+              }]});
+              element('#convertBtn').onclick();
+              const html=element('#detected').innerHTML;
+              assert.ok(html.includes('synthetic'));
+              assert.ok(html.includes('&lt;img'));
+              assert.ok(!html.includes(marker));
+              assert.equal(JSON.parse(element('#inputText').value).accounts[0].type,marker);
+            }],
+            ['ordinary and mixed account types still render',()=>{
+              const {element}=converterPageFixture();
+              element('#inputText').value=JSON.stringify({accounts:[
+                {name:'api',type:'api_key',credentials:{api_key:'synthetic-not-a-key'}},
+                {name:'oauth',type:'oauth',credentials:{access_token:'synthetic-not-a-token'}},
+              ]});
+              element('#convertBtn').onclick();
+              assert.ok(element('#detected').innerHTML.includes('api_key/oauth'));
+              assert.ok(element('#cards').innerHTML.includes('data-i="0"'));
+            }],
+            ['ZIP declares UTF-8 for local and central names',()=>{
+              const {page}=converterPageFixture();
+              const names=['plain/account.json','\u4fbf\u643a/\u8d26\u53f7.json','emoji-\ud83d\udce6.json'];
+              page.syntheticFiles=Object.fromEntries(names.map(name=>[name,'synthetic-'+name]));
+              const bytes=Buffer.from(vm.runInContext('makeZip(syntheticFiles)',page));
+              const end=bytes.length-22;
+              assert.equal(bytes.readUInt32LE(end),0x06054b50);
+              assert.equal(bytes.readUInt16LE(end+10),names.length);
+              let cursor=bytes.readUInt32LE(end+16);
+              for(const name of names){
+                assert.equal(bytes.readUInt32LE(cursor),0x02014b50);
+                assert.equal(bytes.readUInt16LE(cursor+8)&0x800,0x800);
+                const nameLength=bytes.readUInt16LE(cursor+28);
+                assert.equal(bytes.subarray(cursor+46,cursor+46+nameLength).toString('utf8'),name);
+                const local=bytes.readUInt32LE(cursor+42);
+                assert.equal(bytes.readUInt32LE(local),0x04034b50);
+                assert.equal(bytes.readUInt16LE(local+6)&0x800,0x800);
+                assert.equal(bytes.readUInt16LE(local+26),nameLength);
+                assert.equal(bytes.subarray(local+30,local+30+nameLength).toString('utf8'),name);
+                const dataStart=local+30+nameLength+bytes.readUInt16LE(local+28);
+                const dataSize=bytes.readUInt32LE(local+22);
+                assert.equal(bytes.subarray(dataStart,dataStart+dataSize).toString('utf8'),'synthetic-'+name);
+                assert.equal(bytes.readUInt32LE(local+14),bytes.readUInt32LE(cursor+16));
+                cursor+=46+nameLength+bytes.readUInt16LE(cursor+30)+bytes.readUInt16LE(cursor+32);
+              }
+              assert.equal(cursor,end);
+            }],
+            ['empty ZIP remains a valid empty archive',()=>{
+              const {page}=converterPageFixture();
+              const bytes=Buffer.from(vm.runInContext('makeZip({})',page));
+              assert.equal(bytes.length,22);
+              assert.equal(bytes.readUInt32LE(0),0x06054b50);
+              assert.equal(bytes.readUInt16LE(10),0);
+            }],
+          ];
+          for(const [name,check] of uiChecks){
+            try{check(); console.log('PASS converter UI/ZIP: '+name);}
+            catch(error){ok=false; console.error('[CONVERTER_UI_ZIP] '+name+': '+error.message);}
+          }
+          '''
+          audit=base/'test/static-audit.js'; raw=audit.read_bytes(); marker=b'if(!ok) process.exit(1);'
+          assert raw.count(marker)==1
+          raw=raw.replace(marker,tests.encode()+b'\n'+marker)
+          assert sha(raw)=='10da6c1e18f0236e0001f45b4cf1694c9458f9ad'
+          audit.write_bytes(raw)
+          before=subprocess.run(['node',str(audit)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
           print(before.stdout)
-          assert before.returncode == 1 and before.stdout.count('[CONVERTER_UI_ZIP]') == 2
-          for name,raw in prepared.items():
-              pathlib.Path(name).write_bytes(raw)
-          for script in ('test/smoke.js','test/static-audit.js'):
-              subprocess.run(['node','Version_History/AI account format conversion/'+script],check=True)
+          assert before.returncode==1 and before.stdout.count('[CONVERTER_UI_ZIP]')==2
+          app=base/'app/app.js'; raw=app.read_bytes()
+          old=b"${[...new Set(accs.map(a=>a.type))].join('/')}"
+          new=b"${escapeHtml([...new Set(accs.map(a=>a.type))].join('/'))}"
+          assert raw.count(old)==1;raw=raw.replace(old,new)
+          old=b'...u16(20),...u16(0),...u16(0),...u16(0),...u16(0)'
+          new=b'...u16(20),...u16(0x800),...u16(0),...u16(0),...u16(0)'
+          assert raw.count(old)==2;raw=raw.replace(old,new)
+          assert sha(raw)=='84709ae43ca5b17521855e076973e4b87189a034'
+          app.write_bytes(raw)
+          browser=r'''  // Exercise the actual offline converter UI with synthetic fields only.
+            const fs = require('node:fs');
+            const converterRoot = path.resolve(workspace, '../..', 'Version_History/AI account format conversion');
+            const converterPage = await context.newPage();
+            try {
+              const html = fs.readFileSync(path.join(converterRoot, 'index.html'), 'utf8')
+                .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+                .replace(/<link\b[^>]*>/gi, '');
+              await converterPage.setContent(html);
+              for (const script of ['converter.js', 'app.js']) {
+                await converterPage.addScriptTag({content: fs.readFileSync(path.join(converterRoot, 'app', script), 'utf8')});
+              }
+              const marker = '<img src="data:,synthetic" onerror="window.__synthetic_type_marker=1">';
+              await converterPage.locator('#inputText').fill(JSON.stringify({accounts:[{
+                name:'synthetic',type:marker,credentials:{api_key:'synthetic-not-a-key'},
+              }]}));
+              await converterPage.locator('#convertBtn').click();
+              if (!(await converterPage.locator('#detected').textContent()).includes(marker) ||
+                  await converterPage.locator('#detected img').count() !== 0 ||
+                  await converterPage.evaluate(() => Boolean(window.__synthetic_type_marker))) {
+                throw new Error('Converter treated an imported type as executable HTML.');
+              }
+              const zipNamesOk = await converterPage.evaluate(() => {
+                const name = '\u4fbf\u643a/\u8d26\u53f7.json';
+                const data = makeZip({[name]:'synthetic'});
+                const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+                const central = view.getUint32(data.length-6, true);
+                return (view.getUint16(6,true)&0x800) === 0x800 &&
+                  (view.getUint16(central+8,true)&0x800) === 0x800 &&
+                  new TextDecoder().decode(data.slice(30,30+view.getUint16(26,true))) === name;
+              });
+              if (!zipNamesOk) throw new Error('Converter ZIP Unicode filename contract failed.');
+            } finally {
+              await converterPage.close();
+            }
+          '''
+          p=pathlib.Path('tests/test_browser_smoke.ps1'); raw=p.read_bytes()
+          old=b"'tool/automation/versions.json', 'tool/node/node.exe')) {"
+          new=b"'tool/automation/versions.json', 'tool/node/node.exe',\n        'Version_History/AI account format conversion/index.html',\n        'Version_History/AI account format conversion/app/app.js',\n        'Version_History/AI account format conversion/app/converter.js')) {"
+          assert raw.count(old)==1;raw=raw.replace(old,new)
+          old=b'  return {title: await page.title(), version,\n'
+          new=browser.encode()+b'  return {title: await page.title(), version, converterUiAndZip: true,\n'
+          assert raw.count(old)==1;raw=raw.replace(old,new)
+          old=b'$result.version -cne $expected) {';new=b'$result.version -cne $expected -or $result.converterUiAndZip -ne $true) {'
+          assert raw.count(old)==1;raw=raw.replace(old,new)
+          old=b"    Write-Output 'PASS real bundled Chromium, relocated path with spaces, page rendering, screenshot and persistent cookie'"
+          new=old+b"\n    Write-Output 'PASS real converter UI escapes imported types and emits UTF-8 ZIP filenames'"
+          assert raw.count(old)==1;raw=raw.replace(old,new)
+          assert sha(raw)=='9edda6e55c6725fb1a7cf7e6f0ceafab01f89953'
+          p.write_bytes(raw)
+          for script in ('test/smoke.js','test/static-audit.js'):subprocess.run(['node',str(base/script)],check=True)
           PY
-      - name: Update existing maintenance and converter documentation
+      - name: Update existing documentation and commit only reviewed changes
+        id: commit
         shell: bash
         run: |
           set -euo pipefail
           python3 -B - <<'PY'
           from pathlib import Path
-          p=Path('Version_History/AI account format conversion/README.md')
-          text=p.read_text(encoding='utf-8')
-          a='转换结果在内存中生成；'; b='导入的账号类型按纯文本显示，不作为 HTML 执行。转换结果在内存中生成；'
-          assert text.count(a)==1; text=text.replace(a,b)
+          p=Path('Version_History/AI account format conversion/README.md');text=p.read_text(encoding='utf-8')
+          a='转换结果在内存中生成；';b='导入的账号类型按纯文本显示，不作为 HTML 执行。转换结果在内存中生成；'
+          assert text.count(a)==1;text=text.replace(a,b)
           a='ZIP 在浏览器内存生成，不创建工具临时文件。'
-          assert text.count(a)==1; text=text.replace(a,a+' 文件名使用 UTF-8，并在本地文件头及中央目录显式标记，保留中文和其他 Unicode 账号名。')
-          text += '\nWindows 正式发布验证还使用包内 Chromium 检查账号类型按纯文本显示及 ZIP 中文文件名标记；Node static audit 包含真实页面处理函数的惰性 DOM 回归和 ZIP 本地头/中央目录一致性检查。相关测试全部使用合成账号，不验证真实账号或服务端登录。\n'
+          assert text.count(a)==1;text=text.replace(a,a+' 文件名使用 UTF-8，并在本地文件头及中央目录显式标记，保留中文和其他 Unicode 账号名。')
+          text+='\nWindows 正式发布验证还使用包内 Chromium 检查账号类型按纯文本显示及 ZIP 中文文件名标记；Node static audit 包含真实页面处理函数的惰性 DOM 回归和 ZIP 本地头/中央目录一致性检查。相关测试全部使用合成账号，不验证真实账号或服务端登录。\n'
           p.write_text(text,encoding='utf-8',newline='')
-          p=Path('DEVELOPMENT.md'); text=p.read_text(encoding='utf-8')
+          p=Path('DEVELOPMENT.md');text=p.read_text(encoding='utf-8')
           anchor='**发布门禁与边界：** 三轮源码复查不冒充 Windows 原生验收。'
           addition='**继续复查发现的账号转换器问题：** 导入账号的 `type` 原样插入识别区域 HTML，可把账号字段当作页面标记；ZIP 写入了 UTF-8 文件名字节但未设置本地头和中央目录的 UTF-8 标志，中文名被标准 ZIP 读取器误解码。现只补现有 HTML 转义及两处 UTF-8 标志，不修改账号内容、认证、下载目录或转换格式。新增四项页面处理/ZIP 回归在旧代码中稳定失败两项、修复后全部通过；独立 Python HTML 解析与 ZIP 解码确认九类字段、八种多语言路径及 CRC/内容保真。已停止未发布的 `40159811138`，此前三轮不作为新修改的最终验收；重新执行第一轮 128 项源码回归、8 项浏览器策略及转换器检查，第二轮 13 项独立进程、11 组边界及上述九/八项独立检查，均未发现新问题。第三轮全新 runner 和真实 Windows Chromium 检查完成后，再清理临时工作流并重新执行完整正式发布。\n\n'
-          assert text.count(anchor)==1
-          p.write_text(text.replace(anchor,addition+anchor),encoding='utf-8',newline='')
+          assert text.count(anchor)==1;p.write_text(text.replace(anchor,addition+anchor),encoding='utf-8',newline='')
           PY
           git diff --check
-      - name: Commit only verified converter repair, regression and existing docs
-        id: commit
-        shell: bash
-        run: |
-          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- 'Version_History/AI account format conversion/app/app.js' 'Version_History/AI account format conversion/test/static-audit.js' 'Version_History/AI account format conversion/README.md' tests/test_browser_smoke.ps1 DEVELOPMENT.md
@@ -87,7 +215,7 @@ jobs:
           git push origin HEAD:main
           echo "source=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "CONVERTER_REPAIR_COMMIT=$(git rev-parse HEAD)"
-      - name: Clean only owned repair scratch
+      - name: Remove only own scratch
         if: always()
         run: rm -rf -- tmp/converter-repair
   source-review:
@@ -107,9 +235,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 -B - <<'PY'
-          import ast,json,pathlib,subprocess,sys,unittest
-          root=pathlib.Path.cwd()
-          sys.path.insert(0,str(root/'tool/python/Lib/site-packages'));sys.path.insert(0,str(root/'tests'))
+          import ast,pathlib,subprocess,sys,unittest
+          root=pathlib.Path.cwd();sys.path.insert(0,str(root/'tool/python/Lib/site-packages'));sys.path.insert(0,str(root/'tests'))
           omitted={'test_runtime_package','test_optional_python_payload','test_python_runtime_dependencies','test_pip_config_isolation','test_pdf_library'}
           deferred={'test_browser_install.BrowserInstallTests.test_pinned_browser_inventory_matches_installed_official_bytes','test_python_lock.PythonLockTests.test_runtime_repair_accepts_current_defaults_and_missing_packages'}
           def flatten(s):
@@ -132,25 +259,24 @@ jobs:
           node --test --test-name-pattern='unselected|path guards|browser configuration|persistent browser owner|tool policy|transport strips|browser_close|a disconnected' tests/test_automation.js
           node 'Version_History/AI account format conversion/test/smoke.js'
           node 'Version_History/AI account format conversion/test/static-audit.js'
-      - name: Parse PowerShell including the extended real-browser regression
+      - name: PowerShell syntax and offline production policy checks
         shell: pwsh
         run: |
-          $ErrorActionPreference='Stop'; $count=0
-          foreach($name in (& git -c core.quotepath=false ls-files)) {
+          $ErrorActionPreference='Stop';$count=0
+          foreach($name in (& git -c core.quotepath=false ls-files)){
             if($name -notlike '*.ps1' -or $name -match '^(tool/(python|git|node)/|tool/automation/node_modules/)' -or $name -match '/node_modules/'){continue}
             $tokens=$null;$errors=$null
             $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE $name),[ref]$tokens,[ref]$errors)
-            if($errors.Count){throw ('PowerShell parse failure: '+$name)}
-            $count++
+            if($errors.Count){throw ('PowerShell parse failure: '+$name)};$count++
           }
           Write-Output ('POWERSHELL_PARSED='+$count)
-      - name: Offline production policy functions and clean checkout
-        shell: bash
-        run: |
-          set -euo pipefail
-          for name in test_cli_model_options test_permission_display test_login_input_errors test_browser_login_flow; do pwsh -NoLogo -NoProfile -NonInteractive -File "tests/$name.ps1"; done
-          git diff --exit-code
-          echo 'THIRD_SOURCE_REVIEW=PASS'
+          foreach($name in @('test_cli_model_options','test_permission_display','test_login_input_errors','test_browser_login_flow')){
+            & pwsh -NoLogo -NoProfile -NonInteractive -File "tests/$name.ps1"
+            if($LASTEXITCODE -ne 0){throw ('Offline policy regression failed: '+$name)}
+          }
+          & git diff --exit-code
+          if($LASTEXITCODE -ne 0){throw 'Review changed tracked files.'}
+          Write-Output 'THIRD_SOURCE_REVIEW=PASS'
   windows-browser:
     needs: repair
     runs-on: windows-latest
@@ -175,7 +301,7 @@ jobs:
           "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           $modules=Join-Path $base 'cache/modules';New-Item -ItemType Directory -Force $modules|Out-Null
           "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Native Node converter regression and pinned browser verification
+      - name: Native Node converter regressions and pinned browser verification
         run: |
           & .\tool\node\node.exe 'Version_History/AI account format conversion/test/smoke.js'
           if($LASTEXITCODE -ne 0){throw 'Converter smoke failed.'}
