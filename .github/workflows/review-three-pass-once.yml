@@ -1,0 +1,152 @@
+name: Review template repairs and request full Windows release
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/review-three-pass-once.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    outputs:
+      commit: ${{ steps.commit.outputs.commit }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 2
+          lfs: false
+      - name: Apply only locally verified template repairs and existing tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = 1326836bfc5a578b23455b1bcbd08403032e8bf6
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          python3 -B - <<'PY'
+          import hashlib,json,pathlib,subprocess
+          root=pathlib.Path.cwd()
+          expected={'DEVELOPMENT.md': ('020a0d2c3f4607295859ed7b855443960e0cf284', '0272beb40447f82fe8bca5ba0f93db7754300fdf'), 'Version_History/AI account format conversion/README.md': ('df846f0e35d7516ba2d4d43889b878636020d0e7', '3f99a7c037bcd2abb0eb242fa3d379efe67c81c5'), 'Version_History/AI account format conversion/app/converter.js': ('2f3ff0ce796f3f6da6a0161fb2004c78336c6151', '9cce11460c67ed16db9777f3ad14d284f1ad030d'), 'Version_History/AI account format conversion/test/smoke.js': ('0df2ab18f8dcbb52215ba3e391239e5d70cde089', '4f17a8c418c95dab72aa557c6227de21162e3e5e')}
+          edits=json.loads(r'''{
+            "DEVELOPMENT.md": [
+              [22,22,"\n## 2026-10-25：转换模板的字符串与命令参数保护\n\n**原因与修复：** 从 `1326836bfc5a578b23455b1bcbd08403032e8bf6` 复现两类模板问题：LiteLLM YAML 的动态字段没有作为字符串编码，`#team` 被当作注释、`true` 密钥被当作布尔值；cURL 草稿直接插入 URL、凭据和多行账号名，`&` 会拆分命令，变量与引号会改变实际参数，账号名换行会脱离注释。现仅对 YAML 动态标量做字符串编码（含 YAML 特殊换行），对 POSIX cURL 的 URL 和凭据做字面量引用，并逐行保留账号名注释。未提供凭据时保留原 OPENAI_API_KEY 环境变量占位。保留账号内容、识别规则、其他输出格式及既有账号库保护，不修改 Codex/Host、认证、权限、扩展默认值或运行工具。\n\n**本地复现与前两轮检查：** 在原 smoke 中新增 8 项模板回归，未修复代码 8 项失败，修复后全部通过。第一轮 128 项 Python 源码回归、8 项浏览器策略、12 项输入/映射和 18 项 UI/ZIP/账号库检查通过；解析 101 份 Python、9 份第一方 JavaScript，并核对 573 份源码及 6,941 个跟踪路径。第二轮在新进程逆序复核同组 128 项源码回归；独立 YAML 解析器验证 500 组字符串往返，真实 POSIX shell 以无联网的 curl 替身验证 98 组参数，另对照 24 组原实现输出，确认除 YAML/cURL 及文件包中对应 cURL 内容外均逐字节一致。两轮未发现新的可复现问题，所有输入均为合成数据。\n\n**第三轮与发布状态：** 待全新 runner 检出本次修复提交，执行独立源码、Windows 包内运行环境及浏览器回归；通过后才清理本次临时工作流并请求原 release.yml 的 check_set=full。完整 Windows 验证、干净提交打包和上传附件回读全部通过后才能发布新版本，不覆盖现有 Release。真实账号、在线 Agent/Host、提权沙箱及真实设备未测；三轮通过不是所有场景绝对无 Bug 的保证。\n"]
+            ],
+            "Version_History/AI account format conversion/README.md": [
+              [24,24,"\nLiteLLM 的动态字段按 YAML 字符串编码，避免账号名、密钥被解释为注释或其他类型。cURL 草稿使用 POSIX shell 语法，对 URL 和已有凭据进行字面量引用；多行账号名仍保持为注释，只有缺失凭据时的 `$OPENAI_API_KEY` 占位会展开环境变量，不应直接作为 PowerShell 脚本运行。\n"]
+            ],
+            "Version_History/AI account format conversion/app/converter.js": [
+              [171,172,"  // Keep dynamic YAML scalars as strings, including YAML-specific line breaks.\n  function yamlScalar(value){return JSON.stringify(String(value)).replace(/[\\u007f-\\u009f\\u2028\\u2029]/g,c=>'\\\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));}\n  function liteLLM(accs){return 'model_list:\\n'+accs.map((a,i)=>{const key=a.api_key||a.access_token||'${OPENAI_API_KEY}'; const base=a.base_url||'https://api.openai.com/v1'; return `  - model_name: ${yamlScalar(safeName(a.name,i+1))}\\n    litellm_params:\\n      model: openai/gpt-4.1-mini\\n      api_base: ${yamlScalar(base)}\\n      api_key: ${yamlScalar(key)}`;}).join('\\n');}\n"],
+              [173,174,"  // POSIX cURL drafts quote imported data; only the missing-key fallback expands.\n  function shellQuote(value){return \"'\"+String(value).replace(/'/g,\"'\\\"'\\\"'\")+\"'\";}\n  function curlOut(accs){return accs.map((a,i)=>{const base=(a.base_url||'https://api.openai.com/v1').replace(/\\/$/,''); const key=a.api_key||a.access_token; const header=key?shellQuote('Authorization: Bearer '+key):'\"Authorization: Bearer $OPENAI_API_KEY\"'; return `# ${i+1}. ${String(a.name).replace(/\\r\\n?|\\n/g,'\\n# ')}\\ncurl ${shellQuote(base+'/models')} \\\\\\n  -H ${header} \\\\\\n  -H \"Content-Type: application/json\"`;}).join('\\n\\n');}\n"]
+            ],
+            "Version_History/AI account format conversion/test/smoke.js": [
+              [102,102,"// Dynamic template fields must remain data, never YAML types or shell syntax.\nconst templateOutputs=account=>C.convertAll(C.canonicalize(JSON.stringify(account)));\nconst template= (account,id)=>templateOutputs(account).find(output=>output.id===id).content;\nfunction yamlFields(account){\n  return template(account,'litellm').split('\\n')\n    .filter(line=>/^\\s+(?:- )?(?:model_name|api_base|api_key): /.test(line))\n    .map(line=>JSON.parse(line.slice(line.indexOf(': ')+2)));\n}\nconst templateCases=[\n  ['YAML comment-like names and boolean-like keys remain strings',()=>{\n    const account={name:'#team',api_key:'true',base_url:'https://example.invalid/v1'};\n    assert.deepEqual(yamlFields(account),[account.name,account.base_url,account.api_key]);\n  }],\n  ['YAML quotes numeric, null and date-like scalars',()=>{\n    for(const name of ['true','null','42','2026-10-25']){\n      assert.deepEqual(yamlFields({name,api_key:'00123',base_url:'https://example.invalid'}),\n        [name,'https://example.invalid','00123']);\n    }\n  }],\n  ['YAML preserves quotes, backslashes and YAML-specific line breaks',()=>{\n    for(const key of ['synthetic-\"quoted\"','synthetic-\\\\path','synthetic-\\nline','synthetic-\\u0085line','synthetic-\\u2028line']){\n      assert.deepEqual(yamlFields({name:'fixture',api_key:key}),['fixture','https://api.openai.com/v1',key]);\n      assert.ok(!/[\\u007f-\\u009f\\u2028\\u2029]/.test(template({name:'fixture',api_key:key},'litellm')));\n    }\n  }],\n  ['cURL quotes URL metacharacters and literal credential variables',()=>{\n    const text=template({name:'fixture',api_key:'synthetic-${SYNTHETIC_ENV}',base_url:'https://example.invalid/api&v1'},'curl');\n    assert.ok(text.includes(\"curl 'https://example.invalid/api&v1/models'\"));\n    assert.ok(text.includes(\"-H 'Authorization: Bearer synthetic-${SYNTHETIC_ENV}'\"));\n  }],\n  ['cURL single quotes in credentials and URLs remain literal',()=>{\n    const text=template({name:'fixture',api_key:\"synthetic-'quoted'\",base_url:\"https://example.invalid/it's\"},'curl');\n    assert.ok(text.includes(`curl 'https://example.invalid/it'\"'\"'s/models'`));\n    assert.ok(text.includes(`-H 'Authorization: Bearer synthetic-'\"'\"'quoted'\"'\"''`));\n  }],\n  ['cURL multiline account names remain comment lines',()=>{\n    const text=template({name:'first\\r\\nsecond\\nthird',api_key:'synthetic-key'},'curl');\n    assert.ok(text.startsWith('# 1. first\\n# second\\n# third\\ncurl '));\n  }],\n  ['cURL missing credential keeps explicit environment placeholder',()=>{\n    const text=template({name:'fixture',base_url:'https://example.invalid'},'curl');\n    assert.ok(text.includes('-H \"Authorization: Bearer $OPENAI_API_KEY\"'));\n    assert.ok(text.includes(\"curl 'https://example.invalid/models'\"));\n  }],\n  ['templates preserve account data and all other output formats',()=>{\n    const canon=C.canonicalize(JSON.stringify([{name:'first',api_key:'synthetic-key-a'},{name:'second',api_key:'synthetic-key-b'}]));\n    const before=JSON.stringify(canon),outputs=C.convertAll(canon);\n    assert.equal(JSON.stringify(canon),before);\n    const json=JSON.parse(outputs.find(output=>output.id==='proxy-json').content);\n    assert.equal(json[0].api_key,'synthetic-key-a');assert.equal(json[1].api_key,'synthetic-key-b');\n    const pack=JSON.parse(outputs.find(output=>output.id==='batch-files-pack').content);\n    assert.ok(pack.files['01-first/curl.txt'].includes(\"-H 'Authorization: Bearer synthetic-key-a'\"));\n    assert.ok(outputs.find(output=>output.id==='curl').content.includes('# 2. second'));\n  }],\n];\nlet templatePassed=0;\nfor(const [name,check] of templateCases){\n  try{check();templatePassed++;console.log('PASS converter templates: '+name);}\n  catch(error){ok=false;console.error('FAIL converter templates: '+name+' ('+error.name+')');}\n}\nconsole.log('CONVERTER_TEMPLATE_CASES='+templatePassed+'/'+templateCases.length);\n\n"]
+            ]
+          }''')
+          def blob(data):return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+          updated={}
+          for name,(before,after) in expected.items():
+              raw=(root/name).read_bytes()
+              assert blob(raw)==before,'Unexpected source: '+name
+              lines=raw.decode('utf-8').splitlines(keepends=True)
+              for start,end,text in reversed(edits[name]):lines[start:end]=[text]
+              raw=''.join(lines).encode('utf-8')
+              assert blob(raw)==after,'Edit does not match locally verified content: '+name
+              updated[name]=raw
+          smoke='Version_History/AI account format conversion/test/smoke.js'
+          (root/smoke).write_bytes(updated[smoke])
+          old=subprocess.run(['node',smoke],capture_output=True,text=True)
+          assert old.returncode==1 and 'CONVERTER_TEMPLATE_CASES=0/8' in old.stdout and 'CONVERTER_INPUT_RULE_CASES=12/12' in old.stdout
+          print('OLD_TEMPLATE_REGRESSIONS_FAILED=8')
+          for name,raw in updated.items():(root/name).write_bytes(raw)
+          for name in ('smoke.js','static-audit.js'):
+              subprocess.run(['node','Version_History/AI account format conversion/test/'+name],check=True)
+          print('FOUR_REVIEWED_FILES_MATCH_LOCAL_BLOBS=true')
+          PY
+      - name: Commit the four reviewed files atomically
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- DEVELOPMENT.md 'Version_History/AI account format conversion/README.md' 'Version_History/AI account format conversion/app/converter.js' 'Version_History/AI account format conversion/test/smoke.js'
+          test "$(git diff --cached --name-only | wc -l)" -eq 4
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          git commit -m 'fix: quote converter YAML scalars and POSIX curl arguments'
+          git push origin HEAD:main
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  source-review:
+    needs: repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.repair.outputs.commit }}
+          lfs: false
+          persist-credentials: false
+      - name: Third independent source regression pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B - <<'PY'
+          import ast,json,pathlib,random,subprocess,sys,unittest
+          root=pathlib.Path.cwd();sys.path.insert(0,str(root/'tool/python/Lib/site-packages'));sys.path.insert(0,str(root/'tests'))
+          exclude={'test_runtime_package','test_optional_python_payload','test_python_runtime_dependencies','test_pip_config_isolation','test_pdf_library'}
+          exclude_cases={'test_browser_install.BrowserInstallTests.test_pinned_browser_inventory_matches_installed_official_bytes','test_python_lock.PythonLockTests.test_runtime_repair_accepts_current_defaults_and_missing_packages'}
+          def flatten(suite):
+              for case in suite:
+                  if isinstance(case,unittest.TestSuite):yield from flatten(case)
+                  else:yield case
+          cases=[]
+          for source in sorted((root/'tests').glob('test_*.py')):
+              if source.stem not in exclude:cases.extend(c for c in flatten(unittest.defaultTestLoader.loadTestsFromName(source.stem)) if c.id() not in exclude_cases)
+          random.Random(2026102503).shuffle(cases)
+          result=unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite(cases))
+          print('THIRD_SOURCE_RESULT='+json.dumps({'tests':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),'skips':len(result.skipped),'deferred_native_modules':sorted(exclude),'deferred_native_cases':sorted(exclude_cases)}))
+          assert result.wasSuccessful() and not result.skipped and result.testsRun==129
+          count=0
+          for raw in subprocess.check_output(['git','ls-files','-z']).split(b'\0'):
+              if not raw:continue
+              name=raw.decode('utf-8')
+              if name.endswith('.py') and not name.startswith(('tool/python/','tool/git/','tool/node/')) and '/node_modules/' not in name:
+                  ast.parse(pathlib.Path(name).read_text(encoding='utf-8-sig'),filename=name);count+=1
+          print('FIRST_PARTY_PYTHON_PARSED='+str(count))
+          assert count==101
+          print('CHECKED_SOURCE_COMMIT='+subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
+          PY
+          node --test --test-name-pattern='unselected|path guards|browser configuration|persistent browser owner|tool policy|transport strips|browser_close|a disconnected' tests/test_automation.js
+          node 'Version_History/AI account format conversion/test/smoke.js'
+          node 'Version_History/AI account format conversion/test/static-audit.js'
+      - name: Parse PowerShell and check offline production contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $count=0
+          $names=& git -c core.quotepath=false ls-files
+          if($LASTEXITCODE -ne 0){throw 'Cannot enumerate tracked source.'}
+          foreach($name in $names){
+            if($name -notlike '*.ps1' -or $name -match '^(tool/(python|git|node)/)' -or $name -match '/node_modules/'){continue}
+            $tokens=$null;$errors=$null
+            $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE $name),[ref]$tokens,[ref]$errors)
+            if($errors.Count){throw ('Parse failed: '+$name)}
+            $count++
+          }
+          if($count -ne 41){throw 'Unexpected PowerShell source count.'}
+          Write-Output ('FIRST_PARTY_POWERSHELL_PARSED='+$count)
+          foreach($name in @('test_cli_model_options','test_permission_display','test_login_input_errors','test_browser_login_flow')){
+            & pwsh -NoLogo -NoProfile -NonInteractive -File "tests/$name.ps1"
+            if($LASTEXITCODE -ne 0){throw ('Offline contract failed: '+$name)}
+          }
+          & git diff --exit-code
+          if($LASTEXITCODE -ne 0){throw 'Review modified tracked source.'}
+          Write-Output 'THIRD_INDEPENDENT_TEMPLATE_REVIEW=PASS'
