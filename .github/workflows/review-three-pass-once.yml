@@ -1,4 +1,4 @@
-name: Requested one-off source audit and Windows baseline
+name: Repair ancestor inspection ordering and renew Windows validation
 
 on:
   push:
@@ -10,77 +10,136 @@ permissions:
   contents: read
 
 jobs:
-  export-source:
+  repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: write
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: 88967f671569296a3fdcc5b8c155201f53805582
           lfs: false
-          persist-credentials: false
-      - name: Export only committed review inputs with Git identities
+          fetch-depth: 1
+      - name: Verify current inputs and reproduce the two missing boundary cases
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p tmp/three-pass-review
+          mkdir -p tmp/three-pass-repair
           python3 -B - <<'PY'
-          import hashlib, importlib.util, json, pathlib, subprocess, zipfile
-          root = pathlib.Path.cwd()
-          spec = importlib.util.spec_from_file_location('builder', root/'tool/package-release.py')
-          builder = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(builder)
-          commit = subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
-          assert commit == '88967f671569296a3fdcc5b8c155201f53805582'
-          records = subprocess.check_output(['git','ls-tree','-rz','--full-tree','HEAD']).split(b'\0')
-          inventory, included = {}, {}
-          excluded = ('tool/git/', 'tool/node/', 'tool/python/Lib/site-packages/', 'tool/automation/browsers/', 'tool/automation/node_modules/')
-          output = root/'tmp/three-pass-review/verified-source.zip'
-          with zipfile.ZipFile(output, 'x', compression=zipfile.ZIP_DEFLATED) as archive:
-              for record in records:
-                  if not record:
-                      continue
-                  header, raw_name = record.split(b'\t', 1)
-                  mode, kind, sha = (item.decode() for item in header.split())
-                  name = raw_name.decode('utf-8')
-                  builder.safe_name(name)
-                  assert mode in ('100644','100755') and kind == 'blob'
-                  inventory[name] = {'mode':mode, 'sha':sha}
-                  if name.startswith(excluded) or '/node_modules/' in name:
-                      continue
-                  path = builder.package_file(root, name)
-                  if path.stat().st_size > 2000000:
-                      continue
-                  data = path.read_bytes()
-                  actual = hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
-                  if actual != sha:
-                      raise RuntimeError('Checkout bytes do not match Git: '+name)
-                  archive.writestr(name, data)
-                  included[name] = {'sha':sha, 'sha256':hashlib.sha256(data).hexdigest(), 'size':len(data)}
-              archive.writestr('_review-inventory.json', json.dumps({'commit':commit,'included':included,'tracked':inventory}, ensure_ascii=False, indent=2))
-          print('REVIEW_SOURCE_COMMIT='+commit)
-          print('REVIEW_SOURCE_FILES='+str(len(included)))
-          print('REVIEW_SOURCE_ZIP_SHA256='+hashlib.sha256(output.read_bytes()).hexdigest())
+          import hashlib, pathlib, subprocess
+          expected = {
+              'tool/refresh-python-cli-shims.py': '76c8acb49f6e8690c08be6456dc82cbde6760f3e',
+              'tests/test_python_cli_shims.py': '47d1347a5814d63ea15059f30502460d5ec6c356',
+              'DEVELOPMENT.md': '6f203ea32449602b723fd41829497a1b550a31d5',
+          }
+          for name, sha in expected.items():
+              raw = pathlib.Path(name).read_bytes()
+              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest() == sha, name
+          tests = pathlib.Path('tests/test_python_cli_shims.py')
+          old = tests.read_text(encoding='utf-8')
+          marker = '    def test_actual_relocation_ignores_stale_root_environment(self):\n'
+          added = '''    def assert_linked_ancestor_rejected_before_descendant_probe(self, module, alias):
+                  inspected = []
+                  original = os.lstat
+
+                  def record(path, *args, **kwargs):
+                      inspected.append(Path(os.path.abspath(os.fspath(path))))
+                      return original(path, *args, **kwargs)
+
+                  with mock.patch.object(module.os, "lstat", side_effect=record):
+                      with self.assertRaises(RuntimeError):
+                          module._require_plain_dir(module.OUT_BIN)
+                  self.assertIn(alias, inspected)
+                  self.assertFalse(any(alias in path.parents for path in inspected),
+                                   "Inspected a descendant through a linked package ancestor")
+                  self.assertFalse((self.root / "tmp").exists())
+                  self.assertEqual(list(self.output.glob("*.cmd")), [])
+
+              def test_linked_package_parent_rejected_before_descendant_probe(self):
+                  alias = self.base / "linked parent"
+                  self.symlink(self.base, alias, directory=True)
+                  module = self.load(alias / self.root.name)
+                  self.assert_linked_ancestor_rejected_before_descendant_probe(module, alias)
+
+              def test_linked_package_grandparent_rejected_before_descendant_probe(self):
+                  alias = self.base / "linked grandparent"
+                  self.symlink(self.base, alias, directory=True)
+                  nested = self.base / "nested" / self.root.name
+                  nested.parent.mkdir()
+                  self.root.rename(nested)
+                  self.root = nested
+                  self.output = nested / "tool/bin"
+                  module = self.load(alias / "nested" / nested.name)
+                  self.assert_linked_ancestor_rejected_before_descendant_probe(module, alias)
+
+          '''
+          # The YAML block preserves the first line; remove only the extra
+          # indentation used above to make the embedded Python easy to audit.
+          added = added.splitlines(keepends=True)
+          added = added[0] + ''.join(line[6:] if line.startswith('      ') else line for line in added[1:])
+          assert old.count(marker) == 1
+          tests.write_text(old.replace(marker, added+marker), encoding='utf-8', newline='')
+          raw = tests.read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest() == 'cdf4d3c9fd8a77afa52976ce6f12e6bf86325253'
+          result = subprocess.run(['python3','-B','-m','unittest','discover','-s','tests','-p','test_python_cli_shims.py','-v'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+          pathlib.Path('tmp/three-pass-repair/before.log').write_text(result.stdout)
+          print(result.stdout)
+          assert result.returncode == 1 and 'FAILED (failures=2)' in result.stdout and 'Ran 24 tests' in result.stdout
+          source = pathlib.Path('tool/refresh-python-cli-shims.py')
+          text = source.read_text(encoding='utf-8')
+          before = '    for ancestor in (ROOT, *ROOT.parents):\n'
+          after = '    # Inspect from the filesystem root down before probing a linked target.\n    for ancestor in (*reversed(root.parents), root):\n'
+          assert text.count(before) == 1
+          source.write_text(text.replace(before,after), encoding='utf-8', newline='')
+          raw = source.read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest() == 'd306913f0fc971850aa59f9d583a0f0aa4df9aeb'
           PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: verified-review-source-88967f
-          path: tmp/three-pass-review/verified-source.zip
-          retention-days: 1
-          if-no-files-found: error
-      - name: Remove owned export staging
+      - name: Run both affected regression suites in fresh processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s tests -p 'test_python_cli_shims.py' -v
+          python3 -B -m unittest discover -s tests -p 'test_instruction_installer.py' -v
+          git diff --check
+      - name: Record the actual repair and commit only its three files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B - <<'PY'
+          from pathlib import Path
+          path = Path('DEVELOPMENT.md')
+          original = path.read_text(encoding='utf-8')
+          heading = '## 2026-10-25：Python 辅助工具的数据保护复查（本地修复）\n'
+          addition = '\n**追加的祖先检查修复：** 对已入库版本继续复查时，复现命令刷新器从包根向上检查祖先，导致路径祖先是链接时先查询链接后的目录再拒绝。现仅改为从文件系统根向下检查，再访问包内路径；新增父级和更高层祖先链接两项合成回归，未修复源码 24 项中 2 项失败，修复后 24 项及指令安装 31 项全部通过。正常 CMD 模板、用户文件保留策略、权限和官方工件不变。三轮验收因本次实际修复重新计数，完整 Windows 验证及发布尚待本次新提交完成；不复用旧提交的成功记录。\n'
+          assert original.count(heading) == 1
+          path.write_text(original.replace(heading, heading+addition), encoding='utf-8', newline='')
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- tool/refresh-python-cli-shims.py tests/test_python_cli_shims.py DEVELOPMENT.md
+          git commit -m 'fix: validate shim root ancestors before descendant access'
+          git push origin HEAD:main
+          echo "REPAIR_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Remove the downloaded private review artifact
+        shell: bash
+        run: gh api --method DELETE "repos/$GH_REPO/actions/artifacts/12585064309"
+      - name: Stop obsolete baseline and request full validation of the repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          state=$(gh api "repos/$GH_REPO/actions/runs/40158622943" --jq .status)
+          if [ "$state" != completed ]; then gh run cancel 40158622943; fi
+          head=$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)
+          test "$head" = "$REPAIR_COMMIT"
+          gh workflow run release.yml --ref main -f version=v2026.10.25.1 -f publish_release=false -f check_set=full
+          echo "REPAIRED_SOURCE_COMMIT=$REPAIR_COMMIT"
+      - name: Remove only this run's repair staging
         if: always()
         shell: bash
-        run: rm -rf -- tmp/three-pass-review
-  windows-baseline:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      actions: write
-    steps:
-      - name: Request existing full Windows validation without publication
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: gh workflow run release.yml --ref main -f version=v2026.10.25.1 -f publish_release=false -f check_set=full
+        run: rm -rf -- tmp/three-pass-repair
