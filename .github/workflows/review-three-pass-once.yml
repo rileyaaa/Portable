@@ -1,0 +1,61 @@
+name: Requested pinned source review snapshot
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/review-three-pass-once.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: adf8b0c9d3fbea5ca181b03a44f7e9512d33d989
+          lfs: false
+          persist-credentials: false
+      - name: Export only seven already-reviewed text files and Git identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/requested-review-snapshot
+          python3 -B - <<'PY'
+          import hashlib,json,pathlib,subprocess,zipfile
+          head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert head=='adf8b0c9d3fbea5ca181b03a44f7e9512d33d989'
+          names=['DEVELOPMENT.md','Version_History/AI account format conversion/README.md','Version_History/AI account format conversion/app/app.js','Version_History/AI account format conversion/app/converter.js','Version_History/AI account format conversion/test/smoke.js','Version_History/AI account format conversion/test/static-audit.js','tests/test_browser_smoke.ps1']
+          tracked={}
+          for record in subprocess.check_output(['git','ls-tree','-rz','HEAD']).split(b'\0'):
+              if not record:continue
+              header,name=record.split(b'\t',1)
+              mode,kind,sha=header.decode().split()
+              assert kind=='blob' and mode in ('100644','100755')
+              tracked[name.decode('utf-8')]={'mode':mode,'sha':sha}
+          records={}
+          with zipfile.ZipFile('tmp/requested-review-snapshot/source-delta.zip','x',compression=zipfile.ZIP_DEFLATED) as archive:
+              for name in names:
+                  data=subprocess.check_output(['git','cat-file','blob',tracked[name]['sha']])
+                  assert len(data)<200000
+                  data.decode('utf-8-sig')
+                  assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==tracked[name]['sha']
+                  archive.writestr('changes/'+name,data)
+                  records[name]={'sha':tracked[name]['sha'],'sha256':hashlib.sha256(data).hexdigest(),'size':len(data)}
+              archive.writestr('_review-delta.json',json.dumps({'commit':head,'changes':records,'tracked':tracked},ensure_ascii=False))
+          print('SOURCE_COMMIT='+head)
+          print('EXPORTED_TEXT_FILES='+str(len(records)))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: requested-source-adf8b0c
+          path: tmp/requested-review-snapshot/source-delta.zip
+          retention-days: 1
+          if-no-files-found: error
+      - name: Remove only this staging directory
+        if: always()
+        shell: bash
+        run: rm -rf -- tmp/requested-review-snapshot
