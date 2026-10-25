@@ -1,0 +1,65 @@
+name: Requested renewed audit source snapshot
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/review-three-pass-once.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: a716f58213b523215fbca2742575f2b57e1ad205
+          fetch-depth: 1
+          lfs: false
+      - name: Export only reviewed text changes and Git inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin 88967f671569296a3fdcc5b8c155201f53805582
+          mkdir -p tmp/renewed-audit-source
+          python3 -B - <<'PY'
+          import hashlib, json, pathlib, subprocess, zipfile
+          base='88967f671569296a3fdcc5b8c155201f53805582'
+          head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert head=='a716f58213b523215fbca2742575f2b57e1ad205'
+          allowed={'DEVELOPMENT.md','tool/refresh-python-cli-shims.py','tests/test_python_cli_shims.py','tests/test_browser_smoke.ps1','Version_History/AI account format conversion/README.md','Version_History/AI account format conversion/app/app.js','Version_History/AI account format conversion/test/static-audit.js'}
+          changed=[p.decode('utf-8') for p in subprocess.check_output(['git','diff','--name-only','-z',base,head]).split(b'\0') if p]
+          assert set(changed)==allowed, changed
+          tracked={}
+          for raw in subprocess.check_output(['git','ls-tree','-rz','HEAD']).split(b'\0'):
+              if not raw: continue
+              header,name=raw.split(b'\t',1)
+              mode,kind,sha=header.decode().split()
+              assert kind=='blob' and mode in ('100644','100755')
+              tracked[name.decode('utf-8')]={'mode':mode,'sha':sha}
+          records={}
+          out=pathlib.Path('tmp/renewed-audit-source/source-delta.zip')
+          with zipfile.ZipFile(out,'x',compression=zipfile.ZIP_DEFLATED) as z:
+              for name in sorted(changed):
+                  data=subprocess.check_output(['git','cat-file','blob',tracked[name]['sha']])
+                  data.decode('utf-8-sig')
+                  assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==tracked[name]['sha']
+                  z.writestr('changes/'+name,data)
+                  records[name]={'sha':tracked[name]['sha'],'sha256':hashlib.sha256(data).hexdigest(),'size':len(data)}
+              z.writestr('_review-delta.json',json.dumps({'base':base,'commit':head,'changes':records,'tracked':tracked},ensure_ascii=False))
+          print('SNAPSHOT_COMMIT='+head)
+          print('DELTA_FILE_COUNT='+str(len(records)))
+          print('TRACKED_COUNT='+str(len(tracked)))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: renewed-audit-source-a716f58
+          path: tmp/renewed-audit-source/source-delta.zip
+          retention-days: 1
+          if-no-files-found: error
+      - name: Remove this runner staging
+        if: always()
+        run: rm -rf -- tmp/renewed-audit-source
