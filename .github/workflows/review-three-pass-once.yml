@@ -1,4 +1,4 @@
-name: Stop superseded release and remove verified audit snapshot
+name: Repair vault state protection and verify independently before release
 
 on:
   push:
@@ -8,35 +8,663 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
-  protect-release:
+  repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    outputs:
+      commit: ${{ steps.commit.outputs.commit }}
     steps:
-      - name: Cancel only the superseded release if it is still running
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          lfs: false
+      - name: Apply exact reviewed edits without replacing newer converter fixes
+        shell: bash
         run: |
           set -euo pipefail
-          run_json=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/40174253552")
-          test "$(printf '%s' "$run_json" | jq -r .head_sha)" = 'fd915c83521bf7b1de786ac9334a6c9d8749c580'
-          status=$(printf '%s' "$run_json" | jq -r .status)
-          if [ "$status" != completed ]; then
-            gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/40174253552/cancel"
-            echo 'SUPERSEDED_RELEASE_CANCEL_REQUESTED=40174253552'
-          else
-            echo 'SUPERSEDED_RELEASE_ALREADY_COMPLETED_NO_CHANGE'
-          fi
-      - name: Delete only this downloaded and SHA-verified source artifact
+          mkdir -p tmp/vault-repair
+          python3 -B - <<'PY'
+          import hashlib, pathlib, subprocess
+          root=pathlib.Path.cwd()
+          app='Version_History/AI account format conversion/app/app.js'
+          test='Version_History/AI account format conversion/test/static-audit.js'
+          readme='Version_History/AI account format conversion/README.md'
+          browser='tests/test_browser_smoke.ps1'
+          expected={
+            'DEVELOPMENT.md':('459789e9f935d379b65574756ae7115f07425770','de78a7b87f5c15bbfb8bf2076d87c038eecc465e'),
+            readme:('6cf18e31699f5a1c7c7323c160a415c53d2247e3','df846f0e35d7516ba2d4d43889b878636020d0e7'),
+            app:('84709ae43ca5b17521855e076973e4b87189a034','128ee2d48072d9d70fe7adf3ef898362d39c1b55'),
+            test:('10da6c1e18f0236e0001f45b4cf1694c9458f9ad','1e66cdb8fb6b2a9ff913d62f61eb37c426b2c7a9'),
+            browser:('cf8761456170705e94bc900a71cb8fb0e04fb9e4','fb8f02ca853467762dd79a259abc015764d6792d'),
+          }
+          def blob(data):
+              return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+          originals={name:(root/name).read_bytes() for name in expected}
+          for name,data in originals.items():
+              assert blob(data)==expected[name][0], 'Source changed: '+name
+          edits={}
+          edits['DEVELOPMENT.md']=[(22,22,r'''
+          ## 2026-10-25：账号库与异步导入保护
+
+          **原因与范围：** 在 `fd915c83521bf7b1de786ac9334a6c9d8749c580` 上重新复现三项尚未入库的账号库问题：大密文展开为函数参数导致导出栈溢出、异步导出读取了点击后变更的状态、无效导入在失败前已替换原状态。现分块编码 Base64、在首次 await 前固定导出快照、先校验完整导入内容再更新页面。另复现旧 FileReader/解密异步任务覆盖后续清空、编辑、转换或新文件的问题；增加输入版本标记，丢弃过期导入结果和错误提示。保留远端已修复的包装数组和规则映射代码与测试，不改动账号库 v1、PBKDF2-SHA256 150000、AES-GCM、认证、权限、Fast 或官方工件。
+
+          **复现与验证：** 旧账号库代码在新回归中失败 5 项；仅修复账号库而未加异步保护时，新增 5 项竞争回归全部失败。最终本地版本的 18 项 UI/ZIP/账号库检查及原有 12 项 smoke 回归均通过。第一轮正序 128 项 Python 源码回归、8 项浏览器策略通过；第二轮分两个新进程逆序跑完同组 128 项，并通过独立 Python/Node 加密交叉验证：8 次解密（最大明文 1189316 字节）、16 次错误密码/篡改拒绝、10 组 Base64、1331 组包装输入、10 种无效导入保护、5 次兼容导入、21 组代理边界和 10 个 Python CLI 子进程场景。本地两轮未发现新的可复现问题，未使用真实凭据。
+
+          **待验收：** 第三轮须以本次提交在全新 Linux/Windows runner 复查；已在原浏览器 smoke 中补入真实 Web Crypto/FileReader、大账号库、错误密码和取消导入检查，本地尚未执行 Windows 验收。三轮通过后清理临时工作流，再由原 release.yml 完整检查、打包、上传回读后发布新版，不覆盖已有 Release。真实账号、在线 Agent/Host、提权沙箱及设备未测；三轮通过不表示任何场景绝对无 Bug。
+          ''')]
+          edits[readme]=[
+            (35,36,'| 加密账号库 | 用密码导出/导入 vault 文件，使用 PBKDF2-SHA256（150000 次）和 AES-GCM；依赖浏览器 Web Crypto；大密文分块编码，按点击导出时的账号快照生成文件；无效导入保留当前转换，不自动保存 |\n'),
+            (37,37,'\n导入文件或解密期间，清空、编辑输入、重新转换或选择新文件会使旧导入失效，不让较晚完成的旧请求覆盖当前输入。导出则保留点击时的账号快照，后续清空不会改变本次已选择的导出内容。\n'),
+            (61,62,'Node static audit 使用真实 Web Crypto 和合成账号检查大账号库导出、异步快照、兼容导入、错误密码及无效输入保护；这些检查不代替实际浏览器交互、剪贴板权限或浏览器 Web Crypto 验收。\n'),
+          ]
+          edits[app]=[
+            (4,4,'// Async imports may finish after the user clears, edits or selects another file.\nlet inputRevision=0;\n'),
+            (39,40,r'''  $('#applyCompleteBtn').onclick=()=>{inputRevision++;box.querySelectorAll('tr[data-i]').forEach(tr=>{const i=Number(tr.dataset.i); tr.querySelectorAll('input').forEach(inp=>state.canon.accounts[i][inp.dataset.k]=inp.value.trim());}); state.outputs=AccountConverter.convertAll(state.canon); render(); showToast('字段补全已应用');};
+          '''),
+            (41,43,r'''function convert(){inputRevision++;try{state.canon=AccountConverter.canonicalize(inputForConvert());state.outputs=AccountConverter.convertAll(state.canon);state.active=0;render();showToast('转换完成')}catch(e){state={canon:null,outputs:[],active:0};render();hints.innerHTML=`<div class="warn">${escapeHtml(e.message)}</div>`}}
+          function readFile(f){if(!f) return; const revision=++inputRevision; const reader=new FileReader(); reader.onload=()=>{if(revision!==inputRevision)return;input.value=String(reader.result||''); convert(); showToast(`已读取：${f.name}`)}; reader.onerror=()=>{if(revision===inputRevision)showToast(`读取失败：${f.name}`);}; reader.readAsText(f,'utf-8');}
+          '''),
+            (45,46,r'''$('#convertBtn').onclick=convert; $('#clearBtn').onclick=()=>{inputRevision++;input.value='';state={canon:null,outputs:[],active:0};render()}; redact.onchange=setPreview; select.onchange=()=>{const i=state.outputs.findIndex(o=>o.id===select.value); if(i>=0){state.active=i;setPreview()}};
+          '''),
+            (48,48,"input.addEventListener('input',()=>{inputRevision++;});\n"),
+            (59,59,r'''// Convert large ciphertext without exceeding the engine's function-argument limit.
+          function bytesToBase64(bytes){
+            const chunks=[];
+            for(let offset=0;offset<bytes.length;offset+=0x4000){
+              chunks.push(String.fromCharCode(...bytes.subarray(offset,offset+0x4000)));
+            }
+            return btoa(chunks.join(''));
+          }
+          // Validate imported canonical data before replacing an existing conversion.
+          function checkedVaultCanon(obj){
+            const canon=obj && obj.canon;
+            if(!canon || typeof canon.source!=='string' || !Array.isArray(canon.accounts) ||
+                !canon.accounts.length || !canon.accounts.every(a=>a && typeof a==='object' && !Array.isArray(a)) ||
+                !['sources','hints','warnings'].every(k=>Array.isArray(canon[k]) && canon[k].every(v=>typeof v==='string'))){
+              throw new Error('Invalid vault account data');
+            }
+            // JSON can contain an own non-callable toString property. Check every field
+            // coerced by the UI now, so a rendering error cannot replace prior state.
+            for(const account of canon.accounts){
+              for(const name of ['name','type','email','user_id','account_id','plan','platform','expires','base_url']){
+                String(account[name] ?? '');
+              }
+            }
+            return canon;
+          }
+          '''),
+            (60,61,r'''$('#exportVaultBtn').onclick=async()=>{try{if(!state.canon) throw new Error('请先转换'); const pass=$('#vaultPass').value; if(!pass) throw new Error('请输入密码'); const salt=crypto.getRandomValues(new Uint8Array(16)), iv=crypto.getRandomValues(new Uint8Array(12)); const plain=new TextEncoder().encode(JSON.stringify({version:1,created_at:new Date().toISOString(),canon:state.canon})); const key=await keyFromPass(pass,salt); const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},key,plain)); const vault={format:'ai-account-converter-vault',version:1,kdf:'PBKDF2-SHA256-150000',cipher:'AES-GCM',salt:btoa(String.fromCharCode(...salt)),iv:btoa(String.fromCharCode(...iv)),data:bytesToBase64(ct)}; downloadText('ai-account-vault.json',JSON.stringify(vault,null,2),'application/json');}catch(e){showToast(e.message)}};
+          '''),
+            (62,63,r'''$('#vaultFileInput').onchange=e=>{const f=e.target.files&&e.target.files[0]; if(!f)return; const revision=++inputRevision; const r=new FileReader(); r.onload=async()=>{if(revision!==inputRevision)return;try{const pass=$('#vaultPass').value; if(!pass) throw new Error('请输入密码'); const v=JSON.parse(String(r.result)); const bin=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0)); const key=await keyFromPass(pass,bin(v.salt)); const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:bin(v.iv)},key,bin(v.data)); const obj=JSON.parse(new TextDecoder().decode(plain)); if(revision!==inputRevision)return; const canon=checkedVaultCanon(obj); const outputs=AccountConverter.convertAll(canon); const restoredInput=JSON.stringify(canon.accounts,null,2); state={canon,outputs,active:0}; input.value=restoredInput; render(); showToast('vault 已解密导入');}catch(err){if(revision===inputRevision)showToast('vault 解密失败：'+err.message)}}; r.readAsText(f,'utf-8');};
+          '''),
+          ]
+          edits[test]=[
+            (60,61,'function converterPageFixture(crypto={}){\n'),
+            (65,66,'      classList:{add(){},remove(){},toggle(){}}, events:Object.create(null),\n      addEventListener(name,handler){this.events[name]=handler;},\n'),
+            (73,74,"    btoa:s=>Buffer.from(s,'binary').toString('base64'), crypto};\n"),
+            (143,145,r'''// Exercise asynchronous vault handlers with real Web Crypto and synthetic data.
+          // Capture downloads in memory; no credentials, file dialogs or browser state.
+          const webcrypto=require('node:crypto').webcrypto;
+          function vaultFixture(crypto=webcrypto){
+            const fixture=converterPageFixture(crypto);
+            fixture.downloads=[];
+            fixture.page.syntheticDownloads=fixture.downloads;
+            vm.runInContext('downloadText=(filename,content,type)=>syntheticDownloads.push({filename,content,type})',fixture.page);
+            fixture.element('#vaultPass').value='synthetic-test-password';
+            return fixture;
+          }
+          function loadSyntheticAccount(fixture, name='synthetic-account'){
+            fixture.element('#inputText').value=JSON.stringify({name,api_key:'synthetic-not-a-key'});
+            fixture.element('#convertBtn').onclick();
+            return vm.runInContext('JSON.stringify(state.canon)',fixture.page);
+          }
+          async function decryptSyntheticVault(vault,password='synthetic-test-password'){
+            assert.equal(vault.format,'ai-account-converter-vault');
+            assert.equal(vault.version,1);
+            assert.equal(vault.kdf,'PBKDF2-SHA256-150000');
+            assert.equal(vault.cipher,'AES-GCM');
+            const salt=Buffer.from(vault.salt,'base64'),iv=Buffer.from(vault.iv,'base64');
+            assert.equal(salt.length,16); assert.equal(iv.length,12);
+            const base=await webcrypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveKey']);
+            const key=await webcrypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:150000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['decrypt']);
+            const plain=await webcrypto.subtle.decrypt({name:'AES-GCM',iv},key,Buffer.from(vault.data,'base64'));
+            return JSON.parse(new TextDecoder().decode(plain));
+          }
+          async function checkExportSnapshot(change){
+            let release,started;
+            const ready=new Promise(resolve=>started=resolve), gate=new Promise(resolve=>release=resolve);
+            const fixture=vaultFixture({
+              getRandomValues:webcrypto.getRandomValues.bind(webcrypto),
+              subtle:{
+                importKey:webcrypto.subtle.importKey.bind(webcrypto.subtle),
+                encrypt:webcrypto.subtle.encrypt.bind(webcrypto.subtle),
+                deriveKey:async(...args)=>{started();await gate;return webcrypto.subtle.deriveKey(...args);},
+              },
+            });
+            const expected=loadSyntheticAccount(fixture,'original-synthetic');
+            const exporting=fixture.element('#exportVaultBtn').onclick();
+            await ready;
+            try{change(fixture);}finally{release();}
+            await exporting;
+            assert.equal(fixture.downloads.length,1,'Exactly one export is required');
+            const restored=await decryptSyntheticVault(JSON.parse(fixture.downloads[0].content));
+            assert.equal(JSON.stringify(restored.canon),expected,'Export must use the account snapshot selected at click time');
+            return fixture;
+          }
+          const reviewChecks=[
+            ['wrapper arrays ignore non-array metadata',()=>{
+              const {page}=converterPageFixture();
+              const account={name:'synthetic-wrapper',api_key:'synthetic-not-a-key'};
+              for(const input of [
+                {data:{count:1},items:[account]},
+                {data:'metadata',tokens:[account]},
+                {items:'metadata',tokens:[account]},
+                {data:42,items:false,tokens:[account]},
+              ]){
+                const result=page.AccountConverter.canonicalize(JSON.stringify(input));
+                assert.equal(result.accounts.length,1);
+                assert.equal(result.accounts[0].name,account.name);
+              }
+            }],
+            ['wrapper precedence and ordinary arrays are unchanged',()=>{
+              const {page}=converterPageFixture();
+              const first={name:'first',api_key:'synthetic-first'},second={name:'second',api_key:'synthetic-second'};
+              for(const key of ['data','items','tokens']){
+                assert.equal(page.AccountConverter.canonicalize(JSON.stringify({[key]:[first]})).accounts[0].name,'first');
+              }
+              assert.equal(page.AccountConverter.canonicalize(JSON.stringify({data:[first],items:[second],tokens:[second]})).accounts[0].name,'first');
+              assert.throws(()=>page.AccountConverter.canonicalize(JSON.stringify({data:[],items:[second]})));
+            }],
+            ['vault byte encoding matches independent Base64 at chunk boundaries',()=>{
+              const {page}=converterPageFixture();
+              for(const size of [0,1,2,3,16383,16384,16385,32769,1048576]){
+                const data=Uint8Array.from({length:size},(_,i)=>(i*37+19)&255);
+                page.syntheticBytes=data;
+                assert.equal(vm.runInContext('bytesToBase64(syntheticBytes)',page),Buffer.from(data).toString('base64'));
+              }
+            }],
+            ['large vault export round-trips actual encrypted account data',async()=>{
+              const fixture=vaultFixture();
+              fixture.element('#inputText').value=JSON.stringify(Array.from({length:24},(_,i)=>({
+                name:'synthetic-'+i,access_token:'synthetic-'+('a'.repeat(4096)),refresh_token:'synthetic-refresh-'+i,
+              })));
+              fixture.element('#convertBtn').onclick();
+              const expected=vm.runInContext('JSON.stringify(state.canon)',fixture.page);
+              assert.ok(Buffer.byteLength(expected)>300000);
+              await fixture.element('#exportVaultBtn').onclick();
+              assert.equal(fixture.downloads.length,1,'Large vault must not fail from argument-stack overflow');
+              const restored=await decryptSyntheticVault(JSON.parse(fixture.downloads[0].content));
+              assert.equal(JSON.stringify(restored.canon),expected);
+            }],
+            ['clear during key derivation cannot replace export with an empty vault',async()=>{
+              const fixture=await checkExportSnapshot(f=>f.element('#clearBtn').onclick());
+              assert.equal(vm.runInContext('state.canon',fixture.page),null);
+            }],
+            ['another conversion during key derivation cannot change the selected export',async()=>{
+              const fixture=await checkExportSnapshot(f=>loadSyntheticAccount(f,'new-synthetic'));
+              assert.equal(vm.runInContext('state.canon.accounts[0].name',fixture.page),'new-synthetic');
+            }],
+            ['vault format, import compatibility and wrong-password rejection remain intact',async()=>{
+              const fixture=vaultFixture();
+              const expected=loadSyntheticAccount(fixture,'\u5408\u6210-\ud83d\udd10');
+              await fixture.element('#exportVaultBtn').onclick();
+              assert.equal(fixture.downloads.length,1);
+              const vault=JSON.parse(fixture.downloads[0].content);
+              assert.equal(JSON.stringify((await decryptSyntheticVault(vault)).canon),expected);
+              await assert.rejects(decryptSyntheticVault(vault,'wrong-synthetic-password'));
+              let loaded;
+              fixture.page.FileReader=class{
+                readAsText(file){this.result=file.syntheticText;loaded=this.onload();}
+              };
+              fixture.element('#clearBtn').onclick();
+              fixture.element('#vaultFileInput').onchange({target:{files:[{syntheticText:JSON.stringify(vault)}]}});
+              await loaded;
+              assert.equal(vm.runInContext('JSON.stringify(state.canon)',fixture.page),expected);
+            }],
+            ['failed vault import preserves the current account, output and input',async()=>{
+              const fixture=vaultFixture();
+              loadSyntheticAccount(fixture,'keep-existing-synthetic');
+              const before=vm.runInContext('JSON.stringify(state)',fixture.page);
+              const inputBefore=fixture.element('#inputText').value;
+              const valid=JSON.parse(vm.runInContext('JSON.stringify(state.canon)',fixture.page));
+              const variants=[null,{...valid,hints:null},{...valid,accounts:[null]},
+                {...valid,accounts:[{...valid.accounts[0],plan:{toString:1}}]}];
+              for(const canon of variants){
+                const salt=webcrypto.getRandomValues(new Uint8Array(16)),iv=webcrypto.getRandomValues(new Uint8Array(12));
+                const base=await webcrypto.subtle.importKey('raw',new TextEncoder().encode('synthetic-test-password'),'PBKDF2',false,['deriveKey']);
+                const key=await webcrypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:150000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt']);
+                const encrypted=await webcrypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(JSON.stringify({version:1,canon})));
+                const vault={format:'ai-account-converter-vault',version:1,kdf:'PBKDF2-SHA256-150000',cipher:'AES-GCM',
+                  salt:Buffer.from(salt).toString('base64'),iv:Buffer.from(iv).toString('base64'),data:Buffer.from(encrypted).toString('base64')};
+                let loaded;
+                fixture.page.FileReader=class{readAsText(file){this.result=file.syntheticText;loaded=this.onload();}};
+                fixture.element('#vaultFileInput').onchange({target:{files:[{syntheticText:JSON.stringify(vault)}]}});
+                await loaded;
+                assert.equal(vm.runInContext('JSON.stringify(state)',fixture.page),before,'Rejected vault must preserve existing state');
+                assert.equal(fixture.element('#inputText').value,inputBefore,'Rejected vault must preserve existing input');
+              }
+            }],
+            ['missing account or password cannot start a vault download',async()=>{
+              const fixture=vaultFixture({getRandomValues(){throw new Error('Unexpected crypto execution');}});
+              await fixture.element('#exportVaultBtn').onclick();
+              assert.equal(fixture.downloads.length,0);
+              loadSyntheticAccount(fixture);
+              fixture.element('#vaultPass').value='';
+              await fixture.element('#exportVaultBtn').onclick();
+              assert.equal(fixture.downloads.length,0);
+            }],
+          ];
+
+          // Reproduce interleaved imports without timers: pause real key derivation at a
+          // controlled boundary, then exercise the user's actual clear/convert handlers.
+          function startSyntheticImport(fixture, vault){
+            let loaded;
+            fixture.page.FileReader=class{
+              readAsText(file){this.result=file.syntheticText;loaded=this.onload();}
+            };
+            fixture.element('#vaultFileInput').onchange({target:{files:[{syntheticText:vault}]}});
+            return loaded;
+          }
+          async function syntheticVault(name){
+            const fixture=vaultFixture();
+            loadSyntheticAccount(fixture,name);
+            await fixture.element('#exportVaultBtn').onclick();
+            assert.equal(fixture.downloads.length,1);
+            return fixture.downloads[0].content;
+          }
+          function pausedImportFixture(){
+            let release,started,first=true;
+            const ready=new Promise(resolve=>started=resolve),gate=new Promise(resolve=>release=resolve);
+            const fixture=vaultFixture({
+              getRandomValues:webcrypto.getRandomValues.bind(webcrypto),
+              subtle:{
+                importKey:webcrypto.subtle.importKey.bind(webcrypto.subtle),
+                decrypt:webcrypto.subtle.decrypt.bind(webcrypto.subtle),
+                deriveKey:async(...args)=>{
+                  if(first){first=false;started();await gate;}
+                  return webcrypto.subtle.deriveKey(...args);
+                },
+              },
+            });
+            return {fixture,ready,release:()=>release()};
+          }
+          async function checkCancelledImport(change){
+            const vault=await syntheticVault('pending-import');
+            const {fixture,ready,release}=pausedImportFixture();
+            loadSyntheticAccount(fixture,'current-account');
+            const pending=startSyntheticImport(fixture,vault);
+            await ready;
+            change(fixture);
+            const expected=vm.runInContext('JSON.stringify(state)',fixture.page);
+            const expectedInput=fixture.element('#inputText').value;
+            release();await pending;
+            assert.ok(vm.runInContext('JSON.stringify(state)',fixture.page)===expected,
+              'An older import must not overwrite a newer user decision');
+            assert.equal(fixture.element('#inputText').value,expectedInput);
+          }
+          reviewChecks.push(
+            ['clear cancels an in-flight decrypted vault import',async()=>{
+              await checkCancelledImport(f=>f.element('#clearBtn').onclick());
+            }],
+            ['conversion or typed input cancels an older vault import',async()=>{
+              await checkCancelledImport(f=>loadSyntheticAccount(f,'new-conversion'));
+              await checkCancelledImport(f=>{
+                f.element('#inputText').value='new unsaved synthetic input';
+                f.element('#inputText').events.input?.();
+              });
+            }],
+            ['newest selected vault wins even when the older crypto finishes later',async()=>{
+              const oldVault=await syntheticVault('older-selection'),newVault=await syntheticVault('newer-selection');
+              const {fixture,ready,release}=pausedImportFixture();
+              loadSyntheticAccount(fixture,'current-account');
+              const oldPending=startSyntheticImport(fixture,oldVault);
+              await ready;
+              await startSyntheticImport(fixture,newVault);
+              assert.equal(vm.runInContext('state.canon.accounts[0].name',fixture.page),'newer-selection');
+              release();await oldPending;
+              assert.equal(vm.runInContext('state.canon.accounts[0].name',fixture.page),'newer-selection');
+            }],
+            ['out-of-order ordinary FileReader completion preserves the latest selection',()=>{
+              const fixture=vaultFixture(),readers=[];
+              fixture.page.FileReader=class{
+                readAsText(file){this.result=file.syntheticText;readers.push(this);}
+              };
+              for(const name of ['older-file','newer-file']){
+                fixture.element('#fileInput').onchange({target:{files:[{name,
+                  syntheticText:JSON.stringify({name,api_key:'synthetic-not-a-key'})}]}});
+              }
+              readers[1].onload();readers[0].onload();
+              assert.equal(vm.runInContext('state.canon.accounts[0].name',fixture.page),'newer-file');
+            }],
+            ['clear cancels an ordinary pending file read and its stale error',()=>{
+              const fixture=vaultFixture();let reader;
+              fixture.page.FileReader=class{
+                readAsText(file){this.result=file.syntheticText;reader=this;}
+              };
+              loadSyntheticAccount(fixture,'current-account');
+              fixture.element('#fileInput').onchange({target:{files:[{name:'old-file',
+                syntheticText:JSON.stringify({name:'old-file',api_key:'synthetic-not-a-key'})}]}});
+              fixture.element('#clearBtn').onclick();
+              const toast=fixture.element('#toast').textContent;
+              reader.onload();reader.onerror();
+              assert.equal(vm.runInContext('state.canon',fixture.page),null);
+              assert.equal(fixture.element('#inputText').value,'');
+              assert.equal(fixture.element('#toast').textContent,toast);
+            }],
+          );
+
+          (async()=>{
+            for(const [name,check] of reviewChecks){
+              try{await check();console.log('PASS converter review: '+name);}
+              catch(error){ok=false;console.error('[CONVERTER_REVIEW] '+name+': '+error.message);}
+            }
+            if(!ok){process.exitCode=1;return;}
+            console.log('static audit passed');
+          })().catch(error=>{console.error('[CONVERTER_REVIEW] '+error.name);process.exitCode=1;});
+          '''),
+          ]
+          edits[browser]=[
+            (56,56,"    // A routed HTTPS origin supplies a secure context without external traffic.\n    await converterPage.goto('https://portable-release.invalid/converter-audit');\n"),
+            (99,99,r'''
+              // Real browser Web Crypto and native FileReader, using only synthetic data.
+              await converterPage.locator('#rulesToggle').uncheck();
+              await converterPage.locator('#vaultToggle').check();
+              await converterPage.locator('#vaultPass').fill('synthetic-browser-password');
+              await converterPage.locator('#inputText').fill(JSON.stringify(Array.from({length:24},(_,i)=>({
+                name:'synthetic-browser-'+i,access_token:'synthetic-'+('a'.repeat(4096)),
+                refresh_token:'synthetic-refresh-'+i,
+              }))));
+              await converterPage.locator('#convertBtn').click();
+              const saved = await converterPage.evaluate(async () => {
+                const oldDownload = downloadText, downloads = [];
+                downloadText = (name,content) => downloads.push(content);
+                try {
+                  await $('#exportVaultBtn').onclick();
+                  if (downloads.length !== 1) throw new Error('Large browser vault export failed.');
+                  return {vault: downloads[0], canon: JSON.stringify(state.canon)};
+                } finally { downloadText = oldDownload; }
+              });
+              if (Buffer.byteLength(saved.canon) < 300000) throw new Error('Vault fixture is too small.');
+              await converterPage.locator('#clearBtn').click();
+              const upload = name => ({name, mimeType:'application/json', buffer:Buffer.from(saved.vault)});
+              await converterPage.locator('#vaultFileInput').setInputFiles(upload('synthetic-roundtrip.json'));
+              await converterPage.waitForFunction(expected => JSON.stringify(state.canon) === expected, saved.canon);
+              const beforeRejected = await converterPage.evaluate(() => JSON.stringify(state));
+              await converterPage.locator('#vaultPass').fill('wrong-synthetic-password');
+              await converterPage.evaluate(() => { toast.textContent = 'synthetic-pending'; });
+              await converterPage.locator('#vaultFileInput').setInputFiles(upload('synthetic-wrong-password.json'));
+              await converterPage.waitForFunction(() => toast.textContent.startsWith('vault \u89e3\u5bc6\u5931\u8d25'));
+              if (await converterPage.evaluate(() => JSON.stringify(state)) !== beforeRejected)
+                throw new Error('Wrong-password import changed browser account state.');
+              await converterPage.locator('#vaultPass').fill('synthetic-browser-password');
+              await converterPage.evaluate(() => {
+                window.__originalVaultKey = keyFromPass;
+                window.__originalVaultRead = FileReader.prototype.readAsText;
+                window.__vaultStarted = false; window.__vaultImportDone = false;
+                const gate = new Promise(resolve => { window.__releaseVaultGate = resolve; });
+                keyFromPass = async (...args) => {
+                  window.__vaultStarted = true; await gate; return window.__originalVaultKey(...args);
+                };
+                FileReader.prototype.readAsText = function(...args) {
+                  const originalLoad = this.onload;
+                  this.onload = async (...events) => {
+                    try { return await originalLoad.apply(this,events); }
+                    finally { window.__vaultImportDone = true; }
+                  };
+                  return window.__originalVaultRead.apply(this,args);
+                };
+              });
+              try {
+                await converterPage.locator('#vaultFileInput').setInputFiles(upload('synthetic-cancelled.json'));
+                await converterPage.waitForFunction(() => window.__vaultStarted);
+                await converterPage.locator('#clearBtn').click();
+                await converterPage.evaluate(() => window.__releaseVaultGate());
+                await converterPage.waitForFunction(() => window.__vaultImportDone);
+                if (!(await converterPage.evaluate(() => state.canon === null && input.value === '')))
+                  throw new Error('A stale vault import restored accounts after browser clear.');
+              } finally {
+                await converterPage.evaluate(() => {
+                  window.__releaseVaultGate();
+                  keyFromPass = window.__originalVaultKey;
+                  FileReader.prototype.readAsText = window.__originalVaultRead;
+                });
+              }
+
+          '''),
+            (136,136,"    Write-Output 'PASS real browser vault large roundtrip, wrong-password preservation and cancelled import'\n"),
+          ]
+          assert set(edits)==set(expected)
+          for name,blocks in edits.items():
+              lines=originals[name].decode('utf-8').splitlines(keepends=True)
+              result=[];cursor=0
+              for start,end,text in blocks:
+                  assert cursor<=start<=end<=len(lines),name
+                  result.extend(lines[cursor:start]);result.append(text);cursor=end
+              result.extend(lines[cursor:]);data=''.join(result).encode('utf-8')
+              assert blob(data)==expected[name][1], 'Reviewed output hash differs: '+name
+              (root/name).write_bytes(data)
+              print('EXACT_PATCHED_BLOB='+name+' '+blob(data))
+          # Negative control executes only synthetic tests, then restores exact bytes.
+          patched=(root/app).read_bytes()
+          try:
+              (root/app).write_bytes(originals[app])
+              result=subprocess.run(['node',test],capture_output=True,text=True,timeout=120)
+              assert result.returncode!=0, 'Old source unexpectedly passed vault regressions'
+              failures=[line for line in result.stderr.splitlines() if '[CONVERTER_REVIEW]' in line]
+              assert len(failures)>=5, 'Missing expected old-source failures'
+              print('OLD_SOURCE_EXPECTED_FAILURES='+str(len(failures)))
+          finally:
+              (root/app).write_bytes(patched)
+          subprocess.run(['node',test],check=True,timeout=120)
+          subprocess.run(['node','Version_History/AI account format conversion/test/smoke.js'],check=True,timeout=60)
+          for name in (app,test): subprocess.run(['node','--check',name],check=True)
+          for name,record in expected.items(): assert blob((root/name).read_bytes())==record[1],name
+          PY
+      - name: Commit only the reviewed production tests and existing documentation
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- DEVELOPMENT.md 'Version_History/AI account format conversion/README.md' 'Version_History/AI account format conversion/app/app.js' 'Version_History/AI account format conversion/test/static-audit.js' tests/test_browser_smoke.ps1
+          test "$(git diff --cached --name-only | wc -l)" -eq 5
+          git commit -m 'fix: preserve vault snapshots and reject stale asynchronous imports'
+          git push origin HEAD:main
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Remove only own scratch
         if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
+        run: rm -rf -- tmp/vault-repair
+
+  source-review:
+    needs: repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.repair.outputs.commit }}
+          lfs: false
+          persist-credentials: false
+      - name: Third pass in a fresh runner with shuffled source regressions
+        shell: bash
         run: |
           set -euo pipefail
-          info=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/12591598149")
-          test "$(printf '%s' "$info" | jq -r .name)" = 'current-audit-source-fd915c8'
-          test "$(printf '%s' "$info" | jq -r .workflow_run.id)" = '40175077262'
-          gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/12591598149"
-          echo 'OWNED_SOURCE_ARTIFACT_DELETED=12591598149'
+          python3 -B - <<'PY'
+          import ast,json,pathlib,random,subprocess,sys,unittest
+          root=pathlib.Path.cwd()
+          sys.path.insert(0,str(root/'tool/python/Lib/site-packages'))
+          sys.path.insert(0,str(root/'tests'))
+          exclude={'test_runtime_package','test_optional_python_payload','test_python_runtime_dependencies','test_pip_config_isolation','test_pdf_library'}
+          cases_exclude={'test_browser_install.BrowserInstallTests.test_pinned_browser_inventory_matches_installed_official_bytes','test_python_lock.PythonLockTests.test_runtime_repair_accepts_current_defaults_and_missing_packages'}
+          def flatten(suite):
+              for case in suite:
+                  if isinstance(case,unittest.TestSuite): yield from flatten(case)
+                  else: yield case
+          cases=[]
+          for source in sorted((root/'tests').glob('test_*.py')):
+              if source.stem not in exclude:
+                  cases.extend(c for c in flatten(unittest.defaultTestLoader.loadTestsFromName(source.stem)) if c.id() not in cases_exclude)
+          random.Random(20261025).shuffle(cases)
+          result=unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite(cases))
+          print('THIRD_SOURCE_RESULT='+json.dumps({'tests':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),'skips':len(result.skipped),'deferred_native_modules':sorted(exclude),'deferred_native_cases':sorted(cases_exclude)}))
+          assert result.wasSuccessful() and not result.skipped and result.testsRun==129
+          count=0
+          for raw in subprocess.check_output(['git','ls-files','-z']).split(b'\0'):
+              if not raw: continue
+              name=raw.decode('utf-8')
+              if name.endswith('.py') and not name.startswith(('tool/python/','tool/git/','tool/node/')) and '/node_modules/' not in name:
+                  ast.parse(pathlib.Path(name).read_text(encoding='utf-8-sig'),filename=name);count+=1
+          print('FIRST_PARTY_PYTHON_PARSED='+str(count))
+          print('CHECKED_SOURCE_COMMIT='+subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
+          PY
+          node --test --test-name-pattern='unselected|path guards|browser configuration|persistent browser owner|tool policy|transport strips|browser_close|a disconnected' tests/test_automation.js
+          node 'Version_History/AI account format conversion/test/smoke.js'
+          node 'Version_History/AI account format conversion/test/static-audit.js'
+      - name: PowerShell parse and offline production policy contracts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $count=0
+          $names=& git -c core.quotepath=false ls-files
+          if($LASTEXITCODE -ne 0){throw 'Cannot enumerate source.'}
+          foreach($name in $names){
+            if($name -notlike '*.ps1' -or $name -match '^(tool/(python|git|node)/|tool/automation/node_modules/)' -or $name -match '/node_modules/'){continue}
+            $tokens=$null;$errors=$null
+            $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE $name),[ref]$tokens,[ref]$errors)
+            if($errors.Count){throw ('Parse failed: '+$name)}
+            $count++
+          }
+          Write-Output ('FIRST_PARTY_POWERSHELL_PARSED='+$count)
+          foreach($name in @('test_cli_model_options','test_permission_display','test_login_input_errors','test_browser_login_flow')){
+            & pwsh -NoLogo -NoProfile -NonInteractive -File "tests/$name.ps1"
+            if($LASTEXITCODE -ne 0){throw ('Offline contract failed: '+$name)}
+          }
+          & git diff --exit-code
+          if($LASTEXITCODE -ne 0){throw 'Review changed tracked source.'}
+          Write-Output 'THIRD_INDEPENDENT_SOURCE_REVIEW=PASS'
+
+  windows-browser:
+    needs: repair
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.repair.outputs.commit }}
+          lfs: true
+          persist-credentials: false
+      - name: Prepare package-local Windows test state
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Join-Path $env:GITHUB_WORKSPACE 'tmp/vault-windows-state'
+          $state=@{HOME='home';USERPROFILE='home';APPDATA='appdata';LOCALAPPDATA='localappdata';PROGRAMDATA='programdata';ALLUSERSPROFILE='programdata';TEMP='temp';TMP='temp';TMPDIR='temp';XDG_CACHE_HOME='cache';XDG_CONFIG_HOME='config';XDG_DATA_HOME='data';XDG_STATE_HOME='state';CODEX_HOME='codex-home';CODEX_SQLITE_HOME='sqlite'}
+          foreach($name in $state.Keys){$path=Join-Path $base $state[$name];New-Item -ItemType Directory -Force -Path $path|Out-Null;"$name=$path"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
+          'PYTHONDONTWRITEBYTECODE=1'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          'PIP_CONFIG_FILE=nul'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          'POWERSHELL_TELEMETRY_OPTOUT=1'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          $modules=Join-Path $base 'cache/modules';New-Item -ItemType Directory -Force -Path $modules|Out-Null
+          "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Bundled Python Node and converter regressions
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference='Stop'
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
+          if($LASTEXITCODE -ne 0){throw 'Bundled Python regressions failed.'}
+          & .\tool\node\node.exe --test .\tests\test_automation.js .\tests\test_portable_npm.js
+          if($LASTEXITCODE -ne 0){throw 'Bundled Node regressions failed.'}
+          & .\tool\node\node.exe 'Version_History/AI account format conversion/test/smoke.js'
+          if($LASTEXITCODE -ne 0){throw 'Converter smoke failed.'}
+          & .\tool\node\node.exe 'Version_History/AI account format conversion/test/static-audit.js'
+          if($LASTEXITCODE -ne 0){throw 'Converter vault regressions failed.'}
+          & .\tool\python\python.exe -B .\tool\automation\install-browser.py --check
+          if($LASTEXITCODE -ne 0){throw 'Pinned browser verification failed.'}
+      - name: Real Windows Chromium Web Crypto and FileReader verification
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference='Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_smoke.ps1
+          if($LASTEXITCODE -ne 0){throw 'Actual browser vault regression failed.'}
+          & git diff --exit-code
+          if($LASTEXITCODE -ne 0){throw 'Windows review changed tracked source.'}
+          Write-Output 'THIRD_WINDOWS_VAULT_REVIEW=PASS'
+      - name: Remove only own Windows staging
+        if: always()
+        run: |
+          $path=Join-Path $env:GITHUB_WORKSPACE 'tmp/vault-windows-state'
+          if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}
+
+  finalize:
+    needs: [repair, source-review, windows-browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.repair.outputs.commit }}
+          lfs: false
+      - name: Record successful third pass and remove this temporary workflow
+        env:
+          VERIFIED_COMMIT: ${{ needs.repair.outputs.commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$VERIFIED_COMMIT"
+          python3 -B - <<'PY'
+          import os,pathlib
+          path=pathlib.Path('DEVELOPMENT.md');text=path.read_bytes().decode('utf-8')
+          start=text.index('**待验收：** 第三轮须以本次提交')
+          end=text.index('\n',start)
+          replacement='**第三轮与发布门禁：** Actions `'+os.environ['GITHUB_RUN_ID']+'` 在全新 Linux/Windows runner 检出修复提交 `'+os.environ['VERIFIED_COMMIT']+'`：129 项随机顺序源码回归无失败、错误或跳过；浏览器策略、18 项转换器检查、既有包装/映射 smoke、PowerShell 解析及离线策略通过。包内 Windows Python/Node、真实 Chromium Web Crypto/FileReader、大账号库往返、错误密码保留、清空取消导入、既有 HTML/ZIP/规则映射、截图、Cookie 持久化及主动清理均通过。三轮连续未发现新的可复现问题。临时源码 artifact 已主动删除，本工作流随本记录一并移除；正式发布仍由原 release.yml 对最终提交执行 check_set=full，完整验证、打包、上传回读全部成功后才发布，不覆盖已有 Release。真实账号、在线 Agent/Host、提权沙箱及设备未测，三轮通过不等于任何场景绝对无 Bug。'
+          path.write_bytes((text[:start]+replacement+text[end:]).encode('utf-8'))
+          pathlib.Path('.github/workflows/review-three-pass-once.yml').unlink()
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- DEVELOPMENT.md .github/workflows/review-three-pass-once.yml
+          git commit -m 'docs: record three verified vault review passes and remove temporary automation'
+          git push origin HEAD:main
+          echo "FINAL_SOURCE_COMMIT=$(git rev-parse HEAD)"
+      - name: Request the unchanged full Windows validation and release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/vault-release-request
+          git ls-remote --tags origin 'refs/tags/v2026.10.25.*' > tmp/vault-release-request/tags.txt
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name' > tmp/vault-release-request/releases.txt
+          python3 -B - <<'PY'
+          import json,pathlib
+          root=pathlib.Path('tmp/vault-release-request')
+          existing=set((root/'releases.txt').read_text().splitlines())
+          for line in (root/'tags.txt').read_text().splitlines():
+              existing.add(line.split('\t',1)[1].removeprefix('refs/tags/').removesuffix('^{}'))
+          n=2
+          while 'v2026.10.25.'+str(n) in existing:n+=1
+          version='v2026.10.25.'+str(n)
+          (root/'request.json').write_text(json.dumps({'ref':'main','inputs':{'version':version,'publish_release':True,'check_set':'full'}}))
+          print('REQUESTED_RELEASE_VERSION='+version)
+          PY
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$(git rev-parse HEAD)"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/dispatches" --input tmp/vault-release-request/request.json
+          echo 'FULL_WINDOWS_RELEASE_DISPATCHED=true'
+      - name: Remove only this release-request staging
+        if: always()
+        run: rm -rf -- tmp/vault-release-request
