@@ -1,0 +1,33 @@
+name: Stop superseded release for related staging repairs
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/review-three-pass-once.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  stop-superseded-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Cancel only the current superseded validation before publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='repos/rileyaaa/Codex-Portable/actions/runs/40183447817'
+          sha=$(gh api "$target" --jq '.head_sha')
+          test "$sha" = '403e4bcc8e1882494e88d49fbef23cd1610a4d68'
+          status=$(gh api "$target" --jq '.status')
+          if [ "$status" != 'completed' ]; then
+            gh api --method POST "$target/cancel"
+            echo 'SUPERSEDED_RELEASE_CANCEL_REQUESTED=true'
+          else
+            echo 'SUPERSEDED_RELEASE_ALREADY_COMPLETED=true; existing release is not overwritten or removed'
+          fi
