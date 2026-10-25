@@ -61,7 +61,7 @@ class PythonRuntimeDependencyTests(unittest.TestCase):
     def test_bundled_pyinstaller_version_without_compilation(self):
         result = subprocess.run(
             [str(ROOT / 'tool/python/python.exe'), '-E', '-s', '-B',
-             str(ROOT / 'tool/bin/portable-python-cli.py'), 'pyinstaller', '--version'],
+             '-m', 'PyInstaller', '--version'],
             cwd=ROOT, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), '6.21.0')
