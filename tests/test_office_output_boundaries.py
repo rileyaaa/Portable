@@ -224,5 +224,146 @@ class OfficeOutputBoundaryTests(unittest.TestCase):
         self.assertEqual(sentinel.read_bytes(), b"keep")
         self.assertEqual(list(output.parent.glob("*.tmp")), [])
 
+
+    def extraction_archive(self, name="word/document.xml", content=b"synthetic XML"):
+        import io
+        import zipfile
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr(name, content)
+        archive = zipfile.ZipFile(io.BytesIO(buffer.getvalue()))
+        self.addCleanup(archive.close)
+        return archive
+
+    def extraction_destination(self):
+        destination = self.package / "work" / "synthetic unpacked"
+        destination.mkdir(parents=True)
+        return destination
+
+    def directory_link(self, target, link):
+        try:
+            link.symlink_to(target, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"Directory symlinks unavailable: {error}")
+
+    def test_extract_rejects_in_tree_directory_link(self):
+        destination = self.extraction_destination()
+        actual = destination / "actual"
+        actual.mkdir()
+        sentinel = actual / "keep.txt"
+        sentinel.write_bytes(b"keep")
+        self.directory_link(actual, destination / "word")
+        with self.assertRaisesRegex(ValueError, "symbolic link/junction/reparse"):
+            self.helpers.safe_extract(self.extraction_archive(), destination)
+        self.assertEqual(list(actual.iterdir()), [sentinel])
+        self.assertEqual(sentinel.read_bytes(), b"keep")
+
+    def test_extract_rejects_dangling_directory_link_without_creating_target(self):
+        destination = self.extraction_destination()
+        actual = destination / "must-not-be-created"
+        self.directory_link(actual, destination / "word")
+        with self.assertRaisesRegex(ValueError, "symbolic link/junction/reparse"):
+            self.helpers.safe_extract(self.extraction_archive(), destination)
+        self.assertFalse(actual.exists())
+        self.assertTrue((destination / "word").is_symlink())
+
+    def test_extract_rejects_link_before_resolving_member_path(self):
+        destination = self.extraction_destination()
+        self.directory_link(self.outside, destination / "word")
+        original_resolve = Path.resolve
+        probes = []
+
+        def capture(path, *args, **kwargs):
+            if path == destination / "word" / "document.xml":
+                probes.append(str(path))
+            return original_resolve(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "resolve", capture):
+            with self.assertRaises(ValueError):
+                self.helpers.safe_extract(self.extraction_archive(), destination)
+        self.assertEqual(probes, [], "Member links must be rejected before resolve follows them")
+        self.assertEqual(list(self.outside.iterdir()), [])
+
+    def test_extract_rejects_linked_directory_archive_entry(self):
+        destination = self.extraction_destination()
+        actual = destination / "actual"
+        actual.mkdir()
+        self.directory_link(actual, destination / "word")
+        with self.assertRaisesRegex(ValueError, "symbolic link/junction/reparse"):
+            self.helpers.safe_extract(self.extraction_archive("word/", b""), destination)
+        self.assertEqual(list(actual.iterdir()), [])
+
+    def test_extract_source_open_failure_closes_output_before_cleanup(self):
+        import zipfile
+        destination = self.extraction_destination()
+        archive = self.extraction_archive()
+        output = destination / "word" / "document.xml"
+        handles = []
+        real_open = Path.open
+        real_unlink = Path.unlink
+        cleanup_closed = []
+
+        def capture_open(path, *args, **kwargs):
+            handle = real_open(path, *args, **kwargs)
+            if path == output and args and args[0] == "xb":
+                handles.append(handle)
+                self.addCleanup(handle.close)
+            return handle
+
+        def windows_cleanup(path, *args, **kwargs):
+            if path == output:
+                closed = bool(handles) and all(handle.closed for handle in handles)
+                cleanup_closed.append(closed)
+                if not closed:
+                    raise PermissionError("Synthetic Windows open-file sharing violation")
+            return real_unlink(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "open", capture_open), \
+             mock.patch.object(Path, "unlink", windows_cleanup), \
+             mock.patch.object(archive, "open", side_effect=zipfile.BadZipFile("synthetic bad header")):
+            with self.assertRaisesRegex(zipfile.BadZipFile, "synthetic bad header"):
+                self.helpers.safe_extract(archive, destination)
+        self.assertEqual(cleanup_closed, [True])
+        self.assertTrue(all(handle.closed for handle in handles))
+        self.assertFalse(output.exists())
+
+    def test_extract_preserves_existing_file_and_hardlink(self):
+        destination = self.extraction_destination()
+        output = destination / "word" / "document.xml"
+        output.parent.mkdir()
+        original = b"existing user XML"
+        output.write_bytes(original)
+        with self.assertRaisesRegex(ValueError, "collides"):
+            self.helpers.safe_extract(self.extraction_archive(), destination)
+        self.assertEqual(output.read_bytes(), original)
+        output.unlink()
+        sentinel = self.outside / "keep.xml"
+        sentinel.write_bytes(original)
+        self.make_link(sentinel, output, hard=True)
+        with self.assertRaisesRegex(ValueError, "collides"):
+            self.helpers.safe_extract(self.extraction_archive(), destination)
+        self.assertEqual(sentinel.read_bytes(), original)
+        self.assertEqual(output.read_bytes(), original)
+
+    def test_extract_regular_archive_content_is_unchanged(self):
+        import io
+        import zipfile
+        destination = self.extraction_destination()
+        data = {"[Content_Types].xml": b"<Types/>", "word/": b"",
+                "word/document.xml": "synthetic \u4e2d\u6587 XML".encode("utf-8"),
+                "word/media/image.bin": bytes(range(256)) * 4097}
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            for name, content in data.items():
+                archive.writestr(name, content)
+        with zipfile.ZipFile(io.BytesIO(buffer.getvalue())) as archive:
+            self.helpers.safe_extract(archive, destination)
+        for name, content in data.items():
+            path = destination / name
+            if name.endswith("/"):
+                self.assertTrue(path.is_dir())
+            else:
+                self.assertEqual(path.read_bytes(), content)
+
 if __name__ == "__main__":
     unittest.main()

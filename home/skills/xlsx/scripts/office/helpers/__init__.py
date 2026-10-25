@@ -337,9 +337,9 @@ def _reject_reparse_chain(path: Path) -> None:
             break
         current = parent
     for item in reversed(chain):
-        if item.exists() or item.is_symlink():
-            if _is_reparse(item):
-                raise ValueError(f"archive path crosses a symbolic link/junction/reparse point: {item}")
+        # Probe the entry itself, not its target, including dangling links.
+        if _is_reparse(item, allow_missing=True):
+            raise ValueError(f"archive path crosses a symbolic link/junction/reparse point: {item}")
 
 
 def safe_extract(zf: zipfile.ZipFile, dest: Path) -> None:
@@ -366,7 +366,9 @@ def safe_extract(zf: zipfile.ZipFile, dest: Path) -> None:
         total += m.file_size
         if total > _MAX_ARCHIVE_TOTAL_BYTES:
             raise ValueError("archive expanded size exceeds limit")
-        target = dest.joinpath(*parts).resolve()
+        target = dest.joinpath(*parts)
+        _reject_reparse_chain(target)
+        target = target.resolve()
         if not target.is_relative_to(dest):
             raise ValueError(f"unsafe archive entry: {m.filename!r}")
         if m.is_dir():
@@ -383,7 +385,8 @@ def safe_extract(zf: zipfile.ZipFile, dest: Path) -> None:
         except FileExistsError as exc:
             raise ValueError(f"archive file collides with an existing path: {m.filename!r}") from exc
         try:
-            with zf.open(m, "r") as src, out:
+            # Own the output before opening a ZIP member, which may fail.
+            with out, zf.open(m, "r") as src:
                 copied = 0
                 while True:
                     chunk = src.read(1024 * 1024)
