@@ -1,0 +1,29 @@
+name: Stop failed release before further runner use
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/review-three-pass-once.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  stop-failed-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Cancel only the verified failed release run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='repos/rileyaaa/Codex-Portable/actions/runs/40206266734'
+          test "$(gh api "$target" --jq '.head_sha')" = '34a88527ef5c0bac9e08d04928323521412d0596'
+          test "$(gh api "$target/jobs" --jq '[.jobs[].steps[] | select(.name == "Run bundled Python and Node regression suites" and .conclusion == "failure")] | length')" = '1'
+          if [ "$(gh api "$target" --jq '.status')" != 'completed' ]; then
+            gh api --method POST "$target/cancel"
+            echo 'FAILED_RELEASE_CANCEL_REQUESTED=true'
+          else
+            echo 'FAILED_RELEASE_ALREADY_STOPPED=true'
+          fi
