@@ -19,7 +19,6 @@ jobs:
           ref: fd915c83521bf7b1de786ac9334a6c9d8749c580
           fetch-depth: 1
           lfs: false
-          persist-credentials: true
       - name: Export only reviewed text changes and Git inventory
         shell: bash
         run: |
@@ -31,7 +30,7 @@ jobs:
           base='88967f671569296a3fdcc5b8c155201f53805582'
           head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
           assert head=='fd915c83521bf7b1de786ac9334a6c9d8749c580'
-          allowed={'DEVELOPMENT.md','tool/refresh-python-cli-shims.py','tests/test_python_cli_shims.py','tests/test_browser_smoke.ps1','Version_History/AI account format conversion/README.md','Version_History/AI account format conversion/app/app.js','Version_History/AI account format conversion/app/converter.js','Version_History/AI account format conversion/test/static-audit.js'}
+          allowed={'DEVELOPMENT.md','tool/refresh-python-cli-shims.py','tests/test_python_cli_shims.py','tests/test_browser_smoke.ps1','Version_History/AI account format conversion/README.md','Version_History/AI account format conversion/app/app.js','Version_History/AI account format conversion/app/converter.js','Version_History/AI account format conversion/test/static-audit.js','Version_History/AI account format conversion/test/smoke.js'}
           changed=[p.decode('utf-8') for p in subprocess.check_output(['git','diff','--name-only','-z',base,head]).split(b'\0') if p]
           assert set(changed)==allowed, changed
           tracked={}
