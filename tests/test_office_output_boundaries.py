@@ -152,5 +152,77 @@ class OfficeOutputBoundaryTests(unittest.TestCase):
             self.assertEqual(Path(output).read_bytes(), b"rendered synthetic grid")
 
 
+    def rezip_source(self):
+        source = self.package / "work" / "synthetic unpacked"
+        source.mkdir(parents=True)
+        (source / "[Content_Types].xml").write_bytes(b"<Types/>")
+        (source / "doc.xml").write_bytes(b"<document>synthetic</document>")
+        return source
+
+    def test_rezip_stages_in_package_tmp_and_preserves_archive_content(self):
+        import zipfile
+        source = self.rezip_source()
+        output = self.package / "work" / "output" / "synthetic.docx"
+        created = []
+        actual = self.helpers.tempfile.mkstemp
+        def capture(*args, **kwargs):
+            result = actual(*args, **kwargs)
+            created.append(Path(result[1]))
+            return result
+        with mock.patch.object(self.helpers.tempfile, "mkstemp", capture):
+            self.helpers.rezip(source, output)
+        self.assertEqual(len(created), 1)
+        self.assertEqual(created[0].parent, self.package / "tmp" / "office")
+        self.assertFalse(created[0].exists())
+        with zipfile.ZipFile(output) as archive:
+            self.assertIsNone(archive.testzip())
+            self.assertEqual(archive.namelist(), ["[Content_Types].xml", "doc.xml"])
+            for name in archive.namelist():
+                self.assertEqual(archive.read(name), (source / name).read_bytes())
+            self.assertEqual(archive.getinfo("[Content_Types].xml").compress_type, zipfile.ZIP_STORED)
+            self.assertEqual(archive.getinfo("doc.xml").compress_type, zipfile.ZIP_DEFLATED)
+
+    def test_rezip_rejects_linked_tmp_before_output_parent_creation(self):
+        source = self.rezip_source()
+        scratch = self.package / "tmp"
+        try:
+            scratch.symlink_to(self.outside, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"Symlink creation unavailable: {error}")
+        output = self.package / "work" / "output" / "synthetic.docx"
+        with mock.patch.object(self.helpers.tempfile, "mkstemp",
+                                       wraps=self.helpers.tempfile.mkstemp) as create_temp:
+            with self.assertRaises(RuntimeError):
+                self.helpers.rezip(source, output)
+            create_temp.assert_not_called()
+        self.assertFalse(output.parent.exists())
+        self.assertEqual(list(self.outside.iterdir()), [])
+
+    def test_rezip_rejects_file_tmp_before_output_parent_creation(self):
+        source = self.rezip_source()
+        scratch = self.package / "tmp"
+        scratch.write_bytes(b"keep")
+        output = self.package / "work" / "output" / "synthetic.docx"
+        with self.assertRaises((OSError, RuntimeError)):
+            self.helpers.rezip(source, output)
+        self.assertFalse(output.parent.exists())
+        self.assertEqual(scratch.read_bytes(), b"keep")
+
+    def test_rezip_replace_failure_preserves_output_and_unrelated_tmp(self):
+        source = self.rezip_source()
+        scratch = self.package / "tmp" / "office"
+        scratch.mkdir(parents=True)
+        sentinel = scratch / "keep.txt"
+        sentinel.write_bytes(b"keep")
+        output = self.package / "work" / "synthetic.docx"
+        output.write_bytes(b"original")
+        with mock.patch.object(self.helpers.os, "replace", side_effect=OSError("synthetic")):
+            with self.assertRaisesRegex(OSError, "synthetic"):
+                self.helpers.rezip(source, output)
+        self.assertEqual(output.read_bytes(), b"original")
+        self.assertEqual(list(scratch.iterdir()), [sentinel])
+        self.assertEqual(sentinel.read_bytes(), b"keep")
+        self.assertEqual(list(output.parent.glob("*.tmp")), [])
+
 if __name__ == "__main__":
     unittest.main()

@@ -244,5 +244,124 @@ class AndroidExtensionTests(unittest.TestCase):
         self.assertIn("-TaskAuthorized", manual["mcpServers"]["apk_lab_mcp"]["args"])
 
 
+    def atomic_fixture(self):
+        spec = importlib.util.spec_from_file_location("apk_atomic_fixture", self.server)
+        module = importlib.util.module_from_spec(spec)
+        with mock.patch.object(sys, "dont_write_bytecode", True):
+            spec.loader.exec_module(module)
+        module.PKG_ROOT = module.find_package_root()
+        module.JOBS_ROOT = self.package / "work" / "apk-jobs"
+        source = self.package / "work" / "synthetic-source.bin"
+        source.parent.mkdir(exist_ok=True)
+        source.write_bytes(b"synthetic\x00payload\r\n")
+        return module, source
+
+    def atomic_operation(self, module, source, kind, output):
+        if kind == "text":
+            return module._atomic_write_text(output, "synthetic \u4e2d\u6587\r\n", jobs_only=True)
+        if kind == "copy":
+            return module._atomic_copy_file(source, output, jobs_only=True)
+        with source.open("rb") as stream:
+            return module._atomic_copy_limited(stream, output, source.stat().st_size, jobs_only=True)
+
+    def test_atomic_outputs_stage_only_in_package_tmp(self):
+        module, source = self.atomic_fixture()
+        for kind in ("text", "copy", "extract"):
+            with self.subTest(kind=kind):
+                output = module.JOBS_ROOT / kind / "result.bin"
+                paths = []
+                actual = module.tempfile.mkstemp
+                def capture(*args, **kwargs):
+                    result = actual(*args, **kwargs)
+                    paths.append(Path(result[1]))
+                    return result
+                with mock.patch.object(module.tempfile, "mkstemp", capture):
+                    self.atomic_operation(module, source, kind, output)
+                expected = "synthetic \u4e2d\u6587\r\n".encode() if kind == "text" else source.read_bytes()
+                self.assertEqual(output.read_bytes(), expected)
+                self.assertEqual(len(paths), 1)
+                self.assertEqual(paths[0].parent, self.package / "tmp")
+                self.assertFalse(paths[0].exists())
+
+    def test_atomic_outputs_reject_linked_tmp_before_job_creation(self):
+        module, source = self.atomic_fixture()
+        self.symlink(self.outside, self.package / "tmp", directory=True)
+        for kind in ("text", "copy", "extract"):
+            with self.subTest(kind=kind):
+                output = module.JOBS_ROOT / kind / "result.bin"
+                with mock.patch.object(module.tempfile, "mkstemp",
+                                       wraps=module.tempfile.mkstemp) as create_temp:
+                    with self.assertRaises(ValueError):
+                        self.atomic_operation(module, source, kind, output)
+                    create_temp.assert_not_called()
+                self.assertFalse(output.parent.exists())
+                self.assertEqual(list(self.outside.iterdir()), [])
+
+    def test_atomic_outputs_reject_file_tmp_before_job_creation(self):
+        module, source = self.atomic_fixture()
+        scratch = self.package / "tmp"
+        scratch.write_bytes(b"keep")
+        for kind in ("text", "copy", "extract"):
+            with self.subTest(kind=kind):
+                with self.assertRaises((OSError, ValueError)):
+                    self.atomic_operation(module, source, kind, module.JOBS_ROOT / kind / "result.bin")
+                self.assertFalse(module.JOBS_ROOT.exists())
+                self.assertEqual(scratch.read_bytes(), b"keep")
+
+    def test_atomic_replace_failures_preserve_outputs_and_unrelated_tmp(self):
+        module, source = self.atomic_fixture()
+        scratch = self.package / "tmp"
+        scratch.mkdir()
+        sentinel = scratch / "keep.txt"
+        sentinel.write_bytes(b"keep")
+        for kind in ("text", "copy", "extract"):
+            with self.subTest(kind=kind):
+                output = module.JOBS_ROOT / kind / "result.bin"
+                output.parent.mkdir(parents=True)
+                output.write_bytes(b"original")
+                with mock.patch.object(module.os, "replace", side_effect=OSError("synthetic")):
+                    with self.assertRaisesRegex(OSError, "synthetic"):
+                        self.atomic_operation(module, source, kind, output)
+                self.assertEqual(output.read_bytes(), b"original")
+                self.assertEqual(list(output.parent.iterdir()), [output])
+                self.assertEqual(list(scratch.iterdir()), [sentinel])
+                self.assertEqual(sentinel.read_bytes(), b"keep")
+
+    def test_atomic_copy_open_failure_closes_staging_descriptor(self):
+        module, source = self.atomic_fixture()
+        output = module.JOBS_ROOT / "result.bin"
+        output.parent.mkdir(parents=True)
+        output.write_bytes(b"original")
+        created = []
+        actual_mkstemp = module.tempfile.mkstemp
+        actual_open = Path.open
+        def capture(*args, **kwargs):
+            result = actual_mkstemp(*args, **kwargs)
+            created.append(result)
+            return result
+        def deny_source(path, *args, **kwargs):
+            if path == source:
+                raise PermissionError("synthetic read failure")
+            return actual_open(path, *args, **kwargs)
+        try:
+            with mock.patch.object(module.tempfile, "mkstemp", capture), \
+                    mock.patch.object(Path, "open", deny_source):
+                with self.assertRaises(PermissionError):
+                    module._atomic_copy_file(source, output, jobs_only=True)
+            self.assertEqual(len(created), 1)
+            with self.assertRaises(OSError):
+                os.fstat(created[0][0])
+            self.assertFalse(Path(created[0][1]).exists())
+            self.assertEqual(output.read_bytes(), b"original")
+        finally:
+            # The unpatched implementation leaks this descriptor. The negative
+            # control must close it so the test itself leaves no handle behind.
+            for descriptor, name in created:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+                Path(name).unlink(missing_ok=True)
+
 if __name__ == "__main__":
     unittest.main()

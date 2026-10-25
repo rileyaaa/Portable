@@ -154,7 +154,7 @@ def inside_jobs(path) -> pathlib.Path:
 
 
 def _prepare_atomic_destination(path, *, jobs_only=False):
-    """Return a validated destination and parent for an atomic package-local write.
+    """Return a validated destination, parent and package-local staging directory.
 
     Existing destination files are deliberately *not* opened in-place: replacing a
     directory entry is safe even when an attacker pre-created that entry as a hard
@@ -164,14 +164,18 @@ def _prepare_atomic_destination(path, *, jobs_only=False):
     validator = inside_jobs if jobs_only else inside
     dest = validator(path)
     parent = validator(dest.parent)
+    # Validate staging before creating any persistent output directories.
+    scratch = inside(PKG_ROOT / "tmp")
+    scratch.mkdir(parents=True, exist_ok=True)
+    scratch = inside(scratch)
     parent.mkdir(parents=True, exist_ok=True)
     parent = validator(parent)
-    return dest, parent
+    return dest, parent, scratch
 
 
 def _atomic_write_text(path, text: str, *, encoding="utf-8", jobs_only=False):
-    dest, parent = _prepare_atomic_destination(path, jobs_only=jobs_only)
-    fd, temp_name = tempfile.mkstemp(prefix=".codex-write-", suffix=".tmp", dir=parent)
+    dest, parent, scratch = _prepare_atomic_destination(path, jobs_only=jobs_only)
+    fd, temp_name = tempfile.mkstemp(prefix=".codex-write-", suffix=".tmp", dir=scratch)
     temp = pathlib.Path(temp_name)
     try:
         with os.fdopen(fd, "w", encoding=encoding, newline="") as handle:
@@ -193,11 +197,11 @@ def _atomic_write_text(path, text: str, *, encoding="utf-8", jobs_only=False):
 
 def _atomic_copy_file(source, path, *, jobs_only=False):
     source = _inside_user_input_file(source)
-    dest, parent = _prepare_atomic_destination(path, jobs_only=jobs_only)
-    fd, temp_name = tempfile.mkstemp(prefix=".codex-copy-", suffix=".tmp", dir=parent)
+    dest, parent, scratch = _prepare_atomic_destination(path, jobs_only=jobs_only)
+    fd, temp_name = tempfile.mkstemp(prefix=".codex-copy-", suffix=".tmp", dir=scratch)
     temp = pathlib.Path(temp_name)
     try:
-        with source.open("rb") as src, os.fdopen(fd, "wb") as dst:
+        with os.fdopen(fd, "wb") as dst, source.open("rb") as src:
             shutil.copyfileobj(src, dst, length=1024 * 1024)
             dst.flush()
             os.fsync(dst.fileno())
@@ -213,8 +217,8 @@ def _atomic_copy_file(source, path, *, jobs_only=False):
 
 
 def _atomic_copy_limited(source, path, expected_size: int, *, jobs_only=False):
-    dest, parent = _prepare_atomic_destination(path, jobs_only=jobs_only)
-    fd, temp_name = tempfile.mkstemp(prefix=".codex-extract-", suffix=".tmp", dir=parent)
+    dest, parent, scratch = _prepare_atomic_destination(path, jobs_only=jobs_only)
+    fd, temp_name = tempfile.mkstemp(prefix=".codex-extract-", suffix=".tmp", dir=scratch)
     temp = pathlib.Path(temp_name)
     try:
         with os.fdopen(fd, "wb") as target:

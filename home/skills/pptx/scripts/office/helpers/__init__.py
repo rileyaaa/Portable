@@ -438,10 +438,11 @@ def rezip(src_dir: Path, out_path: Path) -> None:
     files.sort(key=lambda item: item.relative_to(src_real).as_posix())
 
     ct = src_real / "[Content_Types].xml"
+    scratch = portable_temp_dir()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     _reject_reparse_chain(out_path.parent)
     fd, tmp_name = tempfile.mkstemp(
-        prefix=out_path.name + ".", suffix=".tmp", dir=out_path.parent
+        prefix=out_path.name + ".", suffix=".tmp", dir=scratch
     )
     tmp_out = Path(tmp_name)
     try:

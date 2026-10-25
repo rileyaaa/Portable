@@ -172,5 +172,65 @@ class AndroidGuardTests(unittest.TestCase):
                          ["codex.exe", "env.ps1"])
 
 
+    def test_atomic_writer_stages_only_in_package_tmp(self):
+        output = self.package / "work" / "report.txt"
+        expected = "synthetic \u4e2d\u6587\r\nreport\n"
+        with self.guard.atomic_text_writer(self.package, output, newline="") as stream:
+            staged = list(self.package.rglob(".codex-write-*.tmp"))
+            self.assertEqual(len(staged), 1)
+            self.assertEqual(staged[0].parent, self.package / "tmp")
+            self.assertFalse(output.exists())
+            stream.write(expected)
+        self.assertEqual(output.read_bytes(), expected.encode())
+        self.assertEqual(list(self.package.rglob(".codex-write-*.tmp")), [])
+
+    def test_atomic_writer_rejects_linked_tmp_before_output_creation(self):
+        scratch = self.package / "tmp"
+        self.symlink(self.old, scratch, directory=True)
+        output = self.package / "work" / "report.txt"
+        with mock.patch.object(self.guard.tempfile, "mkstemp",
+                                       wraps=self.guard.tempfile.mkstemp) as create_temp:
+            with self.assertRaises(self.guard.PortablePathError):
+                self.guard.atomic_write_text(self.package, output, "replacement")
+            create_temp.assert_not_called()
+        self.assertFalse(output.parent.exists())
+        self.assertEqual(sorted(p.name for p in self.old.iterdir()), ["codex.exe", "env.ps1"])
+
+    def test_atomic_writer_rejects_file_tmp_before_output_creation(self):
+        scratch = self.package / "tmp"
+        scratch.write_bytes(b"keep")
+        output = self.package / "work" / "report.txt"
+        with self.assertRaises((OSError, self.guard.PortablePathError)):
+            self.guard.atomic_write_text(self.package, output, "replacement")
+        self.assertFalse(output.parent.exists())
+        self.assertEqual(scratch.read_bytes(), b"keep")
+
+    def test_atomic_writer_failures_preserve_output_and_unrelated_tmp(self):
+        scratch = self.package / "tmp"
+        scratch.mkdir()
+        sentinel = scratch / "keep.txt"
+        sentinel.write_bytes(b"keep")
+        output = self.package / "work" / "report.txt"
+        output.parent.mkdir()
+        output.write_bytes(b"original")
+        for failure in ("body", "replace", "encoding"):
+            with self.subTest(failure=failure):
+                if failure == "replace":
+                    with mock.patch.object(self.guard.os, "replace", side_effect=OSError("synthetic")):
+                        with self.assertRaises(OSError):
+                            self.guard.atomic_write_text(self.package, output, "replacement")
+                elif failure == "encoding":
+                    with self.assertRaises(UnicodeEncodeError):
+                        self.guard.atomic_write_text(self.package, output, chr(0xD800))
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "synthetic"):
+                        with self.guard.atomic_text_writer(self.package, output) as stream:
+                            stream.write("partial")
+                            raise RuntimeError("synthetic")
+                self.assertEqual(output.read_bytes(), b"original")
+                self.assertEqual(list(scratch.iterdir()), [sentinel])
+                self.assertEqual(sentinel.read_bytes(), b"keep")
+                self.assertEqual(list(output.parent.iterdir()), [output])
+
 if __name__ == "__main__":
     unittest.main()

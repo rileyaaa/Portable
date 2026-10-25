@@ -133,13 +133,16 @@ def atomic_text_writer(root: Path, path: os.PathLike[str] | str, *, encoding: st
     """Safely replace a package-local text file without following a hard-link target.
 
     The final path is never opened for writing.  Data is written to a newly-created
-    file in the same validated parent and then installed with ``os.replace``.
+    file in the validated package tmp directory and then installed with ``os.replace``.
     """
     dest = resolve_inside(root, path, must_exist=False)
     parent = resolve_inside(root, dest.parent, must_exist=False, allow_root=True)
+    scratch = resolve_inside(root, root / "tmp", must_exist=False)
+    scratch.mkdir(parents=True, exist_ok=True)
+    scratch = resolve_inside(root, scratch, kind="dir")
     parent.mkdir(parents=True, exist_ok=True)
     parent = resolve_inside(root, parent, kind="dir", allow_root=True)
-    fd, temp_name = tempfile.mkstemp(prefix=".codex-write-", suffix=".tmp", dir=parent)
+    fd, temp_name = tempfile.mkstemp(prefix=".codex-write-", suffix=".tmp", dir=scratch)
     temp = Path(temp_name)
     try:
         with os.fdopen(fd, "w", encoding=encoding, newline=newline) as handle:
