@@ -1,4 +1,4 @@
-name: Review native packaging without extra wrappers
+name: Finalize verified native packaging review
 
 on:
   push:
@@ -7,233 +7,64 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  actions: write
 
 env:
   PYTHONDONTWRITEBYTECODE: '1'
   GIT_LFS_SKIP_SMUDGE: '1'
 
 jobs:
-  prepare:
+  finalize:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: write
-    outputs:
-      sha: ${{ steps.apply.outputs.sha }}
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 3
+          fetch-depth: 2
           lfs: false
-      - name: Apply only requested simplification and update existing documentation
-        id: apply
+      - name: Verify completed reviews, remove temporary workflow and request full release
         shell: bash
         run: |
           python3 -B - <<'PY'
-          import base64,hashlib,json,os,pathlib,subprocess
-          root=pathlib.Path.cwd()
-          repo=os.environ['GITHUB_REPOSITORY']
-          base='ae2d3f2237edb6edb8cef99853510f382444808e'
-          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
-          assert repo=='rileyaaa/Codex-Portable'
-          assert git('rev-parse','HEAD^')==base, 'Review baseline moved'
-          assert git('status','--porcelain')=='', 'Checkout is not clean'
-          expected={
-           'tool/bin/portable-python-cli.py':'a58b0b05ae4dedcd0392a112ccb0240f04697125',
-           'tool/bin/pyinstaller.cmd':'8010f832e747abb6da008c8b5ee809d0905caae9',
-           'tests/test_pyinstaller_portable.py':'a5a1e9c5edfa34d14a01015acc5c93caf61454c4',
-           'tests/test_python_runtime_dependencies.py':'9587d484d2d7962a3cdff2489ec673e2ec7f1224',
-           'README.md':'95c642fb287e20d61d156fbc54db18bc83c551ac',
-           'DEVELOPMENT.md':'f01103fa5c0871e492fecbdddb61a37c4252a116',
-          }
-          notes=json.loads(__import__('zlib').decompress(base64.b64decode('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')))
-          expected[notes['tool_path']]='b1efca5dc7487337b228c28a7d320053aeecf094'
-          for path,sha in expected.items():
-           assert git('rev-parse','HEAD:'+path)==sha, 'Unexpected baseline file: '+path
-          original=subprocess.check_output(['git','show','ea68ed98de7a1e92a8ccccb4430347917dab0dc9:tool/bin/portable-python-cli.py'])
-          assert hashlib.sha1(b'blob '+str(len(original)).encode()+b'\0'+original).hexdigest()=='6c8ec9f327fc3cfd6dd0461d88a5cf3b8a294563'
-          (root/'tool/bin/portable-python-cli.py').write_bytes(original)
-          for path in ['tool/bin/pyinstaller.cmd','tests/test_pyinstaller_portable.py']:
-           (root/path).unlink()
-          path=root/'tests/test_python_runtime_dependencies.py'
-          text=path.read_bytes().decode('utf-8')
-          old="             str(ROOT / 'tool/bin/portable-python-cli.py'), 'pyinstaller', '--version'],"
-          assert text.count(old)==1
-          text=text.replace(old,"             '-m', 'PyInstaller', '--version'],")
-          path.write_bytes(text.encode('utf-8'))
-          def replace_once(text,old,new):
-           assert text.count(old)==1, 'Documentation anchor must match exactly once'
-           return text.replace(old,new,1)
-          for edit in notes['edits']:
-           path=root/edit['path']
-           text=path.read_bytes().decode('utf-8')
-           if edit.get('end'):
-            assert text.count(edit['old'])==1 and text.count(edit['end'])==1
-            start=text.index(edit['old']);end=text.index(edit['end'],start)
-            text=text[:start]+edit['new']+text[end:]
-           else:
-            text=replace_once(text,edit['old'],edit['new'])
-           path.write_bytes(text.encode('utf-8'))
-          path=root/'DEVELOPMENT.md';text=path.read_bytes().decode('utf-8')
-          assert text.count('REVIEW_ONCE_PENDING_20261025')==0
-          start=text.index('\n## 2026-10-25:') if '\n## 2026-10-25:' in text else text.index('\n## 2026-10-25')
-          text=text[:start]+'\n'+notes['record']+'\n'+text[start:]
-          path.write_bytes(text.encode('utf-8'))
-          changed=set(subprocess.check_output(['git','-c','core.quotepath=false','diff','--name-only'],text=True).splitlines())
-          assert changed==set(expected), sorted(changed)
-          subprocess.run(['git','diff','--check'],check=True)
-          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
-          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','add','--',*sorted(expected)],check=True)
-          subprocess.run(['git','commit','-m','refactor: remove redundant PyInstaller wrapper and use native module'],check=True)
-          subprocess.run(['git','push','origin','HEAD:main'],check=True)
-          sha=git('rev-parse','HEAD')
-          with open(os.environ['GITHUB_OUTPUT'],'a') as out:out.write('sha='+sha+'\n')
-          print('REVIEW_SOURCE_COMMIT='+sha)
-          PY
-
-  source-review:
-    name: Source review - ${{ matrix.order }}
-    needs: prepare
-    strategy:
-      fail-fast: true
-      max-parallel: 1
-      matrix:
-        order: [forward, reverse, shuffle]
-    runs-on: ubuntu-latest
-    timeout-minutes: 6
-    env:
-      REVIEW_SHA: ${{ needs.prepare.outputs.sha }}
-      REVIEW_ORDER: ${{ matrix.order }}
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
-          lfs: false
-          persist-credentials: false
-      - name: Independent regression and source integrity review
-        shell: bash
-        run: |
-          python3 -B - <<'PY'
-          import ast,json,os,pathlib,random,subprocess,sys,unittest
-          root=pathlib.Path.cwd()
-          sys.path.insert(0,str(root/'tool/python/Lib/site-packages'))
-          sys.path.insert(0,str(root/'tests'))
-          sys.dont_write_bytecode=True
-          order=os.environ['REVIEW_ORDER']
-          exclude={'test_runtime_package','test_optional_python_payload','test_pip_config_isolation','test_pdf_library'}
-          exclude_cases={
-           'test_browser_install.BrowserInstallTests.test_pinned_browser_inventory_matches_installed_official_bytes',
-           'test_python_runtime_dependencies.PythonRuntimeDependencyTests.test_bundled_pyinstaller_version_without_compilation',
-          }
-          def flatten(suite):
-           for case in suite:
-            if isinstance(case,unittest.TestSuite):yield from flatten(case)
-            else:yield case
-          cases=[]
-          for path in sorted((root/'tests').glob('test_*.py')):
-           if path.stem not in exclude:
-            cases.extend(c for c in flatten(unittest.defaultTestLoader.loadTestsFromName(path.stem)) if c.id() not in exclude_cases)
-          if order=='reverse':cases.reverse()
-          elif order=='shuffle':random.Random(20261025).shuffle(cases)
-          else:assert order=='forward'
-          def offline(event,args):
-           if event=='socket.connect':raise AssertionError('External networking is not part of source review')
-          sys.addaudithook(offline)
-          result=unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite(cases))
-          summary={'order':order,'tests':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),'skips':len(result.skipped),'commit':os.environ['REVIEW_SHA'],'deferred_modules':sorted(exclude),'deferred_cases':sorted(exclude_cases)}
-          print('SOURCE_REVIEW_RESULT='+json.dumps(summary),flush=True)
-          assert result.wasSuccessful() and not result.skipped and result.testsRun>=160
-          count=0
-          for raw in subprocess.check_output(['git','ls-files','-z']).split(b'\0'):
-           if not raw:continue
-           name=raw.decode('utf-8')
-           if name.endswith('.py') and not name.startswith(('tool/python/','tool/git/','tool/node/')) and '/node_modules/' not in name:
-            ast.parse((root/name).read_text(encoding='utf-8-sig'),filename=name);count+=1
-          print('FIRST_PARTY_PYTHON_PARSED='+str(count))
-          copies=[(root/f'home/skills/{kind}/scripts/office/helpers/__init__.py').read_bytes() for kind in ('docx','pptx','xlsx')]
-          assert len(set(copies))==1
-          assert not (root/'tool/bin/pyinstaller.cmd').exists()
-          assert not (root/'tests/test_pyinstaller_portable.py').exists()
-          assert subprocess.check_output(['git','hash-object','tool/bin/portable-python-cli.py'],text=True).strip()=='6c8ec9f327fc3cfd6dd0461d88a5cf3b8a294563'
-          print('NATIVE_PACKAGER_WITHOUT_CUSTOM_WRAPPER=PASS')
-          subprocess.run(['git','diff','--exit-code'],check=True)
-          PY
-          node --test --test-name-pattern='unselected|path guards|browser configuration|persistent browser owner|tool policy|transport strips|browser_close|a disconnected' tests/test_automation.js
-          node 'Version_History/AI account format conversion/test/smoke.js'
-          node 'Version_History/AI account format conversion/test/static-audit.js'
-      - name: PowerShell syntax and offline production contracts
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop'
-          $names=& git -c core.quotepath=false ls-files
-          if($LASTEXITCODE -ne 0){throw 'Could not enumerate source'}
-          $count=0
-          foreach($name in $names){
-            if($name -notlike '*.ps1' -or $name -match '^(tool/(python|git|node)/)' -or $name -match '/node_modules/'){continue}
-            $tokens=$null;$errors=$null
-            $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE $name),[ref]$tokens,[ref]$errors)
-            if($errors.Count){throw ('PowerShell parse failure: '+$name)}
-            $count++
-          }
-          Write-Output ('FIRST_PARTY_POWERSHELL_PARSED='+$count)
-          foreach($name in @('test_cli_model_options','test_permission_display','test_login_input_errors','test_browser_login_flow')){
-            & pwsh -NoLogo -NoProfile -NonInteractive -File "tests/$name.ps1"
-            if($LASTEXITCODE -ne 0){throw ('Offline contract failure: '+$name)}
-          }
-          & git diff --exit-code
-          if($LASTEXITCODE -ne 0){throw 'Tests altered tracked files'}
-
-  finalize:
-    needs: [prepare, source-review]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-      actions: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REVIEW_SHA: ${{ needs.prepare.outputs.sha }}
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
-          lfs: false
-      - name: Record actual clean passes, remove this workflow, request full Windows gate
-        shell: bash
-        run: |
-          python3 -B - <<'PY'
-          import base64,json,os,pathlib,subprocess
-          root=pathlib.Path.cwd();repo=os.environ['GITHUB_REPOSITORY'];sha=os.environ['REVIEW_SHA']
-          notes=json.loads(r'''{"result": "Actions `{run}` 的三个全新 Linux runner 分别以正序、逆序及固定随机顺序检查相同源码提交 `{sha}`，Python 源码／元数据回归分别为 {counts} 项，失败、错误和跳过均为 0；每轮浏览器离线策略、账号转换器、源码语法与 PowerShell 离线契约均通过。Windows 原生组件等不适用项目明确留到完整 Windows 发布门禁。本次三轮在所测范围内未发现新的可复现问题，不构成全部场景绝对无 Bug 的保证。"}''')
+          import json,os,pathlib,re,subprocess
+          root=pathlib.Path.cwd();repo=os.environ['GITHUB_REPOSITORY']
+          reviewed='6a0941b4c3b49aa068c4b58b69b547e0e4641e8c'
+          review_run=40205843737
+          workflow='.github/workflows/review-three-pass-once.yml'
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
           def api(path):return json.loads(subprocess.check_output(['gh','api',path]))
-          assert api(f'repos/{repo}/git/ref/heads/main')['object']['sha']==sha, 'Main changed during review'
-          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==sha
-          jobs=api(f'repos/{repo}/actions/runs/{os.environ["GITHUB_RUN_ID"]}/jobs?per_page=100')['jobs']
+          assert repo=='rileyaaa/Codex-Portable'
+          assert git('rev-parse','HEAD^')==reviewed
+          assert git('diff','--name-only','HEAD^','HEAD')==workflow
+          assert api(f'repos/{repo}/git/ref/heads/main')['object']['sha']==git('rev-parse','HEAD')
+          jobs=api(f'repos/{repo}/actions/runs/{review_run}/jobs?per_page=100')['jobs']
           reports=[]
           for order in ('forward','reverse','shuffle'):
            matches=[j for j in jobs if j['name']=='Source review - '+order]
-           assert len(matches)==1 and matches[0]['conclusion']=='success', 'Source review did not complete'
-           log=subprocess.check_output(['gh','api',f'repos/{repo}/actions/jobs/{matches[0]["id"]}/logs']).decode('utf-8-sig')
+           assert len(matches)==1 and matches[0]['conclusion']=='success'
+           # Capture raw log bytes only; never render terminal controls to the runner console.
+           raw=subprocess.check_output(['gh','api','--allow-escape-sequences',f'repos/{repo}/actions/jobs/{matches[0]["id"]}/logs'])
+           log=re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]','',raw.decode('utf-8-sig'))
            valid=[]
            for line in log.splitlines():
-            marker='SOURCE_REVIEW_RESULT='
-            if marker not in line:continue
-            try: result=json.loads(line.split(marker,1)[1])
+            if 'SOURCE_REVIEW_RESULT=' not in line:continue
+            try:result=json.loads(line.split('SOURCE_REVIEW_RESULT=',1)[1])
             except json.JSONDecodeError:continue
             valid.append(result)
            assert len(valid)==1
            result=valid[0]
-           assert result['commit']==sha and result['order']==order and result['tests']>=160
+           assert result['commit']==reviewed and result['order']==order and result['tests']>=160
            assert result['failures']==result['errors']==result['skips']==0
            reports.append(result)
           text=(root/'DEVELOPMENT.md').read_bytes().decode('utf-8')
           assert text.count('REVIEW_ONCE_PENDING_20261025')==1
-          record=notes['result'].format(run=os.environ['GITHUB_RUN_ID'],sha=sha,counts='/'.join(str(r['tests']) for r in reports))
+          counts='/'.join(str(r['tests']) for r in reports)
+          record=f'Actions `{review_run}` 的三个全新 Linux runner 分别以正序、逆序及固定随机顺序检查相同源码提交 `{reviewed}`，Python 源码／元数据回归分别为 {counts} 项，失败、错误和跳过均为 0；每轮浏览器离线策略、账号转换器、源码语法与 PowerShell 离线契约均通过。Windows 原生组件等不适用项目明确留到完整 Windows 发布门禁。本次三轮在所测范围内未发现新的可复现问题，不构成全部场景绝对无 Bug 的保证。'
           (root/'DEVELOPMENT.md').write_bytes(text.replace('REVIEW_ONCE_PENDING_20261025',record).encode())
-          workflow='.github/workflows/review-three-pass-once.yml'
           (root/workflow).unlink()
           changed=set(subprocess.check_output(['git','-c','core.quotepath=false','diff','--name-only'],text=True).splitlines())
           assert changed=={'DEVELOPMENT.md',workflow}
@@ -243,7 +74,7 @@ jobs:
           subprocess.run(['git','add','--','DEVELOPMENT.md',workflow],check=True)
           subprocess.run(['git','commit','-m','docs: record three clean reviews and remove temporary review workflow'],check=True)
           subprocess.run(['git','push','origin','HEAD:main'],check=True)
-          final_sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          final_sha=git('rev-parse','HEAD')
           assert api(f'repos/{repo}/git/ref/heads/main')['object']['sha']==final_sha
           assert sorted(p.name for p in (root/'.github/workflows').glob('*.yml'))==['download-browser.yml','release.yml']
           refs=api(f'repos/{repo}/git/matching-refs/tags/v2026.10.25')
