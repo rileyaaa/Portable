@@ -1,4 +1,4 @@
-name: Repair ancestor inspection ordering and renew Windows validation
+name: Independent third source review of repaired code
 
 on:
   push:
@@ -10,132 +10,107 @@ permissions:
   contents: read
 
 jobs:
-  repair:
+  independent-review:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: write
-      actions: write
     env:
       PYTHONDONTWRITEBYTECODE: '1'
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          ref: 6cf2e4d618beec24350643224f5aa4c0e6e0f7fe
           lfs: false
           fetch-depth: 1
-      - name: Verify current inputs and reproduce the two missing boundary cases
+          persist-credentials: false
+      - name: Verify repaired file identities and parse first-party sources
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p tmp/three-pass-repair
+          mkdir -p tmp/third-source-review
           python3 -B - <<'PY'
-          import hashlib, pathlib, subprocess
+          import ast, hashlib, json, pathlib, subprocess
           expected = {
-              'tool/refresh-python-cli-shims.py': '76c8acb49f6e8690c08be6456dc82cbde6760f3e',
-              'tests/test_python_cli_shims.py': '47d1347a5814d63ea15059f30502460d5ec6c356',
-              'DEVELOPMENT.md': '6f203ea32449602b723fd41829497a1b550a31d5',
+              'tool/refresh-python-cli-shims.py': 'd306913f0fc971850aa59f9d583a0f0aa4df9aeb',
+              'tests/test_python_cli_shims.py': 'cdf4d3c9fd8a77afa52976ce6f12e6bf86325253',
+              'tool/codex-instruct.py': 'd5047c6131562d21794d5b8cd9bc0166944b262d',
+              'tests/test_instruction_installer.py': '615d3e7bf0f74f59004606926e3ca461aeafb3eb',
           }
           for name, sha in expected.items():
-              raw = pathlib.Path(name).read_bytes()
-              assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest() == sha, name
-          tests = pathlib.Path('tests/test_python_cli_shims.py')
-          old = tests.read_text(encoding='utf-8')
-          marker = '    def test_actual_relocation_ignores_stale_root_environment(self):\n'
-          added = '''    def assert_linked_ancestor_rejected_before_descendant_probe(self, module, alias):
-                  inspected = []
-                  original = os.lstat
-
-                  def record(path, *args, **kwargs):
-                      inspected.append(Path(os.path.abspath(os.fspath(path))))
-                      return original(path, *args, **kwargs)
-
-                  with mock.patch.object(module.os, "lstat", side_effect=record):
-                      with self.assertRaises(RuntimeError):
-                          module._require_plain_dir(module.OUT_BIN)
-                  self.assertIn(alias, inspected)
-                  self.assertFalse(any(alias in path.parents for path in inspected),
-                                   "Inspected a descendant through a linked package ancestor")
-                  self.assertFalse((self.root / "tmp").exists())
-                  self.assertEqual(list(self.output.glob("*.cmd")), [])
-
-              def test_linked_package_parent_rejected_before_descendant_probe(self):
-                  alias = self.base / "linked parent"
-                  self.symlink(self.base, alias, directory=True)
-                  module = self.load(alias / self.root.name)
-                  self.assert_linked_ancestor_rejected_before_descendant_probe(module, alias)
-
-              def test_linked_package_grandparent_rejected_before_descendant_probe(self):
-                  alias = self.base / "linked grandparent"
-                  self.symlink(self.base, alias, directory=True)
-                  nested = self.base / "nested" / self.root.name
-                  nested.parent.mkdir()
-                  self.root.rename(nested)
-                  self.root = nested
-                  self.output = nested / "tool/bin"
-                  module = self.load(alias / "nested" / nested.name)
-                  self.assert_linked_ancestor_rejected_before_descendant_probe(module, alias)
-
-          '''
-          assert old.count(marker) == 1
-          tests.write_text(old.replace(marker, added+marker), encoding='utf-8', newline='')
-          raw = tests.read_bytes()
-          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest() == 'cdf4d3c9fd8a77afa52976ce6f12e6bf86325253'
-          result = subprocess.run(['python3','-B','-m','unittest','discover','-s','tests','-p','test_python_cli_shims.py','-v'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-          pathlib.Path('tmp/three-pass-repair/before.log').write_text(result.stdout)
-          print(result.stdout)
-          assert result.returncode == 1 and 'FAILED (failures=2)' in result.stdout and 'Ran 24 tests' in result.stdout
-          source = pathlib.Path('tool/refresh-python-cli-shims.py')
-          text = source.read_text(encoding='utf-8')
-          before = '    for ancestor in (ROOT, *ROOT.parents):\n'
-          after = '    # Inspect from the filesystem root down before probing a linked target.\n    for ancestor in (*reversed(root.parents), root):\n'
-          assert text.count(before) == 1
-          source.write_text(text.replace(before,after), encoding='utf-8', newline='')
-          raw = source.read_bytes()
-          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest() == 'd306913f0fc971850aa59f9d583a0f0aa4df9aeb'
+              data = pathlib.Path(name).read_bytes()
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest() == sha, name
+          count = 0
+          for raw in subprocess.check_output(['git','ls-files','-z']).split(b'\0'):
+              if not raw:
+                  continue
+              name = raw.decode('utf-8')
+              if name.endswith('.py') and not name.startswith(('tool/python/', 'tool/git/', 'tool/node/', 'tool/automation/node_modules/')) and '/node_modules/' not in name:
+                  ast.parse(pathlib.Path(name).read_text(encoding='utf-8-sig'), filename=name)
+                  count += 1
+          print('FIRST_PARTY_PYTHON_PARSED='+str(count))
+          print('CHECKED_SOURCE_COMMIT='+subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip())
           PY
-      - name: Run both affected regression suites in fresh processes
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -B -m unittest discover -s tests -p 'test_python_cli_shims.py' -v
-          python3 -B -m unittest discover -s tests -p 'test_instruction_installer.py' -v
-          git diff --check
-      - name: Record the actual repair and commit only its three files
+      - name: Reverse-order source regression suite in a fresh runner
         shell: bash
         run: |
           set -euo pipefail
           python3 -B - <<'PY'
-          from pathlib import Path
-          path = Path('DEVELOPMENT.md')
-          original = path.read_text(encoding='utf-8')
-          heading = '## 2026-10-25：Python 辅助工具的数据保护复查（本地修复）\n'
-          addition = '\n**追加的祖先检查修复：** 对已入库版本继续复查时，复现命令刷新器从包根向上检查祖先，导致路径祖先是链接时先查询链接后的目录再拒绝。现仅改为从文件系统根向下检查，再访问包内路径；新增父级和更高层祖先链接两项合成回归，未修复源码 24 项中 2 项失败，修复后 24 项及指令安装 31 项全部通过。正常 CMD 模板、用户文件保留策略、权限和官方工件不变。三轮验收因本次实际修复重新计数，完整 Windows 验证及发布尚待本次新提交完成；不复用旧提交的成功记录。\n'
-          assert original.count(heading) == 1
-          path.write_text(original.replace(heading, heading+addition), encoding='utf-8', newline='')
+          import json, pathlib, sys, unittest
+          root = pathlib.Path.cwd()
+          # Pure-Python HTTP imports come from this exact checkout; the tests
+          # replace transport, and no Windows native wheel is executed here.
+          sys.path.insert(0, str(root/'tool/python/Lib/site-packages'))
+          sys.path.insert(0, str(root/'tests'))
+          excluded_modules = {'test_runtime_package','test_optional_python_payload','test_python_runtime_dependencies','test_pip_config_isolation','test_pdf_library'}
+          excluded_cases = {'test_browser_install.BrowserInstallTests.test_pinned_browser_inventory_matches_installed_official_bytes','test_python_lock.PythonLockTests.test_runtime_repair_accepts_current_defaults_and_missing_packages'}
+          def flatten(suite):
+              for item in suite:
+                  if isinstance(item, unittest.TestSuite):
+                      yield from flatten(item)
+                  else:
+                      yield item
+          selected = []
+          for source in sorted((root/'tests').glob('test_*.py')):
+              if source.stem in excluded_modules:
+                  continue
+              selected.extend(case for case in flatten(unittest.defaultTestLoader.loadTestsFromName(source.stem)) if case.id() not in excluded_cases)
+          result = unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite(reversed(selected)))
+          print('THIRD_SOURCE_RESULT='+json.dumps({'tests':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),'skipped':len(result.skipped),'native_groups_deferred_to_full_windows':sorted(excluded_modules),'native_cases_deferred':sorted(excluded_cases)}))
+          if not result.wasSuccessful() or result.skipped or result.testsRun != 129:
+              raise SystemExit(1)
           PY
-          git diff --check
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- tool/refresh-python-cli-shims.py tests/test_python_cli_shims.py DEVELOPMENT.md
-          git commit -m 'fix: validate shim root ancestors before descendant access'
-          git push origin HEAD:main
-          echo "REPAIR_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-      - name: Remove the downloaded private review artifact
-        shell: bash
-        run: gh api --method DELETE "repos/$GH_REPO/actions/artifacts/12585064309"
-      - name: Stop obsolete baseline and request full validation of the repair
+      - name: Browser policy tests and converter regression checks
         shell: bash
         run: |
           set -euo pipefail
-          state=$(gh api "repos/$GH_REPO/actions/runs/40158622943" --jq .status)
-          if [ "$state" != completed ]; then gh run cancel 40158622943; fi
-          head=$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)
-          test "$head" = "$REPAIR_COMMIT"
-          gh workflow run release.yml --ref main -f version=v2026.10.25.1 -f publish_release=false -f check_set=full
-          echo "REPAIRED_SOURCE_COMMIT=$REPAIR_COMMIT"
-      - name: Remove only this run's repair staging
+          node --test --test-name-pattern='unselected|path guards|browser configuration|persistent browser owner|tool policy|transport strips|browser_close|a disconnected' tests/test_automation.js
+          node 'Version_History/AI account format conversion/test/smoke.js'
+          node 'Version_History/AI account format conversion/test/static-audit.js'
+      - name: Parse every first-party PowerShell source without executing startup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $count = 0
+          $names = & git -c core.quotepath=false ls-files
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate tracked files.' }
+          foreach ($name in $names) {
+            if ($name -notlike '*.ps1' -or $name -match '^(tool/(python|git|node)/|tool/automation/node_modules/)' -or $name -match '/node_modules/') { continue }
+            $tokens = $null; $errors = $null
+            $null = [Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE $name), [ref]$tokens, [ref]$errors)
+            if ($errors.Count) { throw ('PowerShell parse failure: ' + $name) }
+            $count++
+          }
+          Write-Output ('FIRST_PARTY_POWERSHELL_PARSED=' + $count)
+      - name: Exercise offline production policy functions in separate processes
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in test_cli_model_options test_permission_display test_login_input_errors test_browser_login_flow; do
+            pwsh -NoLogo -NoProfile -NonInteractive -File "tests/$name.ps1"
+          done
+          git diff --exit-code
+          echo 'THIRD_INDEPENDENT_SOURCE_REVIEW=PASS'
+          echo 'WINDOWS_NATIVE_VALIDATION_IS_A_SEPARATE_REQUIRED_GATE=40159303860'
+      - name: Remove only this review staging
         if: always()
         shell: bash
-        run: rm -rf -- tmp/three-pass-repair
+        run: rm -rf -- tmp/third-source-review
