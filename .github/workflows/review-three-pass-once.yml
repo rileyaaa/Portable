@@ -25,119 +25,20 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        python3 -B - <<'REPAIRPY'
-        import hashlib, pathlib, subprocess
-        PLAN = {
-          "Version_History/AI account format conversion/app/converter.js": {
-            "before": "9ea227db41b4d6f7b7606f78a372b949711747aa",
-            "after": "2f3ff0ce796f3f6da6a0161fb2004c78336c6151",
-            "edits": [
-              {
-                "start": 5785,
-                "end": 5835,
-                "old": "      const arr=obj.data||obj.items||obj.tokens;\r\n",
-                "new": "      const arr=[obj.data,obj.items,obj.tokens].find(Array.isArray);\r\n"
-              },
-              {
-                "start": 17800,
-                "end": 17868,
-                "old": "      const nk=rules[k]||k;\r\n      out[nk]=ruleMapObject(v,rules);\r\n",
-                "new": "      const nk=Object.prototype.hasOwnProperty.call(rules,k)?(rules[k]||k):k;\r\n      Object.defineProperty(out,nk,{value:ruleMapObject(v,rules),enumerable:true,writable:true,configurable:true});\r\n"
-              }
-            ]
-          },
-          "Version_History/AI account format conversion/test/smoke.js": {
-            "before": "9e1482c281bdf3ac1e7f1f698739fdd0cb5685c5",
-            "after": "0df2ab18f8dcbb52215ba3e391239e5d70cde089",
-            "edits": [
-              {
-                "start": 2244,
-                "end": 2244,
-                "old": "",
-                "new": "// Synthetic input/rule tests; no account service, browser or network access.\nconst assert=require('node:assert/strict');\nconst C=ctx.AccountConverter;\nconst plain=value=>JSON.parse(JSON.stringify(value));\nconst api=(name='fixture')=>({name,api_key:'synthetic-only-'+name});\nconst inputCases=[\n  ['items array is selected after data metadata',()=>{\n    const c=C.canonicalize(JSON.stringify({data:{count:1},items:[api()]}));\n    assert.equal(c.accounts.length,1);assert.equal(c.accounts[0].api_key,'synthetic-only-fixture');\n  }],\n  ['tokens array is selected after items metadata',()=>{\n    const c=C.canonicalize(JSON.stringify({items:'metadata',tokens:[api()]}));\n    assert.equal(c.accounts.length,1);\n  }],\n  ['tokens array is selected after two metadata fields',()=>{\n    const c=C.canonicalize(JSON.stringify({data:'metadata',items:{count:1},tokens:[api()]}));\n    assert.equal(c.accounts.length,1);\n  }],\n  ['all ordinary wrappers remain supported',()=>{\n    for(const key of ['data','items','tokens']){\n      const c=C.canonicalize(JSON.stringify({[key]:[api()]}));\n      assert.equal(c.source,'wrapped_array');assert.equal(c.accounts.length,1);\n      assert.ok(C.convertAll(c).some(o=>o.id==='sub2api'));\n    }\n  }],\n  ['nested wrappers select their actual arrays',()=>{\n    const c=C.canonicalize(JSON.stringify({data:[{data:{count:1},items:[api('nested')]}]}));\n    assert.equal(c.accounts[0].name,'nested');assert.equal(c.accounts.length,1);\n  }],\n  ['multiple array wrapper precedence is unchanged',()=>{\n    const c=C.canonicalize(JSON.stringify({data:[api('first')],items:[api('second')],tokens:[api('third')]}));\n    assert.equal(c.accounts.length,1);assert.equal(c.accounts[0].name,'first');\n  }],\n  ['empty rules preserve prototype-named JSON fields',()=>{\n    const data=JSON.parse('{\"constructor\":\"ctor\",\"toString\":\"text\",\"__proto__\":{\"note\":\"keep\"},\"hasOwnProperty\":\"own\"}');\n    assert.deepEqual(plain(C.ruleMapObject(data,{})),data);\n  }],\n  ['mapping to __proto__ creates ordinary own data',()=>{\n    const data={metadata:{api_key:'synthetic-only'}};\n    const out=C.ruleMapObject(data,{metadata:'__proto__'});\n    assert.equal(Object.hasOwn(out,'__proto__'),true);\n    assert.equal(out.api_key,undefined);\n    assert.deepEqual(plain(out),JSON.parse('{\"__proto__\":{\"api_key\":\"synthetic-only\"}}'));\n    assert.equal(Object.getOwnPropertyDescriptor(out,'__proto__').enumerable,true);\n  }],\n  ['own prototype-named rules remain valid',()=>{\n    const rules=JSON.parse('{\"constructor\":\"name\",\"__proto__\":\"extra\"}');\n    const data=JSON.parse('{\"constructor\":\"fixture\",\"__proto__\":{\"note\":\"keep\"}}');\n    assert.deepEqual(plain(C.ruleMapObject(data,rules)),{name:'fixture',extra:{note:'keep'}});\n  }],\n  ['mapping recurses through arrays without mutating input',()=>{\n    const data=JSON.parse('[{\"token\":\"synthetic-only\",\"extra\":{\"toString\":\"keep\",\"__proto__\":{\"note\":\"keep\"}}},null,7]');\n    const before=JSON.stringify(data);\n    const out=plain(C.ruleMapObject(data,{token:'api_key'}));\n    assert.equal(JSON.stringify(data),before);\n    assert.equal(out[0].api_key,'synthetic-only');assert.deepEqual(out[0].extra,data[0].extra);\n    assert.equal(out[1],null);assert.equal(out[2],7);\n  }],\n  ['inherited rules are not treated as mapping entries',()=>{\n    const rules=Object.create({token:'api_key'});\n    assert.deepEqual(plain(C.ruleMapObject({token:'synthetic-only'},rules)),{token:'synthetic-only'});\n  }],\n  ['normal mapping and empty target fallback remain unchanged',()=>{\n    const out=C.ruleMapObject({token:'synthetic-only',mail:'test@example.invalid',keep:'value'},{token:'api_key',mail:'email',keep:''});\n    assert.deepEqual(plain(out),{api_key:'synthetic-only',email:'test@example.invalid',keep:'value'});\n    assert.equal(C.canonicalize(JSON.stringify(out)).accounts.length,1);\n  }],\n];\nlet inputPassed=0;\nfor(const [name,check] of inputCases){\n  try{check();inputPassed++;console.log('PASS converter input/rules: '+name);}\n  catch(error){ok=false;console.error('FAIL converter input/rules: '+name+' ('+error.name+')');}\n}\nconsole.log('CONVERTER_INPUT_RULE_CASES='+inputPassed+'/'+inputCases.length);\n\n"
-              }
-            ]
-          },
-          "tests/test_browser_smoke.ps1": {
-            "before": "9edda6e55c6725fb1a7cf7e6f0ceafab01f89953",
-            "after": "cf8761456170705e94bc900a71cb8fb0e04fb9e4",
-            "edits": [
-              {
-                "start": 4886,
-                "end": 4886,
-                "old": "",
-                "new": "    // Exercise rule mapping through the actual UI, not just isolated helpers.\n    await converterPage.locator('#rulesToggle').check();\n    await converterPage.locator('#rulesText').fill('{\"token\":\"api_key\"}');\n    await converterPage.locator('#inputText').fill(\n      '{\"data\":{\"count\":1},\"items\":[{\"name\":\"synthetic-wrapped\",\"token\":\"synthetic-only\",\"constructor\":\"preserved\",\"__proto__\":{\"note\":\"preserved\"}}]}');\n    await converterPage.locator('#convertBtn').click();\n    const inputRulesOk = await converterPage.evaluate(() => {\n      const account = state.canon && state.canon.accounts[0];\n      const mapped = AccountConverter.ruleMapObject(\n        {metadata:{syntheticFlag:true}}, {metadata:'__proto__'});\n      return state.canon && state.canon.accounts.length === 1 &&\n        account.name === 'synthetic-wrapped' && account.api_key === 'synthetic-only' &&\n        Object.hasOwn(account.raw, 'constructor') && account.raw.constructor === 'preserved' &&\n        Object.hasOwn(account.raw, '__proto__') && account.raw.__proto__.note === 'preserved' &&\n        account.raw.note === undefined && Object.hasOwn(mapped, '__proto__') &&\n        mapped.syntheticFlag === undefined &&\n        JSON.parse(JSON.stringify(mapped)).__proto__.syntheticFlag === true;\n    });\n    if (!inputRulesOk) throw new Error('Converter wrapper/rule mapping lost data or inherited a field.');\n"
-              },
-              {
-                "start": 7313,
-                "end": 7313,
-                "old": "",
-                "new": "    Write-Output 'PASS real converter UI preserves wrapped arrays and prototype-named mapping fields'\n"
-              }
-            ]
-          },
-          "Version_History/AI account format conversion/README.md": {
-            "before": "edd10c6c0befe1827de45c078c17e82d5218093f",
-            "after": "6cf18e31699f5a1c7c7323c160a415c53d2247e3",
-            "edits": [
-              {
-                "start": 1477,
-                "end": 1570,
-                "old": "| 多账号 | 纯数组、`data` / `items` / `tokens` 包装数组；可混合以上格式 |\n",
-                "new": "| 多账号 | 纯数组、`data` / `items` / `tokens` 包装数组；依次选取实际数组，忽略非数组的同名元数据；可混合以上格式 |\n"
-              },
-              {
-                "start": 2540,
-                "end": 2679,
-                "old": "| 规则编辑器 | 将特殊字段名映射到标准名，例如 `{\"token\":\"access_token\",\"mail\":\"email\"}`；仅适用于可解析 JSON |\n",
-                "new": "| 规则编辑器 | 将特殊字段名映射到标准名，例如 `{\"token\":\"access_token\",\"mail\":\"email\"}`；仅使用规则自有字段，未映射字段保留，`__proto__` 等名称作为普通数据键；仅适用于可解析 JSON |\n"
-              }
-            ]
-          },
-          "DEVELOPMENT.md": {
-            "before": "8a114d76a07bbbd1613bc203db541708aeea597c",
-            "after": "cf5f8c8dc929f17b56632b40e1c6742205dd36f7",
-            "edits": [
-              {
-                "start": 8276,
-                "end": 8276,
-                "old": "",
-                "new": "\n## 2026-10-25：包装数组与字段映射的后续复查\n\n**原因与修复：** 以已发布 `v2026.10.25.1` 的 `a716f58213b523215fbca2742575f2b57e1ad205` 为基线，再次复现两类转换器问题：`data/items` 是元数据、后续字段才是数组时，原逻辑仍选中前面的非数组并报错；规则映射会读取继承属性，破坏 `constructor/toString` 等合法 JSON 键，映射到 `__proto__` 还会改变结果原型并丢失字段。现只调整数组选取、规则自有属性判断和普通数据属性写入三处，不改变合法数组优先级、账号内容、认证或输出格式。新增 12 项输入/映射回归，旧代码稳定失败 8 项，修复后全部通过；既有 Windows 浏览器测试增加真实页面导入和规则映射检查。\n\n**本次验证：** 第一轮重新通过 128 项 Python 源码回归、8 项浏览器策略、转换器 smoke/UI/ZIP 检查，解析 101 份 Python 和 10 份 JavaScript，并核对 573 份源码及 6,941 个跟踪路径。第二轮使用独立 Python 参考实现核对 512 组包装字段组合和 200 组递归映射输入，另执行 10 个独立 Python CLI 场景及逆序 128 项源码回归，均未发现新问题。第三轮全新 Linux/Windows runner 验证尚待执行，完整 Windows 发布及附件回读尚未执行；不得用此前版本的成功记录替代。\n\n**范围与边界：** 仅修改账号转换器、对应原有测试和两份既有说明，不变更官方 0.164.0 工件、普通/YOLO 权限、Fast、MCP/Plugins 默认值或用户状态。所有输入均为合成数据；三轮复查通过不等于所有场景绝对无 Bug，真实账号、在线 Agent/Host、提权沙箱和真实设备仍不在本次验证范围。正式发布须沿用完整 Windows 门禁，不覆盖已有版本。\n"
-              }
-            ]
-          }
-        }
-        root=pathlib.Path.cwd()
-        def blob(data):
-            return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
-        originals={};proposed={}
-        for name,record in PLAN.items():
-            original=(root/name).read_bytes()
-            assert blob(original)==record['before'], 'Base identity mismatch: '+name
-            data=original
-            for edit in reversed(record['edits']):
-                assert data[edit['start']:edit['end']]==edit['old'].encode('utf-8')
-                data=data[:edit['start']]+edit['new'].encode('utf-8')+data[edit['end']:]
-            assert blob(data)==record['after'], 'New identity mismatch: '+name
-            originals[name]=original;proposed[name]=data
-        smoke='Version_History/AI account format conversion/test/smoke.js'
-        (root/smoke).write_bytes(proposed[smoke])
-        try:
-            old=subprocess.run(['node',smoke],capture_output=True,text=True,timeout=30)
-            print(old.stdout,end='');print(old.stderr,end='')
-            assert old.returncode==1 and old.stderr.count('FAIL converter input/rules:')==8
-            assert 'CONVERTER_INPUT_RULE_CASES=4/12' in old.stdout
-            print('OLD_CODE_REPRODUCED_FAILURES=8')
-        finally:
-            (root/smoke).write_bytes(originals[smoke])
-        for name,data in proposed.items():
-            (root/name).write_bytes(data)
-        subprocess.run(['node',smoke],check=True,timeout=30)
-        subprocess.run(['node','Version_History/AI account format conversion/test/static-audit.js'],check=True,timeout=30)
-        for name,record in PLAN.items():
-            assert blob((root/name).read_bytes())==record['after'], name
-        print('EXACT_REPAIRED_FILES='+str(len(PLAN)))
-        REPAIRPY
+        git fetch --no-tags --depth=1 origin 2eeecaf75ec32a9ba378c0e0eb3cde9f4f742d11
+        python3 -B - <<'REPLAY_REVIEWED_REPAIR'
+        import hashlib,subprocess,textwrap
+        raw=subprocess.check_output(['git','show','2eeecaf75ec32a9ba378c0e0eb3cde9f4f742d11:.github/workflows/review-three-pass-once.yml'])
+        assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()=='681be7a351eb9e6b1b45a18f7ce94249bedad6af'
+        text=raw.decode('utf-8')
+        start="        python3 -B - <<'REPAIRPY'\n"
+        end='\n        REPAIRPY\n'
+        assert text.count(start)==1 and text.count(end)==1
+        code=textwrap.dedent(text.split(start,1)[1].split(end,1)[0])
+        # Replay only the exact readable repair that reproduced the old failures.
+        # It verifies every original/result blob and writes five reviewed paths.
+        exec(compile(code,'<verified-repair-from-2eeecaf>','exec'))
+        REPLAY_REVIEWED_REPAIR
     - name: Commit only five reviewed files
       id: commit
       shell: bash
@@ -152,7 +53,7 @@ jobs:
         git config user.name 'github-actions[bot]'
         git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
         git add -- 'Version_History/AI account format conversion/app/converter.js' 'Version_History/AI account format conversion/test/smoke.js' tests/test_browser_smoke.ps1 'Version_History/AI account format conversion/README.md' DEVELOPMENT.md
-        git diff --cached --check
+        git -c core.whitespace=cr-at-eol diff --cached --check
         git commit -m 'fix: preserve wrapped account arrays and literal mapping keys'
         git push origin HEAD:main
         printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -326,7 +227,7 @@ jobs:
         actual={x.decode() for x in subprocess.check_output(['git','diff','--cached','--name-only','-z']).split(b'\0') if x}
         assert actual==expected,actual
         CHECKFINAL
-        git diff --cached --check
+        git -c core.whitespace=cr-at-eol diff --cached --check
         git config user.name 'github-actions[bot]'
         git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
         git commit -m 'docs: record renewed three-pass review and remove temporary workflow'
