@@ -1,4 +1,5 @@
 """Protect synthetic non-library SQLite files before persistent configuration."""
+from contextlib import closing
 import importlib.util
 from pathlib import Path
 import shutil
@@ -253,7 +254,7 @@ class PdfLibraryDatabaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'unowned Markdown'):
             self._build_with_stub_renderer(source, user_create)
         self.assertEqual(output.read_bytes(), original)
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection:
             self.assertEqual(connection.execute('SELECT count(*) FROM documents').fetchone()[0], 0)
 
     def test_owned_markdown_modified_during_render_is_preserved(self):
@@ -267,7 +268,7 @@ class PdfLibraryDatabaseTests(unittest.TestCase):
             self._build_with_stub_renderer(source, lambda: output.write_bytes(manual_edit))
         self.assertNotEqual(old, manual_edit)
         self.assertEqual(output.read_bytes(), manual_edit)
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection:
             self.assertEqual(connection.execute('SELECT output_sha FROM documents').fetchone()[0],
                              self.module.hashlib.sha256(old).hexdigest())
 
@@ -337,7 +338,7 @@ class PdfLibraryDatabaseTests(unittest.TestCase):
         self.assertTrue(changed)
         self.assertFalse(output.exists())
         self.assertFalse(list((self.package / 'tmp').glob('.pdf-library-*')))
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection:
             self.assertEqual(connection.execute('SELECT count(*) FROM documents').fetchone()[0], 1)
 
     def test_removed_source_does_not_delete_later_user_edits(self):
@@ -361,7 +362,7 @@ class PdfLibraryDatabaseTests(unittest.TestCase):
                 self._build_with_stub_renderer(source)
         self.assertGreaterEqual(checks, 2)
         self.assertEqual(output.read_bytes(), manual_edit)
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection:
             self.assertEqual(connection.execute('SELECT count(*) FROM documents').fetchone()[0], 1)
 
     def test_normal_synthetic_incremental_update_and_removal_still_work(self):
