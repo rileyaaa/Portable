@@ -14,6 +14,8 @@ description: Use only when the user explicitly requests searching or reading a c
 - 提取使用成熟上游 `PyMuPDF4LLM 0.2.9`、`PyMuPDF 1.26.6`、`tabulate 0.9.0`，适配器只负责便携校验、按页审计、索引和交付。版本及来源见 `tool/optional-python-manifest.json`。保留上游许可证；PyMuPDF / PyMuPDF4LLM 的 AGPL / 商业许可需按实际分发方式遵守。
 - 不安装 `pymupdf-layout`、模型或驱动，不启动网络服务、MCP 或 OCR。缺依赖时如实说明，不借用宿主安装，也不自动下载。
 
+- 正文及报告的原子写入暂存统一放在当前包内 `tmp`，成功或失败仅清理本次暂存文件；最终资料库及交付 ZIP 仍保存在用户指定的包内位置。
+
 ## 建库与按需阅读
 
 `--input` 可以是一个 PDF，也可以是 PDF 目录；递归保留原目录与文件名，仅将扩展名改为 `.md`。库目录须为空或由此工具创建，且与源目录分开。

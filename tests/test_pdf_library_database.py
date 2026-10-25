@@ -133,5 +133,89 @@ class PdfLibraryDatabaseTests(unittest.TestCase):
         self.assertEqual(self.database.read_bytes(), before)
 
 
+    def test_atomic_write_stages_only_in_package_tmp(self):
+        output = self.library / 'manuals' / 'synthetic.md'
+        created = []
+        actual = self.module.tempfile.mkstemp
+
+        def capture(*args, **kwargs):
+            result = actual(*args, **kwargs)
+            created.append(Path(result[1]))
+            return result
+
+        with mock.patch.object(self.module.tempfile, 'mkstemp', capture):
+            self.module._write(output, 'synthetic \u4e2d\u6587 markdown\n')
+        self.assertEqual(output.read_bytes(), 'synthetic \u4e2d\u6587 markdown\n'.encode())
+        self.assertEqual(len(created), 1)
+        self.assertEqual(created[0].parent, self.package / 'tmp')
+        self.assertFalse(created[0].exists())
+
+    def test_linked_write_tmp_is_rejected_before_output_creation(self):
+        elsewhere = self.package.parent / 'synthetic unrelated directory'
+        elsewhere.mkdir()
+        sentinel = elsewhere / 'keep.txt'
+        sentinel.write_bytes(b'keep')
+        scratch = self.package / 'tmp'
+        try:
+            scratch.symlink_to(elsewhere, target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f'Symlinks unavailable: {error}')
+        output = self.library / 'manuals' / 'synthetic.md'
+        with mock.patch.object(self.module.tempfile, 'mkstemp',
+                               wraps=self.module.tempfile.mkstemp) as create_temp:
+            with self.assertRaises(self.module._safety.PortablePathError):
+                self.module._write(output, 'synthetic replacement')
+            create_temp.assert_not_called()
+        self.assertFalse(self.library.exists())
+        self.assertEqual(sentinel.read_bytes(), b'keep')
+        self.assertEqual(list(elsewhere.iterdir()), [sentinel])
+
+    def test_file_write_tmp_is_rejected_and_original_is_preserved(self):
+        scratch = self.package / 'tmp'
+        scratch.write_bytes(b'not a directory')
+        output = self.library / 'synthetic.md'
+        output.parent.mkdir(parents=True)
+        output.write_bytes(b'original')
+        with mock.patch.object(self.module.tempfile, 'mkstemp',
+                               wraps=self.module.tempfile.mkstemp) as create_temp:
+            with self.assertRaises((OSError, self.module._safety.PortablePathError)):
+                self.module._write(output, 'synthetic replacement')
+            create_temp.assert_not_called()
+        self.assertEqual(output.read_bytes(), b'original')
+        self.assertEqual(scratch.read_bytes(), b'not a directory')
+
+    def test_write_replace_failure_preserves_output_and_unrelated_tmp(self):
+        scratch = self.package / 'tmp'
+        scratch.mkdir()
+        sentinel = scratch / 'unrelated.txt'
+        sentinel.write_bytes(b'keep')
+        output = self.library / 'synthetic.md'
+        output.parent.mkdir(parents=True)
+        output.write_bytes(b'original')
+        with mock.patch.object(self.module.os, 'replace', side_effect=OSError('synthetic failure')):
+            with self.assertRaisesRegex(OSError, 'synthetic failure'):
+                self.module._write(output, 'synthetic replacement')
+        self.assertEqual(output.read_bytes(), b'original')
+        self.assertEqual(sentinel.read_bytes(), b'keep')
+        self.assertEqual(list(scratch.iterdir()), [sentinel])
+        self.assertEqual(list(output.parent.iterdir()), [output])
+
+    def test_write_encoding_failure_preserves_output_and_unrelated_tmp(self):
+        scratch = self.package / 'tmp'
+        scratch.mkdir()
+        sentinel = scratch / 'unrelated.txt'
+        sentinel.write_bytes(b'keep')
+        output = self.library / 'synthetic.md'
+        output.parent.mkdir(parents=True)
+        output.write_bytes(b'original')
+        with self.assertRaises(UnicodeEncodeError):
+            self.module._write(output, 'invalid surrogate ' + chr(0xD800))
+        self.assertEqual(output.read_bytes(), b'original')
+        self.assertEqual(sentinel.read_bytes(), b'keep')
+        self.assertEqual(list(scratch.iterdir()), [sentinel])
+        self.assertEqual(list(output.parent.iterdir()), [output])
+
+
+
 if __name__ == '__main__':
     unittest.main()

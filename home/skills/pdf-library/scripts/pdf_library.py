@@ -178,9 +178,11 @@ def ensure_coverage(raw: str, structured: str) -> tuple[str, dict]:
 
 def _write(path: Path, text: str) -> None:
     path = checked(path)
+    # Keep transient writes out of persistent work/library directories.
+    scratch = _safety.prepare_output_dir(ROOT / "tmp")
     path.parent.mkdir(parents=True, exist_ok=True)
     checked(path.parent, exists=True, kind="dir")
-    handle, temporary = tempfile.mkstemp(prefix=".pdf-library-", dir=path.parent)
+    handle, temporary = tempfile.mkstemp(prefix=".pdf-library-", dir=scratch)
     temp = Path(temporary)
     try:
         with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as stream:
