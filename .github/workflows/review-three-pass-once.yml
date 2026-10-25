@@ -1,65 +1,339 @@
-name: Requested renewed audit source snapshot
-
-on:
+name: Repair wrapped account inputs and run independent third review
+'on':
   push:
     branches: [main]
     paths: ['.github/workflows/review-three-pass-once.yml']
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
-  snapshot:
+  repair:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      commit: ${{ steps.commit.outputs.commit }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          ref: a716f58213b523215fbca2742575f2b57e1ad205
-          fetch-depth: 1
-          lfs: false
-      - name: Export only reviewed text changes and Git inventory
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch --no-tags --depth=1 origin 88967f671569296a3fdcc5b8c155201f53805582
-          mkdir -p tmp/renewed-audit-source
-          python3 -B - <<'PY'
-          import hashlib, json, pathlib, subprocess, zipfile
-          base='88967f671569296a3fdcc5b8c155201f53805582'
-          head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          assert head=='a716f58213b523215fbca2742575f2b57e1ad205'
-          allowed={'DEVELOPMENT.md','tool/refresh-python-cli-shims.py','tests/test_python_cli_shims.py','tests/test_browser_smoke.ps1','Version_History/AI account format conversion/README.md','Version_History/AI account format conversion/app/app.js','Version_History/AI account format conversion/test/static-audit.js'}
-          changed=[p.decode('utf-8') for p in subprocess.check_output(['git','diff','--name-only','-z',base,head]).split(b'\0') if p]
-          assert set(changed)==allowed, changed
-          tracked={}
-          for raw in subprocess.check_output(['git','ls-tree','-rz','HEAD']).split(b'\0'):
-              if not raw: continue
-              header,name=raw.split(b'\t',1)
-              mode,kind,sha=header.decode().split()
-              assert kind=='blob' and mode in ('100644','100755')
-              tracked[name.decode('utf-8')]={'mode':mode,'sha':sha}
-          records={}
-          out=pathlib.Path('tmp/renewed-audit-source/source-delta.zip')
-          with zipfile.ZipFile(out,'x',compression=zipfile.ZIP_DEFLATED) as z:
-              for name in sorted(changed):
-                  data=subprocess.check_output(['git','cat-file','blob',tracked[name]['sha']])
-                  data.decode('utf-8-sig')
-                  assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==tracked[name]['sha']
-                  z.writestr('changes/'+name,data)
-                  records[name]={'sha':tracked[name]['sha'],'sha256':hashlib.sha256(data).hexdigest(),'size':len(data)}
-              z.writestr('_review-delta.json',json.dumps({'base':base,'commit':head,'changes':records,'tracked':tracked},ensure_ascii=False))
-          print('SNAPSHOT_COMMIT='+head)
-          print('DELTA_FILE_COUNT='+str(len(records)))
-          print('TRACKED_COUNT='+str(len(tracked)))
-          PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: renewed-audit-source-a716f58
-          path: tmp/renewed-audit-source/source-delta.zip
-          retention-days: 1
-          if-no-files-found: error
-      - name: Remove this runner staging
-        if: always()
-        run: rm -rf -- tmp/renewed-audit-source
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 1
+        lfs: false
+        persist-credentials: true
+    - name: Reproduce eight old failures and apply exact minimal repair
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 -B - <<'REPAIRPY'
+        import hashlib, pathlib, subprocess
+        PLAN = {
+          "Version_History/AI account format conversion/app/converter.js": {
+            "before": "9ea227db41b4d6f7b7606f78a372b949711747aa",
+            "after": "2f3ff0ce796f3f6da6a0161fb2004c78336c6151",
+            "edits": [
+              {
+                "start": 5785,
+                "end": 5835,
+                "old": "      const arr=obj.data||obj.items||obj.tokens;\r\n",
+                "new": "      const arr=[obj.data,obj.items,obj.tokens].find(Array.isArray);\r\n"
+              },
+              {
+                "start": 17800,
+                "end": 17868,
+                "old": "      const nk=rules[k]||k;\r\n      out[nk]=ruleMapObject(v,rules);\r\n",
+                "new": "      const nk=Object.prototype.hasOwnProperty.call(rules,k)?(rules[k]||k):k;\r\n      Object.defineProperty(out,nk,{value:ruleMapObject(v,rules),enumerable:true,writable:true,configurable:true});\r\n"
+              }
+            ]
+          },
+          "Version_History/AI account format conversion/test/smoke.js": {
+            "before": "9e1482c281bdf3ac1e7f1f698739fdd0cb5685c5",
+            "after": "0df2ab18f8dcbb52215ba3e391239e5d70cde089",
+            "edits": [
+              {
+                "start": 2244,
+                "end": 2244,
+                "old": "",
+                "new": "// Synthetic input/rule tests; no account service, browser or network access.\nconst assert=require('node:assert/strict');\nconst C=ctx.AccountConverter;\nconst plain=value=>JSON.parse(JSON.stringify(value));\nconst api=(name='fixture')=>({name,api_key:'synthetic-only-'+name});\nconst inputCases=[\n  ['items array is selected after data metadata',()=>{\n    const c=C.canonicalize(JSON.stringify({data:{count:1},items:[api()]}));\n    assert.equal(c.accounts.length,1);assert.equal(c.accounts[0].api_key,'synthetic-only-fixture');\n  }],\n  ['tokens array is selected after items metadata',()=>{\n    const c=C.canonicalize(JSON.stringify({items:'metadata',tokens:[api()]}));\n    assert.equal(c.accounts.length,1);\n  }],\n  ['tokens array is selected after two metadata fields',()=>{\n    const c=C.canonicalize(JSON.stringify({data:'metadata',items:{count:1},tokens:[api()]}));\n    assert.equal(c.accounts.length,1);\n  }],\n  ['all ordinary wrappers remain supported',()=>{\n    for(const key of ['data','items','tokens']){\n      const c=C.canonicalize(JSON.stringify({[key]:[api()]}));\n      assert.equal(c.source,'wrapped_array');assert.equal(c.accounts.length,1);\n      assert.ok(C.convertAll(c).some(o=>o.id==='sub2api'));\n    }\n  }],\n  ['nested wrappers select their actual arrays',()=>{\n    const c=C.canonicalize(JSON.stringify({data:[{data:{count:1},items:[api('nested')]}]}));\n    assert.equal(c.accounts[0].name,'nested');assert.equal(c.accounts.length,1);\n  }],\n  ['multiple array wrapper precedence is unchanged',()=>{\n    const c=C.canonicalize(JSON.stringify({data:[api('first')],items:[api('second')],tokens:[api('third')]}));\n    assert.equal(c.accounts.length,1);assert.equal(c.accounts[0].name,'first');\n  }],\n  ['empty rules preserve prototype-named JSON fields',()=>{\n    const data=JSON.parse('{\"constructor\":\"ctor\",\"toString\":\"text\",\"__proto__\":{\"note\":\"keep\"},\"hasOwnProperty\":\"own\"}');\n    assert.deepEqual(plain(C.ruleMapObject(data,{})),data);\n  }],\n  ['mapping to __proto__ creates ordinary own data',()=>{\n    const data={metadata:{api_key:'synthetic-only'}};\n    const out=C.ruleMapObject(data,{metadata:'__proto__'});\n    assert.equal(Object.hasOwn(out,'__proto__'),true);\n    assert.equal(out.api_key,undefined);\n    assert.deepEqual(plain(out),JSON.parse('{\"__proto__\":{\"api_key\":\"synthetic-only\"}}'));\n    assert.equal(Object.getOwnPropertyDescriptor(out,'__proto__').enumerable,true);\n  }],\n  ['own prototype-named rules remain valid',()=>{\n    const rules=JSON.parse('{\"constructor\":\"name\",\"__proto__\":\"extra\"}');\n    const data=JSON.parse('{\"constructor\":\"fixture\",\"__proto__\":{\"note\":\"keep\"}}');\n    assert.deepEqual(plain(C.ruleMapObject(data,rules)),{name:'fixture',extra:{note:'keep'}});\n  }],\n  ['mapping recurses through arrays without mutating input',()=>{\n    const data=JSON.parse('[{\"token\":\"synthetic-only\",\"extra\":{\"toString\":\"keep\",\"__proto__\":{\"note\":\"keep\"}}},null,7]');\n    const before=JSON.stringify(data);\n    const out=plain(C.ruleMapObject(data,{token:'api_key'}));\n    assert.equal(JSON.stringify(data),before);\n    assert.equal(out[0].api_key,'synthetic-only');assert.deepEqual(out[0].extra,data[0].extra);\n    assert.equal(out[1],null);assert.equal(out[2],7);\n  }],\n  ['inherited rules are not treated as mapping entries',()=>{\n    const rules=Object.create({token:'api_key'});\n    assert.deepEqual(plain(C.ruleMapObject({token:'synthetic-only'},rules)),{token:'synthetic-only'});\n  }],\n  ['normal mapping and empty target fallback remain unchanged',()=>{\n    const out=C.ruleMapObject({token:'synthetic-only',mail:'test@example.invalid',keep:'value'},{token:'api_key',mail:'email',keep:''});\n    assert.deepEqual(plain(out),{api_key:'synthetic-only',email:'test@example.invalid',keep:'value'});\n    assert.equal(C.canonicalize(JSON.stringify(out)).accounts.length,1);\n  }],\n];\nlet inputPassed=0;\nfor(const [name,check] of inputCases){\n  try{check();inputPassed++;console.log('PASS converter input/rules: '+name);}\n  catch(error){ok=false;console.error('FAIL converter input/rules: '+name+' ('+error.name+')');}\n}\nconsole.log('CONVERTER_INPUT_RULE_CASES='+inputPassed+'/'+inputCases.length);\n\n"
+              }
+            ]
+          },
+          "tests/test_browser_smoke.ps1": {
+            "before": "9edda6e55c6725fb1a7cf7e6f0ceafab01f89953",
+            "after": "cf8761456170705e94bc900a71cb8fb0e04fb9e4",
+            "edits": [
+              {
+                "start": 4886,
+                "end": 4886,
+                "old": "",
+                "new": "    // Exercise rule mapping through the actual UI, not just isolated helpers.\n    await converterPage.locator('#rulesToggle').check();\n    await converterPage.locator('#rulesText').fill('{\"token\":\"api_key\"}');\n    await converterPage.locator('#inputText').fill(\n      '{\"data\":{\"count\":1},\"items\":[{\"name\":\"synthetic-wrapped\",\"token\":\"synthetic-only\",\"constructor\":\"preserved\",\"__proto__\":{\"note\":\"preserved\"}}]}');\n    await converterPage.locator('#convertBtn').click();\n    const inputRulesOk = await converterPage.evaluate(() => {\n      const account = state.canon && state.canon.accounts[0];\n      const mapped = AccountConverter.ruleMapObject(\n        {metadata:{syntheticFlag:true}}, {metadata:'__proto__'});\n      return state.canon && state.canon.accounts.length === 1 &&\n        account.name === 'synthetic-wrapped' && account.api_key === 'synthetic-only' &&\n        Object.hasOwn(account.raw, 'constructor') && account.raw.constructor === 'preserved' &&\n        Object.hasOwn(account.raw, '__proto__') && account.raw.__proto__.note === 'preserved' &&\n        account.raw.note === undefined && Object.hasOwn(mapped, '__proto__') &&\n        mapped.syntheticFlag === undefined &&\n        JSON.parse(JSON.stringify(mapped)).__proto__.syntheticFlag === true;\n    });\n    if (!inputRulesOk) throw new Error('Converter wrapper/rule mapping lost data or inherited a field.');\n"
+              },
+              {
+                "start": 7313,
+                "end": 7313,
+                "old": "",
+                "new": "    Write-Output 'PASS real converter UI preserves wrapped arrays and prototype-named mapping fields'\n"
+              }
+            ]
+          },
+          "Version_History/AI account format conversion/README.md": {
+            "before": "edd10c6c0befe1827de45c078c17e82d5218093f",
+            "after": "6cf18e31699f5a1c7c7323c160a415c53d2247e3",
+            "edits": [
+              {
+                "start": 1477,
+                "end": 1570,
+                "old": "| 多账号 | 纯数组、`data` / `items` / `tokens` 包装数组；可混合以上格式 |\n",
+                "new": "| 多账号 | 纯数组、`data` / `items` / `tokens` 包装数组；依次选取实际数组，忽略非数组的同名元数据；可混合以上格式 |\n"
+              },
+              {
+                "start": 2540,
+                "end": 2679,
+                "old": "| 规则编辑器 | 将特殊字段名映射到标准名，例如 `{\"token\":\"access_token\",\"mail\":\"email\"}`；仅适用于可解析 JSON |\n",
+                "new": "| 规则编辑器 | 将特殊字段名映射到标准名，例如 `{\"token\":\"access_token\",\"mail\":\"email\"}`；仅使用规则自有字段，未映射字段保留，`__proto__` 等名称作为普通数据键；仅适用于可解析 JSON |\n"
+              }
+            ]
+          },
+          "DEVELOPMENT.md": {
+            "before": "8a114d76a07bbbd1613bc203db541708aeea597c",
+            "after": "cf5f8c8dc929f17b56632b40e1c6742205dd36f7",
+            "edits": [
+              {
+                "start": 8276,
+                "end": 8276,
+                "old": "",
+                "new": "\n## 2026-10-25：包装数组与字段映射的后续复查\n\n**原因与修复：** 以已发布 `v2026.10.25.1` 的 `a716f58213b523215fbca2742575f2b57e1ad205` 为基线，再次复现两类转换器问题：`data/items` 是元数据、后续字段才是数组时，原逻辑仍选中前面的非数组并报错；规则映射会读取继承属性，破坏 `constructor/toString` 等合法 JSON 键，映射到 `__proto__` 还会改变结果原型并丢失字段。现只调整数组选取、规则自有属性判断和普通数据属性写入三处，不改变合法数组优先级、账号内容、认证或输出格式。新增 12 项输入/映射回归，旧代码稳定失败 8 项，修复后全部通过；既有 Windows 浏览器测试增加真实页面导入和规则映射检查。\n\n**本次验证：** 第一轮重新通过 128 项 Python 源码回归、8 项浏览器策略、转换器 smoke/UI/ZIP 检查，解析 101 份 Python 和 10 份 JavaScript，并核对 573 份源码及 6,941 个跟踪路径。第二轮使用独立 Python 参考实现核对 512 组包装字段组合和 200 组递归映射输入，另执行 10 个独立 Python CLI 场景及逆序 128 项源码回归，均未发现新问题。第三轮全新 Linux/Windows runner 验证尚待执行，完整 Windows 发布及附件回读尚未执行；不得用此前版本的成功记录替代。\n\n**范围与边界：** 仅修改账号转换器、对应原有测试和两份既有说明，不变更官方 0.164.0 工件、普通/YOLO 权限、Fast、MCP/Plugins 默认值或用户状态。所有输入均为合成数据；三轮复查通过不等于所有场景绝对无 Bug，真实账号、在线 Agent/Host、提权沙箱和真实设备仍不在本次验证范围。正式发布须沿用完整 Windows 门禁，不覆盖已有版本。\n"
+              }
+            ]
+          }
+        }
+        root=pathlib.Path.cwd()
+        def blob(data):
+            return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+        originals={};proposed={}
+        for name,record in PLAN.items():
+            original=(root/name).read_bytes()
+            assert blob(original)==record['before'], 'Base identity mismatch: '+name
+            data=original
+            for edit in reversed(record['edits']):
+                assert data[edit['start']:edit['end']]==edit['old'].encode('utf-8')
+                data=data[:edit['start']]+edit['new'].encode('utf-8')+data[edit['end']:]
+            assert blob(data)==record['after'], 'New identity mismatch: '+name
+            originals[name]=original;proposed[name]=data
+        smoke='Version_History/AI account format conversion/test/smoke.js'
+        (root/smoke).write_bytes(proposed[smoke])
+        try:
+            old=subprocess.run(['node',smoke],capture_output=True,text=True,timeout=30)
+            print(old.stdout,end='');print(old.stderr,end='')
+            assert old.returncode==1 and old.stderr.count('FAIL converter input/rules:')==8
+            assert 'CONVERTER_INPUT_RULE_CASES=4/12' in old.stdout
+            print('OLD_CODE_REPRODUCED_FAILURES=8')
+        finally:
+            (root/smoke).write_bytes(originals[smoke])
+        for name,data in proposed.items():
+            (root/name).write_bytes(data)
+        subprocess.run(['node',smoke],check=True,timeout=30)
+        subprocess.run(['node','Version_History/AI account format conversion/test/static-audit.js'],check=True,timeout=30)
+        for name,record in PLAN.items():
+            assert blob((root/name).read_bytes())==record['after'], name
+        print('EXACT_REPAIRED_FILES='+str(len(PLAN)))
+        REPAIRPY
+    - name: Commit only five reviewed files
+      id: commit
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 -B - <<'CHECKNAMES'
+        import subprocess
+        expected={'Version_History/AI account format conversion/app/converter.js','Version_History/AI account format conversion/test/smoke.js','tests/test_browser_smoke.ps1','Version_History/AI account format conversion/README.md','DEVELOPMENT.md'}
+        actual={x.decode() for x in subprocess.check_output(['git','diff','--name-only','-z']).split(b'\0') if x}
+        assert actual==expected,actual
+        CHECKNAMES
+        git config user.name 'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        git add -- 'Version_History/AI account format conversion/app/converter.js' 'Version_History/AI account format conversion/test/smoke.js' tests/test_browser_smoke.ps1 'Version_History/AI account format conversion/README.md' DEVELOPMENT.md
+        git diff --cached --check
+        git commit -m 'fix: preserve wrapped account arrays and literal mapping keys'
+        git push origin HEAD:main
+        printf 'commit=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+  source-review:
+    needs: [repair]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ needs.repair.outputs.commit }}
+        fetch-depth: 1
+        lfs: false
+        persist-credentials: false
+    - name: Independent randomized source, browser and converter regression
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 -B - <<'SOURCEPY'
+        import ast,json,pathlib,random,subprocess,sys,unittest
+        root=pathlib.Path.cwd()
+        sys.path.insert(0,str(root/'tool/python/Lib/site-packages'))
+        sys.path.insert(0,str(root/'tests'))
+        excluded_modules={'test_runtime_package','test_optional_python_payload','test_python_runtime_dependencies','test_pip_config_isolation','test_pdf_library'}
+        excluded_cases={'test_browser_install.BrowserInstallTests.test_pinned_browser_inventory_matches_installed_official_bytes','test_python_lock.PythonLockTests.test_runtime_repair_accepts_current_defaults_and_missing_packages'}
+        def flatten(suite):
+            for item in suite:
+                if isinstance(item,unittest.TestSuite): yield from flatten(item)
+                else: yield item
+        cases=[]
+        for source in sorted((root/'tests').glob('test_*.py')):
+            if source.stem in excluded_modules: continue
+            cases.extend(case for case in flatten(unittest.defaultTestLoader.loadTestsFromName(source.stem)) if case.id() not in excluded_cases)
+        random.Random(202610252).shuffle(cases)
+        r=unittest.TextTestRunner(verbosity=2).run(unittest.TestSuite(cases))
+        print('THIRD_SOURCE_RESULT='+json.dumps({'tests':r.testsRun,'failures':len(r.failures),'errors':len(r.errors),'skipped':len(r.skipped),'native_groups_deferred':sorted(excluded_modules),'native_cases_deferred':sorted(excluded_cases)}))
+        assert r.wasSuccessful() and not r.skipped and r.testsRun==129
+        count=0
+        for raw in subprocess.check_output(['git','ls-files','-z']).split(b'\0'):
+            if not raw: continue
+            name=raw.decode('utf-8')
+            if name.endswith('.py') and not name.startswith(('tool/python/','tool/git/','tool/node/','tool/automation/node_modules/')) and '/node_modules/' not in name:
+                ast.parse(pathlib.Path(name).read_text(encoding='utf-8-sig'),filename=name);count+=1
+        print('FIRST_PARTY_PYTHON_PARSED='+str(count))
+        print('CHECKED_SOURCE_COMMIT='+subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
+        SOURCEPY
+        node --test --test-name-pattern='unselected|path guards|browser configuration|persistent browser owner|tool policy|transport strips|browser_close|a disconnected' tests/test_automation.js
+        node 'Version_History/AI account format conversion/test/smoke.js'
+        node 'Version_History/AI account format conversion/test/static-audit.js'
+        git diff --exit-code
+    - name: PowerShell syntax and isolated offline policy functions
+      shell: pwsh
+      run: |
+        $ErrorActionPreference='Stop'
+        $count=0
+        $names=& git -c core.quotepath=false ls-files
+        if($LASTEXITCODE -ne 0){throw 'Cannot enumerate tracked paths.'}
+        foreach($name in $names){
+          if($name -notlike '*.ps1' -or $name -match '^(tool/(python|git|node)/|tool/automation/node_modules/)' -or $name -match '/node_modules/'){continue}
+          $tokens=$null;$errors=$null
+          $null=[Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE $name),[ref]$tokens,[ref]$errors)
+          if($errors.Count){throw ('PowerShell parse failure: '+$name)}
+          $count++
+        }
+        Write-Output ('FIRST_PARTY_POWERSHELL_PARSED='+$count)
+        foreach($name in @('test_cli_model_options','test_permission_display','test_login_input_errors','test_browser_login_flow')){
+          & pwsh -NoLogo -NoProfile -NonInteractive -File "tests/$name.ps1"
+          if($LASTEXITCODE -ne 0){throw ('Offline regression failed: '+$name)}
+        }
+        & git diff --exit-code
+        if($LASTEXITCODE -ne 0){throw 'Review changed tracked source.'}
+        Write-Output 'THIRD_LINUX_REVIEW=PASS'
+  windows-review:
+    needs: [repair]
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ needs.repair.outputs.commit }}
+        fetch-depth: 1
+        lfs: true
+        persist-credentials: false
+    - name: Prepare package-local Windows test state
+      run: |
+        $ErrorActionPreference='Stop'
+        $base=Join-Path $env:GITHUB_WORKSPACE 'tmp/renewed-windows-state'
+        $state=@{HOME='home';USERPROFILE='home';APPDATA='appdata';LOCALAPPDATA='localappdata';PROGRAMDATA='programdata';ALLUSERSPROFILE='programdata';TEMP='temp';TMP='temp';TMPDIR='temp';XDG_CACHE_HOME='cache';XDG_CONFIG_HOME='config';XDG_DATA_HOME='data';XDG_STATE_HOME='state';CODEX_HOME='codex-home';CODEX_SQLITE_HOME='sqlite'}
+        foreach($name in $state.Keys){$path=Join-Path $base $state[$name];New-Item -ItemType Directory -Force -Path $path|Out-Null;"$name=$path"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append}
+        'PIP_CONFIG_FILE=nul'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+        'PYTHONDONTWRITEBYTECODE=1'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+        'POWERSHELL_TELEMETRY_OPTOUT=1'|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+        "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+        $modules=Join-Path $base 'cache/modules';New-Item -ItemType Directory -Force $modules|Out-Null
+        "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules"|Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Full bundled Python and Node plus converter regressions
+      timeout-minutes: 5
+      run: |
+        $ErrorActionPreference='Stop'
+        & .\tool\python\python.exe -B -c "import unittest,json; r=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.discover('tests',pattern='test_*.py')); print('THIRD_WINDOWS_PYTHON='+json.dumps({'tests':r.testsRun,'failures':len(r.failures),'errors':len(r.errors),'skipped':len(r.skipped)})); raise SystemExit(0 if r.wasSuccessful() and not r.skipped else 1)"
+        if($LASTEXITCODE -ne 0){throw 'Bundled Python regression failed.'}
+        & .\tool\node\node.exe --test .\tests\test_automation.js .\tests\test_portable_npm.js
+        if($LASTEXITCODE -ne 0){throw 'Bundled Node regression failed.'}
+        & .\tool\node\node.exe 'Version_History/AI account format conversion/test/smoke.js'
+        if($LASTEXITCODE -ne 0){throw 'Converter wrapper/rule regression failed.'}
+        & .\tool\node\node.exe 'Version_History/AI account format conversion/test/static-audit.js'
+        if($LASTEXITCODE -ne 0){throw 'Converter rendering/ZIP regression failed.'}
+        & .\tool\python\python.exe -B .\tool\automation\install-browser.py --check
+        if($LASTEXITCODE -ne 0){throw 'Pinned browser payload verification failed.'}
+    - name: Real Chromium wrapper import, mapping, rendering, ZIP and persistence
+      timeout-minutes: 5
+      run: |
+        $ErrorActionPreference='Stop'
+        & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_smoke.ps1
+        if($LASTEXITCODE -ne 0){throw 'Actual Chromium converter/browser regression failed.'}
+        & git diff --exit-code
+        if($LASTEXITCODE -ne 0){throw 'Windows review changed tracked source.'}
+        Write-Output 'THIRD_WINDOWS_REVIEW=PASS'
+    - name: Remove only this review Windows state
+      if: always()
+      run: |
+        $path=Join-Path $env:GITHUB_WORKSPACE 'tmp/renewed-windows-state'
+        if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}
+  finalize:
+    needs: [repair, source-review, windows-review]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REVIEW_COMMIT: ${{ needs.repair.outputs.commit }}
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      with:
+        ref: ${{ needs.repair.outputs.commit }}
+        fetch-depth: 1
+        lfs: false
+        persist-credentials: true
+    - name: Record results, clean temporary workflow and request full release
+      shell: bash
+      run: |
+        set -euo pipefail
+        remote=$(git ls-remote origin refs/heads/main | cut -f1)
+        test "$remote" = "$REVIEW_COMMIT"
+        python3 -B - <<'FINALIZEPY'
+        import hashlib, os, pathlib, subprocess
+        path=pathlib.Path('DEVELOPMENT.md')
+        data=path.read_bytes()
+        assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()=='cf5f8c8dc929f17b56632b40e1c6742205dd36f7'
+        commit=os.environ['REVIEW_COMMIT']
+        assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()==commit
+        pending='第三轮全新 Linux/Windows runner 验证尚待执行，完整 Windows 发布及附件回读尚未执行；不得用此前版本的成功记录替代。'
+        done=('第三轮 Actions `'+os.environ['GITHUB_RUN_ID']+'` 在全新 Linux/Windows runner 检出修复提交 `'+commit+
+              '`：129 项随机顺序 Python 源码回归无失败/错误/跳过，浏览器策略、转换器及 PowerShell 解析/离线策略检查通过；Windows 包内 Python/Node、真实 Chromium 页面导入/规则映射、既有 HTML/ZIP、截图、Cookie 持久化和清理检查也通过。三轮连续未发现新的可复现问题。完整发布仍须对清理后的最终提交执行原有 `release.yml` 的 `check_set=full`，只有打包及上传附件回读通过后才发布 `v2026.10.25.2`，以对应 Release 的实际来源提交和运行结果为准。')
+        assert data.count(pending.encode())==1
+        path.write_bytes(data.replace(pending.encode(),done.encode(),1))
+        FINALIZEPY
+        gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/12590593274"
+        git rm -- .github/workflows/review-three-pass-once.yml
+        git add -- DEVELOPMENT.md
+        python3 -B - <<'CHECKFINAL'
+        import subprocess
+        expected={'DEVELOPMENT.md','.github/workflows/review-three-pass-once.yml'}
+        actual={x.decode() for x in subprocess.check_output(['git','diff','--cached','--name-only','-z']).split(b'\0') if x}
+        assert actual==expected,actual
+        CHECKFINAL
+        git diff --cached --check
+        git config user.name 'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        git commit -m 'docs: record renewed three-pass review and remove temporary workflow'
+        git push origin HEAD:main
+        head=$(git rev-parse HEAD)
+        remote=$(git ls-remote origin refs/heads/main | cut -f1)
+        test "$head" = "$remote"
+        gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/dispatches" -f ref=main -f 'inputs[version]=v2026.10.25.2' -F 'inputs[publish_release]=true' -f 'inputs[check_set]=full'
+        printf 'FINAL_REVIEWED_SOURCE=%s\n' "$head"
+        echo 'FULL_WINDOWS_RELEASE_REQUESTED=v2026.10.25.2'
