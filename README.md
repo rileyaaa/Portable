@@ -185,5 +185,3 @@ Go、PyInstaller 及其专用构建依赖、uv 系列和可再生 Python 字节�
 | 提示存在宿主系统配置 | 默认拒绝加载；只有确需采用组织系统策略时，才显式设置 `CODEX_ALLOW_HOST_SYSTEM_CONFIG=true`。 |
 
 当前仓库没有历史 checker/updater，发行包不提供原地自动升级。升级应按工具文档成对更新并校验，或重新解压经过验证的同版本完整包。维护规则、变量兼容核对、测试命令及更新记录统一见 [开发文档](DEVELOPMENT.md)；账号格式转换器独立说明见 [子项目 README](Version_History/AI%20account%20format%20conversion/README.md)。
-
-<!-- TEMPORARY-GITHUB-WRITE-TEST-20261025-REMOVE -->
