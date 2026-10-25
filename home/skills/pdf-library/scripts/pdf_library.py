@@ -176,7 +176,8 @@ def ensure_coverage(raw: str, structured: str) -> tuple[str, dict]:
     }
 
 
-def _write(path: Path, text: str) -> None:
+def _write(path: Path, text: str, *, expected_sha: str | None = None,
+           require_absent: bool = False) -> None:
     path = checked(path)
     # Keep transient writes out of persistent work/library directories.
     scratch = _safety.prepare_output_dir(ROOT / "tmp")
@@ -188,6 +189,14 @@ def _write(path: Path, text: str) -> None:
         with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as stream:
             stream.write(text)
         checked(path)
+        # Recheck output ownership after staging, just before replacing. Users
+        # may edit or create Markdown while an expensive PDF render is running.
+        if expected_sha is not None:
+            if not path.is_file() or sha256(path) != expected_sha:
+                raise ValueError("Generated Markdown was removed/edited during conversion; "
+                                 "refusing to overwrite user changes")
+        elif require_absent and path.exists():
+            raise ValueError("Refusing to replace an unowned Markdown output")
         os.replace(temp, path)
     finally:
         if temp.exists():
@@ -481,7 +490,9 @@ def build_library(input_path: Path, library_path: Path, *, ocr="none",
             text = "# " + Path(name).stem.replace("\n", " ") + "\n\n" + \
                 "\n".join(page["markdown"] for page in pages)
             check_markdown(text)
-            _write(output, text)
+            _write(output, text,
+                   expected_sha=previous["output_sha"] if previous is not None else None,
+                   require_absent=previous is None)
             connection.execute("DELETE FROM pages WHERE document=?", (name,))
             for page in pages:
                 connection.execute(
@@ -495,6 +506,7 @@ def build_library(input_path: Path, library_path: Path, *, ocr="none",
                                (name, digest, sha256(output), signature, len(pages)))
             connection.commit()
         for name in old.keys() - current:
+            _check_owned_output(library, old[name])
             _output(library, name).unlink()
             connection.execute("DELETE FROM pages WHERE document=?", (name,))
             connection.execute("DELETE FROM documents WHERE document=?", (name,))

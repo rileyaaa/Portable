@@ -7,6 +7,7 @@ import stat
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -214,6 +215,166 @@ class PdfLibraryDatabaseTests(unittest.TestCase):
         self.assertEqual(sentinel.read_bytes(), b'keep')
         self.assertEqual(list(scratch.iterdir()), [sentinel])
         self.assertEqual(list(output.parent.iterdir()), [output])
+
+
+    def _synthetic_pdf(self):
+        source = self.package / 'work/source'
+        source.mkdir(parents=True, exist_ok=True)
+        pdf = source / 'synthetic.pdf'
+        pdf.write_bytes(b'synthetic PDF fixture; not parsed or executed')
+        return source, pdf
+
+    def _build_with_stub_renderer(self, source, callback=None):
+        page = dict(page=1, markdown='## PDF 第 1 页\n\nSynthetic text\n',
+                    text_total=14, text_matched=14, code_total=0, code_matched=0,
+                    ocr_status='not-flagged', ocr_reason='synthetic', images=0,
+                    supplement_lines=0)
+
+        def render(_file, **_kwargs):
+            if callback is not None:
+                callback()
+            return [page]
+
+        fake_pdf = SimpleNamespace(VersionBind='fixture')
+        fake_formatter = SimpleNamespace(__version__='fixture')
+        with mock.patch.object(self.module, '_dependencies', return_value=(fake_pdf, fake_formatter)), \
+             mock.patch.object(self.module, '_render_document', side_effect=render):
+            return self.module.build_library(source, self.library)
+
+    def test_new_markdown_arriving_during_render_is_preserved(self):
+        source, _ = self._synthetic_pdf()
+        output = self.library / 'manuals/synthetic.md'
+        original = b'User-created Markdown during conversion'
+
+        def user_create():
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(original)
+
+        with self.assertRaisesRegex(ValueError, 'unowned Markdown'):
+            self._build_with_stub_renderer(source, user_create)
+        self.assertEqual(output.read_bytes(), original)
+        with sqlite3.connect(self.database) as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM documents').fetchone()[0], 0)
+
+    def test_owned_markdown_modified_during_render_is_preserved(self):
+        source, pdf = self._synthetic_pdf()
+        self._build_with_stub_renderer(source)
+        output = self.library / 'manuals/synthetic.md'
+        old = output.read_bytes()
+        pdf.write_bytes(b'changed synthetic source to request regeneration')
+        manual_edit = b'User-edited Markdown while conversion ran'
+        with self.assertRaisesRegex(ValueError, 'removed/edited'):
+            self._build_with_stub_renderer(source, lambda: output.write_bytes(manual_edit))
+        self.assertNotEqual(old, manual_edit)
+        self.assertEqual(output.read_bytes(), manual_edit)
+        with sqlite3.connect(self.database) as connection:
+            self.assertEqual(connection.execute('SELECT output_sha FROM documents').fetchone()[0],
+                             self.module.hashlib.sha256(old).hexdigest())
+
+    def test_owned_markdown_modified_after_staging_is_preserved(self):
+        source, pdf = self._synthetic_pdf()
+        self._build_with_stub_renderer(source)
+        output = self.library / 'manuals/synthetic.md'
+        pdf.write_bytes(b'changed synthetic source to request regeneration')
+        manual_edit = b'Last-moment user Markdown edit'
+        original_mkstemp = self.module.tempfile.mkstemp
+        called = False
+
+        def mutate_during_stage(*args, **kwargs):
+            nonlocal called
+            if not called and kwargs.get('prefix') == '.pdf-library-':
+                called = True
+                output.write_bytes(manual_edit)
+            return original_mkstemp(*args, **kwargs)
+
+        with mock.patch.object(self.module.tempfile, 'mkstemp', side_effect=mutate_during_stage):
+            with self.assertRaisesRegex(ValueError, 'removed/edited'):
+                self._build_with_stub_renderer(source)
+        self.assertTrue(called)
+        self.assertEqual(output.read_bytes(), manual_edit)
+        self.assertFalse(list((self.package / 'tmp').glob('.pdf-library-*')))
+
+    def test_new_unowned_markdown_created_during_staging_is_preserved(self):
+        source, _ = self._synthetic_pdf()
+        output = self.library / 'manuals/synthetic.md'
+        user_content = b'Unowned Markdown added at staging time'
+        real_mkstemp = self.module.tempfile.mkstemp
+        changed = False
+
+        def create_during_stage(*args, **kwargs):
+            nonlocal changed
+            if not changed and kwargs.get('prefix') == '.pdf-library-':
+                changed = True
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(user_content)
+            return real_mkstemp(*args, **kwargs)
+
+        with mock.patch.object(self.module.tempfile, 'mkstemp', side_effect=create_during_stage):
+            with self.assertRaisesRegex(ValueError, 'unowned Markdown'):
+                self._build_with_stub_renderer(source)
+        self.assertTrue(changed)
+        self.assertEqual(output.read_bytes(), user_content)
+        self.assertFalse(list((self.package / 'tmp').glob('.pdf-library-*')))
+
+    def test_owned_markdown_removed_during_staging_is_not_recreated(self):
+        source, pdf = self._synthetic_pdf()
+        self._build_with_stub_renderer(source)
+        output = self.library / 'manuals/synthetic.md'
+        pdf.write_bytes(b'changed PDF fixture')
+        real_mkstemp = self.module.tempfile.mkstemp
+        changed = False
+
+        def remove_during_stage(*args, **kwargs):
+            nonlocal changed
+            if not changed and kwargs.get('prefix') == '.pdf-library-':
+                changed = True
+                output.unlink()
+            return real_mkstemp(*args, **kwargs)
+
+        with mock.patch.object(self.module.tempfile, 'mkstemp', side_effect=remove_during_stage):
+            with self.assertRaisesRegex(ValueError, 'removed/edited'):
+                self._build_with_stub_renderer(source)
+        self.assertTrue(changed)
+        self.assertFalse(output.exists())
+        self.assertFalse(list((self.package / 'tmp').glob('.pdf-library-*')))
+        with sqlite3.connect(self.database) as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM documents').fetchone()[0], 1)
+
+    def test_removed_source_does_not_delete_later_user_edits(self):
+        source, pdf = self._synthetic_pdf()
+        self._build_with_stub_renderer(source)
+        output = self.library / 'manuals/synthetic.md'
+        pdf.unlink()
+        manual_edit = b'User-edited removed-source Markdown'
+        original_check = self.module._check_owned_output
+        checks = 0
+
+        def edit_after_first_check(*args, **kwargs):
+            nonlocal checks
+            checks += 1
+            original_check(*args, **kwargs)
+            if checks == 1:
+                output.write_bytes(manual_edit)
+
+        with mock.patch.object(self.module, '_check_owned_output', side_effect=edit_after_first_check):
+            with self.assertRaisesRegex(ValueError, 'removed/edited'):
+                self._build_with_stub_renderer(source)
+        self.assertGreaterEqual(checks, 2)
+        self.assertEqual(output.read_bytes(), manual_edit)
+        with sqlite3.connect(self.database) as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM documents').fetchone()[0], 1)
+
+    def test_normal_synthetic_incremental_update_and_removal_still_work(self):
+        source, pdf = self._synthetic_pdf()
+        self.assertEqual(self._build_with_stub_renderer(source)['documents'], 1)
+        self.assertEqual(self._build_with_stub_renderer(source)['reused'], 1)
+        pdf.write_bytes(b'changed synthetic source')
+        self.assertEqual(self._build_with_stub_renderer(source)['reused'], 0)
+        pdf.unlink()
+        summary = self._build_with_stub_renderer(source)
+        self.assertEqual(summary['removed'], 1)
+        self.assertEqual(summary['documents'], 0)
+        self.assertFalse((self.library / 'manuals/synthetic.md').exists())
 
 
 
