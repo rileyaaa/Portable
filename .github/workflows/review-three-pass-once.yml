@@ -1,0 +1,32 @@
+name: Stop superseded release for confirmed converter repairs
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/review-three-pass-once.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stop-publication:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Stop only the superseded final-validation run
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GH_REPO/actions/runs/40159811138" --jq .head_sha)" = 26e519549fdf6ad5bbc32b84e9329506226f6d50
+          state=$(gh api "repos/$GH_REPO/actions/runs/40159811138" --jq .status)
+          if [ "$state" != completed ]; then
+            gh run cancel 40159811138
+          fi
+          test -z "$(gh api "repos/$GH_REPO/releases?per_page=100" --jq '.[]|select(.tag_name == "v2026.10.25.1")|.id')"
+          echo 'Release deliberately stopped for two newly reproduced converter bugs. Three-pass count resets after repair.'
