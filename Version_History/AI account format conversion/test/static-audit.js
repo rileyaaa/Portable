@@ -58,12 +58,13 @@ for (const f of cases) {
 // Use the real page handlers with inert DOM objects. Only synthetic accounts
 // are supplied, and no DOM event, browser, network or clipboard is executed.
 const assert=require('node:assert/strict');
-function converterPageFixture(){
+function converterPageFixture(crypto={}){
   const elements=new Map();
   const element=selector=>{
     if(!elements.has(selector)) elements.set(selector, {
       value:'', checked:false, innerHTML:'', textContent:'',
-      classList:{add(){},remove(){},toggle(){}}, addEventListener(){},
+      classList:{add(){},remove(){},toggle(){}}, events:Object.create(null),
+      addEventListener(name,handler){this.events[name]=handler;},
       querySelectorAll(){return [];}, click(){},
     });
     return elements.get(selector);
@@ -71,7 +72,7 @@ function converterPageFixture(){
   const page={document:{querySelector:element,querySelectorAll(){return [];}},
     console:{log(){},error(){},warn(){}}, setTimeout(){}, TextEncoder, TextDecoder,
     atob:s=>Buffer.from(s,'base64').toString('binary'),
-    btoa:s=>Buffer.from(s,'binary').toString('base64'), crypto:{}};
+    btoa:s=>Buffer.from(s,'binary').toString('base64'), crypto};
   page.window=page; vm.createContext(page);
   vm.runInContext(fs.readFileSync('app/converter.js','utf8'),page);
   vm.runInContext(fs.readFileSync('app/app.js','utf8'),page);
@@ -141,5 +142,262 @@ for(const [name,check] of uiChecks){
   catch(error){ok=false; console.error('[CONVERTER_UI_ZIP] '+name+': '+error.message);}
 }
 
-if(!ok) process.exit(1);
-console.log('static audit passed');
+// Exercise asynchronous vault handlers with real Web Crypto and synthetic data.
+// Capture downloads in memory; no credentials, file dialogs or browser state.
+const webcrypto=require('node:crypto').webcrypto;
+function vaultFixture(crypto=webcrypto){
+  const fixture=converterPageFixture(crypto);
+  fixture.downloads=[];
+  fixture.page.syntheticDownloads=fixture.downloads;
+  vm.runInContext('downloadText=(filename,content,type)=>syntheticDownloads.push({filename,content,type})',fixture.page);
+  fixture.element('#vaultPass').value='synthetic-test-password';
+  return fixture;
+}
+function loadSyntheticAccount(fixture, name='synthetic-account'){
+  fixture.element('#inputText').value=JSON.stringify({name,api_key:'synthetic-not-a-key'});
+  fixture.element('#convertBtn').onclick();
+  return vm.runInContext('JSON.stringify(state.canon)',fixture.page);
+}
+async function decryptSyntheticVault(vault,password='synthetic-test-password'){
+  assert.equal(vault.format,'ai-account-converter-vault');
+  assert.equal(vault.version,1);
+  assert.equal(vault.kdf,'PBKDF2-SHA256-150000');
+  assert.equal(vault.cipher,'AES-GCM');
+  const salt=Buffer.from(vault.salt,'base64'),iv=Buffer.from(vault.iv,'base64');
+  assert.equal(salt.length,16); assert.equal(iv.length,12);
+  const base=await webcrypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveKey']);
+  const key=await webcrypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:150000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['decrypt']);
+  const plain=await webcrypto.subtle.decrypt({name:'AES-GCM',iv},key,Buffer.from(vault.data,'base64'));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+async function checkExportSnapshot(change){
+  let release,started;
+  const ready=new Promise(resolve=>started=resolve), gate=new Promise(resolve=>release=resolve);
+  const fixture=vaultFixture({
+    getRandomValues:webcrypto.getRandomValues.bind(webcrypto),
+    subtle:{
+      importKey:webcrypto.subtle.importKey.bind(webcrypto.subtle),
+      encrypt:webcrypto.subtle.encrypt.bind(webcrypto.subtle),
+      deriveKey:async(...args)=>{started();await gate;return webcrypto.subtle.deriveKey(...args);},
+    },
+  });
+  const expected=loadSyntheticAccount(fixture,'original-synthetic');
+  const exporting=fixture.element('#exportVaultBtn').onclick();
+  await ready;
+  try{change(fixture);}finally{release();}
+  await exporting;
+  assert.equal(fixture.downloads.length,1,'Exactly one export is required');
+  const restored=await decryptSyntheticVault(JSON.parse(fixture.downloads[0].content));
+  assert.equal(JSON.stringify(restored.canon),expected,'Export must use the account snapshot selected at click time');
+  return fixture;
+}
+const reviewChecks=[
+  ['wrapper arrays ignore non-array metadata',()=>{
+    const {page}=converterPageFixture();
+    const account={name:'synthetic-wrapper',api_key:'synthetic-not-a-key'};
+    for(const input of [
+      {data:{count:1},items:[account]},
+      {data:'metadata',tokens:[account]},
+      {items:'metadata',tokens:[account]},
+      {data:42,items:false,tokens:[account]},
+    ]){
+      const result=page.AccountConverter.canonicalize(JSON.stringify(input));
+      assert.equal(result.accounts.length,1);
+      assert.equal(result.accounts[0].name,account.name);
+    }
+  }],
+  ['wrapper precedence and ordinary arrays are unchanged',()=>{
+    const {page}=converterPageFixture();
+    const first={name:'first',api_key:'synthetic-first'},second={name:'second',api_key:'synthetic-second'};
+    for(const key of ['data','items','tokens']){
+      assert.equal(page.AccountConverter.canonicalize(JSON.stringify({[key]:[first]})).accounts[0].name,'first');
+    }
+    assert.equal(page.AccountConverter.canonicalize(JSON.stringify({data:[first],items:[second],tokens:[second]})).accounts[0].name,'first');
+    assert.throws(()=>page.AccountConverter.canonicalize(JSON.stringify({data:[],items:[second]})));
+  }],
+  ['vault byte encoding matches independent Base64 at chunk boundaries',()=>{
+    const {page}=converterPageFixture();
+    for(const size of [0,1,2,3,16383,16384,16385,32769,1048576]){
+      const data=Uint8Array.from({length:size},(_,i)=>(i*37+19)&255);
+      page.syntheticBytes=data;
+      assert.equal(vm.runInContext('bytesToBase64(syntheticBytes)',page),Buffer.from(data).toString('base64'));
+    }
+  }],
+  ['large vault export round-trips actual encrypted account data',async()=>{
+    const fixture=vaultFixture();
+    fixture.element('#inputText').value=JSON.stringify(Array.from({length:24},(_,i)=>({
+      name:'synthetic-'+i,access_token:'synthetic-'+('a'.repeat(4096)),refresh_token:'synthetic-refresh-'+i,
+    })));
+    fixture.element('#convertBtn').onclick();
+    const expected=vm.runInContext('JSON.stringify(state.canon)',fixture.page);
+    assert.ok(Buffer.byteLength(expected)>300000);
+    await fixture.element('#exportVaultBtn').onclick();
+    assert.equal(fixture.downloads.length,1,'Large vault must not fail from argument-stack overflow');
+    const restored=await decryptSyntheticVault(JSON.parse(fixture.downloads[0].content));
+    assert.equal(JSON.stringify(restored.canon),expected);
+  }],
+  ['clear during key derivation cannot replace export with an empty vault',async()=>{
+    const fixture=await checkExportSnapshot(f=>f.element('#clearBtn').onclick());
+    assert.equal(vm.runInContext('state.canon',fixture.page),null);
+  }],
+  ['another conversion during key derivation cannot change the selected export',async()=>{
+    const fixture=await checkExportSnapshot(f=>loadSyntheticAccount(f,'new-synthetic'));
+    assert.equal(vm.runInContext('state.canon.accounts[0].name',fixture.page),'new-synthetic');
+  }],
+  ['vault format, import compatibility and wrong-password rejection remain intact',async()=>{
+    const fixture=vaultFixture();
+    const expected=loadSyntheticAccount(fixture,'\u5408\u6210-\ud83d\udd10');
+    await fixture.element('#exportVaultBtn').onclick();
+    assert.equal(fixture.downloads.length,1);
+    const vault=JSON.parse(fixture.downloads[0].content);
+    assert.equal(JSON.stringify((await decryptSyntheticVault(vault)).canon),expected);
+    await assert.rejects(decryptSyntheticVault(vault,'wrong-synthetic-password'));
+    let loaded;
+    fixture.page.FileReader=class{
+      readAsText(file){this.result=file.syntheticText;loaded=this.onload();}
+    };
+    fixture.element('#clearBtn').onclick();
+    fixture.element('#vaultFileInput').onchange({target:{files:[{syntheticText:JSON.stringify(vault)}]}});
+    await loaded;
+    assert.equal(vm.runInContext('JSON.stringify(state.canon)',fixture.page),expected);
+  }],
+  ['failed vault import preserves the current account, output and input',async()=>{
+    const fixture=vaultFixture();
+    loadSyntheticAccount(fixture,'keep-existing-synthetic');
+    const before=vm.runInContext('JSON.stringify(state)',fixture.page);
+    const inputBefore=fixture.element('#inputText').value;
+    const valid=JSON.parse(vm.runInContext('JSON.stringify(state.canon)',fixture.page));
+    const variants=[null,{...valid,hints:null},{...valid,accounts:[null]},
+      {...valid,accounts:[{...valid.accounts[0],plan:{toString:1}}]}];
+    for(const canon of variants){
+      const salt=webcrypto.getRandomValues(new Uint8Array(16)),iv=webcrypto.getRandomValues(new Uint8Array(12));
+      const base=await webcrypto.subtle.importKey('raw',new TextEncoder().encode('synthetic-test-password'),'PBKDF2',false,['deriveKey']);
+      const key=await webcrypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:150000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt']);
+      const encrypted=await webcrypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(JSON.stringify({version:1,canon})));
+      const vault={format:'ai-account-converter-vault',version:1,kdf:'PBKDF2-SHA256-150000',cipher:'AES-GCM',
+        salt:Buffer.from(salt).toString('base64'),iv:Buffer.from(iv).toString('base64'),data:Buffer.from(encrypted).toString('base64')};
+      let loaded;
+      fixture.page.FileReader=class{readAsText(file){this.result=file.syntheticText;loaded=this.onload();}};
+      fixture.element('#vaultFileInput').onchange({target:{files:[{syntheticText:JSON.stringify(vault)}]}});
+      await loaded;
+      assert.equal(vm.runInContext('JSON.stringify(state)',fixture.page),before,'Rejected vault must preserve existing state');
+      assert.equal(fixture.element('#inputText').value,inputBefore,'Rejected vault must preserve existing input');
+    }
+  }],
+  ['missing account or password cannot start a vault download',async()=>{
+    const fixture=vaultFixture({getRandomValues(){throw new Error('Unexpected crypto execution');}});
+    await fixture.element('#exportVaultBtn').onclick();
+    assert.equal(fixture.downloads.length,0);
+    loadSyntheticAccount(fixture);
+    fixture.element('#vaultPass').value='';
+    await fixture.element('#exportVaultBtn').onclick();
+    assert.equal(fixture.downloads.length,0);
+  }],
+];
+
+// Reproduce interleaved imports without timers: pause real key derivation at a
+// controlled boundary, then exercise the user's actual clear/convert handlers.
+function startSyntheticImport(fixture, vault){
+  let loaded;
+  fixture.page.FileReader=class{
+    readAsText(file){this.result=file.syntheticText;loaded=this.onload();}
+  };
+  fixture.element('#vaultFileInput').onchange({target:{files:[{syntheticText:vault}]}});
+  return loaded;
+}
+async function syntheticVault(name){
+  const fixture=vaultFixture();
+  loadSyntheticAccount(fixture,name);
+  await fixture.element('#exportVaultBtn').onclick();
+  assert.equal(fixture.downloads.length,1);
+  return fixture.downloads[0].content;
+}
+function pausedImportFixture(){
+  let release,started,first=true;
+  const ready=new Promise(resolve=>started=resolve),gate=new Promise(resolve=>release=resolve);
+  const fixture=vaultFixture({
+    getRandomValues:webcrypto.getRandomValues.bind(webcrypto),
+    subtle:{
+      importKey:webcrypto.subtle.importKey.bind(webcrypto.subtle),
+      decrypt:webcrypto.subtle.decrypt.bind(webcrypto.subtle),
+      deriveKey:async(...args)=>{
+        if(first){first=false;started();await gate;}
+        return webcrypto.subtle.deriveKey(...args);
+      },
+    },
+  });
+  return {fixture,ready,release:()=>release()};
+}
+async function checkCancelledImport(change){
+  const vault=await syntheticVault('pending-import');
+  const {fixture,ready,release}=pausedImportFixture();
+  loadSyntheticAccount(fixture,'current-account');
+  const pending=startSyntheticImport(fixture,vault);
+  await ready;
+  change(fixture);
+  const expected=vm.runInContext('JSON.stringify(state)',fixture.page);
+  const expectedInput=fixture.element('#inputText').value;
+  release();await pending;
+  assert.ok(vm.runInContext('JSON.stringify(state)',fixture.page)===expected,
+    'An older import must not overwrite a newer user decision');
+  assert.equal(fixture.element('#inputText').value,expectedInput);
+}
+reviewChecks.push(
+  ['clear cancels an in-flight decrypted vault import',async()=>{
+    await checkCancelledImport(f=>f.element('#clearBtn').onclick());
+  }],
+  ['conversion or typed input cancels an older vault import',async()=>{
+    await checkCancelledImport(f=>loadSyntheticAccount(f,'new-conversion'));
+    await checkCancelledImport(f=>{
+      f.element('#inputText').value='new unsaved synthetic input';
+      f.element('#inputText').events.input?.();
+    });
+  }],
+  ['newest selected vault wins even when the older crypto finishes later',async()=>{
+    const oldVault=await syntheticVault('older-selection'),newVault=await syntheticVault('newer-selection');
+    const {fixture,ready,release}=pausedImportFixture();
+    loadSyntheticAccount(fixture,'current-account');
+    const oldPending=startSyntheticImport(fixture,oldVault);
+    await ready;
+    await startSyntheticImport(fixture,newVault);
+    assert.equal(vm.runInContext('state.canon.accounts[0].name',fixture.page),'newer-selection');
+    release();await oldPending;
+    assert.equal(vm.runInContext('state.canon.accounts[0].name',fixture.page),'newer-selection');
+  }],
+  ['out-of-order ordinary FileReader completion preserves the latest selection',()=>{
+    const fixture=vaultFixture(),readers=[];
+    fixture.page.FileReader=class{
+      readAsText(file){this.result=file.syntheticText;readers.push(this);}
+    };
+    for(const name of ['older-file','newer-file']){
+      fixture.element('#fileInput').onchange({target:{files:[{name,
+        syntheticText:JSON.stringify({name,api_key:'synthetic-not-a-key'})}]}});
+    }
+    readers[1].onload();readers[0].onload();
+    assert.equal(vm.runInContext('state.canon.accounts[0].name',fixture.page),'newer-file');
+  }],
+  ['clear cancels an ordinary pending file read and its stale error',()=>{
+    const fixture=vaultFixture();let reader;
+    fixture.page.FileReader=class{
+      readAsText(file){this.result=file.syntheticText;reader=this;}
+    };
+    loadSyntheticAccount(fixture,'current-account');
+    fixture.element('#fileInput').onchange({target:{files:[{name:'old-file',
+      syntheticText:JSON.stringify({name:'old-file',api_key:'synthetic-not-a-key'})}]}});
+    fixture.element('#clearBtn').onclick();
+    const toast=fixture.element('#toast').textContent;
+    reader.onload();reader.onerror();
+    assert.equal(vm.runInContext('state.canon',fixture.page),null);
+    assert.equal(fixture.element('#inputText').value,'');
+    assert.equal(fixture.element('#toast').textContent,toast);
+  }],
+);
+
+(async()=>{
+  for(const [name,check] of reviewChecks){
+    try{await check();console.log('PASS converter review: '+name);}
+    catch(error){ok=false;console.error('[CONVERTER_REVIEW] '+name+': '+error.message);}
+  }
+  if(!ok){process.exitCode=1;return;}
+  console.log('static audit passed');
+})().catch(error=>{console.error('[CONVERTER_REVIEW] '+error.name);process.exitCode=1;});

@@ -54,6 +54,8 @@ module.exports = async ({page, context, workspace}) => {
     const html = fs.readFileSync(path.join(converterRoot, 'index.html'), 'utf8')
       .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
       .replace(/<link\b[^>]*>/gi, '');
+    // A routed HTTPS origin supplies a secure context without external traffic.
+    await converterPage.goto('https://portable-release.invalid/converter-audit');
     await converterPage.setContent(html);
     for (const script of ['converter.js', 'app.js']) {
       await converterPage.addScriptTag({content: fs.readFileSync(path.join(converterRoot, 'app', script), 'utf8')});
@@ -97,6 +99,71 @@ module.exports = async ({page, context, workspace}) => {
         JSON.parse(JSON.stringify(mapped)).__proto__.syntheticFlag === true;
     });
     if (!inputRulesOk) throw new Error('Converter wrapper/rule mapping lost data or inherited a field.');
+
+    // Real browser Web Crypto and native FileReader, using only synthetic data.
+    await converterPage.locator('#rulesToggle').uncheck();
+    await converterPage.locator('#vaultToggle').check();
+    await converterPage.locator('#vaultPass').fill('synthetic-browser-password');
+    await converterPage.locator('#inputText').fill(JSON.stringify(Array.from({length:24},(_,i)=>({
+      name:'synthetic-browser-'+i,access_token:'synthetic-'+('a'.repeat(4096)),
+      refresh_token:'synthetic-refresh-'+i,
+    }))));
+    await converterPage.locator('#convertBtn').click();
+    const saved = await converterPage.evaluate(async () => {
+      const oldDownload = downloadText, downloads = [];
+      downloadText = (name,content) => downloads.push(content);
+      try {
+        await $('#exportVaultBtn').onclick();
+        if (downloads.length !== 1) throw new Error('Large browser vault export failed.');
+        return {vault: downloads[0], canon: JSON.stringify(state.canon)};
+      } finally { downloadText = oldDownload; }
+    });
+    if (Buffer.byteLength(saved.canon) < 300000) throw new Error('Vault fixture is too small.');
+    await converterPage.locator('#clearBtn').click();
+    const upload = name => ({name, mimeType:'application/json', buffer:Buffer.from(saved.vault)});
+    await converterPage.locator('#vaultFileInput').setInputFiles(upload('synthetic-roundtrip.json'));
+    await converterPage.waitForFunction(expected => JSON.stringify(state.canon) === expected, saved.canon);
+    const beforeRejected = await converterPage.evaluate(() => JSON.stringify(state));
+    await converterPage.locator('#vaultPass').fill('wrong-synthetic-password');
+    await converterPage.evaluate(() => { toast.textContent = 'synthetic-pending'; });
+    await converterPage.locator('#vaultFileInput').setInputFiles(upload('synthetic-wrong-password.json'));
+    await converterPage.waitForFunction(() => toast.textContent.startsWith('vault \u89e3\u5bc6\u5931\u8d25'));
+    if (await converterPage.evaluate(() => JSON.stringify(state)) !== beforeRejected)
+      throw new Error('Wrong-password import changed browser account state.');
+    await converterPage.locator('#vaultPass').fill('synthetic-browser-password');
+    await converterPage.evaluate(() => {
+      window.__originalVaultKey = keyFromPass;
+      window.__originalVaultRead = FileReader.prototype.readAsText;
+      window.__vaultStarted = false; window.__vaultImportDone = false;
+      const gate = new Promise(resolve => { window.__releaseVaultGate = resolve; });
+      keyFromPass = async (...args) => {
+        window.__vaultStarted = true; await gate; return window.__originalVaultKey(...args);
+      };
+      FileReader.prototype.readAsText = function(...args) {
+        const originalLoad = this.onload;
+        this.onload = async (...events) => {
+          try { return await originalLoad.apply(this,events); }
+          finally { window.__vaultImportDone = true; }
+        };
+        return window.__originalVaultRead.apply(this,args);
+      };
+    });
+    try {
+      await converterPage.locator('#vaultFileInput').setInputFiles(upload('synthetic-cancelled.json'));
+      await converterPage.waitForFunction(() => window.__vaultStarted);
+      await converterPage.locator('#clearBtn').click();
+      await converterPage.evaluate(() => window.__releaseVaultGate());
+      await converterPage.waitForFunction(() => window.__vaultImportDone);
+      if (!(await converterPage.evaluate(() => state.canon === null && input.value === '')))
+        throw new Error('A stale vault import restored accounts after browser clear.');
+    } finally {
+      await converterPage.evaluate(() => {
+        window.__releaseVaultGate();
+        keyFromPass = window.__originalVaultKey;
+        FileReader.prototype.readAsText = window.__originalVaultRead;
+      });
+    }
+
   } finally {
     await converterPage.close();
   }
@@ -134,6 +201,7 @@ module.exports = async ({context}) => ({
     Write-Output 'PASS real bundled Chromium, relocated path with spaces, page rendering, screenshot and persistent cookie'
     Write-Output 'PASS real converter UI escapes imported types and emits UTF-8 ZIP filenames'
     Write-Output 'PASS real converter UI preserves wrapped arrays and prototype-named mapping fields'
+    Write-Output 'PASS real browser vault large roundtrip, wrong-password preservation and cancelled import'
     $cleaner = Join-Path $fixture '清理缓存.ps1'
     & $engine -NoProfile -ExecutionPolicy Bypass -File $cleaner -Yes
     if ($LASTEXITCODE -ne 0) { throw 'Fixture cache cleaner failed.' }
