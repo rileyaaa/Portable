@@ -3379,9 +3379,22 @@ if ($UseBrowserLogin -and $BrowserLoginRequired) {
     Write-Host "官方账号登录凭证已独立保存：$BrowserAuthPath" -ForegroundColor Green
 }
 
+function Get-PortableInteractiveLaunchArgs {
+    param([object[]]$LaunchArgs, [string]$RootCommand)
+    # The managed shared daemon cannot install beneath its own source package.
+    # Keep CODEX_HOME inside this package and use the official local TUI backend.
+    if ($RootCommand -notin @('', 'resume', 'fork')) { return $LaunchArgs }
+    foreach ($argument in $LaunchArgs) {
+        if ([string]$argument -eq '--') { break }
+        if ([string]$argument -ceq '--no-daemon') { return $LaunchArgs }
+    }
+    return @('--no-daemon') + @($LaunchArgs)
+}
+
 function Invoke-CodexChild {
     param([object[]]$LaunchArgs)
-    $script:CodexProcessExitCode = Invoke-CodexChildInteractive -LaunchArgs $LaunchArgs
+    $interactiveArgs = @(Get-PortableInteractiveLaunchArgs -LaunchArgs $LaunchArgs -RootCommand $script:CodexRootCommand)
+    $script:CodexProcessExitCode = Invoke-CodexChildInteractive -LaunchArgs $interactiveArgs
 }
 
 # ------------------------------------------------------------

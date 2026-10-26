@@ -70,3 +70,29 @@ foreach ($case in $cases) {
     Write-Output ('PASS model CLI ' + $case.Name)
 }
 Write-Output ($cases.Count.ToString() + ' production model-option cases passed (offline).')
+
+foreach ($name in @('Get-PortableInteractiveLaunchArgs', 'Invoke-CodexChild')) {
+    $node = @($ast.FindAll({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] }, $true) | Where-Object Name -eq $name)
+    . ([scriptblock]::Create($node[0].Extent.Text))
+}
+function Invoke-CodexChildInteractive { param([object[]]$LaunchArgs) $script:ObservedLaunchArgs = @($LaunchArgs); return 23 }
+$dispatchCases = @(
+    @{ Root = ''; Tokens = @(); Expected = @('--no-daemon') },
+    @{ Root = ''; Tokens = @('synthetic prompt'); Expected = @('--no-daemon','synthetic prompt') },
+    @{ Root = 'resume'; Tokens = @('resume','--last'); Expected = @('--no-daemon','resume','--last') },
+    @{ Root = 'fork'; Tokens = @('fork','--last'); Expected = @('--no-daemon','fork','--last') },
+    @{ Root = ''; Tokens = @('--no-daemon'); Expected = @('--no-daemon') },
+    @{ Root = 'resume'; Tokens = @('resume','--last','--no-daemon'); Expected = @('resume','--last','--no-daemon') },
+    @{ Root = ''; Tokens = @('--','--no-daemon'); Expected = @('--no-daemon','--','--no-daemon') },
+    @{ Root = ''; Tokens = @('--version'); Expected = @('--no-daemon','--version') },
+    @{ Root = 'exec'; Tokens = @('exec','synthetic'); Expected = @('exec','synthetic') },
+    @{ Root = 'mcp'; Tokens = @('mcp','list'); Expected = @('mcp','list') },
+    @{ Root = 'logout'; Tokens = @('logout'); Expected = @('logout') }
+)
+foreach ($case in $dispatchCases) {
+    $script:CodexRootCommand = $case.Root
+    Invoke-CodexChild -LaunchArgs $case.Tokens
+    if ($script:CodexProcessExitCode -ne 23) { throw 'Native exit code was lost.' }
+    if (($script:ObservedLaunchArgs -join [char]0) -cne ($case.Expected -join [char]0)) { throw ('Incorrect daemon dispatch: ' + $case.Root) }
+}
+Write-Output ($dispatchCases.Count.ToString() + ' production interactive dispatch cases passed.')

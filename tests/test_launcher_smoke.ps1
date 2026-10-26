@@ -132,6 +132,18 @@ print('PASS full launcher generated configuration: ' + mode)
         if ($LASTEXITCODE -ne 0) { throw 'Full launcher generated configuration did not match the portable contract.' }
         Write-Output ('PASS real BAT/native launch: ' + $case)
     }
+    # --version/config reads never exercise automatic shared-daemon setup.
+    # Use a genuine Windows pseudoconsole and synthetic API settings; no prompt
+    # is submitted. Disable the launcher menu only inside this owned fixture.
+    $localSettings = Join-Path $fixture 'env.local.ps1'
+    $beforeTuiSettings = [IO.File]::ReadAllBytes($localSettings)
+    try {
+        [IO.File]::AppendAllText($localSettings, "`n" + '$env:CODEX_STARTUP_INTERACTIVE = "false"' + "`n", $utf8)
+        & (Join-Path $root 'tool/python/python.exe') -B (Join-Path $root 'tests/test_tui_console.py') $fixture $entry
+        if ($LASTEXITCODE -ne 0) { throw 'Real interactive TUI startup regression.' }
+    } finally {
+        [IO.File]::WriteAllBytes($localSettings, $beforeTuiSettings)
+    }
     # A real offline maintenance lifecycle must keep the inactive plugin sidecar.
     # These stdio entries are synthetic non-existent commands; add/list/remove
     # manage configuration only and must never launch an MCP server.
