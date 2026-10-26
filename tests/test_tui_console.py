@@ -92,7 +92,8 @@ def main():
         check(k.InitializeProcThreadAttributeList(attrs,1,0,ctypes.byref(size)));initialized=True
         check(k.UpdateProcThreadAttribute(attrs,0,0x00020016,console,SIZE(ctypes.sizeof(HANDLE)),None,None))
         si=SIX();si.si.cb=ctypes.sizeof(si);si.attrs=ctypes.cast(attrs,ctypes.c_void_p)
-        command=ctypes.create_unicode_buffer('"'+os.environ['SystemRoot']+'\\System32\\cmd.exe" /d /s /c ""'+str(bat)+'""')
+        # Reopen stdio on the attached pseudoconsole, not the CI host pipes.
+        command=ctypes.create_unicode_buffer('"'+os.environ['SystemRoot']+'\\System32\\cmd.exe" /d /s /c ""'+str(bat)+'" <CONIN$ >CONOUT$ 2>&1"')
         job=k.CreateJobObjectW(None,None);check(job);handles.append(job)
         check(k.CreateProcessW(None,command,None,None,False,0x00080000|0x00000004,None,str(root),ctypes.byref(si),ctypes.byref(pi)))
         handles.extend([pi.process,pi.thread])
