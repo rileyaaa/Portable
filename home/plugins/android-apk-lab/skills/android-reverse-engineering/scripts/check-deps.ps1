@@ -98,7 +98,6 @@ $portableParts = @(
     (Resolve-PortablePath (Join-Path $Root 'tool\bin')),
     (Resolve-PortablePath (Join-Path $Root 'tool\python')),
     (Resolve-PortablePath (Join-Path $Root 'tool\python\Scripts')),
-    (Resolve-PortablePath (Join-Path $Root 'tool\python\Lib\site-packages\bin')),
     (Resolve-PortablePath (Join-Path $Root 'cache\python-userbase\Scripts')),
     (Resolve-PortablePath (Join-Path $Root 'cache\npm-prefix')),
     (Resolve-PortablePath (Join-Path $Root 'cache\npm-prefix\node_modules\.bin')),
@@ -128,9 +127,9 @@ $checks = @(
     @{name='aapt2';    cmd='aapt2';      required=$false; portable=$AndroidBuildToolsPath},
     @{name='apksigner';cmd='apksigner';  required=$false; portable=$AndroidBuildToolsPath},
     @{name='zipalign'; cmd='zipalign';    required=$false; portable=$AndroidBuildToolsPath},
-    @{name='frida';    cmd='frida';       required=$false; portable=(Join-Path $Root 'tool\python\Lib\site-packages\bin')},
-    @{name='mitmproxy';cmd='mitmproxy';   required=$false; portable=(Join-Path $Root 'tool\python\Lib\site-packages\bin')},
-    @{name='objection';cmd='objection';   required=$false; portable=(Join-Path $Root 'tool\python\Lib\site-packages\bin')},
+    @{name='frida';    cmd='frida';       required=$false; portable=(Join-Path $Root 'tool\bin')},
+    @{name='mitmproxy';cmd='mitmproxy';   required=$false; portable=(Join-Path $Root 'tool\bin')},
+    @{name='objection';cmd='objection';   required=$false; portable=(Join-Path $Root 'tool\bin')},
     @{name='appium';   cmd='appium';      required=$false; portable=(Join-Path $Root 'cache\npm-prefix')},
     @{name='maestro';  cmd='maestro';     required=$false; portable=(Join-Path $Root 'tool\android\maestro\bin')}
 )

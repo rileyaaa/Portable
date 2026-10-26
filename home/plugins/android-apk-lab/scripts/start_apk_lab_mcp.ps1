@@ -132,7 +132,6 @@ $env:PATH = @(
     (Resolve-ApkLabPath (Join-Path $Root 'tool\bin')),
     (Resolve-ApkLabPath (Join-Path $Root 'tool\python')),
     (Resolve-ApkLabPath (Join-Path $Root 'tool\python\Scripts')),
-    (Resolve-ApkLabPath (Join-Path $Root 'tool\python\Lib\site-packages\bin')),
     (Join-Path $env:SystemRoot 'System32'),
     $env:SystemRoot,
     (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0')
