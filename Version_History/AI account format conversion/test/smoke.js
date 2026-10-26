@@ -164,3 +164,20 @@ console.log('CONVERTER_TEMPLATE_CASES='+templatePassed+'/'+templateCases.length)
 
 if(!ok) process.exit(1);
 
+
+// Credential masking must use actual values, including encoded output formats.
+for(const key of ['synthetic-custom-key-A91-B82-C73','quote"and#hash','single\'quote']){
+ const canon=C.canonicalize(JSON.stringify({api_key:key}));
+ for(const out of C.convertAll(canon)){
+  const masked=C.redactText(out.content,canon.accounts);
+  assert.ok(!masked.includes(key));
+  assert.ok(!masked.includes(JSON.stringify(key).slice(1,-1)));
+ }
+ const env=C.convertAll(canon).find(o=>o.id==='env').content;
+ assert.equal(require('node:util').parseEnv(env).OPENAI_API_KEY,key);
+}
+for(const key of ['synthetic\nOTHER_SETTING=injected',`both'and"quotes`]){
+ const env=C.convertAll(C.canonicalize(JSON.stringify({api_key:key}))).find(o=>o.id==='env').content;
+ assert.deepEqual(require('node:util').parseEnv(env),{});
+}
+console.log('PASS credential redaction and dotenv roundtrip/rejection');

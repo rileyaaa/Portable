@@ -405,5 +405,27 @@ class InstructionInstallerTests(unittest.TestCase):
         self.assertEqual(local.read_bytes(), b"# Preserve the synthetic local settings.\r\n")
         self.assertFalse((self.root / "tmp").exists())
 
+    def test_settings_commit_failure_restores_exact_previous_md(self):
+        for existing in (False, True):
+            target = self.root / 'home/synthetic.md'
+            target.parent.mkdir(exist_ok=True)
+            if existing: target.write_bytes(b'\xef\xbb\xbfOriginal\r\n')
+            else: target.unlink(missing_ok=True)
+            local = self.root / 'env.local.ps1'
+            original = b"$env:CODEX_MODEL_INSTRUCTIONS_FILE = 'old.md'\n"
+            local.write_bytes(original)
+            module = self.load()
+            replace = module.os.replace
+            def fail_config(source, destination):
+                if Path(destination) == local: raise PermissionError('synthetic config lock')
+                return replace(source, destination)
+            with mock.patch.object(module.os, 'replace', side_effect=fail_config):
+                with self.assertRaises(PermissionError): self.run_main(module)
+            self.assertEqual(local.read_bytes(), original)
+            if existing: self.assertEqual(target.read_bytes(), b'\xef\xbb\xbfOriginal\r\n')
+            else: self.assertFalse(target.exists())
+            self.assertEqual(list((self.root / 'tmp').iterdir()), [])
+
+
 if __name__ == "__main__":
     unittest.main()

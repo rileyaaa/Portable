@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "source_commit": "fcaf45e5dfe4c97f096475f211a423b6d882c4ae",
-  "note": "Exact historical Git objects, not new wheel downloads. Packaging remains opt-in via tool/bin/pyinstaller.cmd; no compilation was performed during restoration.",
+  "note": "Exact historical Git objects, not new wheel downloads. Packaging remains opt-in via package-local python -m PyInstaller; no compilation was performed during restoration.",
   "packages": {
     "pyinstaller": "6.21.0",
     "pyinstaller-hooks-contrib": "2026.6",

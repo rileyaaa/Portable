@@ -166,8 +166,16 @@
   }
   function webSessionDraft(a){return {WARNING_BANNER:WARN, user:{id:a.user_id||'', name:a.name||'', email:a.email||'', idp:'unknown'}, expires:a.expires||'', account:{id:a.account_id||'', planType:a.plan||'', structure:'workspace'}, accessToken:a.access_token||a.id_token||'', authProvider:'openai', sessionToken:a.session_token||'', rumViewTags:{light_account:{fetched:false}}, _note:'由其他格式反推的 web session 草稿；缺少原始 sessionToken 时不能作为浏览器完整会话。'};}
   function genericOAuth(a){return {platform:a.platform, type:a.type, auth_mode:a.auth_mode, id_token:a.id_token||a.access_token, access_token:a.access_token||a.id_token, refresh_token:a.refresh_token||'', account_id:a.account_id||'', chatgpt_user_id:a.user_id||'', email:a.email||'', client_id:a.client_id||'', expires:a.expires||'', last_refresh:a.last_refresh||nowIso()};}
-  function envOutOne(a,idx){const n=idx?`_${idx}`:''; const lines=[]; if(a.api_key) lines.push(`OPENAI_API_KEY${n}=${a.api_key}`); if(a.base_url) lines.push(`OPENAI_BASE_URL${n}=${a.base_url}`); if(a.access_token) lines.push(`CODEX_ACCESS_TOKEN${n}=${a.access_token}`); if(a.refresh_token) lines.push(`OPENAI_REFRESH_TOKEN${n}=${a.refresh_token}`); return lines;}
-  function envOut(accs){const multi=accs.length>1; const lines=[]; accs.forEach((a,i)=>lines.push(...envOutOne(a,multi?i+1:0))); return lines.join('\n')||'# 没有可导出的 env 字段';}
+  function envValue(value){
+    value=String(value);
+    if(/[\r\n\0]/.test(value)) throw new Error('multiline credential');
+    if(/^[A-Za-z0-9_./:@+\-]*$/.test(value)) return value;
+    if(!value.includes("'")) return "'"+value+"'";
+    if(!value.includes('"')&&!value.includes('\\')) return '"'+value+'"';
+    throw new Error('ambiguous dotenv quoting');
+  }
+  function envOutOne(a,idx){const n=idx?`_${idx}`:''; const lines=[]; for(const [field,key] of [['api_key','OPENAI_API_KEY'],['base_url','OPENAI_BASE_URL'],['access_token','CODEX_ACCESS_TOKEN'],['refresh_token','OPENAI_REFRESH_TOKEN']]) if(a[field]) lines.push(`${key}${n}=${envValue(a[field])}`); return lines;}
+  function envOut(accs){try{const multi=accs.length>1; return accs.flatMap((a,i)=>envOutOne(a,multi?i+1:0)).join('\n')||'# 没有可导出的 env 字段';}catch(e){return '# 此输入包含无法安全表示的 dotenv 值；请使用 JSON 输出。';}}
   function proxyJson(a){return {name:a.name, provider:'openai-compatible', base_url:a.base_url||'https://api.openai.com/v1', api_key:a.api_key||a.access_token||'', headers:a.access_token&&!a.api_key?{Authorization:`Bearer ${a.access_token}`}:{}, note:a.type==='oauth'?'OAuth access token 被放入 Bearer；过期后需要刷新/重导入。':'API key 配置'};}
   // Keep dynamic YAML scalars as strings, including YAML-specific line breaks.
   function yamlScalar(value){return JSON.stringify(String(value)).replace(/[\u007f-\u009f\u2028\u2029]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));}
@@ -248,7 +256,10 @@
     return outputs;
   }
 
-  function redactText(s){
+  function redactText(s,accounts=[]){
+    const secrets=accounts.flatMap(a=>['api_key','access_token','refresh_token','id_token','session_token','client_secret'].map(k=>a[k])).filter(v=>typeof v==='string'&&v.length);
+    const forms=[...new Set(secrets.flatMap(v=>[v,JSON.stringify(v).slice(1,-1),encodeURIComponent(v),v.replace(/'/g,"'\"'\"'")]))].sort((a,b)=>b.length-a.length);
+    s=String(s); for(const value of forms) s=s.split(value).join('[REDACTED]');
     return String(s).replace(/(sk-(?:proj-)?[A-Za-z0-9_-]{12})[A-Za-z0-9_-]+/g,'$1…REDACTED')
       .replace(/(eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.)[A-Za-z0-9_-]*/g,'$1…REDACTED')
       .replace(/(rt\.[A-Za-z0-9._-]{8})[A-Za-z0-9._-]+/g,'$1…REDACTED')

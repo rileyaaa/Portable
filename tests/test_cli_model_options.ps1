@@ -15,6 +15,7 @@ $PortableMaintenanceMode = $true
 $PortableExtensionPolicy = [pscustomobject]@{ AllowedNamespaces = @('mcp_servers', 'plugins') }
 $ConfiguredAuthMode = 'api'; $PreviousAuthMode = ''
 $cases = @(
+    @{ Name = 'internal tunnel rejected'; Tokens = @('tcp-tunnel','--proxy-origins-file','C:\outside\origins.txt'); Reject = $true },
     @{ Name = 'short separate'; Tokens = @('-m', 'Synthetic/Model', '--version'); Value = 'Synthetic/Model' },
     @{ Name = 'short attached'; Tokens = @('-mSynthetic/Model', '--version'); Value = 'Synthetic/Model' },
     @{ Name = 'short equals'; Tokens = @('-m=Synthetic/Model', '--version'); Value = 'Synthetic/Model' },

@@ -246,8 +246,46 @@ def main() -> int:
 
     home.mkdir(parents=True, exist_ok=True)
     reject_reparse_chain(home, root)
-    _atomic_write_text(md_path, content, encoding="utf-8", root=root)
-    changed = update_env_local(env_local, persisted_path, root)
+    # Keep exact original bytes until both outputs have committed.
+    reject_reparse_chain(md_path, root)
+    _reject_existing_hardlink(md_path, "instruction backup")
+    previous = md_path.read_bytes() if md_path.exists() else None
+    backup = None
+    preserve_backup = False
+    installed = False
+    try:
+        if previous is not None:
+            scratch = root / "tmp"
+            reject_reparse_chain(scratch, root)
+            scratch.mkdir(exist_ok=True)
+            reject_reparse_chain(scratch, root)
+            fd, name = tempfile.mkstemp(prefix=".instruction-recovery-", dir=scratch)
+            backup = Path(name)
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(previous)
+                stream.flush()
+                os.fsync(stream.fileno())
+        _atomic_write_text(md_path, content, encoding="utf-8", root=root)
+        installed = True
+        changed = update_env_local(env_local, persisted_path, root)
+    except BaseException:
+        if installed:
+            try:
+                reject_reparse_chain(md_path, root)
+                _reject_existing_hardlink(md_path, "instruction rollback")
+                if md_path.read_bytes() != content.encode("utf-8"):
+                    raise RuntimeError("Instructions changed during installation")
+                if backup is not None:
+                    os.replace(backup, md_path)
+                else:
+                    md_path.unlink()
+            except BaseException as rollback_error:
+                preserve_backup = True
+                raise RuntimeError(f"Instruction rollback failed; recovery file: {backup}") from rollback_error
+        raise
+    finally:
+        if backup is not None and not preserve_backup:
+            backup.unlink(missing_ok=True)
     print(f"Wrote {md_path}")
     print(f"env.local.ps1 {'updated' if changed else 'already current'}: {env_local}")
     print("The launcher will persist this setting across regenerated home/config.toml files.")

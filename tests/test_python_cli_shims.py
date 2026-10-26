@@ -337,5 +337,21 @@ class PythonCliShimTests(unittest.TestCase):
         self.assertEqual(self.run_refresh(), 0)
         self.assertEqual(command.read_bytes(), self.module.render_cmd("pip3.11"))
 
+    def test_linked_metadata_is_rejected_before_directory_enumeration(self):
+        external = self.base / 'synthetic external'
+        external.mkdir()
+        (external / 'entry_points.txt').write_text('[console_scripts]\nsynthetic=sample:main\n')
+        alias = self.module.SITE / 'redirect.dist-info'
+        self.symlink(external, alias, directory=True)
+        scans = []
+        original = os.scandir
+        def record(path):
+            scans.append(Path(path))
+            return original(path)
+        with mock.patch('os.scandir', side_effect=record):
+            with self.assertRaises(RuntimeError): self.module._console_scripts()
+        self.assertNotIn(alias, scans)
+
+
 if __name__ == "__main__":
     unittest.main()

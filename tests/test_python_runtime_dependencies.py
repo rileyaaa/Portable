@@ -17,6 +17,12 @@ SITE = ROOT / "tool/python/Lib/site-packages"
 
 
 class PythonRuntimeDependencyTests(unittest.TestCase):
+    def test_vendor_launchers_are_not_exposed_by_default_path(self):
+        launcher = (ROOT/'run-codex.ps1').read_text()
+        self.assertNotIn('(Join-Path $PortableTool "python\\Lib\\site-packages\\bin")', launcher)
+        for bat in ROOT.glob('*.bat'):
+            self.assertNotIn('%~dp0tool\\python\\Lib\\site-packages\\bin', bat.read_text())
+
     def test_default_windows_dependencies_and_restored_packager(self):
         packages = {}
         for path in SITE.glob("*.dist-info/METADATA"):

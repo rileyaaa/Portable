@@ -169,7 +169,7 @@ $env:CODEX_MODEL = "上游实际提供的模型名"
 
 当前包保留 Python 的网络、数据、Office/PDF 依赖，支持日常脚本开发和调试；Node 用于已有浏览器工具与账号转换器，Android 已有工具和技能也保留。Git、完整 Android SDK/JDK、Office 渲染和 OCR 等可选工具尚未预置，目录或变量存在不表示工具已安装。
 
-Go、uv 系列和可再生 Python 字节码仍不包含在默认包中。已恢复 PyInstaller 6.21.0、配套 hooks 和必要依赖；AI 在明确的打包任务中直接使用包内 `python.exe -m PyInstaller`，不另维护专用 CMD 或自定义封装，也不直接执行带旧安装路径的 vendor EXE。AI 须按项目约定设置包内 tmp、cache 和工作输出路径。实际 Windows EXE 冻结构建仍需按任务验收；依赖维护继续使用包内 pip、固定版本和 wheel 摘要，见 [工具下载与更新](tool/工具更新说明.md)。
+Go、uv 系列和可再生 Python 字节码仍不包含在默认包中。已恢复 PyInstaller 6.21.0、配套 hooks 和必要依赖；AI 在明确的打包任务中直接使用包内 `python.exe -m PyInstaller`，不另维护专用 CMD 或自定义封装，也不直接执行带旧安装路径的 vendor EXE。AI 须按项目约定设置包内 tmp、cache 和工作输出路径。默认 PATH 不暴露 vendor Python bin 中绑定旧绝对路径的 EXE；使用已有便携 CMD 或包内 Python 模块。实际 Windows EXE 冻结构建仍需按任务验收；依赖维护继续使用包内 pip、固定版本和 wheel 摘要，见 [工具下载与更新](tool/工具更新说明.md)。
 
 启动器固定 `PIP_CONFIG_FILE=nul`，日常 Agent 命令与安装器均不读取宿主的 `pip.ini`；依赖维护参数按工具文档显式指定。
 

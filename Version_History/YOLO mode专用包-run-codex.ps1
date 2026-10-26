@@ -887,7 +887,6 @@ $ToolPaths = @(
     (Join-Path $PortableTool "git"),
     (Join-Path $PortableTool "python"),
     (Join-Path $PortableTool "python\Scripts"),
-    (Join-Path $PortableTool "python\Lib\site-packages\bin"),
     (Join-Path $PortableCache "python-userbase\Scripts"),
     (Join-Path $PortableTool "node"),
     (Join-Path $PortableCache "npm-prefix"),
@@ -1812,7 +1811,7 @@ function Test-AndNormalizeCodexCliArgs {
                 continue
             }
             $script:CodexRootCommand = $rootCommand
-            if ($rootCommand -in @('app','app-server','update','sandbox','debug','execpolicy','agents','remote-control','responses-api-proxy','stdio-to-uds','exec-server','mcp-server','features','login')) {
+            if ($rootCommand -in @('tcp-tunnel','app','app-server','update','sandbox','debug','execpolicy','agents','remote-control','responses-api-proxy','stdio-to-uds','exec-server','mcp-server','features','login')) {
                 Stop-UnsafeCodexCliArgument $arg '该 Codex 子命令具有安装/更新、直接沙箱调试、隐藏规则文件读取、共享 daemon、远程控制、服务端模式、非标准宿主 I/O、会修改由 env.ps1 管理的固定 feature 配置，或会绕过便携包受控登录流程，因此不从严格便携入口开放。官方账号登录请使用便携启动器的认证菜单。'
             }
             if ($rootCommand -eq 'logout') {

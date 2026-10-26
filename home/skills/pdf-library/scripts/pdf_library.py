@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import shutil
 import stat
 import subprocess
 import sys
@@ -251,6 +252,19 @@ def _database(library: Path, *, create=False):
         library.mkdir(parents=True, exist_ok=True)
     else:
         checked(db, exists=True, kind="file")
+        scratch = _safety.prepare_output_dir(ROOT / "tmp")
+        with tempfile.TemporaryDirectory(prefix="pdf-ownership-", dir=scratch) as staging:
+            snapshot = Path(staging) / "index.sqlite3"
+            shutil.copyfile(db, snapshot)
+            wal = checked(Path(str(db) + "-wal"))
+            if wal.exists():
+                shutil.copyfile(wal, Path(str(snapshot) + "-wal"))
+            with contextlib.closing(sqlite3.connect(snapshot)) as probe:
+                identity = probe.execute("PRAGMA application_id").fetchone()[0]
+                if identity not in ((0, APPLICATION_ID) if create else (APPLICATION_ID,)):
+                    raise ValueError("Not a PDF library database")
+                if identity == 0 and probe.execute("SELECT count(*) FROM sqlite_master").fetchone()[0]:
+                    raise ValueError("Refusing an unrelated SQLite database")
     connection = sqlite3.connect(db) if create else \
         sqlite3.connect(db.as_uri() + "?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row

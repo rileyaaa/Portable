@@ -91,7 +91,14 @@ def _safe_command_name(name: str) -> str:
 
 def _console_scripts() -> dict[str, str]:
     found: dict[str, str] = {}
-    for ep_file in SITE.glob("*.dist-info/entry_points.txt"):
+    _require_plain_dir(SITE)
+    for info in SITE.glob("*.dist-info"):
+        _require_plain_dir(info)
+        ep_file = info / "entry_points.txt"
+        try:
+            ep_file.lstat()
+        except FileNotFoundError:
+            continue
         ep_file = _require_plain_file(ep_file)
         parser = configparser.ConfigParser(interpolation=None)
         parser.optionxform = str

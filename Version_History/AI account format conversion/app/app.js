@@ -7,7 +7,7 @@ let inputRevision=0;
 function showToast(msg){toast.textContent=msg;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2200)}
 function escapeHtml(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function downloadText(filename, content, type='text/plain;charset=utf-8'){const blob=new Blob([content],{type}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); URL.revokeObjectURL(a.href)}
-function setPreview(){const out=state.outputs[state.active]; if(!out){preview.textContent='';return} preview.textContent=redact.checked?AccountConverter.redactText(out.content):out.content; select.value=out.id; $$('.card').forEach((c,i)=>c.classList.toggle('active',i===state.active));}
+function setPreview(){const out=state.outputs[state.active]; if(!out){preview.textContent='';return} preview.textContent=redact.checked?AccountConverter.redactText(out.content,state.canon.accounts):out.content; select.value=out.id; $$('.card').forEach((c,i)=>c.classList.toggle('active',i===state.active));}
 function inputForConvert(){
   const raw=input.value;
   if(!toggles.rules.checked) return raw;

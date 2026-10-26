@@ -6,6 +6,8 @@ import shutil
 import sqlite3
 import stat
 import sys
+import subprocess
+import subprocess
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -377,6 +379,16 @@ class PdfLibraryDatabaseTests(unittest.TestCase):
         self.assertEqual(summary['documents'], 0)
         self.assertFalse((self.library / 'manuals/synthetic.md').exists())
 
+
+
+    def test_rejected_crashed_wal_database_keeps_all_original_files(self):
+        self.library.mkdir(parents=True)
+        code = "import sqlite3,os,sys; c=sqlite3.connect(sys.argv[1]); c.execute('PRAGMA journal_mode=WAL'); c.execute('PRAGMA wal_autocheckpoint=0'); c.execute('CREATE TABLE user_data(x)'); c.execute('INSERT INTO user_data VALUES(7)'); c.commit(); os._exit(0)"
+        subprocess.run([sys.executable, '-B', '-c', code, str(self.database)], check=True)
+        before = {p.name:p.read_bytes() for p in self.library.iterdir()}
+        for create in (True, False):
+            with self.assertRaises(ValueError): self.module._database(self.library, create=create)
+            self.assertEqual({p.name:p.read_bytes() for p in self.library.iterdir()}, before)
 
 
 if __name__ == '__main__':
