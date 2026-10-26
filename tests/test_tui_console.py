@@ -4,6 +4,8 @@ Called only by test_launcher_smoke.ps1 with its synthetic relocated package.
 Never uses a real account or submits a model prompt.
 """
 import ctypes
+import codecs
+import unicodedata
 from ctypes import wintypes as W
 import os
 import re
@@ -11,6 +13,59 @@ from pathlib import Path
 import sys
 import threading
 import time
+
+
+class Screen:
+    """Small VT screen for ConPTY differential redraws and cursor reports."""
+    def __init__(self, report):
+        self.rows=[[' ']*120 for _ in range(35)]
+        self.x=self.y=0; self.pending=''; self.report=report
+    def feed(self, text):
+        text=self.pending+text; self.pending=''; i=0
+        while i<len(text):
+            c=text[i]
+            if c=='\x1b':
+                if i+1==len(text): break
+                if text[i+1]=='[':
+                    m=re.match(r'\x1b\[([0-?]*)[ -/]*([@-~])',text[i:])
+                    if not m: break
+                    raw,op=m.groups(); nums=[int(n or '0') for n in raw.split(';')] if not raw.startswith(('?','>','<','=')) else []
+                    n=(nums[0] if nums else 0) or 1
+                    if op in ('H','f'):
+                        self.y=min(34,max(0,(nums[0] or 1)-1)) if nums else 0
+                        self.x=min(119,max(0,((nums[1] if len(nums)>1 else 1) or 1)-1))
+                    elif op=='A': self.y=max(0,self.y-n)
+                    elif op=='B': self.y=min(34,self.y+n)
+                    elif op=='C': self.x=min(119,self.x+n)
+                    elif op=='D': self.x=max(0,self.x-n)
+                    elif op=='G': self.x=min(119,n-1)
+                    elif op=='J' and nums and nums[0] in (2,3): self.rows=[[' ']*120 for _ in range(35)]
+                    elif op=='K':
+                        mode=nums[0] if nums else 0
+                        a,b=(0,120) if mode==2 else ((0,self.x+1) if mode==1 else (self.x,120))
+                        self.rows[self.y][a:b]=[' ']*(b-a)
+                    elif op=='n' and nums==[6]: self.report(self.y+1,self.x+1)
+                    i+=len(m.group()); continue
+                if text[i+1]==']':
+                    bel=text.find('\x07',i+2); st=text.find('\x1b\\',i+2)
+                    ends=[(n,k) for n,k in ((bel,1),(st,2)) if n>=0]
+                    if not ends: break
+                    end,k=min(ends);i=end+k;continue
+                i+=2;continue
+            if c=='\r': self.x=0
+            elif c=='\n': self.y+=1
+            elif c=='\b': self.x=max(0,self.x-1)
+            elif c=='\t': self.x=min(119,(self.x//8+1)*8)
+            elif ord(c)>=32:
+                if self.x>=120: self.x=0;self.y+=1
+                if self.y>=35: self.rows.pop(0);self.rows.append([' ']*120);self.y=34
+                if not unicodedata.combining(c):
+                    self.rows[self.y][self.x]=c
+                    self.x+=2 if unicodedata.east_asian_width(c) in ('W','F') else 1
+            if self.y>=35: self.rows.pop(0);self.rows.append([' ']*120);self.y=34
+            i+=1
+        self.pending=text[i:]
+    def text(self): return '\n'.join(''.join(row) for row in self.rows)
 
 
 def main():
@@ -71,21 +126,19 @@ def main():
         for h in (input_read,output_write): k.CloseHandle(h);handles.remove(h)
         def drain():
             buf=ctypes.create_string_buffer(8192);count=W.DWORD()
-            answered=0; trusted=False
+            trusted=False
+            decoder=codecs.getincrementaldecoder('utf-8')(errors='replace')
+            screen=Screen(lambda y,x:write(('\x1b[%d;%dR'%(y,x)).encode('ascii')))
             while k.ReadFile(output_read,buf,len(buf),ctypes.byref(count),None) and count.value:
                 block=buf.raw[:count.value];output.extend(block)
                 # Answer VT cursor-position queries so terminal probing is real.
-                queries=output.count(b'\x1b[6n')
-                while answered<queries:
-                    answered+=1
-                    try: write(b'\x1b[1;1R')
-                    except OSError: pass
-                plain=re.sub(rb'\x1b\[[0-?]*[ -/]*[@-~]',b'',bytes(output))
-                if not trusted and (b'Do you trust' in plain or b'Yes, I trust' in plain):
+                screen.feed(decoder.decode(block))
+                plain=screen.text()
+                if not trusted and ('Do you trust' in plain or 'Yes, I trust' in plain):
                     trusted=True
                     try: write(b'\r')
                     except OSError: pass
-                if b'OpenAI Codex' in plain and b'model:' in plain and b'directory:' in plain: ready.set()
+                if 'OpenAI Codex' in plain and 'model:' in plain and 'directory:' in plain: ready.set()
         reader=threading.Thread(target=drain,daemon=True);reader.start()
         size=SIZE();k.InitializeProcThreadAttributeList(None,1,0,ctypes.byref(size))
         attrs=ctypes.create_string_buffer(size.value)
@@ -99,7 +152,7 @@ def main():
         handles.extend([pi.process,pi.thread])
         check(k.AssignProcessToJobObject(job,pi.process))
         if k.ResumeThread(pi.thread)==0xffffffff: check(False)
-        deadline=time.monotonic()+90
+        deadline=time.monotonic()+180
         while time.monotonic()<deadline and not ready.wait(.1):
             if k.WaitForSingleObject(pi.process,0)==0: break
         # Output contains only synthetic fixture values, never real credentials.
