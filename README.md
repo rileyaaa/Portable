@@ -36,7 +36,7 @@
 
 已按 0.164.0 核对查找顺序，省略 `codex-resources` 中两份重复助手和语音组件。当前保留六个运行文件，约 **464.5 MB**；不含 `tool` 工具和用户状态。
 
-交互界面、`resume` 和 `fork` 默认附带官方 `--no-daemon`，使用当前进程内的服务。0.164.0 共享后台服务禁止把状态目录放在其 CLI 包内，因此本包采用此模式保留包内 `home`；文字、Agent 和 Code Mode 仍可使用，共享后台服务功能不启用。若使用旧包遇到 `CODEX_HOME must be outside the source CLI package`，可临时通过 `.\启动Codex.bat --no-daemon` 启动，恢复会话使用 `.\启动Codex.bat --no-daemon resume --last`。
+交互界面、`resume` 和 `fork` 默认附带官方 `--no-daemon`，使用当前进程内的服务。0.164.0 共享后台服务禁止把状态目录放在其 CLI 包内，因此本包采用此模式保留包内 `home`；文字、Agent 和 Code Mode 仍可使用，共享后台服务功能不启用。若使用旧包遇到 `CODEX_HOME must be outside the source CLI package`，API 模式可临时通过 `.\启动Codex.bat --portable-auth api --no-daemon` 启动；沿用此前已保存的认证使用 `--portable-auth last`，它不等同于 API 模式。恢复会话在相同参数后加 `resume --last`。
 
 ## 五个 BAT 入口
 
