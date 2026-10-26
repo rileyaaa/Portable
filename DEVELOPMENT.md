@@ -30,6 +30,8 @@
 
 **验证范围：** 新增第二份配置提交失败、崩溃残留 WAL 原文件保持、链接元数据拒绝前不得枚举、默认 PATH、内部子命令拒绝及凭据/ dotenv 语义回归。合成测试不读取真实账号；Windows 完整验证和发布状态以对应手动工作流实际结果为准。
 
+**发布结果：** 完整 Windows 验证及附件回读通过，正式版为 `v2026.10.26`，来源 `8e09466f`；完整结果与真实使用待验范围见文末。
+
 ## 2026-10-25：撤销多余打包封装并复查
 
 **范围：** 按用户要求保留已恢复的 PyInstaller 与必要依赖、许可证和来源记录，撤销上次额外加入的专用 CMD、自定义参数／路径封装及其专属测试。通用 Python CLI helper 恢复为此前已验证的原文件，不改变其他命令；原有依赖闭包、历史对象核对保留，Windows 版本测试改用原生 `-m PyInstaller`。现行使用说明同步为 AI 按任务调用原生模块并遵守包内路径约定。此前 PDF、Office、Android、账号保护及所有官方组件不变。
@@ -271,14 +273,14 @@ Office 保留现有 OOXML/Python 工作流，改为用户模板优先、按需�
 
 **保留的限制：** 自定义 MCP/插件配置正文不会自动迁移，旧绝对路径需人工核对。直接绕过 BAT 启动 PowerShell 可能先使用宿主缓存；`tool/setup-tools.ps1` 已补完整祖先保护，Android 路径/bootstrap 的直接入口尚无同等保护。应从已验证的正常/维护入口使用，不经 junction 直接调用；直接入口场景仍待 Windows 专项验证。
 
-## 验证结果与待验范围（2026-10-24）
+## 验证结果与待验范围（2026-10-26）
 
-离线回归在 Linux x86_64、Python 3.12、PowerShell 7.6.7 上执行；Windows 实测使用 Windows x64 / PowerShell 5.1 和包内运行时。[专项运行 40055716596](https://github.com/rileyaaa/Codex-Portable/actions/runs/40055716596) 全部通过，但有意跳过了部分长组，不等于全量验收。正式 Release 必须经过 `check_set=full` 的全部门禁。所有回归使用合成数据，没有读取真实认证或请求登录服务。
+[完整 Windows 运行 40253783757](https://github.com/rileyaaa/Codex-Portable/actions/runs/40253783757) 对 `8e09466f` 执行全部发布门禁并通过，正式发布 [v2026.10.26](https://github.com/rileyaaa/Codex-Portable/releases/tag/v2026.10.26)。192 项 Python 回归、34 项 CLI 参数、完整 BAT/原生客户端及真实 Chromium 均通过；上传后回读三个附件，逐项验证 8,689 个客户文件，排除 48 个开发文件。Actions 临时 artifact/cache 为零。本地 Linux 检查明确跳过 Windows 原生执行项，不代替此 Windows 结果。所有样本为合成数据，不读取真实凭据。
 
 | 检查 | 结果与范围 |
 | --- | --- |
-| Python unittest discovery | 89 项通过：便携路径、HTTP、运行包、Android、Office/PDF、固定依赖、模式副本、pip 隔离、浏览器安装与发行 ZIP 校验 |
-| `test_portable_config.ps1` | Windows 全量运行 40064538870 中 15 项通过，包含固定 0.164.0 客户端实际导出目录；离线无导出输入时另两项明确跳过 |
+| Python unittest discovery | Windows 192 项通过：便携路径、HTTP、运行包、Android、Office/PDF、固定依赖、模式副本、pip 隔离、浏览器安装与发行 ZIP 校验 |
+| `test_portable_config.ps1` | 最新 Windows 全量运行中 15 项通过，包含固定 0.164.0 客户端实际导出目录；离线无导出输入时另两项明确跳过 |
 | `test_portable_paths.ps1` | 14 项通过：真实加载 env.ps1，覆盖 15 个派生路径、中文/空格、旧根、无关 cwd、移动目录及受保护/未审核变量；另验证真实启动器函数清除 Go/uv 变量、保留 Python/Node 路径、转发 header，并将 pip 配置禁用传到子进程和 TOML，不执行整个启动链 |
 | `test_python_setup.ps1` | 4 组通过：实际 pip 参数、配置禁用与子进程变量筛选、修复范围拒绝早于任何 pip 调用、完整祖先链接拒绝；不执行安装 |
 | 官方 PyPI wheel 解析 | Windows x64 / CPython 3.14 的 36 个固定版本解析成功，候选锁生成和校验通过；未执行 Windows 安装 |
