@@ -242,6 +242,7 @@ try {
                 context_window = 272000
                 max_context_window = 272000
                 future_metadata = [pscustomobject]@{ enabled = $true }
+                use_responses_lite = $true
             }
         )
     }
@@ -259,6 +260,8 @@ try {
         Assert-True $Success 'Known catalog generation failed'
         $Entry = ($script:CatalogText | ConvertFrom-Json).models[0]
         Assert-Equal $Entry.slug 'vendor/gpt-5.2' 'Requested slug'
+        Assert-Equal $Entry.use_responses_lite $false 'Custom API must use standard Responses'
+        Assert-Equal $Fixture.models[1].use_responses_lite $true 'Bundled model must remain unchanged'
         Assert-Equal (@($Entry.input_modalities) -join ',') 'text' 'Explicit text-only override'
         Assert-Equal $Entry.context_window 524288 'Context override'
         Assert-Equal $Entry.max_context_window 524288 'Maximum must allow the requested context'
@@ -313,6 +316,18 @@ try {
                 Assert-Equal (@($Entry.input_modalities) -join ',') 'text' 'Real export modality override'
                 Assert-True (-not [string]::IsNullOrWhiteSpace($Entry.base_instructions)) 'Real export must retain usable instructions'
             }
+        }
+        Test-Case 'actual Sol 6.1 metadata uses standard Responses for custom APIs' {
+            Set-TestModels $RealModels
+            $source = @($RealModels.models | Where-Object slug -eq 'gpt-6.1-sol')[0]
+            Assert-True ($null -ne $source) 'Pinned client must provide actual Sol 6.1 metadata'
+            $originalContext = $source.context_window
+            Assert-True (Ensure-ModelCatalog -CatalogPath 'memory-only.json' -ModelSlug 'gpt-6.1-sol') 'Catalog generation'
+            $entry = ($script:CatalogText | ConvertFrom-Json).models[0]
+            Assert-Equal $entry.slug 'gpt-6.1-sol' 'Do not rewrite the requested model'
+            Assert-Equal $entry.use_responses_lite $false 'Do not opt a third-party API into private Lite protocol'
+            Assert-Equal $entry.context_window $originalContext 'Preserve native context metadata'
+            Assert-Equal $source.use_responses_lite $true 'Keep official metadata intact'
         }
         Test-Case 'official reasoning menu uses the pinned client export' {
             Set-TestModels $RealModels

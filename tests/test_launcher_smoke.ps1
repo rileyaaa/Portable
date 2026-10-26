@@ -65,6 +65,11 @@ assert cfg['approval_policy'] == 'on-request'
 assert cfg['sandbox_mode'] == 'workspace-write'
 assert cfg['service_tier'] == 'default'
 assert cfg['cli_auth_credentials_store'] == 'file'
+catalog_path=pathlib.Path(cfg['model_catalog_json'])
+assert catalog_path.is_relative_to(root), 'Custom API catalog escaped portable package'
+catalog=__import__('json').loads(catalog_path.read_text(encoding='utf-8-sig'))
+assert catalog['models'][0]['slug']==cfg['model']
+assert catalog['models'][0]['use_responses_lite'] is False, 'Custom API silently selected private Responses Lite'
 assert cfg['windows']['sandbox'] == 'unelevated'
 assert cfg['sandbox_workspace_write']['network_access'] is False
 expected = [root] if mode == 'maintenance' else [root/'work', root/'tmp']

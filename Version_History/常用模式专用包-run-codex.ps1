@@ -2803,6 +2803,8 @@ function Ensure-ModelCatalog {
         if ($null -ne $source) {
             $entry = ([string]($source | ConvertTo-Json -Depth 64)) | ConvertFrom-Json
             $entry | Add-Member -NotePropertyName slug -NotePropertyValue $ModelSlug -Force
+            # Third-party Responses endpoints do not imply OpenAI internal Responses Lite.
+            $entry | Add-Member -NotePropertyName use_responses_lite -NotePropertyValue $false -Force
             if ($null -ne $InputModalities -and @($InputModalities).Count -gt 0) {
                 $entry | Add-Member -NotePropertyName input_modalities -NotePropertyValue @($InputModalities) -Force
             }
@@ -2910,8 +2912,9 @@ $ModelInputModalities = if ($UseOfficialModelCatalog) { @(Resolve-ModelInputModa
 $ModelModalitiesKnown = @($ModelInputModalities).Count -gt 0
 $ModelAllowsImage = (-not $ModelModalitiesKnown) -or [bool]($ModelInputModalities -contains "image")
 
-# r15-clean: AUTO normally lets Codex use its own bundled entry or unknown-model fallback.
-# Two explicit compatibility overrides require a local schema-matched catalog:
+# Custom APIs always use a schema-matched catalog to select standard Responses,
+# independently of bundled models opting into the internal Responses Lite protocol.
+# Explicit metadata overrides are also applied here:
 #   1) text/text_image modality override;
 #   2) CODEX_MODEL_CONTEXT_WINDOW, because Codex 0.164.0 clamps against fallback max_context_window=272000.
 $RequestedModalityMode = if ($UseOfficialModelCatalog) { "auto" } else { [string]$env:CODEX_MODEL_MODALITIES }
@@ -2919,7 +2922,7 @@ if ([string]::IsNullOrWhiteSpace($RequestedModalityMode)) { $RequestedModalityMo
 $RequestedModalityMode = $RequestedModalityMode.Trim().ToLowerInvariant()
 $ManualModalityOverride = (-not $UseOfficialModelCatalog) -and ($RequestedModalityMode -ne "auto")
 $ExplicitContextOverride = (-not $UseOfficialModelCatalog) -and ($CustomModelContextWindow -gt 0)
-$NeedCustomModelCatalog = $ManualModalityOverride -or $ExplicitContextOverride
+$NeedCustomModelCatalog = (-not $UseOfficialModelCatalog) -or $ManualModalityOverride -or $ExplicitContextOverride
 $ModelCatalogJson = ""
 if (-not $NeedCustomModelCatalog) {
     foreach ($staleCustomCatalog in @(
@@ -2938,7 +2941,7 @@ if ($NeedCustomModelCatalog) {
     $catalogContextWindow = $CustomModelContextWindow # 0 = do not override a matched bundled model; unknown fallback chooses 272000 internally.
     $catalogReady = Ensure-ModelCatalog -CatalogPath $ModelCatalogJson -CodexExe $CodexExe -ModelSlug $env:CODEX_MODEL -InputModalities $ModelInputModalities -ContextWindow $catalogContextWindow
     if (-not $catalogReady) {
-        Write-Host "手工 modality/context 覆盖所需的兼容 catalog 生成失败，已停止启动：$ModelCatalogJson" -ForegroundColor Red
+        Write-Host "标准 Responses 或手工模型覆盖所需的兼容 catalog 生成失败，已停止启动：$ModelCatalogJson" -ForegroundColor Red
         exit 1
     }
 }

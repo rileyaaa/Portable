@@ -100,7 +100,7 @@ $env:CODEX_MODEL = "上游实际提供的模型名"
 | Apps / Plugins | `CODEX_DISABLE_APPS=true`、`CODEX_ENABLE_PLUGINS=false`、`CODEX_ENABLE_PLUGIN_SHARING=false`。Plugins 须配置为 true 且本次启动带 `--portable-extensions`；Apps 还需要官方登录与连接器授权。 |
 | 用户 MCP | `CODEX_PORTABLE_ALLOW_USER_MCP=false`，保留配置但不激活。须配置为 true 且本次启动带 `--portable-extensions`；维护模式不会自动启用。 |
 
-手动模型能力覆盖生成的 `CODEX_MODEL_CATALOG_JSON` 是输出路径，相对包根解析，不是导入任意模型目录的入口。其他 Provider header、query、状态栏等选项见 `env.ps1` 注释；需要 TOML 的选项使用单行 inline table。
+自定义 API/本地 provider 使用标准 Responses 协议，生成包内当前模型目录以关闭 0.164.0 内置的内部 Responses Lite；模型名保持配置原值，官方账号使用原生目录。`CODEX_MODEL_CATALOG_JSON` 是输出路径，相对包根解析，不是导入任意模型目录的入口。其他 Provider header、query、状态栏等选项见 `env.ps1` 注释；需要 TOML 的选项使用单行 inline table。
 
 ### 权限、联网与 Fast
 
