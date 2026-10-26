@@ -4,11 +4,11 @@
 
 默认面向 DBA 日常工作、爬虫与数据处理，也保留 Python 开发和调试能力。Python、Node 及已有文档/自动化运行依赖留在包内；Go 编译仍交给独立项目的手动 GitHub Actions，不预装 Go 编译器。Python EXE 打包已按用户授权恢复历史 PyInstaller，由 AI 直接调用包内 Python 的原生模块按任务使用，Windows 实际打包验收尚未执行。
 
-**`D:\Codex` 只是常用位置，不是固定路径。** 解压到其他本地目录后，启动器从自身位置确定包根，重新设置工具、配置、用户状态、缓存和临时目录。最近正式发行版已通过 Windows 客户端启动、BAT/NTFS 专项、工具进程通信及真实浏览器持久化/清理检查；正式发行包须通过完整 Windows 工作流及上传附件回读校验。真实账号、在线 Agent/Host 和跨电脑迁移仍需本机验收，详见 [开发文档](DEVELOPMENT.md)。
+**`D:\Codex` 只是常用位置，不是固定路径。** 解压到其他本地目录后，启动器从自身位置确定包根，重新设置工具、配置、用户状态、缓存和临时目录。最近正式发行版已通过 Windows 客户端启动、BAT/NTFS 专项、工具进程通信及真实浏览器持久化/清理检查；发行验证范围与来源见对应 Release：完整版本经过 Windows 门禁，限定脚本补丁记录定向验证及真机反馈；附件均须上传回读校验。真实账号、在线 Agent/Host 和跨电脑迁移仍需本机验收，详见 [开发文档](DEVELOPMENT.md)。
 
 ## 开始使用
 
-优先下载 [Releases](https://github.com/rileyaaa/Codex-Portable/releases) 中命名为 `Codex-Portable-版本-windows-x64.zip` 的发行附件，并用同次发布的 `SHA256SUMS` 核对摘要。客户发行包不含第一方测试、CI 工作流、Git 配置、开发打包器或用户运行数据；测试保留在 GitHub 源码中。GitHub 自动生成的 Source code ZIP 不等同于便携发行包。
+发行命名为 `Codex Portable <CodexVersion> - Portable r<N>`；同一客户端版本的打包更新递增便携修订。优先下载 [Releases](https://github.com/rileyaaa/Codex-Portable/releases) 中命名为 `Codex-Portable-版本-windows-x64.zip` 的发行附件，并用同次发布的 `SHA256SUMS` 核对摘要。客户发行包不含第一方测试、CI 工作流、Git 配置、开发打包器或用户运行数据；测试保留在 GitHub 源码中。GitHub 自动生成的 Source code ZIP 不等同于便携发行包。
 
 `codex.exe` 和配套浏览器文件使用 Git LFS 管理。通过 Git 克隆后先执行 `git lfs pull`；使用源码 ZIP 时确认其中包含实际 EXE，而不是文本形式的 LFS 指针。缺少实际工件时按[工具文档](tool/工具更新说明.md)取得并校验完整运行包。
 

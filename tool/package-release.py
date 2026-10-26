@@ -331,7 +331,7 @@ def build_release(root: Path, version: str | None = None) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="check committed inputs without creating an archive")
-    parser.add_argument("--version", help="release tag, for example v2026.10.23 (default: Codex version)")
+    parser.add_argument("--version", help="release tag, for example v0.164.0-portable.1 (specify for official releases)")
     args = parser.parse_args()
     root = Path(os.path.abspath(__file__)).parent.parent
     if args.check:
