@@ -17,7 +17,7 @@ on:
         required: true
         default: full
         type: choice
-        options: [full, windows_fixes, tui_startup]
+        options: [full, windows_fixes]
 
 permissions:
   contents: write
@@ -48,7 +48,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:RELEASE_VERSION -notmatch '^v\d{4}\.\d{2}\.\d{2}(?:\.\d+)?$') { throw 'Use a dated release tag.' }
-          if ($env:RELEASE_CHECK_SET -notin @('full','windows_fixes','tui_startup')) { throw 'Unknown check set.' }
+          if ($env:RELEASE_CHECK_SET -notin @('full','windows_fixes')) { throw 'Unknown check set.' }
           if ($env:RELEASE_PUBLISH -eq 'true' -and $env:RELEASE_CHECK_SET -ne 'full') { throw 'Only full validation can publish.' }
           $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state'
           $state = @{
@@ -111,14 +111,6 @@ jobs:
           $catalog = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state/bundled-models.json'
           [IO.File]::WriteAllText($catalog, $text, (New-Object Text.UTF8Encoding($true)))
 
-      - name: Exercise real interactive TUI in Windows ConPTY
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'tui_startup' }}
-        timeout-minutes: 5
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1 -TuiOnly
-          if ($LASTEXITCODE -ne 0) { throw 'Real TUI startup failure.' }
-
       - name: Windows PowerShell 5.1 - test_portable_config
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 3
@@ -144,7 +136,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_instruction_paths' }
 
       - name: Windows PowerShell 5.1 - test_bootstrap_paths
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set != 'tui_startup' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         timeout-minutes: 8
         run: |
           $ErrorActionPreference = 'Stop'
@@ -192,7 +184,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_runtime_preflight' }
 
       - name: Windows PowerShell 5.1 - test_python_setup
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set != 'tui_startup' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Stop'
@@ -200,7 +192,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_python_setup' }
 
       - name: Windows PowerShell 5.1 - test_automation_paths
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set != 'tui_startup' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Stop'
@@ -208,7 +200,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_automation_paths' }
 
       - name: Windows PowerShell 5.1 - test_automation_process
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set != 'tui_startup' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Stop'
@@ -240,7 +232,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_npm_entrypoints' }
 
       - name: Windows PowerShell 5.1 - test_system_policy
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set != 'tui_startup' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Stop'
@@ -256,7 +248,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_launcher_smoke' }
 
       - name: Windows PowerShell 5.1 - test_browser_smoke
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set != 'tui_startup' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Stop'

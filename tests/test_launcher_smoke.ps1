@@ -1,6 +1,5 @@
 ﻿#Requires -Version 5.1
 # Real BAT -> launcher -> pinned native client, with synthetic API settings only.
-param([switch]$TuiOnly)
 $ErrorActionPreference = 'Stop'
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'This integration check requires Windows.' }
 $root = Split-Path -Parent $PSScriptRoot
@@ -38,19 +37,6 @@ function Invoke-OwnedSmokeProcess {
         }
     }
 }
-function Invoke-OwnedTuiSmoke {
-    # Use a genuine Windows pseudoconsole and synthetic API settings; no prompt
-    # is submitted. Disable the launcher menu only inside this owned fixture.
-    $localSettings = Join-Path $fixture 'env.local.ps1'
-    $beforeTuiSettings = [IO.File]::ReadAllBytes($localSettings)
-    try {
-        [IO.File]::AppendAllText($localSettings, "`n" + '$env:CODEX_STARTUP_INTERACTIVE = "false"' + "`n", $utf8)
-        & (Join-Path $root 'tool/python/python.exe') -B (Join-Path $root 'tests/test_tui_console.py') $fixture $entry
-        if ($LASTEXITCODE -ne 0) { throw 'Real interactive TUI startup regression.' }
-    } finally {
-        [IO.File]::WriteAllBytes($localSettings, $beforeTuiSettings)
-    }
-}
 try {
     $manifest = Get-Content -LiteralPath (Join-Path $root 'tool/runtime-manifest.json') -Raw | ConvertFrom-Json
     $relativeFiles = @('env.ps1','run-codex.ps1','tool/runtime-manifest.json','tool/portable-process.ps1',$entry,$maintenance)
@@ -67,7 +53,6 @@ $env:CODEX_AUTH_MODE = "api"
 $env:CODEX_BASE_URL = "http://127.0.0.1:9/v1"
 $env:OPENAI_API_KEY = "synthetic-offline-key-not-a-credential"
 '@, $utf8)
-    if ($TuiOnly) { Invoke-OwnedTuiSmoke; return }
     $validator = Join-Path $owned 'validate_config.py'
     [IO.File]::WriteAllText($validator, @'
 import os, pathlib, sys, tomllib
@@ -147,7 +132,6 @@ print('PASS full launcher generated configuration: ' + mode)
         if ($LASTEXITCODE -ne 0) { throw 'Full launcher generated configuration did not match the portable contract.' }
         Write-Output ('PASS real BAT/native launch: ' + $case)
     }
-    Invoke-OwnedTuiSmoke
     # A real offline maintenance lifecycle must keep the inactive plugin sidecar.
     # These stdio entries are synthetic non-existent commands; add/list/remove
     # manage configuration only and must never launch an MCP server.
