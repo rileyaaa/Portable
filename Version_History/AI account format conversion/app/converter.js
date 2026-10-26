@@ -258,7 +258,13 @@
 
   function redactText(s,accounts=[]){
     const secrets=accounts.flatMap(a=>['api_key','access_token','refresh_token','id_token','session_token','client_secret'].map(k=>a[k])).filter(v=>typeof v==='string'&&v.length);
-    const forms=[...new Set(secrets.flatMap(v=>[v,JSON.stringify(v).slice(1,-1),encodeURIComponent(v),v.replace(/'/g,"'\"'\"'")]))].sort((a,b)=>b.length-a.length);
+    // Batch file packs JSON-encode already serialized file contents again.
+    const variants=new Set(secrets.flatMap(v=>[v,encodeURIComponent(v),v.replace(/'/g,"'\"'\"'")]));
+    for(let depth=0;depth<3;depth++) for(const value of [...variants]){
+      variants.add(JSON.stringify(value).slice(1,-1));
+      variants.add(yamlScalar(value).slice(1,-1));
+    }
+    const forms=[...variants].sort((a,b)=>b.length-a.length);
     s=String(s); for(const value of forms) s=s.split(value).join('[REDACTED]');
     return String(s).replace(/(sk-(?:proj-)?[A-Za-z0-9_-]{12})[A-Za-z0-9_-]+/g,'$1…REDACTED')
       .replace(/(eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.)[A-Za-z0-9_-]*/g,'$1…REDACTED')

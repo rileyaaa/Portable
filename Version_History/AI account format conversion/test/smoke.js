@@ -181,3 +181,16 @@ for(const key of ['synthetic\nOTHER_SETTING=injected',`both'and"quotes`]){
  assert.deepEqual(require('node:util').parseEnv(env),{});
 }
 console.log('PASS credential redaction and dotenv roundtrip/rejection');
+
+for(const key of ['synthetic"complex\\credential',"synthetic\u0085credential"]){
+ const canon=C.canonicalize(JSON.stringify([{api_key:key},{api_key:'second-synthetic-account'}]));
+ for(const out of C.convertAll(canon)){
+  const masked=C.redactText(out.content,canon.accounts);
+  let encoded=key;
+  for(let depth=0;depth<3;depth++){
+   assert.ok(!masked.includes(encoded),'Encoded credential in '+out.id);
+   encoded=JSON.stringify(encoded).slice(1,-1);
+  }
+ }
+}
+console.log('PASS nested batch-pack credential redaction');
