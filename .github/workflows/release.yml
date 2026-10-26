@@ -13,11 +13,11 @@ on:
         default: true
         type: boolean
       check_set:
-        description: 'Full validation, or Windows fixes only (cannot publish)'
+        description: 'Full validation, Windows fixes, or scoped hotfix packaging'
         required: true
         default: full
         type: choice
-        options: [full, windows_fixes]
+        options: [full, windows_fixes, package_hotfix]
 
 permissions:
   contents: write
@@ -51,8 +51,8 @@ jobs:
           if (-not $label.Success) { throw 'Use v<Codex version>-portable.<revision>.' }
           $pinned = (Get-Content .\tool\runtime-manifest.json -Raw | ConvertFrom-Json).version
           if ($label.Groups['codex'].Value -cne $pinned) { throw 'Release label must match the pinned Codex version.' }
-          if ($env:RELEASE_CHECK_SET -notin @('full','windows_fixes')) { throw 'Unknown check set.' }
-          if ($env:RELEASE_PUBLISH -eq 'true' -and $env:RELEASE_CHECK_SET -ne 'full') { throw 'Only full validation can publish.' }
+          if ($env:RELEASE_CHECK_SET -notin @('full','windows_fixes','package_hotfix')) { throw 'Unknown check set.' }
+          if ($env:RELEASE_PUBLISH -eq 'true' -and $env:RELEASE_CHECK_SET -notin @('full','package_hotfix')) { throw 'Only full validation or scoped hotfix packaging can publish.' }
           $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state'
           $state = @{
             HOME = 'home'; USERPROFILE = 'home'; APPDATA = 'appdata'; LOCALAPPDATA = 'localappdata';
@@ -114,6 +114,38 @@ jobs:
           $catalog = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state/bundled-models.json'
           [IO.File]::WriteAllText($catalog, $text, (New-Object Text.UTF8Encoding($true)))
 
+      - name: Verify scoped hotfix against the last full Windows baseline
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'package_hotfix' }}
+        timeout-minutes: 6
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+          $baseline = '8e09466f916aa671cd58bd26536661ed3927b4de'
+          & git fetch --no-tags --depth=1 origin $baseline
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot obtain the verified baseline.' }
+          $changed = @(& git -c core.quotepath=false diff --name-only $baseline HEAD)
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect hotfix scope.' }
+          $allow = '^(?:README\.md|DEVELOPMENT\.md|env\.ps1|run-codex\.ps1|\.github/workflows/release\.yml|tool/(?:package-release\.py|[^/]+\.md)|Version_History/[^/]+-(?:env|run-codex)\.ps1|tests/[^/]+\.(?:py|ps1))$'
+          foreach ($path in $changed) {
+            if ($path -cnotmatch $allow) { throw ('Scope requires full validation: ' + $path) }
+          }
+          foreach ($path in @($changed | Where-Object { $_ -eq 'env.ps1' -or $_ -like '*-env.ps1' })) {
+            $old = @(& git show ($baseline + ':' + $path))
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot read baseline settings.' }
+            $new = @(Get-Content -LiteralPath $path -Encoding UTF8)
+            $oldValues = @($old | Where-Object { $_ -match '^\$env:\w+\s*=' } | ForEach-Object { $_.Trim() })
+            $newValues = @($new | Where-Object { $_ -match '^\$env:\w+\s*=' } | ForEach-Object { $_.Trim() })
+            if (@(Compare-Object $oldValues $newValues -CaseSensitive).Count) { throw 'Changed environment defaults require full validation.' }
+          }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p test_mode_copies.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Mode copy regression.' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p test_release_package.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging regression.' }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_config.ps1 -BundledModelsPath .\tmp\windows-release-state\bundled-models.json
+          if ($LASTEXITCODE -ne 0) { throw 'Hotfix model catalog or startup argument regression.' }
+          Write-Output ('HOTFIX_BASELINE=' + $baseline)
+          Write-Output 'HOTFIX_SCOPE_AND_TARGETED_CHECKS=PASS'
+
       - name: Windows PowerShell 5.1 - test_portable_config
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
         timeout-minutes: 3
@@ -139,7 +171,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_instruction_paths' }
 
       - name: Windows PowerShell 5.1 - test_bootstrap_paths
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set != 'package_hotfix' }}
         timeout-minutes: 8
         run: |
           $ErrorActionPreference = 'Stop'
@@ -187,7 +219,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_runtime_preflight' }
 
       - name: Windows PowerShell 5.1 - test_python_setup
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set != 'package_hotfix' }}
         timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Stop'
@@ -195,7 +227,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_python_setup' }
 
       - name: Windows PowerShell 5.1 - test_automation_paths
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set != 'package_hotfix' }}
         timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Stop'
@@ -203,7 +235,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_automation_paths' }
 
       - name: Windows PowerShell 5.1 - test_automation_process
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set != 'package_hotfix' }}
         timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Stop'
@@ -235,7 +267,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_npm_entrypoints' }
 
       - name: Windows PowerShell 5.1 - test_system_policy
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set != 'package_hotfix' }}
         timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Stop'
@@ -251,7 +283,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_launcher_smoke' }
 
       - name: Windows PowerShell 5.1 - test_browser_smoke
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set != 'package_hotfix' }}
         timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Stop'
@@ -259,7 +291,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_browser_smoke' }
 
       - name: Build and verify release assets
-        if: ${{ success() && inputs.publish_release && inputs.check_set == 'full' }}
+        if: ${{ success() && inputs.publish_release && (inputs.check_set == 'full' || inputs.check_set == 'package_hotfix') }}
         id: package
         env:
           RELEASE_VERSION: ${{ inputs.version }}
@@ -275,7 +307,7 @@ jobs:
           Write-Output ("CUSTOMER_FILE_COUNT=" + $package.file_count)
 
       - name: Upload, read back and publish the verified release
-        if: ${{ success() && inputs.publish_release && inputs.check_set == 'full' }}
+        if: ${{ success() && inputs.publish_release && (inputs.check_set == 'full' || inputs.check_set == 'package_hotfix') }}
         timeout-minutes: 10
         env:
           GH_TOKEN: ${{ github.token }}
@@ -290,14 +322,19 @@ jobs:
           $tags = & git ls-remote --tags origin "refs/tags/$env:RELEASE_VERSION"
           if ($LASTEXITCODE -ne 0 -or $tags) { throw 'Release tag exists or could not be checked.' }
           $notes = Join-Path $env:RELEASE_DIRECTORY 'release-notes.txt'
+          $scopeNotes = if ('${{ inputs.check_set }}' -eq 'package_hotfix') {
+            @('Scoped script hotfix: runtime/dependency payloads and default environment assignments are unchanged from full Windows baseline 8e09466f (run 40253783757).',
+              'This run checks the diff allowlist, native version, mode copies, packaging regressions and model catalog/startup dispatch. It does not rerun the full Windows suite.',
+              'The user confirmed Windows operation after the script update. Prior offline native-client checks verified standard Responses over the HTTP/SOCKS bridge without paid calls.')
+          } else {
+            @('Full Windows validation: bundled Python/Node, PowerShell 5.1, BAT/NTFS, stdio, native version, launcher and browser checks passed.')
+          }
           @(
             'Windows x64 portable package for text/Agent and Python/data workflows.',
             "Source commit: $env:RELEASE_COMMIT",
-            "Full validation: https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID",
+            "Validation run: https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID",
+            $scopeNotes,
             'Download the windows-x64.zip asset and verify it with SHA256SUMS.',
-            'Windows validation includes bundled Python/Node regressions, PowerShell 5.1, BAT/NTFS, process stdio and the pinned native client.',
-            'The complete BAT/launcher/client chain passed normal, Unicode/space-path relocation and maintenance configuration checks.',
-            'The single Chromium passed rendering, screenshot, persistent-cookie and explicit-cache-cleanup tests.',
             'Uploaded draft assets are downloaded again and verified before publication.',
             'Not exercised: real account login, live Agent/Host tool calls, elevated sandbox initialization or real devices.',
             'Customer ZIP excludes first-party tests, CI, Git configuration, release builders and user state.',
