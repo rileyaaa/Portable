@@ -21,7 +21,7 @@
 15. **控制体积与重复能力。** 默认面向 DBA、Python 爬虫/数据处理和偶尔开发调试；保留常用运行依赖，低频 Go 编译仍优先放独立项目的手动 GitHub Actions，不自动补回 Go 编译工具；Python EXE 打包已于 2026-10-25 获用户明确授权恢复历史 PyInstaller 及必要依赖，仅在明确打包任务中由 AI 直接调用包内 Python 原生模块，不额外维护打包封装。同一用途优先复用已装依赖；浏览器统一为一套 Playwright 和一份配套 Chromium，不并装 ChromeDriver、第二套浏览器或 Chrome DevTools MCP。先检查现有 API/CDP 是否能完成任务，再考虑新增工具并说明收益与体积。精简前核对上游查找路径、共享依赖和实际功能；不因文件名相似就删除官方助手或资源，不为体积牺牲已保留功能。所有可配置的 profile、下载、缓存、临时文件随包根移动；不能以“便携”名义隐藏系统权限或工具自身的限制。
 16. **客户发行内容。** 先在源码检出中完成验证，再从干净提交构建发行 ZIP。第一方测试、CI、Git 配置和开发打包器留在仓库，不进入客户包；临时文件、缓存、账号和本机配置不发布。保留运行依赖、许可证和四篇说明，逐项验证 ZIP 与来源清单。
 17. **按风险选择验证范围。** 小改动也可能阻断启动或改变请求协议，不能只按行数判断。客户端/Host、依赖工件、权限与路径边界有变化时执行完整 Windows 门禁。已授权维护范围内、工件未变的脚本补丁，可依据已通过的全量基线、差异核对、定向回归与必要的真机反馈重打包；记录未重跑的范围，逐项校验 ZIP 与上传回读。已知问题未解决时不得以旧测试通过覆盖它，也不将旧测试记成本次新测试。
-18. **统一发行命名。** 标题为 `Codex Portable <CodexVersion> - Portable r<N>`，标签为 `v<Codex版本>-portable.<N>`。同一 Codex 版本的可下载包变更递增便携修订；升级 Codex 后从修订 1 开始。纯文档提交不重发包时不增修订，不覆盖既有标签/附件；日期写入记录与发布元数据，不再作为主版本号。
+18. **Release naming and language.** Use `Codex Portable <CodexVersion> - Portable r<N>` for the title, `v<CodexVersion>-portable.<N>` for the tag, and `Codex-Portable-v<CodexVersion>-portable.<N>-windows-x64.zip` for the package. Titles, tags and asset names must be ASCII; release notes must be English. Increment the portable revision when the downloadable package changes; restart at 1 after a Codex upgrade. Documentation-only commits do not require a new package revision. Never overwrite published tags or assets; keep dates in release metadata and maintenance records.
 
 ### 升级必须检查的项目
 
@@ -34,11 +34,13 @@
 - **实际功能：** 覆盖模型回复与包内一项 Agent/Host 工具调用，确认功能没有因精简或兼容开关被关闭。假接口用于隔离协议/代理回归，不能单独算真实账号、模型或设备验收；不可用的测试环境要明确说明。
 - **交付与编码：** Windows PowerShell 5.1、ASCII/CRLF BAT、单个 UTF-8 BOM、受保护变量及模式副本。下载脚本原文件，避免复制网页引入重复 BOM。按风险选择检查后，从干净提交打包，排除测试/临时/用户状态，上传回读后才发布；成功替代后再删除问题发行包，保留 Git 历史追溯。
 
-## 2026-10-26：用户真机确认与补丁发行
+## 2026-10-26: Windows-confirmed compatibility hotfix release
 
-**结果：** 用户直接下载 GitHub 脚本后确认恢复正常。交互后台服务与自定义 API 标准 Responses 两项热修纳入 v0.164.0-portable.1；复制网页文字造成的额外 BOM 是另一个文件编码问题，仓库原文件保持单个 UTF-8 BOM，更新使用原文件下载。
+**Cause and result:** Codex 0.164.0 changed interactive daemon preparation and bundled model metadata. The fixes keep CODEX_HOME inside the package by using the official `--no-daemon` option for interactive startup, and preserve standard Responses requests for custom API providers without changing the configured model name or proxy. The user confirmed that downloading the updated GitHub scripts restored operation. Copying rendered web text can introduce an extra BOM; the repository scripts retain a single UTF-8 BOM for Windows PowerShell 5.1.
 
-**本次发布依据：** 用户明确同意不重复约 30 分钟全量 Actions。以前一 Windows 全量成功提交 `8e09466f` 为基线，客户端/Host、配套工具、依赖工件与权限默认值未变；核对最终源码差异，执行配置/启动参数/模式副本定向回归，结合已完成的真实客户端本地代理发包对照与用户 Windows 反馈，再从干净提交构建并逐项校验客户包。本地上传域名凭据不适配时，使用手动 package_hotfix 路径在临时 Windows runner 重新打包并上传；该路径检查基线差异白名单及默认赋值不变，执行定向回归，不运行全量套件。上传后回读附件并验证摘要，成功后删除已知有问题的旧 Release 及附件，保留 Git 提交/标签追溯。本次不记为重新执行全量 Windows 或全部真实账号/设备验收。
+**Published:** [Codex Portable 0.164.0 - Portable r1](https://github.com/rileyaaa/Codex-Portable/releases/tag/v0.164.0-portable.1), source `f4c0c4706fd052bdddc8b33207c6f2ea0145c4d1`, contains 8,689 customer files in a 534,778,576-byte ZIP. Archive SHA-256: `bd3971f7d7633fd1260dedafa1e9a1aa88c6f0ddfaddca38d7406353a3409a5b`. The known-broken `v2026.10.26` Release and its assets were removed after the replacement was verified; Git history and the old tag remain available for traceability.
+
+**Validation:** Manual Windows [run 40267390511](https://github.com/rileyaaa/Codex-Portable/actions/runs/40267390511) passed in approximately 4.5 minutes. The scoped hotfix gate verified the allowed source diff and unchanged default environment assignments against full Windows baseline `8e09466f` (run 40253783757), checked native version, mode copies and packaging regressions, and ran the PowerShell 5.1 model/configuration checks including 34 model-option and 11 interactive-dispatch cases. Client/Host and dependency payloads remain unchanged. Prior offline native-client comparisons verified standard Responses over the project HTTP/SOCKS bridge without real credentials or paid model calls. The customer ZIP excludes first-party tests, CI, Git configuration, development builders and user state. All three uploaded assets were downloaded and verified; ZIP contents were checked individually before publication, and the latest-release metadata and published checksums were checked again afterward. Runner temporary files were cleaned, with no Actions artifacts or caches retained. This scoped run does not count as a new full Windows suite, real account login, live Agent/Host call or device acceptance test.
 
 ## 2026-10-26：自定义 API 的标准 Responses 兼容
 
