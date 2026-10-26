@@ -93,7 +93,7 @@ $env:CODEX_MODEL = "上游实际提供的模型名"
 | 登录菜单 | `CODEX_STARTUP_INTERACTIVE=true`；设为 `false` 后按配置启动，非法布尔值会报错。 |
 | Provider | `CODEX_PROVIDER_MODE=custom_provider`；支持 `local_ollama`，默认本地地址为 `http://127.0.0.1:11434/v1`；账号登录由启动器选择 `official_chatgpt`。 |
 | 模型 | `CODEX_MODEL=gpt-6-sol`。官方账号可在 `/model` 选择实际可用模型；中转站必须自行提供对应模型。 |
-| 思考等级 | `CODEX_REASONING_EFFORT` 默认空，自定义/本地模式不强制发送；官方菜单读取客户端内置目录。目录不可用时 Sol/Luna 均默认 `medium`。 |
+| 思考等级 | `CODEX_REASONING_EFFORT` 默认空，启动器在自定义/本地模式不显式覆盖，客户端仍可能采用模型目录默认；官方菜单读取客户端内置目录。目录不可用时 Sol/Luna 均默认 `medium`。 |
 | 输入能力与上下文 | `CODEX_MODEL_MODALITIES=auto`、`CODEX_MODEL_CONTEXT_WINDOW` 留空。手动 `text`/`text_image` 或上下文数值仅用于自定义/本地模型兼容，官方账号使用官方目录。 |
 | 模型指令文件 | `CODEX_MODEL_INSTRUCTIONS_FILE` 必须为包内普通单链接文件，相对路径基于 `home`；在 `env.local.ps1` 显式设为空会同时关闭旧指令文件自动发现。 |
 | WebSocket | `CODEX_DISABLE_WEBSOCKET=true`。自定义接口确实支持时才改为 `false`；Ollama 固定 HTTP/SSE。 |

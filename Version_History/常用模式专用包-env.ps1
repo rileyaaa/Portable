@@ -231,17 +231,17 @@ function Find-CodexPortableModelInstructions {
 # Codex 当前推荐使用 responses wire API。通常不要改。
 $env:CODEX_WIRE_API = "responses"
 
-# AUTO 模式不生成第三方 model catalog，直接让当前 codex.exe 使用自身 bundled/unknown fallback。
-# 手工把 CODEX_MODEL_MODALITIES 设为 text/text_image，或显式填写 CODEX_MODEL_CONTEXT_WINDOW 时，启动器才临时生成兼容 catalog。
+# 自定义/本地 provider 总是生成包内兼容 catalog，保留模型元数据并关闭内部 Responses Lite。
+# 显式 modality/context 覆盖也写入此目录；官方账号继续使用原生目录。
 # 文件由 run-codex.ps1 原子生成，请勿手工编辑。
 $env:CODEX_MODEL_CATALOG_JSON = "home\model-catalog.custom.json"
 
-# 自定义/本地模型的上下文窗口(token)。默认留空：AUTO 时完全交给 Codex / 上游决定；
+# 自定义/本地模型的上下文窗口(token)。默认留空：不显式覆盖匹配到的原生上下文；
 # 手工 modality 覆盖时若仍留空：能匹配 bundled 的模型保留其原 context/max；真正 unknown 才使用 0.164.0 的保守 272000 fallback。
 $env:CODEX_MODEL_CONTEXT_WINDOW = ""
 
 # 模型思考强度（reasoning effort）。
-# custom_provider/local_ollama 默认留空：不主动发送 effort，交给上游/模型默认。
+# custom_provider/local_ollama 默认留空：启动器不显式覆盖 effort；客户端仍可能采用模型目录默认值。
 # official_chatgpt 在交互菜单中会从 bundled catalog 读取真实可选档位与默认。
 # 如中转站明确支持 reasoning.effort，可填 low / medium / high / xhigh 或上游接受的自定义非空值。
 $env:CODEX_REASONING_EFFORT = ""
