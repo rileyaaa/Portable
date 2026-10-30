@@ -87,8 +87,13 @@ jobs:
           )
           & git lfs install --local
           if ($LASTEXITCODE -ne 0) { throw 'Git LFS is required for signed Windows runtimes.' }
-          & git add -- $paths
-          if ($LASTEXITCODE -ne 0) { throw 'Upgrade staging failed.' }
+          # Windows PowerShell 5.1 passes non-ASCII native argv through a legacy
+          # code page. Stage tracked modifications without forwarding CJK paths;
+          # stage the one new executor under an ASCII-only name.
+          & git add -u
+          if ($LASTEXITCODE -ne 0) { throw 'Tracked upgrade staging failed.' }
+          & git add -- codex-exec-server.exe
+          if ($LASTEXITCODE -ne 0) { throw 'New executor staging failed.' }
           foreach ($binary in @('codex.exe','codex-code-mode-host.exe','codex-exec-server.exe',
                                  'codex-command-runner.exe','codex-windows-sandbox-setup.exe','codex-path/rg.exe')) {
             $attr = (& git check-attr filter -- $binary) -join "`n"
@@ -96,12 +101,23 @@ jobs:
             $pointer = (& git show ":$binary" | Select-Object -First 1) -join "`n"
             if ($pointer -notmatch '^version https://git-lfs.github.com/spec/v1') { throw "Expected a committed LFS pointer: $binary" }
           }
-          $changed = @(& git -c core.quotepath=false diff --cached --name-only)
-          foreach ($path in $changed) { if ($path -notin $paths) { throw ('Unreviewed staged file: ' + $path) } }
-          if ('tool/runtime-manifest.json' -notin $changed -or 'codex.exe' -notin $changed -or 'codex-exec-server.exe' -notin $changed) { throw 'Missing required upgrade outputs.' }
+          # Decode git's NUL-delimited UTF-8 paths in bundled Python; Windows
+          # PowerShell 5.1 cannot round-trip them through native stdout reliably.
+          $allowBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($paths | ConvertTo-Json -Compress)))
+          $checkIndex = @'
+          import base64, json, subprocess, sys
+          allowed = set(json.loads(base64.b64decode(sys.argv[1])))
+          raw = subprocess.check_output(['git', 'diff', '--cached', '--name-only', '-z'])
+          changed = {part.decode('utf-8') for part in raw.split(b'\0') if part}
+          required = {'tool/runtime-manifest.json', 'codex.exe', 'codex-exec-server.exe'}
+          assert required.issubset(changed), 'Missing mandatory runtime files: ' + repr(required - changed)
+          assert changed.issubset(allowed), 'Unexpected staged paths: ' + repr(changed - allowed)
+          print('STAGED_CHANGED_FILES=' + str(len(changed)))
+          '@
+          & .\tool\python\python.exe -B -c $checkIndex $allowBase64
+          if ($LASTEXITCODE -ne 0) { throw 'Staged index scope failed.' }
           & git diff --cached --check
           if ($LASTEXITCODE -ne 0) { throw 'Malformed staged diff.' }
-          Write-Output ('STAGED_CHANGED_FILES=' + $changed.Count)
 
       - name: Three consecutive targeted validations after all modifications
         run: |
