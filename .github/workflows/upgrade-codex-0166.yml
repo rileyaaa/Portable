@@ -105,7 +105,9 @@ jobs:
           '@
           & .\tool\python\python.exe -B -c $checkIndex
           if ($LASTEXITCODE -ne 0) { throw 'Staged index scope failed.' }
-          & git diff --cached --check
+          # Preserve the repository's Windows PS1 CRLF lines while still rejecting
+          # genuine new trailing spaces/tabs and unsafe diff whitespace.
+          & git -c core.whitespace=cr-at-eol diff --cached --check
           if ($LASTEXITCODE -ne 0) { throw 'Malformed staged diff.' }
 
       - name: Three consecutive targeted validations after all modifications
