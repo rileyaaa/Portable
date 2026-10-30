@@ -260,7 +260,7 @@ Assert-PortablePinnedExecutableAcl "codex.exe" $CodexExe
 # This hardened launcher is version-specific.  Never run the 0.166.0 config/schema
 # assumptions against an older, newer, zero-byte, or locally modified Codex binary.
 $ExpectedCodexVersion = "0.166.0"
-$ExpectedRuntimeManifestSha256 = "8CED66A547F94B5018B8C208076C5EC12606645DEEF16AAEBC7B0CA963A824D1"
+$ExpectedRuntimeManifestSha256 = "D446A21835361C03BB88D045B452DE5A369AF6E1A3C95DBCAE112DA97029F0E3"
 $ExpectedCodexSha256 = "9D563EE4E0441FF9D59D612013E0460DDF8E5709735C2D9F6B98B7EF8CA4EB42"
 $CodeModeHost = Join-Path $Root "codex-code-mode-host.exe"
 $ExpectedCodeModeHostSha256 = "977C1F01C9EFAC0BFE1B9032717C95F92E1C965C8441A8DACBFE824C5C79A527"

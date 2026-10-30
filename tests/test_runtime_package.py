@@ -61,7 +61,8 @@ class RuntimePackageTests(unittest.TestCase):
         self.assertEqual(metadata["version"], self.manifest["version"])
         self.assertEqual(metadata["target"], "x86_64-pc-windows-msvc")
         self.assertEqual(metadata["entrypoint"], "codex.exe")
-        self.assertEqual(metadata["execServer"], "codex-exec-server.exe")
+        self.assertNotIn("execServer", metadata)
+        self.assertFalse((ROOT / "codex-exec-server.exe").exists())
         self.assertEqual(metadata["resourcesDir"], "codex-resources")
         self.assertEqual(metadata["pathDir"], "codex-path")
         # An unrecorded resources host would shadow the pinned sibling host.
@@ -76,11 +77,14 @@ class RuntimePackageTests(unittest.TestCase):
     def test_text_agent_package_retains_active_runtime_dependencies(self):
         self.assertIn("voice", self.manifest["excluded_components"])
         self.assertIn("duplicate_sandbox_resources", self.manifest["excluded_components"])
+        self.assertIn("standalone_exec_server", self.manifest["excluded_components"])
+        self.assertEqual(self.manifest["excluded_components"]["standalone_exec_server"]["upstream_path"],
+                         "bin/codex-exec-server.exe")
         self.assertFalse((ROOT / "codex-resources/voice").exists())
         # Keep one complete root-level helper set. Upstream resolves these before
         # the duplicate resources copies; a missing helper may search host PATH.
         self.assertEqual(set(self.manifest["files"]), {
-            "codex.exe", "codex-code-mode-host.exe", "codex-exec-server.exe", "codex-package.json",
+            "codex.exe", "codex-code-mode-host.exe", "codex-package.json",
             "codex-path/rg.exe", "codex-command-runner.exe",
             "codex-windows-sandbox-setup.exe",
         })

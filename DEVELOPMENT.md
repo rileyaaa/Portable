@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-10-30：可选独立执行器精简（0.166.0 便携修订）
+
+仅面向本地 Windows TUI/文字 Agent，删除未使用的 `codex-exec-server.exe` Git LFS 文件及 `codex-package.json` 的 `execServer` 字段。官方 `rust-v0.166.0` 的 npm staging 同样省略二者；主 `codex.exe`、Code Mode Host、沙箱助手和 `--no-daemon` 不变。此操作只移除可选独立程序，不声称从主客户端二进制中删除全部远程相关代码；便携启动器原本就拒绝 `exec-server` 等服务端子命令。
+
+同步 `tool/runtime-manifest.json`、`codex-package.json`、启动器固定摘要及常用/YOLO 模式副本，调整打包身份白名单、回归和使用说明。已完成任务的一次性 0.166 升级 Actions/适配脚本清理，不允许再次自动引入该 EXE。客户包以固定源码的干净工作树生成；`v0.166.0-portable.3` 必须由现有 `release.yml` 手动运行完整 Windows 检查与十轮回归，通过 ZIP/远端附件逐项回读后才发布。线上账号、实际端到端模型调用、用户终端滚动显示不在自动验收范围。只有用户实际使用的 0.164.0 可作为已确认稳定基准。
+
 ## 2026-10-30：Codex 0.166.0 官方运行时升级（自动化候选）
 
 本次使用 GitHub Actions 从官方固定 release 下载 Windows x64 canonical package，校验归档与独立 EXE 摘要，同步主程序、Code Mode Host、执行器、沙箱助手、搜索工具及 manifest，保留包根启动和全部便携隔离策略。新版新增 codex-exec-server.exe 并适配 package metadata 的 execServer 字段；语音继续不打包，重复沙箱助手继续精简。

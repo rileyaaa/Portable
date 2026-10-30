@@ -13,7 +13,7 @@
 新版官方 EXE、搜索程序和配套浏览器使用 Git LFS 管理。通过 Git 克隆后先执行 `git lfs pull`；使用源码 ZIP 时确认其中包含实际 EXE，而不是文本形式的 LFS 指针。缺少实际工件时按[工具文档](tool/工具更新说明.md)取得并校验完整运行包。
 
 1. 解压到独立目录，例如 `D:\Codex` 或 `E:\Tools\Codex Portable`。不要从压缩包、网络盘或 symlink/junction 路径运行。
-2. 保留清单中的七个运行文件：主客户端、Code Mode Host、独立执行器、两个根目录沙箱助手、`codex-package.json` 和 `codex-path/rg.exe`，以及布局所需的 `codex-resources` 目录，不要只复制两个 EXE。
+2. 保留清单中的六个运行文件：主客户端、Code Mode Host、两个根目录沙箱助手、`codex-package.json` 和 `codex-path/rg.exe`，以及布局所需的 `codex-resources` 目录，不要只复制两个 EXE。
 3. 按下文配置认证方式。使用自定义 API 时，需要接口地址、Key 和上游实际支持的模型名；官方账号可在启动菜单选择账号 JSON 或设备码登录。
 4. 双击 `启动Codex.bat`，按菜单选择登录、思考等级、网络和代理。默认工作目录为包内 `work`。
 
@@ -27,7 +27,6 @@
 | --- | --- |
 | `codex.exe` | 主客户端，必需。 |
 | `codex-code-mode-host.exe` | Code Mode 工具执行进程，文字 Agent 也会用到；保留此能力就需要它，并且必须与主客户端匹配。 |
-| `codex-exec-server.exe` | 0.166.0 新增独立执行器，保留官方校验字节并使用包根同目录路径；不自动改变沙箱权限。 |
 | `codex-command-runner.exe` | **提权 Windows 沙箱（elevated）**的命令执行助手；当前默认 unelevated 路径不调用它。 |
 | `codex-windows-sandbox-setup.exe` | **提权 Windows 沙箱**的初始化助手；普通便携启动不因此自动提权或执行系统初始化。 |
 | `codex-path/rg.exe` | Codex 自带的文件内容搜索程序，避免依赖宿主安装。 |
@@ -35,7 +34,7 @@
 
 之前只有 Codex 和 Host 也能运行，是因为默认的 `windows.sandbox="unelevated"` 使用客户端内置的受限令牌执行路径。仍保留一对根目录沙箱助手，是因为 TUI 的 `/elevate-sandbox` 入口可达，不能靠普通配置可靠地移除；缺少助手时，上游还可能退回按文件名查找程序。保留包内匹配文件可避免该功能缺件及宿主程序回退。提权沙箱的系统级初始化需要另行明确授权。
 
-已按 0.166.0 核对查找顺序，省略 `codex-resources` 中两份重复助手和语音组件。当前保留七个运行文件（新增执行器，体积及摘要以清单为准）；不含 `tool` 工具和用户状态。
+已按 0.166.0 核对查找顺序，省略 `codex-resources` 中两份重复助手和语音组件。当前保留六个运行文件（体积及摘要以清单为准）；不含 `tool` 工具和用户状态。0.166.0 新增的独立 `codex-exec-server.exe` 属于可选服务端程序，本地文字/TUI/Agent 不依赖它，本包已将其及 `codex-package.json` 的 `execServer` 字段一并省略；官方 npm 包也采用这种精简布局。`codex.exe` 本身仍内置 `exec-server` 子命令，便携启动器会拒绝直接调用该入口；删除独立 EXE 不等于在二进制级别移除全部网络/远程代码。
 
 交互界面、`resume` 和 `fork` 默认附带官方 `--no-daemon`，使用当前进程内的服务。0.166.0 共享后台服务禁止把状态目录放在其 CLI 包内，因此本包采用此模式保留包内 `home`；文字、Agent 和 Code Mode 仍可使用，共享后台服务功能不启用。若使用旧包遇到 `CODEX_HOME must be outside the source CLI package`，API 模式可临时通过 `.\启动Codex.bat --portable-auth api --no-daemon` 启动；沿用此前已保存的认证使用 `--portable-auth last`，它不等同于 API 模式。恢复会话在相同参数后加 `resume --last`。
 

@@ -76,7 +76,7 @@ class ReleasePackageTests(unittest.TestCase):
             self.write(name, native_exe())
         self.write("codex-package.json", json.dumps({
             "version": "0.163.0", "target": "x86_64-pc-windows-msvc", "entrypoint": "codex.exe",
-            "execServer": "codex-exec-server.exe", "resourcesDir": "codex-resources", "pathDir": "codex-path",
+            "resourcesDir": "codex-resources", "pathDir": "codex-path",
         }).encode())
         manifest = json.dumps({"version": "0.163.0", "target": "x86_64-pc-windows-msvc", "files": {
             name: {"sha256": hashlib.sha256((self.root / name).read_bytes()).hexdigest()}
@@ -135,6 +135,7 @@ class ReleasePackageTests(unittest.TestCase):
         self.assertEqual(metadata["package_kind"], "customer")
         self.assertEqual(metadata["browser_version"], "155.0.8059.12")
         self.assertIn(self.browser_executable, metadata["files"])
+        self.assertNotIn("codex-exec-server.exe", metadata["files"])
         excluded = self.development_files | {"tool/package-release.py"}
         self.assertEqual(set(metadata["excluded_files"]), excluded)
         self.assertTrue(all(metadata["excluded_files"].values()))
@@ -250,6 +251,7 @@ class ReleasePackageTests(unittest.TestCase):
         included, excluded = release.customer_files(names)
         self.assertEqual(set(included) | set(excluded), set(names))
         self.assertTrue(set(included).isdisjoint(excluded))
+        self.assertNotIn("codex-exec-server.exe", included)
         self.assertTrue((PROJECT_DOCS | MODE_COPIES | CONVERTER_RUNTIME | release.RUNTIME_FILES
                          | {"env.ps1", "run-codex.ps1", "tool/setup-tools.ps1", "tool/runtime-manifest.json"})
                         .issubset(included))

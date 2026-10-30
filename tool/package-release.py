@@ -21,7 +21,7 @@ import zipfile
 CHUNK = 1024 * 1024
 LFS_HEADER = b"version https://git-lfs.github.com/spec/v1"
 RUNTIME_FILES = {
-    "codex.exe", "codex-code-mode-host.exe", "codex-exec-server.exe", "codex-command-runner.exe",
+    "codex.exe", "codex-code-mode-host.exe", "codex-command-runner.exe",
     "codex-windows-sandbox-setup.exe", "codex-package.json", "codex-path/rg.exe",
 }
 STATE_ROOTS = {
@@ -204,9 +204,11 @@ def runtime_identity(root: Path, names: list[str]) -> dict:
     metadata = json.loads(package_file(root, "codex-package.json").read_bytes())
     if any(metadata.get(key) != value for key, value in {
         "version": manifest["version"], "target": manifest["target"],
-        "entrypoint": "codex.exe", "execServer": "codex-exec-server.exe", "resourcesDir": "codex-resources", "pathDir": "codex-path",
+        "entrypoint": "codex.exe", "resourcesDir": "codex-resources", "pathDir": "codex-path",
     }.items()):
         raise ValueError("Codex package metadata does not match the release layout.")
+    if "execServer" in metadata or "codex-exec-server.exe" in names:
+        raise ValueError("Standalone exec server is not part of this local-only portable package.")
     ordinary(root / "codex-resources", directory=True)
     return manifest
 
