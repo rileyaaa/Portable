@@ -41,6 +41,34 @@ PUBLISHED_BIN_SHA256 = {
 }
 
 
+# The audited output scope is also enforced against the Git index by Actions.
+EXPECTED_UPGRADE_PATHS = frozenset({
+    '.gitattributes',
+    'codex.exe',
+    'codex-code-mode-host.exe',
+    'codex-exec-server.exe',
+    'codex-command-runner.exe',
+    'codex-windows-sandbox-setup.exe',
+    'codex-package.json',
+    'codex-path/rg.exe',
+    'tool/runtime-manifest.json',
+    'run-codex.ps1',
+    'env.ps1',
+    'login-json.ps1',
+    'README.md',
+    'DEVELOPMENT.md',
+    'tool/工具更新说明.md',
+    'tool/package-release.py',
+    'Version_History/常用模式专用包-run-codex.ps1',
+    'Version_History/常用模式专用包-env.ps1',
+    'Version_History/YOLO mode专用包-run-codex.ps1',
+    'Version_History/YOLO mode专用包-env.ps1',
+    'tests/test_runtime_package.py',
+    'tests/test_release_package.py',
+    'tests/test_runtime_preflight.ps1',
+})
+
+
 def require(condition: bool, description: str) -> None:
     if not condition:
         raise ValueError(description)
@@ -282,6 +310,8 @@ def prepare(root: Path, archive: Path, fixture: bool = False) -> dict[str, bytes
                                 b'"execServer": "codex-exec-server.exe", "resourcesDir": "codex-resources", "pathDir": "codex-path",',
                                 "release synthetic fixture metadata")
     changes["tests/test_release_package.py"] = release_test
+    require(set(changes) == EXPECTED_UPGRADE_PATHS,
+            "Unexpected adapted change set: " + repr(set(changes) ^ EXPECTED_UPGRADE_PATHS))
     return changes
 
 

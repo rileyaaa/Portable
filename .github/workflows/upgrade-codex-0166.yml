@@ -72,19 +72,6 @@ jobs:
       - name: Stage exact upgrade scope and enforce Git LFS
         run: |
           $ErrorActionPreference = 'Stop'
-          $paths = @(
-            '.gitattributes', 'codex.exe', 'codex-code-mode-host.exe', 'codex-exec-server.exe',
-            'codex-command-runner.exe', 'codex-windows-sandbox-setup.exe',
-            'codex-package.json', 'codex-path/rg.exe', 'tool/runtime-manifest.json',
-            'run-codex.ps1', 'env.ps1', 'login-json.ps1', 'README.md', 'DEVELOPMENT.md',
-            'tool/工具更新说明.md', 'tool/package-release.py',
-            'Version_History/常用模式专用包-run-codex.ps1',
-            'Version_History/常用模式专用包-env.ps1',
-            'Version_History/YOLO mode专用包-run-codex.ps1',
-            'Version_History/YOLO mode专用包-env.ps1',
-            'tests/test_runtime_package.py', 'tests/test_release_package.py',
-            'tests/test_runtime_preflight.ps1'
-          )
           & git lfs install --local
           if ($LASTEXITCODE -ne 0) { throw 'Git LFS is required for signed Windows runtimes.' }
           # Windows PowerShell 5.1 passes non-ASCII native argv through a legacy
@@ -103,10 +90,12 @@ jobs:
           }
           # Decode git's NUL-delimited UTF-8 paths in bundled Python; Windows
           # PowerShell 5.1 cannot round-trip them through native stdout reliably.
-          $allowBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($paths | ConvertTo-Json -Compress)))
           $checkIndex = @'
-          import base64, json, subprocess, sys
-          allowed = set(json.loads(base64.b64decode(sys.argv[1])))
+          import importlib.util, subprocess, sys
+          spec = importlib.util.spec_from_file_location('upgrade', '.github/scripts/upgrade-codex-0166.py')
+          upgrade = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(upgrade)
+          allowed = upgrade.EXPECTED_UPGRADE_PATHS
           raw = subprocess.check_output(['git', 'diff', '--cached', '--name-only', '-z'])
           changed = {part.decode('utf-8') for part in raw.split(b'\0') if part}
           required = {'tool/runtime-manifest.json', 'codex.exe', 'codex-exec-server.exe'}
@@ -114,7 +103,7 @@ jobs:
           assert changed.issubset(allowed), 'Unexpected staged paths: ' + repr(changed - allowed)
           print('STAGED_CHANGED_FILES=' + str(len(changed)))
           '@
-          & .\tool\python\python.exe -B -c $checkIndex $allowBase64
+          & .\tool\python\python.exe -B -c $checkIndex
           if ($LASTEXITCODE -ne 0) { throw 'Staged index scope failed.' }
           & git diff --cached --check
           if ($LASTEXITCODE -ne 0) { throw 'Malformed staged diff.' }
