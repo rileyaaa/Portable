@@ -13,7 +13,7 @@
 新版官方 EXE、搜索程序和配套浏览器使用 Git LFS 管理。通过 Git 克隆后先执行 `git lfs pull`；使用源码 ZIP 时确认其中包含实际 EXE，而不是文本形式的 LFS 指针。缺少实际工件时按[工具文档](tool/工具更新说明.md)取得并校验完整运行包。
 
 1. 解压到独立目录，例如 `D:\Codex` 或 `E:\Tools\Codex Portable`。不要从压缩包、网络盘或 symlink/junction 路径运行。
-2. 保留清单中的七个运行文件：主客户端、Code Mode Host、两个根目录沙箱助手、`codex-package.json` 和 `codex-path/rg.exe`，以及布局所需的 `codex-resources` 目录，不要只复制两个 EXE。
+2. 保留清单中的七个运行文件：主客户端、Code Mode Host、独立执行器、两个根目录沙箱助手、`codex-package.json` 和 `codex-path/rg.exe`，以及布局所需的 `codex-resources` 目录，不要只复制两个 EXE。
 3. 按下文配置认证方式。使用自定义 API 时，需要接口地址、Key 和上游实际支持的模型名；官方账号可在启动菜单选择账号 JSON 或设备码登录。
 4. 双击 `启动Codex.bat`，按菜单选择登录、思考等级、网络和代理。默认工作目录为包内 `work`。
 
@@ -124,6 +124,8 @@ $env:CODEX_TUI_FULLSCREEN_TRANSCRIPT = "true"
 `Version_History` 的常用两份文件与根文件相同；YOLO 使用同一启动器，保留 `strict`，将 approval/sandbox/network 分别设为 `never` / `danger-full-access` / `true`。YOLO 不再等待权限批准，但关闭了执行器的文件写入沙箱；包内路径设置仍保留，不能保证任意命令绝不越界。要求严格写入边界时使用常用模式。无人值守还需要可用认证及非交互命令，例如 `exec`，仅改变权限设置不会自动完成登录或跳过菜单。
 
 ### 代理与账号检查
+
+**2026-10-30 源码修正（尚未发布新包）：** HTTP bridge 已修复 CONNECT 单向半关闭时提前截断另一方向数据、上游响应中断后把第二个 HTTP 错误状态拼进响应体，以及非 ASCII 代理认证头异常。正常认证仍使用恒定时间比较；认证头只裁剪 HTTP 允许的空格和制表符，不把其他空白字符归一化成有效凭据。监听范围、代理路由、超时及权限默认值不变。新增离线故障注入与本机 TCP 回归，覆盖双向半关闭、分块请求、流水线隔离和响应中断；这些检查不替代 Windows、真实 SOCKS 服务或付费 API 验收，现有 `v0.166.0-portable.1` 附件不包含本次源码补丁。
 
 代理默认关闭，可在菜单或 `CODEX_PROXY_ENABLED` 中开启。`CODEX_PROXY_PROTOCOL` 支持 `socks5` / `http`，默认端点为 `127.0.0.1:10808`；SOCKS5 默认通过包内 Python 的 HTTP bridge 使用，bridge 仅监听回环地址。
 

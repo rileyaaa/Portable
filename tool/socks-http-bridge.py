@@ -100,7 +100,7 @@ def get_header_value(header_blob: bytes, name: str) -> str:
         line = raw_line.decode("latin-1", "replace")
         key, sep, value = line.partition(":")
         if sep and key.strip().lower() == wanted:
-            return value.strip()
+            return value.strip(" \t")
     return ""
 
 
@@ -229,9 +229,10 @@ def strip_proxy_headers(header_blob: bytes) -> bytes:
 
 def tunnel(left: socket.socket, right: socket.socket) -> None:
     sockets = [left, right]
+    receiving = list(sockets)
     try:
-        while True:
-            readable, _, errored = select.select(sockets, [], sockets, IDLE_TIMEOUT)
+        while receiving:
+            readable, _, errored = select.select(receiving, [], sockets, IDLE_TIMEOUT)
             if errored:
                 return
             if not readable:
@@ -240,8 +241,12 @@ def tunnel(left: socket.socket, right: socket.socket) -> None:
                 dst = right if src is left else left
                 data = src.recv(BUFFER_SIZE)
                 if not data:
-                    return
-                dst.sendall(data)
+                    # EOF closes one direction only. The other peer may still
+                    # owe a response after receiving this request's final byte.
+                    receiving.remove(src)
+                    dst.shutdown(socket.SHUT_WR)
+                else:
+                    dst.sendall(data)
     finally:
         for sock in sockets:
             try:
@@ -294,7 +299,9 @@ class ProxyHandler(socketserver.BaseRequestHandler):
     def is_authorized(cls, header_blob: bytes) -> bool:
         actual = get_header_value(header_blob, "Proxy-Authorization")
         expected = cls.expected_proxy_authorization
-        return bool(expected) and hmac.compare_digest(actual, expected)
+        # HTTP field values may contain obs-text; Basic credentials may not.
+        # Reject them as authentication failures rather than raising TypeError.
+        return bool(expected) and actual.isascii() and hmac.compare_digest(actual, expected)
 
     def connect_via_socks(self, host: str, port: int) -> socks.socksocket:
         upstream = socks.socksocket()
@@ -316,6 +323,7 @@ class ProxyHandler(socketserver.BaseRequestHandler):
         host, port = parse_host_port(target, 443)
         upstream = self.connect_via_socks(host, port)
         try:
+            self.response_started = True
             self.request.sendall(
                 b"HTTP/1.1 200 Connection Established\r\n"
                 b"Proxy-Agent: codex-socks-http-bridge\r\n\r\n"
@@ -391,11 +399,13 @@ class ProxyHandler(socketserver.BaseRequestHandler):
                 data = upstream.recv(BUFFER_SIZE)
                 if not data:
                     return
+                self.response_started = True
                 self.request.sendall(data)
         finally:
             upstream.close()
 
     def handle(self) -> None:
+        self.response_started = False
         try:
             # Do not let an unauthenticated local process hold a worker forever by
             # connecting and never finishing its proxy headers.
@@ -417,6 +427,8 @@ class ProxyHandler(socketserver.BaseRequestHandler):
             else:
                 self.handle_plain_http(first_line, header_blob)
         except HeaderError:
+            if self.response_started:
+                return
             try:
                 self.request.sendall(
                     b"HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n"
@@ -424,6 +436,10 @@ class ProxyHandler(socketserver.BaseRequestHandler):
             except Exception:
                 pass
         except Exception:
+            # Once response bytes (or CONNECT's 200) were sent, another HTTP
+            # status would corrupt the body/tunnel. Closing signals truncation.
+            if self.response_started:
+                return
             # The bridge is local-only; do not leak upstream exception details/tokens to proxy clients.
             try:
                 self.request.sendall(b"HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
