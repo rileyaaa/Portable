@@ -1,6 +1,6 @@
 # Codex Portable（Windows x64）
 
-将 Codex、启动器、包内工具和运行状态放在同一目录的便携项目，面向 **Windows x86-64、Windows PowerShell 5.1、本地 NTFS**，不支持 32 位 Windows。当前主客户端与 Code Mode Host 均为官方 **0.164.0**，用于文字与 Agent 工作，保留配套执行、搜索和沙箱组件，不包含语音聊天资源；来源和摘要见 [运行包清单](tool/runtime-manifest.json)。
+将 Codex、启动器、包内工具和运行状态放在同一目录的便携项目，面向 **Windows x86-64、Windows PowerShell 5.1、本地 NTFS**，不支持 32 位 Windows。当前主客户端与 Code Mode Host 均为官方 **0.166.0**，用于文字与 Agent 工作，保留配套执行、搜索和沙箱组件，不包含语音聊天资源；来源和摘要见 [运行包清单](tool/runtime-manifest.json)。
 
 默认面向 DBA 日常工作、爬虫与数据处理，也保留 Python 开发和调试能力。Python、Node 及已有文档/自动化运行依赖留在包内；Go 编译仍交给独立项目的手动 GitHub Actions，不预装 Go 编译器。Python EXE 打包已按用户授权恢复历史 PyInstaller，由 AI 直接调用包内 Python 的原生模块按任务使用，Windows 实际打包验收尚未执行。
 
@@ -10,10 +10,10 @@
 
 发行命名为 `Codex Portable <CodexVersion> - Portable r<N>`；同一客户端版本的打包更新递增便携修订。优先下载 [Releases](https://github.com/rileyaaa/Codex-Portable/releases) 中命名为 `Codex-Portable-版本-windows-x64.zip` 的发行附件，并用同次发布的 `SHA256SUMS` 核对摘要。客户发行包不含第一方测试、CI 工作流、Git 配置、开发打包器或用户运行数据；测试保留在 GitHub 源码中。GitHub 自动生成的 Source code ZIP 不等同于便携发行包。
 
-`codex.exe` 和配套浏览器文件使用 Git LFS 管理。通过 Git 克隆后先执行 `git lfs pull`；使用源码 ZIP 时确认其中包含实际 EXE，而不是文本形式的 LFS 指针。缺少实际工件时按[工具文档](tool/工具更新说明.md)取得并校验完整运行包。
+新版官方 EXE、搜索程序和配套浏览器使用 Git LFS 管理。通过 Git 克隆后先执行 `git lfs pull`；使用源码 ZIP 时确认其中包含实际 EXE，而不是文本形式的 LFS 指针。缺少实际工件时按[工具文档](tool/工具更新说明.md)取得并校验完整运行包。
 
 1. 解压到独立目录，例如 `D:\Codex` 或 `E:\Tools\Codex Portable`。不要从压缩包、网络盘或 symlink/junction 路径运行。
-2. 保留清单中的六个运行文件：主客户端、Code Mode Host、两个根目录沙箱助手、`codex-package.json` 和 `codex-path/rg.exe`，以及布局所需的 `codex-resources` 目录，不要只复制两个 EXE。
+2. 保留清单中的七个运行文件：主客户端、Code Mode Host、两个根目录沙箱助手、`codex-package.json` 和 `codex-path/rg.exe`，以及布局所需的 `codex-resources` 目录，不要只复制两个 EXE。
 3. 按下文配置认证方式。使用自定义 API 时，需要接口地址、Key 和上游实际支持的模型名；官方账号可在启动菜单选择账号 JSON 或设备码登录。
 4. 双击 `启动Codex.bat`，按菜单选择登录、思考等级、网络和代理。默认工作目录为包内 `work`。
 
@@ -27,16 +27,17 @@
 | --- | --- |
 | `codex.exe` | 主客户端，必需。 |
 | `codex-code-mode-host.exe` | Code Mode 工具执行进程，文字 Agent 也会用到；保留此能力就需要它，并且必须与主客户端匹配。 |
+| `codex-exec-server.exe` | 0.166.0 新增独立执行器，保留官方校验字节并使用包根同目录路径；不自动改变沙箱权限。 |
 | `codex-command-runner.exe` | **提权 Windows 沙箱（elevated）**的命令执行助手；当前默认 unelevated 路径不调用它。 |
 | `codex-windows-sandbox-setup.exe` | **提权 Windows 沙箱**的初始化助手；普通便携启动不因此自动提权或执行系统初始化。 |
 | `codex-path/rg.exe` | Codex 自带的文件内容搜索程序，避免依赖宿主安装。 |
-| `codex-voice-host.exe` 及语音资源 | 已按文字/Agent 用途移除；有效的 App 语音/听写开关保持关闭，TUI 语音快捷键解除绑定。上游 0.164.0 仍可显示 `/voice`，本包不支持该语音功能。 |
+| `codex-voice-host.exe` 及语音资源 | 已按文字/Agent 用途移除；有效的 App 语音/听写开关保持关闭，TUI 语音快捷键解除绑定。上游 0.166.0 仍可显示 `/voice`，本包不支持该语音功能。 |
 
 之前只有 Codex 和 Host 也能运行，是因为默认的 `windows.sandbox="unelevated"` 使用客户端内置的受限令牌执行路径。仍保留一对根目录沙箱助手，是因为 TUI 的 `/elevate-sandbox` 入口可达，不能靠普通配置可靠地移除；缺少助手时，上游还可能退回按文件名查找程序。保留包内匹配文件可避免该功能缺件及宿主程序回退。提权沙箱的系统级初始化需要另行明确授权。
 
-已按 0.164.0 核对查找顺序，省略 `codex-resources` 中两份重复助手和语音组件。当前保留六个运行文件，约 **464.5 MB**；不含 `tool` 工具和用户状态。
+已按 0.166.0 核对查找顺序，省略 `codex-resources` 中两份重复助手和语音组件。当前保留七个运行文件（新增执行器，体积及摘要以清单为准）；不含 `tool` 工具和用户状态。
 
-交互界面、`resume` 和 `fork` 默认附带官方 `--no-daemon`，使用当前进程内的服务。0.164.0 共享后台服务禁止把状态目录放在其 CLI 包内，因此本包采用此模式保留包内 `home`；文字、Agent 和 Code Mode 仍可使用，共享后台服务功能不启用。若使用旧包遇到 `CODEX_HOME must be outside the source CLI package`，API 模式可临时通过 `.\启动Codex.bat --portable-auth api --no-daemon` 启动；沿用此前已保存的认证使用 `--portable-auth last`，它不等同于 API 模式。恢复会话在相同参数后加 `resume --last`。
+交互界面、`resume` 和 `fork` 默认附带官方 `--no-daemon`，使用当前进程内的服务。0.166.0 共享后台服务禁止把状态目录放在其 CLI 包内，因此本包采用此模式保留包内 `home`；文字、Agent 和 Code Mode 仍可使用，共享后台服务功能不启用。若使用旧包遇到 `CODEX_HOME must be outside the source CLI package`，API 模式可临时通过 `.\启动Codex.bat --portable-auth api --no-daemon` 启动；沿用此前已保存的认证使用 `--portable-auth last`，它不等同于 API 模式。恢复会话在相同参数后加 `resume --last`。
 
 ## 五个 BAT 入口
 
@@ -110,7 +111,7 @@ $env:CODEX_TUI_FULLSCREEN_TRANSCRIPT = "true"
 | Apps / Plugins | `CODEX_DISABLE_APPS=true`、`CODEX_ENABLE_PLUGINS=false`、`CODEX_ENABLE_PLUGIN_SHARING=false`。Plugins 须配置为 true 且本次启动带 `--portable-extensions`；Apps 还需要官方登录与连接器授权。 |
 | 用户 MCP | `CODEX_PORTABLE_ALLOW_USER_MCP=false`，保留配置但不激活。须配置为 true 且本次启动带 `--portable-extensions`；维护模式不会自动启用。 |
 
-自定义 API/本地 provider 使用标准 Responses 协议，生成包内当前模型目录以关闭 0.164.0 内置的内部 Responses Lite；模型名保持配置原值，官方账号使用原生目录。`CODEX_MODEL_CATALOG_JSON` 是输出路径，相对包根解析，不是导入任意模型目录的入口。其他 Provider header、query、状态栏等选项见 `env.ps1` 注释；需要 TOML 的选项使用单行 inline table。
+自定义 API/本地 provider 使用标准 Responses 协议，生成包内当前模型目录以关闭 0.166.0 内置的内部 Responses Lite；模型名保持配置原值，官方账号使用原生目录。`CODEX_MODEL_CATALOG_JSON` 是输出路径，相对包根解析，不是导入任意模型目录的入口。其他 Provider header、query、状态栏等选项见 `env.ps1` 注释；需要 TOML 的选项使用单行 inline table。
 
 ### 权限、联网与 Fast
 

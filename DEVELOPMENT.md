@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-10-30：Codex 0.166.0 官方运行时升级（自动化候选）
+
+本次使用 GitHub Actions 从官方固定 release 下载 Windows x64 canonical package，校验归档与独立 EXE 摘要，同步主程序、Code Mode Host、执行器、沙箱助手、搜索工具及 manifest，保留包根启动和全部便携隔离策略。新版新增 codex-exec-server.exe 并适配 package metadata 的 execServer 字段；语音继续不打包，重复沙箱助手继续精简。
+
+启动器 `CODEX_TUI_FULLSCREEN_TRANSCRIPT` 默认 false、可在受控 env.local.ps1 覆盖；继续使用 `--no-daemon` 防止共享 daemon 把状态迁到包外。本提交只有经 runner 验证的文件；真正的 Windows 全量发行门禁由单独 release workflow 执行。账号登录、真实网络代理、付费模型及用户终端重绘不以合成测试冒充实测。
+
 ## 维护约定
 
 开始维护前阅读本节及 [README](README.md)。这里统一记录项目限制；使用方法、下载步骤分别维护在对应文档，不在多处复制整套说明。

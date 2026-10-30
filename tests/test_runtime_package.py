@@ -61,6 +61,7 @@ class RuntimePackageTests(unittest.TestCase):
         self.assertEqual(metadata["version"], self.manifest["version"])
         self.assertEqual(metadata["target"], "x86_64-pc-windows-msvc")
         self.assertEqual(metadata["entrypoint"], "codex.exe")
+        self.assertEqual(metadata["execServer"], "codex-exec-server.exe")
         self.assertEqual(metadata["resourcesDir"], "codex-resources")
         self.assertEqual(metadata["pathDir"], "codex-path")
         # An unrecorded resources host would shadow the pinned sibling host.
@@ -79,7 +80,7 @@ class RuntimePackageTests(unittest.TestCase):
         # Keep one complete root-level helper set. Upstream resolves these before
         # the duplicate resources copies; a missing helper may search host PATH.
         self.assertEqual(set(self.manifest["files"]), {
-            "codex.exe", "codex-code-mode-host.exe", "codex-package.json",
+            "codex.exe", "codex-code-mode-host.exe", "codex-exec-server.exe", "codex-package.json",
             "codex-path/rg.exe", "codex-command-runner.exe",
             "codex-windows-sandbox-setup.exe",
         })

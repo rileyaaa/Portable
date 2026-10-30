@@ -9,3 +9,8 @@ tool/runtime-manifest.json -text
 tool/python-packages.in.txt -text
 tool/licenses/** -text
 tool/automation/browsers/** filter=lfs diff=lfs merge=lfs -text
+codex-code-mode-host.exe filter=lfs diff=lfs merge=lfs -text
+codex-exec-server.exe filter=lfs diff=lfs merge=lfs -text
+codex-command-runner.exe filter=lfs diff=lfs merge=lfs -text
+codex-windows-sandbox-setup.exe filter=lfs diff=lfs merge=lfs -text
+codex-path/rg.exe filter=lfs diff=lfs merge=lfs -text

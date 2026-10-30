@@ -76,7 +76,7 @@ class ReleasePackageTests(unittest.TestCase):
             self.write(name, native_exe())
         self.write("codex-package.json", json.dumps({
             "version": "0.163.0", "target": "x86_64-pc-windows-msvc", "entrypoint": "codex.exe",
-            "resourcesDir": "codex-resources", "pathDir": "codex-path",
+            "execServer": "codex-exec-server.exe", "resourcesDir": "codex-resources", "pathDir": "codex-path",
         }).encode())
         manifest = json.dumps({"version": "0.163.0", "target": "x86_64-pc-windows-msvc", "files": {
             name: {"sha256": hashlib.sha256((self.root / name).read_bytes()).hexdigest()}

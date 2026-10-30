@@ -1,34 +1,38 @@
 {
-  "version": "0.164.0",
+  "version": "0.166.0",
   "target": "x86_64-pc-windows-msvc",
-  "release": "https://github.com/openai/codex/releases/tag/rust-v0.164.0",
-  "archive": "https://github.com/openai/codex/releases/download/rust-v0.164.0/codex-x86_64-pc-windows-msvc.exe.zip",
-  "archive_sha256": "349827ef53a06a27c7ad9f93ad97a5ac019b0975ed7ab669f73bb0deccd7b4fa",
+  "release": "https://github.com/openai/codex/releases/tag/rust-v0.166.0",
+  "archive": "https://github.com/openai/codex/releases/download/rust-v0.166.0/codex-package-x86_64-pc-windows-msvc.tar.gz",
+  "archive_sha256": "d559bb88e74d471265857b93b7f19bc250dae527673b9191b33534478093f6bc",
   "files": {
     "codex-code-mode-host.exe": {
-      "upstream_path": "codex-code-mode-host.exe",
-      "sha256": "be52517ca0f9a8eb626ec065ed3a357b5ee150fe1934a254d0126e6d40f29b57"
+      "upstream_path": "bin/codex-code-mode-host.exe",
+      "sha256": "977c1f01c9efac0bfe1b9032717c95f92e1c965c8441a8dacbfe824c5c79a527"
     },
     "codex-command-runner.exe": {
-      "upstream_path": "codex-command-runner.exe",
-      "sha256": "30b0ba5d42d3a95c839731fbf9939d728a70fcd9e433245a7cb15bc79418a4db"
+      "upstream_path": "codex-resources/codex-command-runner.exe",
+      "sha256": "5e68e3f5b4640af55db2873a0d0dc038907145708f9e735870d9279a8074c2df"
+    },
+    "codex-exec-server.exe": {
+      "upstream_path": "bin/codex-exec-server.exe",
+      "sha256": "eda5263b31e0354347e7bcdc434aff82f5c630ddba69f13449742a64e1836a37"
     },
     "codex-package.json": {
       "upstream_path": "codex-package.json",
-      "sha256": "a56e0fe59eb972db2149cc3d0a94f2afc9b494d4ce66ec48d2d2d9828c4f54ad",
-      "adaptation": "entrypoint renamed to codex.exe to match the portable launcher"
+      "sha256": "9f9c2851210828d200e619514f679604c455c8d94648bf5d95878cedf87433a0",
+      "adaptation": "entrypoint and execServer adapted to the package-root portable launcher"
     },
     "codex-path/rg.exe": {
       "upstream_path": "codex-path/rg.exe",
       "sha256": "14231169855ec5205cf5a1b6f1db358ff4aed4247c86b69ce8aae647c77f6680"
     },
     "codex-windows-sandbox-setup.exe": {
-      "upstream_path": "codex-windows-sandbox-setup.exe",
-      "sha256": "2cac62ff24aca3aef7768ab5b96d4102e8434eb0cf8ddbc6171b85a8fb3bb4ef"
+      "upstream_path": "codex-resources/codex-windows-sandbox-setup.exe",
+      "sha256": "3995c4f57199eb8023a0f3a585f6e9fdc4d5174c22a51837aaeb15beb52954f0"
     },
     "codex.exe": {
-      "upstream_path": "codex-x86_64-pc-windows-msvc.exe",
-      "sha256": "6f267830b029ee25d9339864aa867cd45de9f8fd4c5ea007d2e63c13a0c66d36"
+      "upstream_path": "bin/codex.exe",
+      "sha256": "9d563ee4e0441ff9d59d612013e0460ddf8e5709735c2d9f6b98b7ef8ca4eb42"
     }
   },
   "excluded_components": {
