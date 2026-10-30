@@ -26,35 +26,53 @@ HEADER_NAME = re.compile(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
 
 
 class HeaderError(ValueError):
-    pass
+    def __init__(self, message: str, status: bytes = b"400 Bad Request"):
+        super().__init__(message)
+        self.status = status
 
 
 def parse_host_port(target: str, default_port: int) -> tuple[str, int]:
-    target = target.strip()
-    if not target or any(ord(ch) < 32 or ord(ch) == 127 for ch in target):
-        raise ValueError("invalid target")
+    # Parse HTTP authority, not Python's more permissive integer/whitespace
+    # syntax. Reject malformed targets before any upstream DNS or connection.
+    if (not target or not target.isascii()
+            or any(ord(ch) <= 32 or ord(ch) == 127 for ch in target)
+            or any(ch in target for ch in "/\\?#@%")):
+        raise HeaderError("invalid target")
 
+    port_text = None
     if target.startswith("["):
         closing = target.find("]")
         if closing < 0:
-            raise ValueError("invalid bracketed IPv6 target")
+            raise HeaderError("invalid bracketed IPv6 target")
         host = target[1:closing]
-        suffix = target[closing + 1 :]
-        if not suffix:
-            port = default_port
-        elif suffix.startswith(":") and suffix[1:]:
-            port = int(suffix[1:])
-        else:
-            raise ValueError("invalid bracketed IPv6 port")
-    elif target.count(":") == 1:
-        host, port_text = target.rsplit(":", 1)
-        port = int(port_text)
+        try:
+            ipaddress.IPv6Address(host)
+        except ValueError as exc:
+            raise HeaderError("invalid bracketed IPv6 target") from exc
+        suffix = target[closing + 1:]
+        if suffix:
+            if not suffix.startswith(":") or not suffix[1:]:
+                raise HeaderError("invalid bracketed IPv6 port")
+            port_text = suffix[1:]
     else:
-        host, port = target, default_port
+        if target.count(":") > 1:
+            raise HeaderError("IPv6 authority requires brackets")
+        host, separator, candidate_port = target.partition(":")
+        if separator:
+            port_text = candidate_port
+        if not re.fullmatch(r"[A-Za-z0-9._~!$&'()*+,;=-]+", host):
+            raise HeaderError("invalid target host")
 
-    host = host.strip()
-    if not host or len(host) > 253 or any(ch.isspace() for ch in host) or not 1 <= port <= 65535:
-        raise ValueError("invalid target host or port")
+    port = default_port
+    if port_text is not None:
+        if not re.fullmatch(r"[0-9]+", port_text):
+            raise HeaderError("invalid target port")
+        significant = port_text.lstrip("0") or "0"
+        if len(significant) > 5:
+            raise HeaderError("invalid target port")
+        port = int(significant)
+    if not host or len(host) > 253 or not 1 <= port <= 65535:
+        raise HeaderError("invalid target host or port")
     return host, port
 
 
@@ -109,10 +127,15 @@ def recv_until_headers(sock: socket.socket, limit: int = MAX_HEADER_BYTES) -> by
     deadline = time.monotonic() + HEADER_TIMEOUT
     while b"\r\n\r\n" not in data:
         remaining = deadline - time.monotonic()
-        if remaining <= 0 or len(data) >= limit:
-            raise HeaderError("request headers too large or timed out")
+        if remaining <= 0:
+            raise HeaderError("request headers timed out", b"408 Request Timeout")
+        if len(data) >= limit:
+            raise HeaderError("request headers too large", b"431 Request Header Fields Too Large")
         sock.settimeout(min(IO_TIMEOUT, remaining))
-        chunk = sock.recv(min(4096, limit - len(data)))
+        try:
+            chunk = sock.recv(min(4096, limit - len(data)))
+        except socket.timeout as exc:
+            raise HeaderError("request headers timed out", b"408 Request Timeout") from exc
         if not chunk:
             raise HeaderError("incomplete request headers")
         data.extend(chunk)
@@ -149,7 +172,7 @@ class RequestBody:
     def remaining(self) -> float:
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
-            raise HeaderError("request body timed out")
+            raise HeaderError("request body timed out", b"408 Request Timeout")
         return remaining
 
     def send(self, upstream: socket.socket, data: bytes) -> None:
@@ -159,7 +182,10 @@ class RequestBody:
 
     def receive(self) -> None:
         self.sock.settimeout(min(IO_TIMEOUT, self.remaining()))
-        part = self.sock.recv(BUFFER_SIZE)
+        try:
+            part = self.sock.recv(BUFFER_SIZE)
+        except socket.timeout as exc:
+            raise HeaderError("request body timed out", b"408 Request Timeout") from exc
         if not part:
             raise HeaderError("incomplete request body")
         self.pending.extend(part)
@@ -184,7 +210,7 @@ class RequestBody:
 
     def forward(self, upstream: socket.socket, count: int) -> None:
         if count < 0 or count > MAX_BODY_BYTES:
-            raise HeaderError("request body too large")
+            raise HeaderError("request body too large", b"413 Content Too Large")
         while count:
             chunk = self.exact(min(count, BUFFER_SIZE))
             self.send(upstream, chunk)
@@ -200,7 +226,7 @@ class RequestBody:
             size = int(size_text, 16)
             total += size
             if total > MAX_BODY_BYTES:
-                raise HeaderError("request body too large")
+                raise HeaderError("request body too large", b"413 Content Too Large")
             if size == 0:
                 # Do not allow a trailer to reintroduce a stripped credential or
                 # framing header. Non-empty trailers are explicitly unsupported.
@@ -301,7 +327,14 @@ class ProxyHandler(socketserver.BaseRequestHandler):
         expected = cls.expected_proxy_authorization
         # HTTP field values may contain obs-text; Basic credentials may not.
         # Reject them as authentication failures rather than raising TypeError.
-        return bool(expected) and actual.isascii() and hmac.compare_digest(actual, expected)
+        if not expected or not actual.isascii():
+            return False
+        scheme, separator, credentials = actual.partition(" ")
+        expected_scheme, expected_separator, expected_credentials = expected.partition(" ")
+        # Only the scheme is case-insensitive. Base64 credential bytes are not.
+        return (scheme.lower() == expected_scheme.lower() == "basic"
+                and bool(separator) and bool(expected_separator)
+                and hmac.compare_digest(credentials.lstrip(" "), expected_credentials))
 
     def connect_via_socks(self, host: str, port: int) -> socks.socksocket:
         upstream = socks.socksocket()
@@ -336,14 +369,19 @@ class ProxyHandler(socketserver.BaseRequestHandler):
 
     def handle_plain_http(self, first_line: str, header_blob: bytes) -> None:
         parts = first_line.split(" ")
-        if len(parts) != 3 or not re.fullmatch(r"[A-Z]+", parts[0]) or parts[2] not in {"HTTP/1.0", "HTTP/1.1"}:
+        if (len(parts) != 3 or not parts[0].isascii()
+                or not HEADER_NAME.fullmatch(parts[0].encode("ascii"))
+                or parts[2] not in {"HTTP/1.0", "HTTP/1.1"}):
             raise HeaderError("invalid request line")
         method, raw_url, version = parts
         if any(ord(c) <= 32 or ord(c) == 127 for c in raw_url):
             raise HeaderError("invalid request target")
         headers = parse_headers(header_blob)
         fields = {key.lower(): value for key, value in headers}
-        parsed = urlsplit(raw_url)
+        try:
+            parsed = urlsplit(raw_url)
+        except ValueError as exc:
+            raise HeaderError("invalid request URL") from exc
         if parsed.fragment or parsed.username is not None or parsed.password is not None:
             raise HeaderError("invalid request URL")
         if parsed.hostname:
@@ -355,16 +393,22 @@ class ProxyHandler(socketserver.BaseRequestHandler):
             if parsed.query:
                 path += "?" + parsed.query
         elif raw_url.startswith("/") and not raw_url.startswith("//"):
-            host, port = parse_host_port(fields.get(b"host", b"").decode("ascii"), 80)
+            try:
+                host, port = parse_host_port(fields.get(b"host", b"").decode("ascii"), 80)
+            except UnicodeDecodeError as exc:
+                raise HeaderError("invalid Host header") from exc
             path = raw_url
         else:
             raise HeaderError("invalid request target")
 
         length = fields.get(b"content-length")
         transfer = fields.get(b"transfer-encoding")
-        if length is not None and (not re.fullmatch(rb"[0-9]{1,12}", length) or int(length) > MAX_BODY_BYTES):
-            raise HeaderError("invalid content length")
-        if transfer is not None and (transfer.lower() != b"chunked" or length is not None):
+        if length is not None:
+            if not re.fullmatch(rb"[0-9]{1,12}", length):
+                raise HeaderError("invalid content length")
+            if int(length) > MAX_BODY_BYTES:
+                raise HeaderError("request body too large", b"413 Content Too Large")
+        if transfer is not None and (version != "HTTP/1.1" or transfer.lower() != b"chunked" or length is not None):
             raise HeaderError("ambiguous transfer framing")
         expectation = fields.get(b"expect")
         if expectation is not None and expectation.lower() != b"100-continue":
@@ -398,6 +442,8 @@ class ProxyHandler(socketserver.BaseRequestHandler):
             while True:
                 data = upstream.recv(BUFFER_SIZE)
                 if not data:
+                    if not self.response_started:
+                        raise OSError("upstream closed before sending a response")
                     return
                 self.response_started = True
                 self.request.sendall(data)
@@ -421,17 +467,17 @@ class ProxyHandler(socketserver.BaseRequestHandler):
                 return
             self.request.settimeout(IO_TIMEOUT)
             first_line = header_blob.split(b"\r\n", 1)[0].decode("latin-1", "replace")
-            parts = first_line.split()
+            parts = first_line.split(" ")
             if len(parts) == 3 and parts[0] == "CONNECT" and parts[2] in {"HTTP/1.0", "HTTP/1.1"}:
                 self.handle_connect(parts[1], header_blob.split(b"\r\n\r\n", 1)[1])
             else:
                 self.handle_plain_http(first_line, header_blob)
-        except HeaderError:
+        except HeaderError as exc:
             if self.response_started:
                 return
             try:
                 self.request.sendall(
-                    b"HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n"
+                    b"HTTP/1.1 " + exc.status + b"\r\nConnection: close\r\n\r\n"
                 )
             except Exception:
                 pass

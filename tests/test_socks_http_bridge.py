@@ -117,7 +117,7 @@ class AuthenticationTests(unittest.TestCase):
 
     def test_duplicate_credentials_are_rejected_before_connecting(self):
         handler, response = run_handler(request(extra=b"Proxy-Authorization: Basic duplicate\r\n"))
-        self.assertTrue(response.startswith(b"HTTP/1.1 431 "))
+        self.assertTrue(response.startswith(b"HTTP/1.1 400 "))
         self.assertEqual(handler.connections, [])
 
 
@@ -253,7 +253,7 @@ class FramingTests(unittest.TestCase):
     def test_ambiguous_framing_is_rejected_without_connecting(self):
         handler, response = run_handler(request(extra=b"Content-Length: 0\r\nTransfer-Encoding: chunked\r\n"))
         self.assertEqual(handler.connections, [])
-        self.assertTrue(response.startswith(b"HTTP/1.1 431 "))
+        self.assertTrue(response.startswith(b"HTTP/1.1 400 "))
 
     def test_connection_header_cannot_hide_framing(self):
         handler, _ = run_handler(request(extra=b"Content-Length: 0\r\nConnection: Content-Length\r\n"))

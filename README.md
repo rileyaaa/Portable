@@ -127,6 +127,8 @@ $env:CODEX_TUI_FULLSCREEN_TRANSCRIPT = "true"
 
 **2026-10-30 源码修正（尚未发布新包）：** HTTP bridge 已修复 CONNECT 单向半关闭时提前截断另一方向数据、上游响应中断后把第二个 HTTP 错误状态拼进响应体，以及非 ASCII 代理认证头异常。正常认证仍使用恒定时间比较；认证头只裁剪 HTTP 允许的空格和制表符，不把其他空白字符归一化成有效凭据。监听范围、代理路由、超时及权限默认值不变。新增离线故障注入与本机 TCP 回归，覆盖双向半关闭、分块请求、流水线隔离和响应中断；这些检查不替代 Windows、真实 SOCKS 服务或付费 API 验收，现有 `v0.166.0-portable.1` 附件不包含本次源码补丁。
 
+**同日十轮复查补充（仍未发布）：** 修复 Basic 认证方案名大小写兼容、扩展 HTTP 方法被误拒绝、端口/IPv6 authority 校验过宽、HTTP/1.0 错误接受 chunked 请求和上游未发送响应即关闭时没有返回 502 的问题；客户端语法错误、请求超时、请求体过大与请求头过大分别返回 400、408、413、431，已经开始的响应仍不会追加第二个错误状态。凭据本身区分大小写并继续恒定时间比较；监听、代理路由、限额和权限默认值不变。新增参数化边界、随机分片、并发 TCP 与独立 h11 互操作检查；这些检查运行在 Linux，本机合成上游不等同于真实 PySocks/SOCKS 协商、Windows 或实际账号验收。正式附件仍未包含这两次源码修复。
+
 代理默认关闭，可在菜单或 `CODEX_PROXY_ENABLED` 中开启。`CODEX_PROXY_PROTOCOL` 支持 `socks5` / `http`，默认端点为 `127.0.0.1:10808`；SOCKS5 默认通过包内 Python 的 HTTP bridge 使用，bridge 仅监听回环地址。
 
 `CODEX_PROXY_BYPASS_MODEL=true` 默认让自定义模型接口直连；接口本身需要代理时改为 `false`。本地工具需同时满足联网开启、代理开启和 `CODEX_PROXY_FOR_SUBPROCESS=true` 才会继承代理。不要直接覆盖启动器生成的 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY`。
