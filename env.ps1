@@ -253,6 +253,11 @@ $env:CODEX_REASONING_EFFORT = ""
 # 可选：none（推荐）/ project-root（项目根目录名）/ current-dir（完整当前目录）。
 $env:CODEX_STATUS_LINE_DIR_ITEM = "none"
 
+# 全屏转录视图：false 使用终端 scrollback；true 使用 Codex Fullscreen。
+# 默认关闭。可在 env.local.ps1 覆盖；每次启动重新生成配置，不能靠 /tui 保存长期偏好。
+# --no-alt-screen 仍有优先限制；本项不改变认证、权限、代理或 --no-daemon。
+$env:CODEX_TUI_FULLSCREEN_TRANSCRIPT = "false"
+
 # ------------------------------------------------------------
 # 3. custom_provider 可选配置
 # ------------------------------------------------------------
@@ -320,7 +325,8 @@ function Import-CodexPortableLocalEnv {
         'CODEX_PORTABLE_ALLOW_USER_MCP','CODEX_PROVIDER_ID','CODEX_PROVIDER_MODE','CODEX_PROVIDER_NAME',
         'CODEX_PROXY_BRIDGE_HOST','CODEX_PROXY_BRIDGE_PORT','CODEX_PROXY_BYPASS_MODEL','CODEX_PROXY_ENABLED',
         'CODEX_PROXY_FOR_SUBPROCESS','CODEX_PROXY_HOST','CODEX_PROXY_HTTP_BRIDGE','CODEX_PROXY_PORT','CODEX_PROXY_PROTOCOL',
-        'CODEX_REASONING_EFFORT','CODEX_STARTUP_INTERACTIVE','CODEX_STATUS_LINE_DIR_ITEM','CODEX_WIRE_API'
+        'CODEX_REASONING_EFFORT','CODEX_STARTUP_INTERACTIVE','CODEX_STATUS_LINE_DIR_ITEM','CODEX_WIRE_API',
+        'CODEX_TUI_FULLSCREEN_TRANSCRIPT'
     )) { [void]$supportedCodex.Add($name) }
 
     # 双引号值按字面量读取（不做 PowerShell 插值）；单引号值仅支持数据文件常见的 '' -> '。

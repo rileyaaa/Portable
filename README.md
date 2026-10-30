@@ -86,6 +86,16 @@ $env:CODEX_MODEL = "上游实际提供的模型名"
 
 不要使用 `CODEX_API_KEY` 代替 `OPENAI_API_KEY`，也不要只设置 `OPENAI_BASE_URL` 代替本项目的 `CODEX_BASE_URL`。包根、`PATH`、用户目录、缓存/临时目录及工具链路径受保护，不能在本机配置中覆盖。`CODEX_*` 仅接受启动器明确支持的设置；未经核对的原生调试、日志或安装路径变量会被拒绝，避免绕过包内路径限制。
 
+### 终端显示模式
+
+`CODEX_TUI_FULLSCREEN_TRANSCRIPT` 默认 `false`，在每次启动时生成 `tui.fullscreen_transcript = false`。需要启用 Codex 全屏转录视图时，在包根 `env.local.ps1` 添加：
+
+```powershell
+$env:CODEX_TUI_FULLSCREEN_TRANSCRIPT = "true"
+```
+
+改回 `"false"` 即使用终端 scrollback。修改在下次启动生效，非法布尔值会拒绝启动；命令行 `--no-alt-screen` 仍优先限制备用屏幕。启动器每次重新生成 `home\config.toml`，所以不要依赖 `/tui` 写入的设置在重启后保留。本开关不更改登录、模型、代理、普通/YOLO 权限或 `--no-daemon`。它是显示模式选择，不代表已证明或修复全部终端叠字问题。
+
 ### 常用功能设置
 
 | 设置 | 默认行为与修改方式 |

@@ -23,6 +23,8 @@
 17. **按风险选择验证范围。** 小改动也可能阻断启动或改变请求协议，不能只按行数判断。客户端/Host、依赖工件、权限与路径边界有变化时执行完整 Windows 门禁。已授权维护范围内、工件未变的脚本补丁，可依据已通过的全量基线、差异核对、定向回归与必要的真机反馈重打包；记录未重跑的范围，逐项校验 ZIP 与上传回读。已知问题未解决时不得以旧测试通过覆盖它，也不将旧测试记成本次新测试。
 18. **Release naming and language.** Use `Codex Portable <CodexVersion> - Portable r<N>` for the title, `v<CodexVersion>-portable.<N>` for the tag, and `Codex-Portable-v<CodexVersion>-portable.<N>-windows-x64.zip` for the package. Titles, tags and asset names must be ASCII; release notes must be English. Increment the portable revision when the downloadable package changes; restart at 1 after a Codex upgrade. Documentation-only commits do not require a new package revision. Never overwrite published tags or assets; keep dates in release metadata and maintenance records.
 
+19. **终端偏好由启动器显式生成。** `CODEX_TUI_FULLSCREEN_TRANSCRIPT=false` 为默认值；`env.local.ps1` 仅通过受支持变量白名单覆盖，复用严格布尔解析并写入 `tui.fullscreen_transcript`。根脚本和四份模式副本同步；`--no-alt-screen` 的原生限制和 `--no-daemon` 的隔离策略保持不变。升级时核对该字段的定义、默认值及真正渲染消费点，不能把配置成功解析当作 Windows 滚动重绘验收。
+
 ### 升级必须检查的项目
 
 - **来源与配套文件：** 官方固定 release、架构、摘要、许可证、Host/搜索/沙箱助手及实际查找顺序；同步 manifest、版本映射与四份模式模板。

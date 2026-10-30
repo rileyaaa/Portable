@@ -1083,6 +1083,8 @@ $script:CodexPortableAutoModelInstructions = $false
 . $EnvFile
 # Validate the package's explicit login choice before touching account state.
 $BrowserLoginFlow = Get-CodexBrowserLoginFlow -Value $env:CODEX_BROWSER_LOGIN_FLOW
+# Validate the visual preference before any account-state selection.
+$TuiFullscreenTranscript = Convert-ToTomlBool -Value $env:CODEX_TUI_FULLSCREEN_TRANSCRIPT -Default $false
 
 # env.ps1/env.local.ps1 加载后，重新固定所有“便携边界常量”。
 # 用户配置只能改变模型/API/代理等业务值，不能把工具链、用户目录或缓存重新指向宿主机。
@@ -3237,6 +3239,7 @@ if (-not $ModelAllowsImage) {
 [void]$Builder.AppendLine("plugin_sharing = " + ($(if ($EnablePluginSharing) { "true" } else { "false" })))
 [void]$Builder.AppendLine("")
 [void]$Builder.AppendLine("[tui]")
+[void]$Builder.AppendLine("fullscreen_transcript = $TuiFullscreenTranscript")
 [void]$Builder.AppendLine("resume_cwd = `"current`"")
 # 当前 Codex TUI 使用分隔符显示状态栏项目，且启动后会异步加入右侧状态信息。
 # U+00B7 在中文/CJK 终端中可能占 2 列，但 TUI 布局按 1 列计算，二次布局时可能
