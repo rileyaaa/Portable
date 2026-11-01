@@ -1,10 +1,10 @@
-name: Validate and publish Windows release (manual)
+name: "03 - 完整 Bug 回归、打包与发布（手动）"
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release tag, for example v0.166.0-portable.1'
+        description: 'Release tag, e.g. v0.167.0-portable.1'
         required: true
         type: string
       publish_release:
@@ -53,7 +53,7 @@ jobs:
           if ($label.Groups['codex'].Value -cne $pinned) { throw 'Release label must match the pinned Codex version.' }
           if ($env:RELEASE_CHECK_SET -notin @('full','windows_fixes','package_hotfix')) { throw 'Unknown check set.' }
           if ($env:RELEASE_PUBLISH -eq 'true' -and $env:RELEASE_CHECK_SET -notin @('full','package_hotfix')) { throw 'Only full validation or scoped hotfix packaging can publish.' }
-          if ($env:RELEASE_VERSION -in @('v0.166.0-portable.1','v0.166.0-portable.2','v0.166.0-portable.3') -and $env:RELEASE_CHECK_SET -ne 'full') { throw 'Codex 0.166.0 portable repack requires full Windows validation and ten fresh rounds.' }
+          if ($pinned -ne '0.164.0' -and $env:RELEASE_CHECK_SET -eq 'package_hotfix') { throw 'Newer Codex runtimes require full Windows validation and ten fresh rounds.' }
           $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state'
           $state = @{
             HOME = 'home'; USERPROFILE = 'home'; APPDATA = 'appdata'; LOCALAPPDATA = 'localappdata';
@@ -114,6 +114,14 @@ jobs:
           $null = $text | ConvertFrom-Json
           $catalog = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state/bundled-models.json'
           [IO.File]::WriteAllText($catalog, $text, (New-Object Text.UTF8Encoding($true)))
+
+      - name: Run 02 variable/runtime compatibility audit as a mandatory full-release gate
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
+        timeout-minutes: 6
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B .\.github\maintenance\02-compatibility.py --repo . --native
+          if ($LASTEXITCODE -ne 0) { throw 'Variable/schema/native compatibility gate failed. Run 02 manually and fix issues before publishing.' }
 
       - name: Verify scoped hotfix against the last full Windows baseline
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'package_hotfix' }}
@@ -352,8 +360,8 @@ jobs:
             "Validation run: https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID",
             'Portable compatibility: interactive startup uses --no-daemon to keep CODEX_HOME inside the package; custom API providers use standard Responses metadata with the configured model name and proxy.',
             $scopeNotes,
-            'Codex 0.166.0 portable includes proxy integrity and strict HTTP boundary fixes; fullscreen transcript remains configurable and disabled by default.',
-            'This repacked Portable r1 omits the optional standalone codex-exec-server.exe and execServer metadata. Local CLI, Code Mode Host and sandbox helpers are retained; the built-in CLI is not modified.',
+            'Project-local Codex compatibility: strict proxy and HTTP checks are included; fullscreen transcript remains configurable and disabled by default.',
+            'Local text/Agent-only runtime: optional standalone codex-exec-server.exe, execServer metadata and voice resources are omitted. Official CLI, Code Mode Host, search and sandbox helpers are retained.',
             'Download the windows-x64.zip asset and verify it with SHA256SUMS.',
             'Uploaded draft assets are downloaded again and verified before publication.',
             'Not exercised: real account login, live Agent/Host tool calls, external SOCKS services, elevated sandbox initialization, user terminal redraw or real devices.',

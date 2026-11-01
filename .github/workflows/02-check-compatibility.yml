@@ -1,0 +1,84 @@
+name: "02 - 检查变量与兼容性（手动）"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-portable-manual-compatibility
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 28
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Read exact source and native Git LFS binaries
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          lfs: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Isolate offline audit state inside repository
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tmp = Join-Path $env:GITHUB_WORKSPACE 'tmp'
+          if (Test-Path -LiteralPath $tmp) {
+            $obj = Get-Item -LiteralPath $tmp -Force
+            if (-not $obj.PSIsContainer -or ($obj.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe tmp path.' }
+          } else {
+            New-Item -ItemType Directory -Path $tmp | Out-Null
+          }
+          $audit = Join-Path $tmp 'manual-02-audit'
+          New-Item -ItemType Directory -Path $audit | Out-Null
+          "COMPAT_TEMP=$audit" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Audit every managed variable, fixed runtime, profiles and real CLI metadata
+        timeout-minutes: 6
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B .\.github\maintenance\02-compatibility.py --repo . --native
+          if ($LASTEXITCODE -ne 0) { throw 'A configuration variable or native model/schema compatibility check failed.' }
+          [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+          $models = & .\codex.exe debug models --bundled
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot export real bundled model catalog.' }
+          $json = $models -join [Environment]::NewLine
+          $null = $json | ConvertFrom-Json
+          [IO.File]::WriteAllText((Join-Path $env:COMPAT_TEMP 'bundled-models.json'), $json, (New-Object Text.UTF8Encoding($true)))
+
+      - name: Run dedicated Python/runtime/mode/packaging compatibility regressions
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($test in @('test_runtime_package.py','test_mode_copies.py','test_tui_fullscreen.py','test_release_package.py','test_socks_http_bridge.py','test_socks_http_bridge_boundaries.py')) {
+            & .\tool\python\python.exe -B -m unittest discover -s tests -p $test -v
+            if ($LASTEXITCODE -ne 0) { throw "02 Python regression failed: $test" }
+          }
+
+      - name: Run PowerShell 5.1 model, permission, extension and runtime checks
+        timeout-minutes: 9
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          $catalog = Join-Path $env:COMPAT_TEMP 'bundled-models.json'
+          & $ps -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_config.ps1 -BundledModelsPath $catalog
+          if ($LASTEXITCODE -ne 0) { throw '02 native model/provider settings failed.' }
+          foreach ($test in @('test_cli_model_options.ps1','test_extension_policy.ps1','test_permission_display.ps1','test_runtime_preflight.ps1')) {
+            & $ps -NoProfile -ExecutionPolicy Bypass -File (Join-Path '.\tests' $test)
+            if ($LASTEXITCODE -ne 0) { throw "02 PowerShell 5.1 regression failed: $test" }
+          }
+          '02 OFFLINE_COMPATIBILITY_AUDIT=PASS; real account, provider, agent and terminal acceptance remain manual.' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          'Next step: run existing 03 release.yml manually with check_set=full.' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Remove only this run's temporary audit fixtures
+        if: always()
+        run: |
+          $tmp = Join-Path $env:GITHUB_WORKSPACE 'tmp/manual-02-audit'
+          if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }

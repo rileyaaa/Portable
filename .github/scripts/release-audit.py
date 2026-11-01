@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import platform
 import random
+import re
 import stat
 import subprocess
 import sys
@@ -55,7 +56,8 @@ def source_files(release: bool) -> list[Path]:
     if release:
         names.update(["run-codex.ps1", "env.ps1", "login-json.ps1", "codex-package.json",
                       "tool/runtime-manifest.json", "tool/package-release.py",
-                      "tool/python-packages.in.txt", ".github/workflows/release.yml"])
+                      "tool/python-packages.in.txt", ".github/workflows/release.yml",
+                      ".github/maintenance/02-compatibility.py"])
         names.update(str(p.relative_to(ROOT)).replace(os.sep, "/")
                      for p in (ROOT / "Version_History").glob("*-*.ps1"))
         names.update(str(p.relative_to(ROOT)).replace(os.sep, "/")
@@ -163,6 +165,15 @@ def prepare_directory() -> Path:
     return cursor
 
 
+def version_seed_base() -> int:
+    """Bind all ten deterministic audit seeds to the pinned CLI version."""
+    version = json.loads((ROOT / "tool/runtime-manifest.json").read_text(encoding="utf-8"))["version"]
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    require(match is not None, "Invalid pinned release version")
+    major, minor, patch = (int(part) for part in match.groups())
+    return major * 1_000_000 + minor * 1_000 + patch * 10 + 200
+
+
 def run(release: bool) -> None:
     if release:
         require(os.name == "nt", "Release audit cannot be fulfilled by local/Linux checks")
@@ -177,7 +188,7 @@ def run(release: bool) -> None:
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     for number in range(1, 11):
         require(snapshot(release) == frozen, "Source changed; restart all ten rounds")
-        seed = 166200 + number
+        seed = version_seed_base() + number
         row = {"round": number, "seed": seed, "static": static_checks(release), "groups": {}}
         for group in groups:
             started = time.monotonic()
@@ -218,7 +229,7 @@ def verify() -> None:
     require(record.get("source_sha256") == snapshot(True), "Audited source bytes differ")
     require(len(record.get("rounds", [])) == 10, "Exactly ten rounds are required")
     for i, row in enumerate(record["rounds"], 1):
-        require(row["round"] == i and row["seed"] == 166200 + i, "Incorrect round sequence")
+        require(row["round"] == i and row["seed"] == version_seed_base() + i, "Incorrect round sequence")
         require(set(row["groups"]) == set(GROUPS), "Incomplete round")
         for name, detail in row["groups"].items():
             require(detail["tests"] == GROUPS[name][1] and detail["errors"] == detail["failures"]
@@ -234,7 +245,7 @@ def main() -> int:
     group.add_argument("--local-bridge", action="store_true")
     group.add_argument("--verify", action="store_true")
     group.add_argument("--child", choices=GROUPS)
-    parser.add_argument("--seed", type=int, default=166201)
+    parser.add_argument("--seed", type=int, default=version_seed_base() + 1)
     args = parser.parse_args()
     if args.child:
         return child(args.child, args.seed)
