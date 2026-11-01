@@ -22,7 +22,7 @@
 
 **升级专用的三个手动 GitHub Actions：** [01 更新官方 Codex 运行组件](https://github.com/rileyaaa/Codex-Portable/actions/workflows/01-update-codex.yml) → [02 变量与兼容性检查](https://github.com/rileyaaa/Codex-Portable/actions/workflows/02-check-compatibility.yml) → [03 完整 Bug 回归、打包和 Release 发布](https://github.com/rileyaaa/Codex-Portable/actions/workflows/release.yml)。三个入口都需要人工单独触发，不允许通过 push、定时或下游关联工作流自动串联。GitHub 要求 YAML 放在 `.github/workflows/` 根目录，配套升级/兼容脚本集中放 `.github/maintenance/`，十轮审计仍由 `.github/scripts/release-audit.py` 承担。独立的浏览器下载工作流不属于 Codex 三步流程，依旧手动执行。
 
-**01 的自动范围：** 输入明确的上游稳定版本，核对官方 GitHub Release 及 SHA-256，替换五个固定的 Windows x64 原生程序，保留一个包根元数据文件，排除语音资源、独立 Exec Server 和重复沙箱助手；同步运行清单、启动器固定摘要、登录版本映射、普通/YOLO 模式、相关版本说明及许可证。通过 LFS 提交源码候选但不发布 Release，版本相同/倒退、布局变化、SHA 不符、文件越界或测试失败均必须拒绝。**02 的兼容范围：** 核对全部受管理变量的声明、默认值、实际代码引用及隔离边界，并执行原生版本、模型目录/feature 与 Windows 合成回归；它不能证明真实账号或第三方 API 已兼容。**03 的发布范围：** 在最终提交重新跑 02 核心检查、完整 Windows 回归与 10 轮审计，然后只在远端三个附件回读成功后发布；用户实际验收和旧版本清理仍需另行确认。
+**01 的自动范围：** 输入明确的上游稳定版本，核对官方 GitHub Release 及 SHA-256，替换五个固定的 Windows x64 原生程序，保留一个包根元数据文件，排除语音资源、独立 Exec Server 和重复沙箱助手；同步运行清单、启动器固定摘要、登录版本映射、普通/YOLO 模式、相关版本说明及许可证。通过 LFS 提交源码候选但不发布 Release，版本相同/倒退、布局变化、SHA 不符、文件越界或测试失败均必须拒绝。**02 的兼容范围：** 核对全部受管理变量的声明、默认值、实际代码引用及隔离边界，并执行原生版本、模型目录/feature 与 Windows 合成回归；它不能证明真实账号或第三方 API 已兼容。**03 的发布范围：** 先通过 GitHub Actions API 验证同一来源提交的最新一次手动 02 运行已成功，再在最终提交重新跑 02 核心检查、完整 Windows 回归与 10 轮审计，然后只在远端三个附件回读成功后发布；用户实际验收和旧版本清理仍需另行确认。
 本节是今后升级 Codex CLI 稳定版本或重新打包便携修订时必须遵循的操作顺序；具体安全、权限和目录边界继续执行下方「维护约定」。不要用上一个版本的测试结果代替新版验收，也不要因为上游发布新版就自动覆盖当前可用包。
 
 1. **确认目标与回退基线。** 核对官方稳定版、仓库 `main`、现有 Releases/标签、当前运行清单与最近的 Windows Actions 结果，区分「自动化验证通过」和「用户实际用过且确认正常」。先保留已确认稳定的旧 ZIP、配置与可回退版本，不读取或复制真实账号、密钥、会话及缓存；本轮只操作明确授权的项目文件。

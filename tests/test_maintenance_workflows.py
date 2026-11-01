@@ -47,11 +47,13 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
             "release-audit.py --release",
             "release-audit.py --verify",
             "02-compatibility.py --repo . --native",
+            "02-check-compatibility.yml/runs?event=workflow_dispatch",
             "gh release create", "gh release download", "gh release edit",
             "release-manifest.json", "SHA256SUMS",
         ):
             self.assertIn(marker, publisher)
         self.assertIn("check_set:", publisher)
+        self.assertIn("actions: read", publisher)
         self.assertIn("publish_release:", publisher)
 
     def test_upgrade_pushes_only_approved_lfs_no_release(self):

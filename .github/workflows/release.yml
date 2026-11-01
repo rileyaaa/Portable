@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 concurrency:
   group: portable-official-release
   cancel-in-progress: false
@@ -74,6 +75,23 @@ jobs:
           $modules = Join-Path $base 'cache/modules'
           New-Item -ItemType Directory -Force -Path $modules | Out-Null
           "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Require the latest successful manual 02 run on the exact source commit
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.publish_release && inputs.check_set == 'full' }}
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = "repos/$env:GITHUB_REPOSITORY/actions/workflows/02-check-compatibility.yml/runs?event=workflow_dispatch&head_sha=$env:GITHUB_SHA&per_page=50"
+          $raw = & gh api $url
+          if ($LASTEXITCODE -ne 0) { throw 'Could not verify 02 manual compatibility audit.' }
+          $data = ($raw -join [Environment]::NewLine) | ConvertFrom-Json
+          $matching = @($data.workflow_runs | Where-Object { $_.head_sha -eq $env:GITHUB_SHA -and $_.event -eq 'workflow_dispatch' })
+          if ($matching.Count -eq 0 -or $matching[0].status -ne 'completed' -or $matching[0].conclusion -ne 'success') {
+            throw 'Run 02 manually and successfully on this exact commit before publishing with 03.'
+          }
+          Write-Output ('REQUIRED_02_MANUAL_RUN=PASS id=' + $matching[0].id + ' source=' + $env:GITHUB_SHA)
 
       - name: Run bundled Python and Node regression suites
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' && inputs.check_set == 'full' }}
