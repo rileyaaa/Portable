@@ -18,6 +18,24 @@
 
 启动器 `CODEX_TUI_FULLSCREEN_TRANSCRIPT` 默认 false、可在受控 env.local.ps1 覆盖；继续使用 `--no-daemon` 防止共享 daemon 把状态迁到包外。本提交只有经 runner 验证的文件；真正的 Windows 全量发行门禁由单独 release workflow 执行。账号登录、真实网络代理、付费模型及用户终端重绘不以合成测试冒充实测。
 
+## Codex 上游版本升级与便携包发布标准流程
+
+本节是今后升级 Codex CLI 稳定版本或重新打包便携修订时必须遵循的操作顺序；具体安全、权限和目录边界继续执行下方「维护约定」。不要用上一个版本的测试结果代替新版验收，也不要因为上游发布新版就自动覆盖当前可用包。
+
+1. **确认目标与回退基线。** 核对官方稳定版、仓库 `main`、现有 Releases/标签、当前运行清单与最近的 Windows Actions 结果，区分「自动化验证通过」和「用户实际用过且确认正常」。先保留已确认稳定的旧 ZIP、配置与可回退版本，不读取或复制真实账号、密钥、会话及缓存；本轮只操作明确授权的项目文件。
+2. **核对上游变更与发行组件。** 阅读目标 `rust-v<版本>` 官方 Release、更新记录、源码和配置 schema，确认 Windows x64 官方工件、SHA-256、许可证及 `codex.exe`、`codex-code-mode-host.exe`、搜索工具、Windows 沙箱助手的版本与实际查找路径。检查新增/删除的 EXE、DLL、资源与依赖；本包默认仅支持本地文字/TUI/Agent，不打包语音、可选独立 `codex-exec-server.exe` 或已证明可省的重复文件。每次升级都重新核对查找顺序，不能照搬旧版删除名单，更不能删掉本地 Agent、Code Mode 或沙箱真正需要的组件。
+3. **逐项复核配置变量和协议。** 以新版实际源码消费点为准，检查 `env.ps1` 的每项默认值、`env.local.ps1` 白名单、命令行覆盖、最终生成的 `home/config.toml` 及子进程继承值；失效、改名或语义变化的变量必须修正或删除。重点验证包内 `CODEX_HOME`、交互式 `--no-daemon`、`CODEX_FAST_MODE=false`、`CODEX_TUI_FULLSCREEN_TRANSCRIPT=false`、默认关闭的 Plugins/MCP、普通/维护/YOLO 权限以及 `resume`/`fork`。自定义 API 要对照新版实际请求验证标准 Responses 的模型名、headers、tools、代理与 SOCKS/HTTP 桥，不能只凭 `wire_api=responses` 或配置解析成功推断兼容；官方账号流程单独验证。
+4. **成对更新运行时和固定身份。** 从同一官方版本取得主客户端、Host 及配套文件，保留上游二进制原始字节并校验 Windows x64 PE、文件数量和摘要；同步 `tool/runtime-manifest.json`（来源、归档和逐文件 SHA-256、排除项）、`codex-package.json`、`run-codex.ps1` 的版本/固定摘要及 `login-json.ps1` 的登录版本映射。更新需要的 `env.ps1`，并同步 `Version_History` 的四份常用/YOLO 模式副本；正常副本须一致，YOLO 仅保留既定权限/联网差异。校验 Git LFS 实际文件，严禁把 LFS 指针当 EXE，亦不得通过关闭身份校验掩盖缺件。
+5. **清理过期适配与同步文档。** 检查启动器中的旧版判断、已废弃参数、模型目录与代理兼容代码；核对 `tests/`、`tool/package-release.py`、`.github/workflows/release.yml`、`.github/scripts/release-audit.py` 中固定的旧版本、运行文件白名单、测试数量、随机种子、校验条件和 Release Notes，确保真实覆盖本次目标版本，不能复用上一次的特例说明。同步现有 `README.md`、本文件及 `tool/工具更新说明.md`，不另外创建项目说明文件。检查 `.github/workflows/` 是否残留一次性下载/升级/代触发工作流（例如历史 `request-release-r2.yml`），应在正式发行前按维护规则清理；常驻正式发布工作流只允许手动 `workflow_dispatch`。
+6. **修复并执行升级回归。** 在 Windows x64、PowerShell 5.1 和包内 Python/Node 环境运行相关及全量测试，覆盖 BAT 菜单与启动链、原生客户端版本、模型配置与实际请求、HTTP/SOCKS 代理、认证切换/异常恢复、会话恢复、Agent/Code Mode、沙箱权限、中文/空格及跨盘搬迁、模式副本、浏览器和工具依赖、发行文件清单。失败先修复再重新运行；Linux 或合成假接口只能作为补充，不可冒充真实 Windows、账号、模型或终端验收。每次正式升级还需由 Windows 发布门禁在最终提交执行新鲜的 **10 轮**随机回归，任何失败、错误、跳过、测试数量不符或源码变更都应阻止发布。
+7. **提交、推送并手动触发正式发布。** 对已验证且干净的源码执行 Git 差异、路径/敏感文件、LFS、许可与包内状态排除检查，再提交推送到 `main` 并回读远端 SHA。通过 [正式发布工作流](https://github.com/rileyaaa/Codex-Portable/actions/workflows/release.yml) 选择 `main`，输入 `version=v<上游版本>-portable.1`、`publish_release=true`、`check_set=full`；同一上游版本的后续修订递增 `.2`、`.3`。也可设 `publish_release=false` 仅验证，但最终发布仍须对最终提交完成全量门禁。`windows_fixes` 仅排查，`package_hotfix` 仅限满足既定全量基线的受控脚本补丁，**上游版本/运行组件升级不得用它替代 `full`**。无法调用 Actions 时如实报告，使用 GitHub 页面手动触发；不得默认增加 push/定时自动发布入口。
+8. **核对打包与 GitHub Release。** GitHub Actions 应在 Windows 完成全量门禁、10 轮回归和源码再次校验，从干净提交生成客户 ZIP、`release-manifest.json`、`SHA256SUMS` 三个附件；先上传草稿，再下载回读逐项核对 SHA-256、ZIP 文件清单、文件数、来源提交、原生 EXE 与 LFS 实体，成功后才转正式发布。确认 Release 的 tag、target commit、三个附件和工作流成功状态一致。客户 ZIP 不含第一方测试、CI、Git 配置、构建脚本、用户认证、工作目录、缓存和临时状态；GitHub 自动生成的 Source code ZIP 不算便携发行包。未成功发布不得报告为「已打包上线」。
+9. **独立实机试用与决定稳定性。** 用户将新 ZIP 解压到不同目录，不直接覆盖稳定包；按日常真实条件检查双击启动、中文/空格路径、API 或账号登录、代理、模型回复、一项实际 Agent/Host 工具调用、`resume`/`fork`、终端显示与退出后的数据保留。明确区分已通过、失败、未执行；真实账号、在线模型或设备测试未经授权不主动运行。只有用户确认日常使用正常，才将该版本视为「已实用验证稳定」。
+10. **清理与回退。** 先保留旧版供回退；新版本已正式发布且经实际使用确认后，才按用户要求清理不再需要的旧 Release/附件及其标签，不删除仍在使用的稳定版或历史提交。清理本次临时工件、临时工作流与任务专属缓存，保留合法用户资料。若出现兼容问题，停止推广新版、保留故障证据并退回上一确认稳定版本，修复后使用新的便携修订重新走完整流程；不得覆盖已有发布标签或附件。
+
+**交付口径：** 每轮维护至少报告目标版本、Git 提交、检查范围及结果、Actions 链接、Release/三个附件的真实状态、SHA-256 和尚待用户实测的范围。仅修改文档不需要重打包；未执行或因权限无法完成的步骤必须写明，不得把准备、推送、测试通过与发布成功混为一谈。
+
+---
 ## 维护约定
 
 开始维护前阅读本节及 [README](README.md)。这里统一记录项目限制；使用方法、下载步骤分别维护在对应文档，不在多处复制整套说明。
