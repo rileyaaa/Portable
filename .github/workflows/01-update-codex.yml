@@ -90,7 +90,7 @@ jobs:
         timeout-minutes: 19
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($test in @('test_runtime_package.py','test_mode_copies.py','test_tui_fullscreen.py','test_release_package.py')) {
+          foreach ($test in @('test_runtime_package.py','test_mode_copies.py','test_tui_fullscreen.py','test_release_package.py','test_upgrade_roundtrip.py')) {
             & .\tool\python\python.exe -B -m unittest discover -s tests -p $test -v
             if ($LASTEXITCODE -ne 0) { throw "Runtime upgrade regression failed: $test" }
           }

@@ -50,6 +50,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $label = [regex]::Match($env:RELEASE_VERSION, '^v(?<codex>\d+\.\d+\.\d+)-portable\.(?<revision>[1-9]\d*)$')
           if (-not $label.Success) { throw 'Use v<Codex version>-portable.<revision>.' }
+          if ($env:RELEASE_PUBLISH -eq 'true' -and $env:GITHUB_REF -ne 'refs/heads/main') { throw 'Publishing is allowed only from main.' }
           $pinned = (Get-Content .\tool\runtime-manifest.json -Raw | ConvertFrom-Json).version
           if ($label.Groups['codex'].Value -cne $pinned) { throw 'Release label must match the pinned Codex version.' }
           if ($env:RELEASE_CHECK_SET -notin @('full','windows_fixes','package_hotfix')) { throw 'Unknown check set.' }
@@ -361,6 +362,13 @@ jobs:
           RELEASE_CHECKSUMS: ${{ steps.package.outputs.checksums }}
         run: |
           $ErrorActionPreference = 'Stop'
+          function Assert-PublishedSourceIsLatestMain {
+            $remote = (& git ls-remote origin refs/heads/main) -join [Environment]::NewLine
+            if ($LASTEXITCODE -ne 0 -or -not $remote.StartsWith($env:RELEASE_COMMIT + [char]9)) {
+              throw 'Main branch moved after release validation; refusing to publish a stale source commit.'
+            }
+          }
+          Assert-PublishedSourceIsLatestMain
           $tags = & git ls-remote --tags origin "refs/tags/$env:RELEASE_VERSION"
           if ($LASTEXITCODE -ne 0 -or $tags) { throw 'Release tag exists or could not be checked.' }
           $notes = Join-Path $env:RELEASE_DIRECTORY 'release-notes.txt'
@@ -426,6 +434,7 @@ jobs:
           '@ | Set-Content -LiteralPath $verifyScript -Encoding UTF8
           & .\tool\python\python.exe -B $verifyScript $env:GITHUB_WORKSPACE $download $env:RELEASE_COMMIT
           if ($LASTEXITCODE -ne 0) { throw 'Uploaded ZIP verification failed; release remains a draft.' }
+          Assert-PublishedSourceIsLatestMain
           & gh release edit $env:RELEASE_VERSION --repo $env:GITHUB_REPOSITORY --draft=false --prerelease=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Verified upload could not be published; inspect the draft.' }
           $remoteJson = & gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_VERSION"

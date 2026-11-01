@@ -36,7 +36,10 @@ RAW_ASSETS = {
     "codex-windows-sandbox-setup.exe": "codex-windows-sandbox-setup-x86_64-pc-windows-msvc.exe",
 }
 OPTIONAL_EXEC = "bin/codex-exec-server.exe"
-DUPLICATES = {
+# The canonical archive supplies these helpers under codex-resources/.
+# Our portable layout RELOCATES their bytes into the root-level names.
+# This is not an upstream duplicate-copy digest comparison.
+ROOT_RELOCATIONS = {
     "codex-resources/codex-command-runner.exe": "codex-command-runner.exe",
     "codex-resources/codex-windows-sandbox-setup.exe": "codex-windows-sandbox-setup.exe",
 }
@@ -208,8 +211,7 @@ def collect(archive: Path, plan: dict) -> tuple[dict[str, bytes], dict, int, str
         files: dict[str, bytes] = {}
         cases: set[str] = set()
         voice_count = 0
-        allow = set(UPSTREAM.values()) | set(DUPLICATES) | {
-            "codex-package.json", OPTIONAL_EXEC}
+        allow = set(UPSTREAM.values()) | {"codex-package.json", OPTIONAL_EXEC}
         for member in members:
             require(member.name.startswith(prefix), "Archive escaped package root")
             name = member.name[len(prefix):].rstrip("/")
@@ -233,8 +235,10 @@ def collect(archive: Path, plan: dict) -> tuple[dict[str, bytes], dict, int, str
                 data = stream.read(member.size + 1)
             require(len(data) == member.size, "Truncated member " + name)
             files[name] = data
-    require(set(UPSTREAM.values()) | {"codex-package.json"} <= set(files),
-            "Missing required local text/Agent runtime files")
+    required = set(UPSTREAM.values()) | {"codex-package.json"}
+    actual = set(files)
+    require(actual == required or actual == required | {OPTIONAL_EXEC},
+            "Missing or unexpected upstream components in canonical archive")
     original = json.loads(files["codex-package.json"].decode("utf-8"))
     known = {"layoutVersion", "version", "target", "variant", "entrypoint",
              "resourcesDir", "pathDir", "execServer"}
@@ -251,10 +255,9 @@ def collect(archive: Path, plan: dict) -> tuple[dict[str, bytes], dict, int, str
                 "Unexpected standalone execution-server metadata")
     else:
         require(OPTIONAL_EXEC not in files, "Unexpected execution server without metadata")
-    for duplicate, local in DUPLICATES.items():
-        require(duplicate in files, "Missing expected duplicate helper: " + duplicate)
-        require(files[duplicate] == files[UPSTREAM[local]],
-                "Duplicate helper changed; no longer safe to omit: " + duplicate)
+    for source_path, root_name in ROOT_RELOCATIONS.items():
+        require(UPSTREAM.get(root_name) == source_path and source_path in files,
+                "Root-level sandbox helper relocation changed: " + root_name)
     result: dict[str, bytes] = {}
     for local, upstream in UPSTREAM.items():
         data = files[upstream]
@@ -319,7 +322,7 @@ def compile_updates(repo: Path, archive: Path, plan: dict) -> dict[str, bytes]:
             {"voice", "duplicate_sandbox_resources", "standalone_exec_server"} <= set(excluded),
             "Missing fixed local-only exclusion policy")
     excluded["voice"]["upstream_file_count"] = voice_count
-    excluded["duplicate_sandbox_resources"]["upstream_paths"] = sorted(DUPLICATES)
+    excluded["duplicate_sandbox_resources"]["upstream_paths"] = sorted(ROOT_RELOCATIONS)
     excluded["standalone_exec_server"]["upstream_path"] = OPTIONAL_EXEC
     excluded["standalone_exec_server"].pop("sha256", None)
     if server_sha:
@@ -437,13 +440,24 @@ def check_index(repo: Path) -> None:
     for i in range(0, len(records), 3):
         require(records[i + 1] == "filter" and records[i + 2] == "lfs",
                 "Binary must remain managed by Git LFS: " + records[i])
+    manifest = json.loads(read_safe(repo, "tool/runtime-manifest.json"))
+    require(set(manifest.get("files", {})) == set(UPSTREAM) | {"codex-package.json"},
+            "Staged runtime inventory no longer matches the local-only contract")
     for path in UPSTREAM:
         pointer = git(repo, "show", ":" + path)
-        require(pointer.startswith(b"version https://git-lfs.github.com/spec/v1\n") and
-                b"oid sha256:" in pointer,
-                "Staged binary is not a real LFS pointer: " + path)
+        match = re.fullmatch(
+            rb"version https://git-lfs.github.com/spec/v1\n"
+            rb"oid sha256:([0-9a-f]{64})\nsize ([1-9][0-9]*)\n?", pointer)
+        require(match is not None, "Staged binary is not a canonical LFS pointer: " + path)
+        manifest_hash = manifest["files"][path]["sha256"]
+        actual_path = repo / path
+        plain(actual_path)
+        require(match.group(1).decode("ascii") == manifest_hash and
+                file_digest(actual_path) == manifest_hash and
+                int(match.group(2)) == actual_path.stat().st_size,
+                "Staged LFS oid/size differs from official verified binary: " + path)
     print("STAGED_EXACT_ALLOWLIST=PASS files=" + str(len(names)))
-    print("STAGED_GIT_LFS_POINTERS=PASS")
+    print("STAGED_LFS_OID_SIZE_AND_MANIFEST_HASHES=PASS")
 
 
 def main() -> int:

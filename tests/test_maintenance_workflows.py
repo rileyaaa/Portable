@@ -47,6 +47,8 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
             "release-audit.py --release",
             "release-audit.py --verify",
             "02-compatibility.py --repo . --native",
+            "Assert-PublishedSourceIsLatestMain",
+            "Publishing is allowed only from main.",
             "02-check-compatibility.yml/runs?event=workflow_dispatch",
             "gh release create", "gh release download", "gh release edit",
             "release-manifest.json", "SHA256SUMS",
@@ -55,6 +57,7 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertIn("check_set:", publisher)
         self.assertIn("actions: read", publisher)
         self.assertIn("publish_release:", publisher)
+        self.assertGreaterEqual(publisher.count("Assert-PublishedSourceIsLatestMain"), 3)
 
     def test_upgrade_pushes_only_approved_lfs_no_release(self):
         source = self.files["01"]
@@ -63,6 +66,7 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
             "01-upgrade-runtime.py --apply",
             "02-compatibility.py --repo . --native",
             "01-upgrade-runtime.py --check-index",
+            "test_upgrade_roundtrip.py",
             "git lfs push origin HEAD", "git push origin HEAD:refs/heads/main",
         ):
             self.assertIn(marker, source)
@@ -73,6 +77,7 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         source = self.files["02"]
         self.assertIn("permissions:\n  contents: read", source)
         self.assertIn("02-compatibility.py --repo . --native", source)
+        self.assertIn("test_upgrade_roundtrip.py", source)
         self.assertNotIn("git push ", source)
 
     def test_obsolete_push_dispatcher_is_absent(self):
@@ -97,6 +102,9 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
             script.replace_once(b"a--b--c", b"--", b"-", "duplicate")
         self.assertNotIn("codex-exec-server.exe", script.UPSTREAM)
         self.assertNotIn("codex-resources/voice", script.ALLOWED)
+        self.assertEqual(script.ROOT_RELOCATIONS["codex-resources/codex-command-runner.exe"],
+                         "codex-command-runner.exe")
+        self.assertNotIn("codex-exec-server.exe", script.ROOT_RELOCATIONS.values())
 
     def test_compatibility_audit_has_fixed_local_policy(self):
         script = import_script(
@@ -109,6 +117,9 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertEqual(script.NORMAL["CODEX_PORTABLE_ALLOW_USER_MCP"], "false")
         self.assertEqual(script.YOLO["CODEX_SANDBOX_MODE"][1],
                          "danger-full-access")
+        self.assertEqual(len(script.NORMAL), 14)
+        self.assertIn("CODEX_INSTALL_DIR", read(ROOT / "env.ps1"))
+        self.assertIn("CODEX_PYTHON", read(ROOT / "env.ps1"))
 
     def test_release_audit_seeds_follow_pinned_version(self):
         script = import_script(
