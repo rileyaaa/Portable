@@ -226,6 +226,21 @@ jobs:
           # Package builder requires clean committed source. Make a local-only trial commit.
           & git -c user.name='tool-verifier' -c user.email='tool-verifier@users.noreply.github.com' commit -m 'test: verified tools trial only'
           if ($LASTEXITCODE -ne 0) { throw 'Local trial commit failed.' }
+          # Fail fast if the newly committed Node/SSH payload cannot form a
+          # verified customer release; doing this before ten audit rounds saves
+          # runner time without omitting the real ZIP build after the audit.
+          $preflight = (& .\tool\python\python.exe -E -s -B .\tool\package-release.py --check) -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate package input preflight failed before ten audit rounds.' }
+          try { $preflightInfo = $preflight | ConvertFrom-Json -ErrorAction Stop }
+          catch { throw 'Candidate package input preflight returned invalid JSON.' }
+          $trialCommit = (& git rev-parse HEAD) -join ''
+          if ($LASTEXITCODE -ne 0 -or $preflightInfo.source_commit -cne $trialCommit -or
+              $preflightInfo.codex_version -cne (Get-Content .\tool\runtime-manifest.json -Raw | ConvertFrom-Json).version -or
+              [int]$preflightInfo.file_count -le 0) {
+            throw 'Candidate package input identity mismatch before ten audit rounds.'
+          }
+          'PACKAGE_INPUT_PREFLIGHT=PASS; committed source, LFS hydration, runtime and browser inventory validated.' |
+            Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           & .\tool\python\python.exe -E -s -B .\.github\scripts\release-audit.py --release
           if ($LASTEXITCODE -ne 0) { throw 'Ten seeded Windows regression rounds failed.' }
           & .\tool\python\python.exe -E -s -B .\.github\scripts\release-audit.py --verify
