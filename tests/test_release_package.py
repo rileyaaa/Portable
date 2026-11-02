@@ -167,6 +167,34 @@ class ReleasePackageTests(unittest.TestCase):
         self.assertTrue(Path(output["archive"]).is_file())
         self.assertEqual(Path(output["output_dir"]).parent, self.root / "tmp")
 
+    def test_check_cli_is_read_only_and_fails_closed_for_dirty_source(self):
+        # Exercise the same --check entrypoint used before the expensive
+        # Windows ten-round audit, against a UTF-8 synthetic checkout.
+        script = self.root / "tool/package-release.py"
+        script.write_bytes(Path(release.__file__).read_bytes())
+        self.commit()
+        command = [
+            sys.executable, "-B", "-c",
+            "import runpy,sys; sys.stdout.reconfigure(encoding='ascii'); "
+            "sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')",
+            str(script), "--check",
+        ]
+        checked = subprocess.run(command, capture_output=True, timeout=30)
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        report = json.loads(checked.stdout.decode("ascii"))
+        self.assertEqual(report["source_commit"], self.git("rev-parse", "HEAD").decode().strip())
+        self.assertEqual(report["codex_version"], "0.163.0")
+        self.assertEqual(report["browser_version"], "155.0.8059.12")
+        self.assertGreater(report["file_count"], 0)
+        self.assertFalse((self.root / "tmp").exists(), "--check must not build a ZIP")
+        self.assertEqual(self.git("status", "--porcelain=v1", "--untracked-files=no"), b"")
+
+        self.write("README.md", b"uncommitted synthetic change\\n")
+        rejected = subprocess.run(command, capture_output=True, timeout=30)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn(b"Commit tracked changes before building a release", rejected.stderr)
+        self.assertFalse((self.root / "tmp").exists(), "failed --check must not build a ZIP")
+
     def test_release_label_cannot_claim_another_native_version(self):
         for bad in (
             "v0.164.0-portable.1", "v2026.10.23", "0.163.0",
