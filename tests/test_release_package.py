@@ -166,6 +166,31 @@ class ReleasePackageTests(unittest.TestCase):
         output = json.loads(result.stdout.decode("ascii"))
         self.assertTrue(Path(output["archive"]).is_file())
         self.assertEqual(Path(output["output_dir"]).parent, self.root / "tmp")
+        # Validate the exact read-only entrypoint used ahead of ten audit
+        # rounds. Keep this within an existing test so release-audit's fixed
+        # 21 runtime-test count and independent test IDs do not change.
+        preflight_command = [
+            sys.executable, "-B", "-c",
+            "import runpy,sys; sys.stdout.reconfigure(encoding='ascii'); "
+            "sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')",
+            str(script), "--check",
+        ]
+        checked = subprocess.run(preflight_command, capture_output=True, timeout=30)
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        report = json.loads(checked.stdout.decode("ascii"))
+        self.assertEqual(report["source_commit"], self.git("rev-parse", "HEAD").decode().strip())
+        self.assertEqual(report["codex_version"], "0.163.0")
+        self.assertEqual(report["browser_version"], "155.0.8059.12")
+        self.assertGreater(report["file_count"], 0)
+        self.assertEqual(self.git("status", "--porcelain=v1", "--untracked-files=no"), b"")
+        # --check must not create a new archive or output directory.
+        self.assertFalse((self.root / "tmp").exists())
+
+        self.write("README.md", b"uncommitted synthetic change\\n")
+        rejected = subprocess.run(preflight_command, capture_output=True, timeout=30)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn(b"Commit tracked changes before building a release", rejected.stderr)
+        self.assertFalse((self.root / "tmp").exists())
 
     def test_release_label_cannot_claim_another_native_version(self):
         for bad in (

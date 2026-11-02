@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-02：03 后段审查与十轮审计前的 ZIP 输入止损预检（未运行 AC）
+
+- **原因与范围：** 第七次 `03` 在原生启动/搬迁测试失败，十轮审计、正式客户 ZIP、独立写权限 `propose` 仍未实测。继续审查发现现有流程先跑十轮 `release-audit.py --release`，才第一次检查真实候选能否通过 `package-release.py` 的客户输入检验；若 Node/SSH 新文件与 Windows 路径、LFS 水合、浏览器清单或 Codex 身份冲突，十轮审计的费用会白花。
+- **补充门禁：** 03 仅在候选 Git 本地试提交成功后、十轮审计开始前执行受信任的 `tool/package-release.py --check`（不生成 ZIP），核对 JSON 中的真实 Git 提交、Codex 版本、正数客户文件数；失败立即阻断。原有完整十轮审计、独立 `--verify`、正式 ZIP 试打包和 SHA-256 校验全部保留。增加维护工作流门禁顺序检查，并在**原有**发行包回归中加入真实 `--check` CLI 正反向样本（干净 Git 提交应通过、有未提交改动必须失败）；未新增测试方法数量，`release-audit` runtime 固定 **21 项**不变。
+- **验证边界：** 最终源文件、插入顺序、审计仍是 10 轮、Git LFS 与独立写入、19 项 PowerShell 门禁只做离线静态复核；Windows 包内 Python/PowerShell 及真实 Node 26 + Paramiko 候选尚未在新版本上执行。**无新 Actions、无自动发布、无工具二进制合并。**
+
 ## 2026-11-02：03 第七次 Windows 原生搬迁测试失败，先止损并审查（Run 41459805288）
 
 - **实测故障：** [Windows Actions #41459805288](https://github.com/rileyaaa/Codex-Portable/actions/runs/41459805288) 使用 main `ce38b0d3`，通过 actionlint、前置工具维护测试、Node 26.13.0 / Paramiko 5.1.0 候选准备与原生导入、转换器检查、全量 Python / Node 回归及浏览器校验；19 项 Windows PowerShell 阶段中，`test_launcher_smoke.ps1` 的正常模式 BAT / 原生配置检查通过后，在第 95 行将已启动过的合成便携目录重命名时收到 Windows `Access to the path ... is denied`。此轮没有运行十轮审计、真实 ZIP 试打包、可信写入 Job，也没有创建工具候选 PR。

@@ -769,6 +769,20 @@ class ToolUpdateTests(unittest.TestCase):
                       launcher)
         self.assertIn('ElapsedMilliseconds -ge 20000', launcher)
         self.assertIn('no relocation pass granted.', launcher)
+        # Candidate ZIP manifest, hydrated LFS, native runtime and browser
+        # files must be verified before the expensive ten Windows audit rounds.
+        trial = source.index("Local trial commit failed.")
+        package_check = source.index('package-release.py --check')
+        audit = source.index('release-audit.py --release')
+        full_zip = source.index('package-release.py --version')
+        self.assertLess(trial, package_check)
+        self.assertLess(package_check, audit)
+        self.assertLess(audit, full_zip)
+        self.assertEqual(source.count('package-release.py --check'), 1)
+        self.assertIn('package-release.py --version', source)
+        self.assertIn('git lfs push --object-id origin $newNodeOid', source)
+        self.assertIn('release-audit.py --verify', source)
+
 
 
 if __name__ == '__main__':
