@@ -45,7 +45,7 @@ jobs:
           RELEASE_PUBLISH: ${{ inputs.publish_release }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $label = [regex]::Match($env:RELEASE_VERSION, '^v(?<codex>[0-9]+\.[0-9]+\.[0-9]+)-portable\.(?<revision>[1-9][0-9]*)
+          $label = [regex]::Match($env:RELEASE_VERSION, '^v(?<codex>[0-9]+\.[0-9]+\.[0-9]+)-portable\.(?<revision>[1-9][0-9]*)$')
           if (-not $label.Success) { throw 'Use v<Codex version>-portable.<revision>.' }
           if ($env:RELEASE_PUBLISH -eq 'true' -and $env:GITHUB_REF -ne 'refs/heads/main') { throw 'Publishing is allowed only from main.' }
           $pinned = (Get-Content .\tool\runtime-manifest.json -Raw | ConvertFrom-Json).version
@@ -364,58 +364,7 @@ jobs:
             'Customer ZIP excludes first-party tests, CI, Git configuration, release builders and user state.',
             'Browser data remains in cache/browser until the user runs the cache cleaner.'
           ) | Set-Content -LiteralPath $notes -Encoding UTF8
-          $label = [regex]::Match($env:RELEASE_VERSION, '^v(?<codex>[0-9]+\.[0-9]+\.[0-9]+)-portable\.(?<revision>[1-9][0-9]*)
-          if (-not $label.Success) { throw 'Invalid release label.' }
-          $title = "Codex Portable $($label.Groups['codex'].Value) - Portable r$($label.Groups['revision'].Value)"
-          & gh release create $env:RELEASE_VERSION $env:RELEASE_ARCHIVE $env:RELEASE_MANIFEST $env:RELEASE_CHECKSUMS --repo $env:GITHUB_REPOSITORY --target $env:RELEASE_COMMIT --title $title --notes-file $notes --draft
-          if ($LASTEXITCODE -ne 0) { throw 'Release draft/upload failed; do not overwrite an existing release.' }
-          $download = Join-Path $env:RELEASE_DIRECTORY 'download-verification'
-          New-Item -ItemType Directory -Path $download | Out-Null
-          & gh release download $env:RELEASE_VERSION --repo $env:GITHUB_REPOSITORY --dir $download
-          if ($LASTEXITCODE -ne 0) { throw 'Draft asset read-back failed; release remains a draft.' }
-          $originals = @($env:RELEASE_ARCHIVE, $env:RELEASE_MANIFEST, $env:RELEASE_CHECKSUMS)
-          if (@(Get-ChildItem -LiteralPath $download -File -Force).Count -ne 3) { throw 'Unexpected remote asset count.' }
-          foreach ($original in $originals) {
-            $received = Join-Path $download ([IO.Path]::GetFileName($original))
-            if (-not (Test-Path -LiteralPath $received -PathType Leaf)) { throw 'A release asset was not returned.' }
-            $expected = (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash
-            if ((Get-FileHash -LiteralPath $received -Algorithm SHA256).Hash -cne $expected) { throw 'Downloaded asset differs from the tested local artifact.' }
-          }
-          $verifyScript = Join-Path $env:RELEASE_DIRECTORY 'verify-upload.py'
-          @'
-          import importlib.util, json, pathlib, sys
-          root, download, commit = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3]
-          spec = importlib.util.spec_from_file_location('release_builder', root/'tool'/'package-release.py')
-          builder = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(builder)
-          manifest = json.loads((download/'release-manifest.json').read_text(encoding='utf-8'))
-          assert manifest['source_commit'] == commit
-          assert manifest['package_kind'] == 'customer'
-          assert manifest['file_count'] == len(manifest['files'])
-          archive_name = manifest['archive']
-          assert pathlib.Path(archive_name).name == archive_name
-          for name in manifest['files']:
-              builder.safe_name(name)
-          included, excluded = builder.customer_files(list(manifest['files']))
-          assert not excluded
-          assert sum(pathlib.PurePosixPath(name).name.lower() == 'codex.exe' for name in included) == 1
-          builder.verify_zip(download/archive_name, manifest['files'])
-          print('REMOTE_ASSET_READBACK=PASS files=' + str(manifest['file_count']) + ' commit=' + commit)
-          '@ | Set-Content -LiteralPath $verifyScript -Encoding UTF8
-          & .\tool\python\python.exe -B $verifyScript $env:GITHUB_WORKSPACE $download $env:RELEASE_COMMIT
-          if ($LASTEXITCODE -ne 0) { throw 'Uploaded ZIP verification failed; release remains a draft.' }
-          Assert-PublishedSourceIsLatestMain
-          & gh release edit $env:RELEASE_VERSION --repo $env:GITHUB_REPOSITORY --draft=false --prerelease=false --latest
-          if ($LASTEXITCODE -ne 0) { throw 'Verified upload could not be published; inspect the draft.' }
-          $remoteJson = & gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_VERSION"
-          if ($LASTEXITCODE -ne 0) { throw 'Could not confirm the published release.' }
-          $remote = ($remoteJson -join "`n") | ConvertFrom-Json
-          if ($remote.draft -or $remote.prerelease -or $remote.tag_name -ne $env:RELEASE_VERSION -or @($remote.assets).Count -ne 3) { throw 'Published release metadata does not match.' }
-          Write-Output ("PUBLISHED_RELEASE=" + $remote.html_url)
-          Write-Output ("RELEASE_SOURCE_COMMIT=" + $env:RELEASE_COMMIT)
-          Write-Output ("RELEASE_SHA256=" + (Get-FileHash -LiteralPath $env:RELEASE_ARCHIVE -Algorithm SHA256).Hash)
-
-)
+          $label = [regex]::Match($env:RELEASE_VERSION, '^v(?<codex>[0-9]+\.[0-9]+\.[0-9]+)-portable\.(?<revision>[1-9][0-9]*)$')
           if (-not $label.Success) { throw 'Invalid release label.' }
           $title = "Codex Portable $($label.Groups['codex'].Value) - Portable r$($label.Groups['revision'].Value)"
           & gh release create $env:RELEASE_VERSION $env:RELEASE_ARCHIVE $env:RELEASE_MANIFEST $env:RELEASE_CHECKSUMS --repo $env:GITHUB_REPOSITORY --target $env:RELEASE_COMMIT --title $title --notes-file $notes --draft
