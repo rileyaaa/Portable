@@ -91,6 +91,14 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertEqual(source.count("    permissions:\n      contents: write"), 1)
         self.assertEqual(source.count("    permissions:\n      contents: read"), 1)
 
+    def test_windows_powershell_does_not_strip_native_python_hash_quotes(self):
+        source = self.files["01"]
+        # Windows PowerShell 5.1 strips nested double quotes in single-quoted
+        # Python -c arguments, corrupting the Git binary-diff hash command.
+        self.assertEqual(source.count('-B -c "import hashlib,subprocess;'), 2)
+        self.assertEqual(source.count("subprocess.check_output(['git','-c'"), 2)
+        self.assertNotIn("-B -c 'import hashlib,subprocess", source)
+
     def test_inline_compatibility_is_in_both_read_only_validation_jobs(self):
         upgrade = self.files["01"]
         publisher = self.files["release"]
