@@ -37,7 +37,7 @@ SOURCES = {
 ALLOWED = {
     'node': ('tool/node/',),
     'adb': ('tool/android/platform-tools/',),
-    'cli': ('tool/bin/7z.exe', 'tool/bin/7z.dll', 'tool/bin/rg.exe',
+    'cli': ('tool/bin/7z.exe', 'tool/bin/7z.dll', 'tool/bin/', 'tool/bin/rg.exe',
             'tool/bin/fd.exe', 'tool/bin/jq.exe'),
 }
 HOSTS = {'github.com', 'nodejs.org', 'dl.google.com', '7-zip.org', 'www.7-zip.org'}
@@ -45,6 +45,12 @@ ARCHIVE_MAX = 150 * 1024 * 1024
 TOOL_GROUP = {'node': 'node', 'adb': 'adb', 'ripgrep': 'cli',
               'fd': 'cli', 'jq': 'cli', '7zip': 'cli'}
 EXPAND_MAX = 450 * 1024 * 1024
+# Original wrappers must survive Node ZIP replacement. They enforce the
+# package-local npm/npx project, user profile and executable boundaries.
+NODE_PORTABLE_FILES = ('portable-npm.js', 'npm', 'npm.cmd', 'npm.ps1',
+                       'npx', 'npx.cmd', 'npx.ps1')
+REPO_BY_TOOL = {'ripgrep': 'BurntSushi/ripgrep', 'fd': 'sharkdp/fd',
+                'jq': 'jqlang/jq'}
 
 
 def require(condition: bool, message: str) -> None:
@@ -123,9 +129,11 @@ def plan() -> list[dict]:
         require(re.fullmatch(r'[a-f0-9]{64}', str(row.get('sha256', ''))),
                 'A reviewed real SHA256 is mandatory')
         src_prefix = row.get('source_prefix')
-        require(isinstance(src_prefix, str) and bool(src_prefix) and src_prefix.endswith('/') and
-                '/' not in src_prefix.rstrip('/').strip('/'),
-                'Source prefix must name one archive root directory')
+        require(isinstance(src_prefix, str) and src_prefix.endswith('/') and
+                len(src_prefix) > 1, 'Source prefix must be one archive directory')
+        src_root = safe_member(src_prefix[:-1])
+        require(len(src_root.parts) == 1 and src_root.as_posix() == src_prefix[:-1],
+                'Source prefix must be one unambiguous archive root')
         dest = row.get('destination')
         require(isinstance(dest, str) and dest.startswith('tool/') and '..' not in PurePosixPath(dest).parts,
                 'Invalid owned destination')
@@ -133,28 +141,53 @@ def plan() -> list[dict]:
         require(any((dest + '/').startswith(prefix) if prefix.endswith('/') else dest == prefix
                     for prefix in allowed), 'Destination is not in the owned tool group')
         require(dest not in destinations, 'Duplicate destination')
+        if tool == 'node':
+            require(source == f'https://nodejs.org/dist/v{version}/node-v{version}-win-x64.zip' and
+                    src_prefix == f'node-v{version}-win-x64/',
+                    'Node candidate must use its exact official Windows x64 archive')
+        elif tool == 'adb':
+            require(url.hostname == 'dl.google.com' and url.path.startswith('/android/repository/') and
+                    url.path.endswith('-windows.zip') and src_prefix == 'platform-tools/',
+                    'ADB candidate must use the official Android Windows ZIP')
+        elif tool in REPO_BY_TOOL:
+            require(url.hostname == 'github.com' and
+                    url.path.startswith('/' + REPO_BY_TOOL[tool] + '/releases/download/') and
+                    url.path.endswith('.zip') and
+                    ('win' in url.path.lower() or 'windows' in url.path.lower()),
+                    'CLI candidate must use its reviewed upstream Windows ZIP')
+        elif tool == '7zip':
+            require(url.hostname in ('7-zip.org', 'www.7-zip.org') and url.path.endswith('.zip'),
+                    '7-Zip must use a reviewed official portable ZIP')
         if tool in ('ripgrep', 'fd', 'jq'):
             require(dest == {'ripgrep': 'tool/bin/rg.exe', 'fd': 'tool/bin/fd.exe',
                              'jq': 'tool/bin/jq.exe'}[tool], 'Mismatched CLI destination')
         if tool == '7zip':
-            require(dest in ('tool/bin/7z.exe', 'tool/bin/7z.dll'), 'Invalid 7z component')
+            require(dest == 'tool/bin', '7-Zip executable and DLL must update together')
         destinations.add(dest)
         kind = row.get('kind')
-        require(kind in ('single', 'directory'), 'Invalid installation kind')
+        require(kind in ('single', 'directory', 'pair'), 'Invalid installation kind')
         if kind == 'directory':
             require(group in ('node', 'adb') and dest in ('tool/node', 'tool/android/platform-tools'),
                     'Only reviewed complete directory replacements are allowed')
+        elif kind == 'pair':
+            require(tool == '7zip' and group == 'cli' and dest == 'tool/bin',
+                    'Only 7-Zip can install a paired executable and DLL')
         else:
-            require(group == 'cli' and isinstance(row.get('source_file'), str),
+            require(group == 'cli' and tool != '7zip' and
+                    isinstance(row.get('source_file'), str),
                     'Single-file candidates need a fixed member path')
+            member = safe_member(row['source_file'])
+            require(member.as_posix() == row['source_file'],
+                    'Source member must use a normalized path')
     return rows
 
 
 def safe_member(name: str) -> PurePosixPath:
     path = PurePosixPath(name)
     require(name and not name.startswith(('/', '\\')) and '\\' not in name and
-            ':' not in name and not path.is_absolute() and '..' not in path.parts and
-            all(part not in ('', '.') for part in path.parts), 'Unsafe archive name: ' + name)
+            ':' not in name and not path.is_absolute() and
+            all(part not in ('', '.', '..') for part in name.split('/')),
+            'Unsafe archive name: ' + name)
     return path
 
 
@@ -216,9 +249,14 @@ def probe_versions() -> dict[str, str | None]:
     return values
 
 
-def verify_candidates() -> None:
+def selected_rows(group: str) -> list[dict]:
+    require(group in ('ssh', 'tools', 'all'), 'Unknown requested tool group')
+    return [] if group == 'ssh' else plan()
+
+
+def verify_candidates(group: str = 'all') -> None:
     observed = probe_versions()
-    for row in plan():
+    for row in selected_rows(group):
         version = observed.get(row['tool'])
         if row['tool'] == 'adb':
             prop = (ROOT / 'tool/android/platform-tools/source.properties').read_text()
@@ -247,7 +285,7 @@ def audit(online: bool = False) -> None:
             except (OSError, ValueError, TimeoutError, KeyError) as error:
                 result['upstream'][key] = {'error': type(error).__name__}
         try:
-            versions = json.loads(fetch_bytes('https://nodejs.org/dist/index.json', 400 * 1024))
+            versions = json.loads(fetch_bytes('https://nodejs.org/dist/index.json', 2 * 1024 * 1024))
             stable = next((row for row in versions if row.get('lts') and
                            not re.search(r'-(?:alpha|beta|rc)', row.get('version', ''))), None)
             result['upstream']['node-lts'] = stable.get('version') if stable else 'unavailable'
@@ -257,6 +295,16 @@ def audit(online: bool = False) -> None:
 
 
 def prepare_row(row: dict, temp: Path) -> None:
+    if row['tool'] == 'node':
+        # Check the reviewed digest against the *independent* official versioned
+        # SHASUMS file as well as against the downloaded ZIP itself.
+        version = row['version']
+        filename = f'node-v{version}-win-x64.zip'
+        hashes = fetch_bytes(f'https://nodejs.org/dist/v{version}/SHASUMS256.txt', 64 * 1024)
+        lines = hashes.decode('ascii', errors='strict').splitlines()
+        matching = [h for h in lines if re.fullmatch(
+            re.escape(row['sha256']) + r'\s+\*?' + re.escape(filename), h)]
+        require(len(matching) == 1, 'Official Node SHASUMS256 does not match reviewed ZIP pin')
     binary = fetch_bytes(row['url'], ARCHIVE_MAX)
     require(hashlib.sha256(binary).hexdigest() == row['sha256'],
             'Downloaded SHA256 differs for ' + row['tool'])
@@ -298,9 +346,27 @@ def prepare_row(row: dict, temp: Path) -> None:
             bounded(dest.parent)
             dest.parent.mkdir(parents=True, exist_ok=True)
             os.replace(staged, dest)
+        elif row['kind'] == 'pair':
+            require(all(k in members for k in ('7z.exe', '7z.dll')),
+                    '7-Zip pair incomplete; executable and DLL must be updated together')
+            require(set(members) == {'7z.exe', '7z.dll'},
+                    '7-Zip pair contains unexpected payload files')
+            for name in ('7z.exe', '7z.dll'):
+                staged = staging / name
+                staged.write_bytes(archive.read(members[name][1]))
+                validate_pe(staged)
+            for name in ('7z.exe', '7z.dll'):
+                bounded(dest / name)
+            # Both replacements belong to one Windows CI candidate; a partial
+            # replacement fails the run and cannot be committed as verified.
+            for name in ('7z.exe', '7z.dll'):
+                os.replace(staging / name, dest / name)
         else:
             for rel, entry in members.values():
-                require(PurePosixPath(rel).name.lower() != 'install_tools.bat', 'System installer is forbidden')
+                if PurePosixPath(rel).name.lower() == 'install_tools.bat':
+                    require(row['tool'] == 'node' and rel == 'install_tools.bat',
+                            'Unreviewed system installer in tool archive')
+                    continue  # Node's official installer must NOT enter the portable package.
                 file = staging.joinpath(*safe_member(rel).parts)
                 file.parent.mkdir(parents=True, exist_ok=True)
                 with archive.open(entry) as source, file.open('xb') as sink:
@@ -309,6 +375,14 @@ def prepare_row(row: dict, temp: Path) -> None:
                 if file.is_file() and file.suffix.lower() in ('.exe', '.dll'):
                     validate_pe(file)
             require(dest.is_dir(), 'Existing tool directory is missing')
+            if row['tool'] == 'node':
+                # Preserve reviewed wrappers rather than restoring upstream
+                # npm/npx shims that search host paths or npm project roots.
+                for name in NODE_PORTABLE_FILES:
+                    original = dest / name
+                    bounded(original)
+                    ordinary(original)
+                    shutil.copy2(original, staging / name)
             backup = temp / ('backup-' + row['tool'])
             dest.rename(backup)
             try:
@@ -362,13 +436,9 @@ def prepare(group: str, *, day: str, writer: bool = False) -> None:
     require(os.name == 'nt' and sys.maxsize > 2**32, 'Prepare requires Windows x64')
     require(Path(sys.executable).absolute() == (TOOL / 'python/python.exe').absolute(),
             'Must use the bundled Windows Python')
-    selected = plan()
-    if group == 'ssh':
-        require(not selected, 'SSH-only mode refuses unrelated candidate updates')
-        ssh = True
-    else:
-        ssh = group == 'all'
-        require(selected or ssh, 'No reviewed pinned tool candidates')
+    selected = selected_rows(group)
+    ssh = group != 'tools'
+    require(selected or ssh, 'No reviewed pinned tool candidates')
     scratch = bounded(ROOT / 'tmp')
     scratch.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='tool-updates-', dir=scratch) as dirname:
@@ -391,14 +461,19 @@ def diff_digest(group: str) -> str:
                                      '--cached', '--name-only', '-z'], cwd=ROOT)
     paths = [p.decode('utf-8') for p in change.split(b'\0') if p]
     require(paths, 'No reviewed tool changes are staged')
+    selected = selected_rows(group)
+    allowed_prefixes = [r['destination'] + ('/' if r['kind'] == 'directory' else '')
+                        for r in selected]
     for path in paths:
         require(path.startswith('tool/') and not path.endswith(('.pyc', '.pyo')) and
                 not path.startswith('tool/automation/browsers/'),
                 'Unexpected file touched by tool update: ' + path)
-        if group == 'ssh':
-            require(path.startswith(('tool/python/ssh-packages/', 'tool/python-ssh-packages.lock.txt',
-                                     'tool/installed-tools.json', 'tool/工具更新说明.md')),
-                    'SSH-only update modified another component: ' + path)
+        always = path in ('tool/installed-tools.json', 'tool/工具更新说明.md')
+        ssh_owned = path == 'tool/python-ssh-packages.lock.txt' or path.startswith('tool/python/ssh-packages/')
+        tool_owned = any((path.startswith(p) if p.endswith('/') else path == p)
+                         for p in allowed_prefixes)
+        require(always or (group != 'tools' and ssh_owned) or tool_owned,
+                'Staged changes include an unrelated tool file: ' + path)
     patch = subprocess.check_output(['git', '-c', 'core.quotepath=false', 'diff',
                                      '--cached', '--binary', '--no-ext-diff'], cwd=ROOT)
     return hashlib.sha256(patch).hexdigest()
@@ -418,7 +493,7 @@ def main() -> None:
     elif args.command == 'prepare':
         prepare(args.group, day=args.day or '', writer=args.writer)
     elif args.command == 'verify':
-        verify_candidates()
+        verify_candidates(args.group)
     else:
         print('TOOL_DIFF_SHA256=' + diff_digest(args.group))
 

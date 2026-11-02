@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-02：工具候选离线加固与一次性 Windows 验证设计（未运行 AC）
+
+- **Node 便携入口保护：** 本地审查发现直接以官方 Node ZIP 覆盖整个 tool/node，会删除现有 portable-npm.js 和 npm/npx 的 CMD、PowerShell 入口。现已修复为保留七个已审查的入口，同时跳过上游 install_tools.bat 系统安装器，禁止恢复宿主 npm 搜索或系统安装行为。
+- **本批拟更新的真实候选：** tool/tool-update-plan.json 固定 Node.js 26.13.0 LTS Windows x64 官方 ZIP 一项；核对官方 URL、版本、ZIP SHA-256，并要求在 Windows 准备阶段取得官方 SHASUMS256.txt 再独立交叉验证；原有 Node 真正版本待 Windows 原生探测，候选不代表已安装。其他未审核的工具不盲升。
+- **集中门禁：** 03-update-tools.yml 的 prepare 一次性执行 Paramiko 原生导入、完整 Python/Node 回归、Chromium 校验、18 项 Windows PowerShell 5.1 回归、十轮随机种子 Windows 发布审计及真实 ZIP 试打包。只读 Job 验证完整候选差异 SHA；独立写权限 Job 重建同一差异才可创建 PR，不会自动合并 main 或创建 Release。
+- **离线复核状态：** 本地通过 16 个定向合成回归（路径遍历、符号链接、归属目标、官方摘要不符、Node 自定义入口保持、版本台账同步、异常 Git 暂存范围）、Python 语法及 YAML 基本解析。不能将其等同于 Windows 原生测试、全套项目回归或任何已经运行的 GitHub Actions；本次仍未触发 AC。
 ## 2026-11-02：工具便携维护与 SSH 支持（候选源码，未运行 AC）
 
 **范围与状态：** 按用户授权，审查全部现有说明和当日提交，再在独立维护分支准备 Python SSH 组件、第三个手动工具更新入口、版本台账和离线边界回归。此阶段只提交维护代码；**没有触发 GitHub Actions、没有下载或安装 Windows Paramiko 原生 wheel、没有升级现有 Node/ADB/Chromium/CLI 二进制，也没有生成正式 Release**。后续只在用户单独批准 AC 后执行 Windows 真实验证和候选 PR；PR 仍需人工复核合并。

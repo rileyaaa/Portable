@@ -139,8 +139,8 @@ def run(args: list[str], env: dict[str, str]) -> None:
 def wheel_safe(name: str) -> PurePosixPath:
     path = PurePosixPath(name)
     if (not name or name.startswith(('/', '\\')) or '\\' in name or
-            path.is_absolute() or '..' in path.parts or '.' in path.parts or
-            ':' in name or not all(part for part in path.parts)):
+            path.is_absolute() or ':' in name or
+            not all(part not in ('', '.', '..') for part in name.split('/'))):
         fail('Unsafe wheel member: ' + name)
     return path
 
