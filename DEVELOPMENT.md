@@ -1,5 +1,14 @@
 # 开发与维护记录
 
+## 2026-11-03：第八次 03 Windows 验证完成，Node/Paramiko 候选经 PR #5 合入 main（不发布 Release）
+
+- **真实运行与起点：** [Actions #41481792646](https://github.com/rileyaaa/Codex-Portable/actions/runs/41481792646) 在 2026-11-02 UTC 以原 main `6073eadecdd8c6eab9333d67cc639c4248304faa` 执行 `mode=prepare / group=all / create_pr=true`。只读 `verify` 和隔离写入 `propose` 两个 Job 均为 **success**，无需重跑。此次验证来自真实 Windows Runner，区别于前述各轮仅源码预审。
+- **实际门禁结果：** actionlint、下载前工具与发行包回归、真实 BAT/原生配置与搬迁（normal、relocated、maintenance）、候选 Node/Paramiko 原生检查、Corepack 运行、转换器、完整 Python/Node 回归、**19 项 PowerShell 5.1**、已提交客户打包输入检查均通过。十轮 `release-audit.py --release` 全部通过，分组每轮 **64+19+6+21=110**，合计 **1,100 次**，随后 `--verify` 的源字节/提交一致性检查通过；真实客户 ZIP 试打包和归档 SHA-256 门禁也通过，临时 ZIP 已按工作流清理。**这不等于已发布新的客户 Release，也不等于真实用户账户联机测试已做。**
+- **交付内容与保留项：** 经过固定官方 SHA-256 的 Node.js `24.16.0 → 26.13.0`、npm `11.13.0 → 11.20.0`；Paramiko `5.1.0` 与 bcrypt 5.0.0、cryptography 50.0.2、invoke 3.0.3、PyNaCl 1.6.0、cffi 2.1.1、pycparser 3.12 的单独 wheel-only SHA-256 lock/sidecar。Corepack **0.35.0** 原始文件、全部自定义 npm/npx 便携启动器、基础 Python 42 项及 Codex **0.166.0** 运行身份没有修改。
+- **候选真实性与 LFS：** 独立写入 Job 从同一固定来源重建并匹配已验证的暂存差异摘要，先上传 `tool/node/node.exe` 的 Git LFS 对象（`sha256:14319838b3f355e0398c13569a90270bce4fc68f25189f58c59b03dadae0e6d5`，`size=100097864`），成功推送 `maintenance/tools-41481792646`。GitHub Actions 账号因仓库权限不能直接创建 PR，日志明确记录 `createPullRequest` 拒绝，故通过已授权的 GitHub Connector 创建 [PR #5](https://github.com/rileyaaa/Codex-Portable/pull/5)，未再触发任何 Actions。
+- **合并前后独立复核：** 对完整 Git 树逐文件比较（不只看 GitHub compare API 的前 300 条）：候选相对原 main 共 776 个文件路径变化，仅限 `tool/node/`（458）、`tool/python/ssh-packages/`（314）、工具台账/说明、SSH wheel lock 与新增的一条 Node LFS 属性；基础 Python/原 Corepack 文件零变更。PR #5 已用 merge 提交 `d7de9653f02065bf4099f4c9c58a9cb648d9b47f` 合入 `main`，合并后 **9,121 个 Blob 与验证候选逐一一致**。正式 Release 仍为 `v0.166.0-portable.1`（原 Codex 0.166.0）；旧 Release ZIP 不会因更新 main 而自动改变。
+- **后续边界：** 只完成了 GitHub 源码/工具候选交付；用户已经下载的旧版便携目录不会自动升级。如未来需要新的下载包，另走手动 02 正式发布验证，须单独决策；本次不创建 Release。用户本机 Win11 的实际长期使用、真实 SSH 服务器认证和真实账户场景仍不宣称已测。Git LFS 存储/带宽单独计量，不属于 Actions 运行分钟。
+
 ## 2026-11-02：十轮审计前止损预检的测试夹具修正（无 AC）
 
 - **发现的确定错误：** 在合成发行包原有 `test_archive_is_reproducible_and_excludes_untracked_private_state` 内，前面已成功调用两次 `build_release` 并通过 CLI 生成第三个 ZIP，因此新增的 `--check` 测试不能断言 `tmp` 不存在；该断言若进入下次完整回归必然误报失败。
