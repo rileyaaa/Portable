@@ -108,8 +108,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows tool staging failed; no branch will be written.' }
           & git add -A -- tool
           if ($LASTEXITCODE -ne 0) { throw 'Staging verified tool files failed.' }
-          & git -c core.whitespace=cr-at-eol diff --cached --check
-          if ($LASTEXITCODE -ne 0) { throw 'Malformed tool candidate diff.' }
+          & .\tool\python\python.exe -E -s -B .\tool\update-tools.py lint-staged --group $env:TOOL_GROUP
+          if ($LASTEXITCODE -ne 0) { throw 'Unsafe candidate scope or malformed first-party records.' }
           $line = (& .\tool\python\python.exe -E -s -B .\tool\update-tools.py digest --group $env:TOOL_GROUP) -join ''
           if ($LASTEXITCODE -ne 0 -or $line -cnotmatch '^TOOL_DIFF_SHA256=([a-f0-9]{64})$') {
             throw 'Unexpected tool candidate change scope.'
@@ -252,8 +252,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Trusted writer could not reproduce official pinned archive.' }
           & git add -A -- tool
           if ($LASTEXITCODE -ne 0) { throw 'Cannot stage reproduced tool bytes.' }
-          & git -c core.whitespace=cr-at-eol diff --cached --check
-          if ($LASTEXITCODE -ne 0) { throw 'Malformed reproduced diff.' }
+          & .\tool\python\python.exe -E -s -B .\tool\update-tools.py lint-staged --group $env:TOOL_GROUP
+          if ($LASTEXITCODE -ne 0) { throw 'Unsafe reproduced scope or malformed first-party records.' }
           $value = (& .\tool\python\python.exe -E -s -B .\tool\update-tools.py digest --group $env:TOOL_GROUP) -join ''
           if ($LASTEXITCODE -ne 0 -or $value -cne ('TOOL_DIFF_SHA256=' + $env:EXPECTED_DIGEST)) {
             throw 'Writer diff does not match the read-only Windows-verified candidate.'

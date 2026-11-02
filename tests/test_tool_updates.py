@@ -292,5 +292,57 @@ class ToolUpdateTests(unittest.TestCase):
                 self.assertEqual(ledger.read_bytes(),before)
 
 
+    def test_vendor_whitespace_kept_but_generated_records_still_checked(self):
+        # Regression for Windows AC run 41419650909: the fetched official
+        # Paramiko/cffi wheel has trailing spaces/extra terminal blank lines.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(['git', 'init', '-q', str(root)], check=True)
+            tool = root / 'tool'
+            (tool / 'python/ssh-packages').mkdir(parents=True)
+            vendor = tool / 'python/ssh-packages/original-license.txt'
+            vendor.write_bytes(b'Official licensed text with vendor spaces  \n\n')
+            metadata = tool / 'installed-tools.json'
+            metadata.write_text('"version": "verified"\n', encoding='utf-8')
+            doc = tool / tools.DOC.name
+            doc.write_text('Updated by reviewer\n', encoding='utf-8')
+            lock = tool / 'python-ssh-packages.lock.txt'
+            lock.write_text('paramiko==5.1.0 --hash=sha256:' + 'a' * 64 + '\n',
+                            encoding='utf-8')
+            subprocess.run(['git', '-C', str(root), 'add', '-A', '--', 'tool'], check=True)
+            # Confirm the original unrestricted lint reproduces the failure.
+            broad = subprocess.run(['git', '-C', str(root), 'diff', '--cached',
+                                    '--check'], capture_output=True, check=False)
+            self.assertNotEqual(broad.returncode, 0)
+            with patch.object(tools, 'ROOT', root), \
+                    patch.object(tools, 'LEDGER', metadata), \
+                    patch.object(tools, 'DOC', doc):
+                tools.lint_staged('ssh')
+                self.assertEqual(vendor.read_bytes(),
+                                 b'Official licensed text with vendor spaces  \n\n')
+                # First-party generated files must still fail malformed whitespace.
+                doc.write_text('Bad generated documentation  \n', encoding='utf-8')
+                subprocess.run(['git', '-C', str(root), 'add', '-A', '--', 'tool'], check=True)
+                with self.assertRaisesRegex(ValueError, 'first-party'):
+                    tools.lint_staged('ssh')
+                # Unreviewed staged tools cannot hide behind vendor exemption.
+                doc.write_text('Clean record\n', encoding='utf-8')
+                (tool / 'prepare-ssh.py').write_text('unauthorized edit\n', encoding='utf-8')
+                subprocess.run(['git', '-C', str(root), 'add', '-A', '--', 'tool'], check=True)
+                with self.assertRaisesRegex(ValueError, 'unrelated'):
+                    tools.lint_staged('ssh')
+
+    def test_windows_tool_workflow_uses_scoped_lint_in_both_jobs(self):
+        workflow = (ROOT / '.github/workflows/03-update-tools.yml').read_text(
+            encoding='utf-8')
+        self.assertEqual(workflow.count('update-tools.py lint-staged --group'), 2)
+        self.assertNotIn('git -c core.whitespace=cr-at-eol diff --cached --check',
+                         workflow)
+        self.assertIn('GitHub 100 MB non-LFS blob limit',
+                      (ROOT / 'tool/update-tools.py').read_text(encoding='utf-8'))
+        self.assertIn('TOOL_STAGED_FIRST_PARTY_STYLE=PASS',
+                      (ROOT / 'tool/update-tools.py').read_text(encoding='utf-8'))
+
+
 if __name__ == '__main__':
     unittest.main()

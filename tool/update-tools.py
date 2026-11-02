@@ -323,6 +323,11 @@ def prepare_row(row: dict, temp: Path) -> None:
                 continue
             require(info.file_size <= ARCHIVE_MAX and total + info.file_size <= EXPAND_MAX,
                     'Unbounded archive expansion')
+            if row['tool'] == 'node' and file == prefix + 'node.exe':
+                # tool/node/node.exe is an ordinary Git blob, not Git LFS.
+                # Fail before 10 Windows audit rounds if GitHub would refuse it.
+                require(info.file_size < 100_000_000,
+                        'Node.exe exceeds the GitHub 100 MB non-LFS blob limit')
             mode = (info.external_attr >> 16) & 0o170000
             require(mode in (0, stat.S_IFREG, stat.S_IFDIR), 'Archive contains linked/special files')
             if not file.startswith(prefix):
@@ -479,9 +484,36 @@ def diff_digest(group: str) -> str:
     return hashlib.sha256(patch).hexdigest()
 
 
+
+def lint_staged(group: str) -> None:
+    """Validate owned paths and whitespace in generated FIRST-PARTY records.
+
+    Official Node ZIP contents and PyPI wheel files are byte-for-byte vendor
+    payloads. Their original licenses, blank final lines and spaces must be
+    retained after digest checks, not rejected by a repository-wide Git lint.
+    """
+    # This also rejects any unrelated staged file before granting the exception.
+    diff_digest(group)
+    owned_metadata = (
+        LEDGER.relative_to(ROOT).as_posix(),
+        DOC.relative_to(ROOT).as_posix(),
+        'tool/python-ssh-packages.lock.txt',
+    )
+    check = subprocess.run(
+        ['git', '-c', 'core.whitespace=cr-at-eol', 'diff', '--cached',
+         '--check', '--', *owned_metadata],
+        cwd=ROOT, capture_output=True, text=True, encoding='utf-8',
+        errors='replace', timeout=60, check=False,
+    )
+    require(check.returncode == 0,
+            'Malformed first-party tool inventory, lock or documentation:\n'
+            + check.stdout + check.stderr)
+    print('TOOL_STAGED_FIRST_PARTY_STYLE=PASS')
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('command', choices=['check', 'prepare', 'digest', 'verify'])
+    ap.add_argument('command', choices=['check', 'prepare', 'digest', 'verify', 'lint-staged'])
     ap.add_argument('--group', choices=['ssh', 'tools', 'all'], default='all')
     ap.add_argument('--online', action='store_true')
     ap.add_argument('--day', default=None)
@@ -494,6 +526,8 @@ def main() -> None:
         prepare(args.group, day=args.day or '', writer=args.writer)
     elif args.command == 'verify':
         verify_candidates(args.group)
+    elif args.command == 'lint-staged':
+        lint_staged(args.group)
     else:
         print('TOOL_DIFF_SHA256=' + diff_digest(args.group))
 

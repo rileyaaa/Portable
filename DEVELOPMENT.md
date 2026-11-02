@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-02：03 工具更新首次 Windows 运行故障修复（Run 41419650909）
+
+- **现场证据与范围：** 首次手动 `03-update-tools.yml` 在 `main` 的 `cefd304a` 执行 `mode=prepare`、`group=all`、`create_pr=true`，运行日志见 [GitHub Actions #41419650909](https://github.com/rileyaaa/Codex-Portable/actions/runs/41419650909)。固定 actionlint、隔离目录、只读工具盘点均通过；Windows x64 成功下载和准备固定 Node 26.13.0 以及 Paramiko 5.1.0 和六项原生依赖，日志有 `SSH_IMPORT_NATIVE=PASS`、`SSH_INSTALLED=PASS`、`TOOL_CANDIDATE_STAGED=PASS`。但在阶段 6 执行全量 `git diff --cached --check` 时，因为官方 wheel 自带 LICENSE、WHEEL 元数据和 vendored YAML 文件中原有行尾空格/尾端空行而失败，错误为 `Malformed tool candidate diff`；**阶段 7 之后的完整 Python/Node/PowerShell 回归、十轮动态审计、客户 ZIP 和候选 PR 都尚未执行，不能列为通过**。
+- **针对性修复：** `tool/update-tools.py lint-staged` 先验证 Git 暂存差异只包含已审核的工具归属路径，再只对**第一方生成台账、文档和 SSH wheel lock**执行 Git 空白检查；由官方 ZIP/sha256 和 PyPI wheel hash 校验过的第三方源文件继续按原始字节打包，不擅自去除上游许可证空白。03 的只读验证 Job 与独立写权限 Job **两个位置**同步改用相同检查，仍保留随后完整候选 Git 二进制差异 SHA-256 相等验证。额外在 Stage 时拒绝超出 GitHub 普通 Git Blob 100 MB 限额的 Node.exe 候选，避免完整十轮验完才发现无法推送。
+- **一起发现的潜在回归：** `tests/test_maintenance_workflows.py` 的新增 03 手动触发断言误写成字面量 `\\n`，本来会在后续完整 Python 回归中失败；修正为实际换行匹配。新增离线回归复现原始官方 wheel 格式警告、验证例外仅限已核对第三方路径；向本地生成说明注入行尾空格或将无关工具脚本加入暂存仍必须拒绝。
+- **此次验证边界：** 本地 18 项工具维护定向 unittest 全部通过、两个 Python 文件 AST 解析成功、03 YAML 基本解析通过、两个 Job 均保留差异身份复验及十轮审计入口；**没有再次启动 Actions，也没有更新/合并候选 Node 或 Paramiko 工件、没有发布 Release**。下一次人工运行仍须重新执行完整 Windows 门禁；不能把 2026-11-02 的阶段 6 中途通过视为全部通过。
+
 ## 2026-11-02：工具候选离线加固与一次性 Windows 验证设计（未运行 AC）
 
 - **Node 便携入口保护：** 本地审查发现直接以官方 Node ZIP 覆盖整个 tool/node，会删除现有 portable-npm.js 和 npm/npx 的 CMD、PowerShell 入口。现已修复为保留七个已审查的入口，同时跳过上游 install_tools.bat 系统安装器，禁止恢复宿主 npm 搜索或系统安装行为。

@@ -1,4 +1,4 @@
-"""Regression guards for two manually invoked portable maintenance Actions."""
+"""Regression guards for the two original and one tooling maintenance Actions."""
 from __future__ import annotations
 
 import importlib.util
@@ -191,9 +191,9 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
 
     def test_tool_updater_is_manual_and_not_a_coredex_release_path(self):
         workflow = read(ROOT / ".github/workflows/03-update-tools.yml")
-        self.assertIn("\\non:\\n  workflow_dispatch:", workflow)
-        self.assertNotIn("\\n  push:", workflow)
-        self.assertNotIn("\\n  schedule:", workflow)
+        self.assertIn("\non:\n  workflow_dispatch:", workflow)
+        self.assertNotIn("\n  push:", workflow)
+        self.assertNotIn("\n  schedule:", workflow)
         self.assertIn("default: check", workflow)
         self.assertIn("default: false", workflow)
         self.assertIn("needs: verify", workflow)
