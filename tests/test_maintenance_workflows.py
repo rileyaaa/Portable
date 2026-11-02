@@ -1,4 +1,4 @@
-"""Regression guards for the three manually invoked portable maintenance Actions."""
+"""Regression guards for two manually invoked portable maintenance Actions."""
 from __future__ import annotations
 
 import importlib.util
@@ -9,8 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = {
     "01": ROOT / ".github/workflows/01-update-codex.yml",
-    "02": ROOT / ".github/workflows/02-check-compatibility.yml",
-    "03": ROOT / ".github/workflows/release.yml",
+    "release": ROOT / ".github/workflows/release.yml",
 }
 
 
@@ -32,7 +31,7 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
     def setUpClass(cls):
         cls.files = {key: read(path) for key, path in WORKFLOWS.items()}
 
-    def test_all_three_actions_are_strictly_manual(self):
+    def test_both_actions_are_strictly_manual(self):
         for name, content in self.files.items():
             with self.subTest(step=name):
                 self.assertIn("\non:\n  workflow_dispatch:", content)
@@ -42,21 +41,29 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
                 self.assertNotIn("\n  workflow_run:", content)
 
     def test_existing_publisher_remains_three_asset_full_windows_gate(self):
-        publisher = self.files["03"]
+        publisher = self.files["release"]
         for marker in (
             "release-audit.py --release",
             "release-audit.py --verify",
             "02-compatibility.py --repo . --native",
             "Assert-PublishedSourceIsLatestMain",
             "Publishing is allowed only from main.",
-            "02-check-compatibility.yml/runs?event=workflow_dispatch",
+            "needs: verify", "source_sha:",
             "gh release create", "gh release download", "gh release edit",
             "release-manifest.json", "SHA256SUMS",
         ):
             self.assertIn(marker, publisher)
-        self.assertIn("check_set:", publisher)
-        self.assertIn("actions: read", publisher)
         self.assertIn("publish_release:", publisher)
+        self.assertIn("default: false", publisher)
+        self.assertNotIn("check_set:", publisher)
+        self.assertNotIn("package_hotfix", publisher)
+        self.assertNotIn("02-check-compatibility.yml/runs", publisher)
+        self.assertNotIn("!cancelled()", publisher)
+        self.assertIn("if: ${{ success() }}", publisher)
+        self.assertIn("if: ${{ needs.verify.result == 'success' && inputs.publish_release && github.ref == 'refs/heads/main' }}", publisher)
+        self.assertEqual(publisher.count("persist-credentials: false"), 2)
+        self.assertEqual(publisher.count("    permissions:\n      contents: write"), 1)
+        self.assertEqual(publisher.count("    permissions:\n      contents: read"), 1)
         self.assertGreaterEqual(publisher.count("Assert-PublishedSourceIsLatestMain"), 3)
 
     def test_upgrade_pushes_only_approved_lfs_no_release(self):
@@ -76,19 +83,36 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertIn("default: false", source)
         self.assertIn("if ($approved.prerelease -and $env:COMMIT_CHANGES -eq 'true')", source)
         self.assertIn("UPGRADE_TAG=$($approved.tag)", source)
+        self.assertIn("candidate_sha256:", source)
+        self.assertIn("UPGRADE_CHANGELOG_DATE", source)
+        self.assertIn("EXPECTED_CANDIDATE_SHA256", source)
+        self.assertIn("gh auth setup-git", source)
+        self.assertEqual(source.count("persist-credentials: false"), 2)
+        self.assertEqual(source.count("    permissions:\n      contents: write"), 1)
+        self.assertEqual(source.count("    permissions:\n      contents: read"), 1)
 
-    def test_compatibility_action_has_no_write_permissions(self):
-        source = self.files["02"]
-        self.assertIn("permissions:\n  contents: read", source)
-        self.assertIn("02-compatibility.py --repo . --native", source)
-        self.assertIn("test_upgrade_roundtrip.py", source)
-        self.assertNotIn("git push ", source)
+    def test_inline_compatibility_is_in_both_read_only_validation_jobs(self):
+        upgrade = self.files["01"]
+        publisher = self.files["release"]
+        self.assertIn("permissions:\n  contents: read", upgrade)
+        self.assertIn("permissions:\n  contents: read", publisher)
+        self.assertIn("02-compatibility.py --repo . --native", upgrade)
+        self.assertIn("02-compatibility.py --repo . --native", publisher)
+        self.assertIn("test_upgrade_roundtrip.py", upgrade)
+        self.assertIn("-p 'test_*.py'", publisher)
+        self.assertNotIn("gh release create", upgrade)
+        self.assertNotIn("git push origin", publisher)
 
-    def test_obsolete_push_dispatcher_is_absent(self):
-        self.assertFalse((ROOT / ".github/workflows/request-release-r2.yml").exists())
+    def test_removed_workflow_entries_cannot_reappear(self):
+        self.assertEqual(
+            sorted(path.name for path in (ROOT / ".github/workflows").glob("*.yml")),
+            ["01-update-codex.yml", "release.yml"])
+        for retired in ("request-release-r2.yml", "02-check-compatibility.yml",
+                        "download-browser.yml"):
+            self.assertFalse((ROOT / ".github/workflows" / retired).exists())
         self.assertFalse((ROOT / ".github/scripts/prepare-release-r2.py").exists())
 
-    def test_upgrade_script_guards_stable_semver_and_archive_paths(self):
+    def test_upgrade_script_guards_official_versions_and_archive_paths(self):
         script = import_script(
             ROOT / ".github/maintenance/01-upgrade-runtime.py",
             "portable_maintenance_upgrader")

@@ -14,7 +14,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: codex-portable-manual-runtime-upgrade
@@ -23,6 +23,13 @@ concurrency:
 jobs:
   upgrade:
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.official.outputs.version }}
+      archive_sha256: ${{ steps.official.outputs.archive_sha256 }}
+      changelog_date: ${{ steps.official.outputs.changelog_date }}
+      candidate_sha256: ${{ steps.candidate.outputs.sha256 }}
     runs-on: windows-latest
     timeout-minutes: 55
     defaults:
@@ -34,9 +41,10 @@ jobs:
         with:
           lfs: true
           fetch-depth: 1
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Validate official Release URL, prerelease status and SHA-256 digests
+        id: official
         timeout-minutes: 5
         env:
           GH_TOKEN: ${{ github.token }}
@@ -57,6 +65,11 @@ jobs:
           "UPGRADE_TEMP=$tmp" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
           "UPGRADE_VERSION=$($approved.version)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
           "UPGRADE_TAG=$($approved.tag)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "version=$($approved.version)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "archive_sha256=$($approved.archive.sha256)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $changelogDate = [DateTime]::UtcNow.ToString('yyyy-MM-dd')
+          "UPGRADE_CHANGELOG_DATE=$changelogDate" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "changelog_date=$changelogDate" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "Official Release: $env:RELEASE_URL" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "Channel: $(if ($approved.prerelease) { 'prerelease test only' } else { 'stable' })" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
@@ -72,7 +85,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw 'Downloaded upstream package is missing.' }
           "UPGRADE_ARCHIVE=$archive" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Update the six fixed local runtime files, version pins and profiles
+      - name: Apply verified archive using only the trusted maintenance script
         timeout-minutes: 9
         env:
           GH_TOKEN: ${{ github.token }}
@@ -80,6 +93,11 @@ jobs:
           $ErrorActionPreference = 'Stop'
           & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --apply --repo . --version $env:UPGRADE_VERSION --plan $env:UPGRADE_PLAN --archive $env:UPGRADE_ARCHIVE
           if ($LASTEXITCODE -ne 0) { throw 'Unsupported upstream layout or code adaptation. No commit or release will be made.' }
+
+      - name: Inspect candidate native runtime without a repository write token
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
           $reported = & .\codex.exe --version
           if ($LASTEXITCODE -ne 0 -or (($reported -join [Environment]::NewLine).Trim() -cne ('codex-cli ' + $env:UPGRADE_VERSION))) {
             throw 'Native Codex version did not match the target.'
@@ -112,6 +130,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'CLI option compatibility regression failed.' }
 
       - name: Stage only allowlisted source updates and real Git LFS pointers
+        id: candidate
         timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Stop'
@@ -124,42 +143,139 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Unexpected file scope or non-LFS binary.' }
           & git -c core.whitespace=cr-at-eol diff --cached --check
           if ($LASTEXITCODE -ne 0) { throw 'Malformed staged diff.' }
+          $fingerprint = (& .\tool\python\python.exe -B -c 'import hashlib,subprocess; print(hashlib.sha256(subprocess.check_output(["git","-c","core.quotepath=false","diff","--cached","--binary","--no-ext-diff"])).hexdigest())') -join ''
+          if ($LASTEXITCODE -ne 0 -or $fingerprint -cnotmatch '^[0-9a-f]{64}$') { throw 'Cannot hash validated candidate diff.' }
+          "sha256=$fingerprint" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Push validated new runtime to main without publishing
-        if: ${{ inputs.commit_changes }}
-        timeout-minutes: 9
+      - name: Report validation and optional separate write job
+        if: ${{ success() }}
+        run: |
+          if ('${{ inputs.commit_changes }}' -eq 'true') {
+            'Read-only native validation passed; a separate trusted job will independently re-verify and commit the stable candidate.' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          } else {
+            'Upgrade passed checks without pushing any branch or creating a Release.' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
+
+      - name: Clean only this run's downloaded upstream and model data
+        if: always()
+        run: |
+          $tmp = Join-Path $env:RUNNER_TEMP 'codex-portable-manual-upgrade'
+          if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
+
+  commit:
+    name: Commit a verified stable candidate without executing downloaded binaries
+    needs: upgrade
+    if: ${{ needs.upgrade.result == 'success' && inputs.commit_changes && github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Check out the same source SHA with no persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          lfs: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Re-check main and official stable version using trusted tools only
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_URL: ${{ inputs.release_url }}
+          EXPECTED_VERSION: ${{ needs.upgrade.outputs.version }}
+          EXPECTED_ARCHIVE_SHA256: ${{ needs.upgrade.outputs.archive_sha256 }}
+          UPGRADE_CHANGELOG_DATE: ${{ needs.upgrade.outputs.changelog_date }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $remote = (& gh api "repos/$env:GITHUB_REPOSITORY/branches/main" --jq '.commit.sha') -join [Environment]::NewLine
+          if ($LASTEXITCODE -ne 0 -or $remote.Trim() -cne $env:GITHUB_SHA) {
+            throw 'Main moved since read-only validation; refusing to commit.'
+          }
+          $tmp = Join-Path $env:RUNNER_TEMP 'codex-portable-trusted-commit'
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          $plan = Join-Path $tmp 'verified-upstream.json'
+          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --metadata --repo . --release-url $env:RELEASE_URL --plan $plan
+          if ($LASTEXITCODE -ne 0) { throw 'Official release re-verification failed.' }
+          $approved = Get-Content -LiteralPath $plan -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($approved.prerelease -or $approved.version -cne $env:EXPECTED_VERSION -or
+              $approved.archive.sha256 -cne $env:EXPECTED_ARCHIVE_SHA256) {
+            throw 'The stable release identity differs from the read-only validation job.'
+          }
+          "UPGRADE_PLAN=$plan" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_TEMP=$tmp" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_TAG=$($approved.tag)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_VERSION=$($approved.version)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_CHANGELOG_DATE=$env:UPGRADE_CHANGELOG_DATE" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Download the same official archive and verify its exact digest
+        timeout-minutes: 12
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $expected = $env:GITHUB_SHA
-          $before = (& git ls-remote origin refs/heads/main) -join [Environment]::NewLine
-          if ($LASTEXITCODE -ne 0 -or -not $before.StartsWith($expected)) {
-            throw 'Main changed since checkout; refusing to override another commit.'
+          & gh release download $env:UPGRADE_TAG --repo openai/codex --pattern 'codex-package-x86_64-pc-windows-msvc.tar.gz' --dir $env:UPGRADE_TEMP
+          if ($LASTEXITCODE -ne 0) { throw 'Official stable archive download failed.' }
+          $archive = Join-Path $env:UPGRADE_TEMP 'codex-package-x86_64-pc-windows-msvc.tar.gz'
+          if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw 'Archive missing.' }
+          "UPGRADE_ARCHIVE=$archive" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Regenerate and verify the allowlisted Git LFS candidate without running Codex
+        timeout-minutes: 10
+        env:
+          EXPECTED_CANDIDATE_SHA256: ${{ needs.upgrade.outputs.candidate_sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --apply --repo . --version $env:UPGRADE_VERSION --plan $env:UPGRADE_PLAN --archive $env:UPGRADE_ARCHIVE
+          if ($LASTEXITCODE -ne 0) { throw 'Independent trusted candidate regeneration failed.' }
+          & git lfs install --local
+          if ($LASTEXITCODE -ne 0) { throw 'Git LFS unavailable.' }
+          & git add -u
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot stage candidate.' }
+          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --check-index --repo .
+          if ($LASTEXITCODE -ne 0) { throw 'Binary LFS or staged allowlist verification failed.' }
+          & git -c core.whitespace=cr-at-eol diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace validation failed.' }
+          $fingerprint = (& .\tool\python\python.exe -B -c 'import hashlib,subprocess; print(hashlib.sha256(subprocess.check_output(["git","-c","core.quotepath=false","diff","--cached","--binary","--no-ext-diff"])).hexdigest())') -join ''
+          if ($LASTEXITCODE -ne 0 -or $env:EXPECTED_CANDIDATE_SHA256 -cnotmatch '^[0-9a-f]{64}$' -or
+              $fingerprint -cne $env:EXPECTED_CANDIDATE_SHA256) {
+            throw 'Candidate differs from the exact source diff that passed read-only native checks.'
           }
+
+      - name: Authenticated fast-forward push (no downloaded EXE is executed)
+        timeout-minutes: 8
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $remote = (& gh api "repos/$env:GITHUB_REPOSITORY/branches/main" --jq '.commit.sha') -join [Environment]::NewLine
+          if ($LASTEXITCODE -ne 0 -or $remote.Trim() -cne $env:GITHUB_SHA) {
+            throw 'Main changed; no validated source will be overwritten.'
+          }
+          & gh auth setup-git
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot configure scoped GitHub credentials.' }
           & git config user.name 'github-actions[bot]'
           & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           & git commit -m ("chore(runtime): manually upgrade pinned Codex to " + $env:UPGRADE_VERSION)
           if ($LASTEXITCODE -ne 0) { throw 'Upgrade commit failed.' }
           $commit = (& git rev-parse HEAD).Trim()
           & git lfs push origin HEAD
-          if ($LASTEXITCODE -ne 0) { throw 'Official runtime LFS upload failed.' }
+          if ($LASTEXITCODE -ne 0) { throw 'LFS upload failed.' }
           & git push origin HEAD:refs/heads/main
-          if ($LASTEXITCODE -ne 0) { throw 'Non-fast-forward or permissions failure; no forced push.' }
-          $after = (& git ls-remote origin refs/heads/main) -join [Environment]::NewLine
-          if ($LASTEXITCODE -ne 0 -or -not $after.StartsWith($commit)) { throw 'Remote commit readback failed.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Main rejected a non-fast-forward upgrade.' }
+          $after = (& gh api "repos/$env:GITHUB_REPOSITORY/branches/main" --jq '.commit.sha') -join [Environment]::NewLine
+          if ($LASTEXITCODE -ne 0 -or $after.Trim() -cne $commit) { throw 'Remote commit verification failed.' }
           Write-Output ("UPGRADED_SOURCE_COMMIT=" + $commit)
-          "01 source candidate: $env:UPGRADE_VERSION" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "Stable source candidate committed: $env:UPGRADE_VERSION" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "Commit: $commit" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-          'Next run 02, then 03 (check_set=full). No Release was created.' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          'Next run the Release validation workflow with publishing disabled until reviewed.' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
-      - name: Report dry-run without changing the remote
-        if: ${{ !inputs.commit_changes }}
-        run: |
-          'Upgrade passed checks without pushing any branch or creating a Release.' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-
-      - name: Clean only this run's downloaded upstream and model data
+      - name: Remove the trusted job's own temporary download
         if: always()
         run: |
-          $tmp = Join-Path $env:RUNNER_TEMP 'codex-portable-manual-upgrade'
+          $tmp = Join-Path $env:RUNNER_TEMP 'codex-portable-trusted-commit'
           if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }

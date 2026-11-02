@@ -8,6 +8,7 @@ is responsible for validating the index and pushing a reviewed, bounded diff.
 from __future__ import annotations
 
 import argparse
+from datetime import date, datetime, timezone
 import hashlib
 import json
 import os
@@ -395,12 +396,13 @@ def compile_updates(repo: Path, archive: Path, plan: dict) -> dict[str, bytes]:
     prior_statuses = (
         "已按 " + old_version + " 核对查找顺序",
         "当前为 " + old_version + "；运行组件的查找顺序须经 02 兼容检查确认",
+        "当前为 " + old_version + "；运行组件的查找顺序须经发布前兼容检查确认",
     )
     matches = [x for x in prior_statuses if readme.count(x.encode("utf-8")) == 1]
     require(len(matches) == 1, "README runtime lookup status requires manual review")
     readme = replace_once(
         readme, matches[0].encode("utf-8"),
-        ("当前为 " + plan["version"] + "；运行组件的查找顺序须经 02 兼容检查确认").encode("utf-8"),
+        ("当前为 " + plan["version"] + "；运行组件的查找顺序须经发布前兼容检查确认").encode("utf-8"),
         "README runtime lookup status")
     result["README.md"] = readme
     tool = read_safe(repo, "tool/工具更新说明.md")
@@ -427,16 +429,25 @@ def compile_updates(repo: Path, archive: Path, plan: dict) -> dict[str, bytes]:
         "python -B tool/package-release.py --version v" + plan["version"] + "-portable.1").encode(), 1)
     result["tool/工具更新说明.md"] = tool
     development = read_safe(repo, "DEVELOPMENT.md")
+    changelog_date = os.environ.get("UPGRADE_CHANGELOG_DATE")
+    if changelog_date is None:
+        changelog_date = datetime.now(timezone.utc).date().isoformat()
+    require(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", changelog_date) is not None,
+            "Invalid stable changelog date")
+    try:
+        date.fromisoformat(changelog_date)
+    except ValueError as exc:
+        raise RuntimeError("Invalid calendar changelog date") from exc
     log = (
-        "## " + __import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%d") +
+        "## " + changelog_date +
         "：Codex " + plan["version"] + " 官方运行时升级候选（01 自动更新）\n\n"
         "由手动执行的 01 更新工作流从官方 " + plan["tag"] + " 下载固定 Windows x64 工件，"
         "核对官方发布摘要与独立程序摘要，替换本地文字/Agent 所需主程序、Host、"
         "搜索和沙箱助手，并同步版本固定值、登录映射、运行清单、相关配置与模式副本。"
         "语音及独立 Exec Server 继续不打包；官方原始程序字节不修改。\n\n"
-        "**状态：候选源码更新，尚不能视为正式版或已确认兼容。** 必须另外执行 02 "
-        "变量与兼容性审查，处理新版 schema、请求协议与真实功能不兼容项；"
-        "通过后再手动执行 03 完整 Windows 测试、10 轮回归、附件回读及发布。"
+        "**状态：候选源码更新，尚不能视为正式版或已确认兼容。** 必须另外手动运行 "
+        "Release 工作流的完整 Windows 兼容性检查，处理新版 schema、请求协议与"
+        "真实功能不兼容项；通过十轮回归、附件回读后方可发布。"
         "实际账号、联网 Agent 和用户终端显示须另行实测。\n\n"
     ).encode("utf-8")
     # Git autocrlf on Windows may convert this tracked Markdown to CRLF.
@@ -539,7 +550,7 @@ def main() -> int:
         changed = compile_updates(root, args.archive, plan)
         write_safe(root, changed)
         print("UPGRADE_CANDIDATE=PREPARED version=" + plan["version"])
-        print("RUN_02_AND_03_BEFORE_DECLARING_COMPATIBLE_OR_PUBLISHED")
+        print("RUN_FULL_RELEASE_VALIDATION_BEFORE_DECLARING_COMPATIBLE_OR_PUBLISHED")
     return 0
 
 

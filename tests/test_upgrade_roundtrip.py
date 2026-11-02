@@ -9,6 +9,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import shutil
 import tarfile
@@ -249,7 +250,18 @@ class RepeatedUpgradeAndCompatibilityTests(TestCase):
         self.apply_mock_upgrade(next_version(self.start_version, 2))
         readme = (self.repo / "README.md").read_text(encoding="utf-8")
         self.assertIn("当前为 " + next_version(self.start_version, 2) +
-                      "；运行组件的查找顺序须经 02 兼容检查确认", readme)
+                      "；运行组件的查找顺序须经发布前兼容检查确认", readme)
+
+    def test_changelog_date_is_reproducible_across_jobs(self):
+        with mock.patch.dict(os.environ, {"UPGRADE_CHANGELOG_DATE": "2026-11-02"}):
+            self.apply_mock_upgrade(next_version(self.start_version, 1))
+        self.assertIn("## 2026-11-02：Codex ".encode("utf-8"),
+                      (self.repo / "DEVELOPMENT.md").read_bytes())
+
+    def test_bad_calendar_date_cannot_write_changelog(self):
+        with mock.patch.dict(os.environ, {"UPGRADE_CHANGELOG_DATE": "2026-02-30"}):
+            with self.assertRaisesRegex(RuntimeError, "Invalid calendar changelog date"):
+                self.apply_mock_upgrade(next_version(self.start_version, 1))
 
     def test_windows_crlf_development_log_insert_remains_consistent(self):
         changelog = self.repo / "DEVELOPMENT.md"
