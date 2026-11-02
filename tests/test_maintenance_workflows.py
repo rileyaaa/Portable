@@ -91,6 +91,43 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertEqual(source.count("    permissions:\n      contents: write"), 1)
         self.assertEqual(source.count("    permissions:\n      contents: read"), 1)
 
+    def test_pinned_checkout_uses_reviewed_node24_commit(self):
+        for source in self.files.values():
+            self.assertEqual(
+                source.count("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"), 2)
+            self.assertNotIn("11bd71901bbe5b1630ceea73d27597364c9af683", source)
+
+    def test_trial_customer_zip_runs_before_optional_publication(self):
+        release = self.files["release"]
+        verify, publish = release.split("\n  publish:", 1)
+        self.assertIn("id: trial_package", verify)
+        self.assertIn("tool\\package-release.py --version $env:RELEASE_VERSION", verify)
+        self.assertIn("TRIAL_RELEASE_ZIP=PASS", verify)
+        self.assertIn("archive_sha256: ${{ steps.trial_package.outputs.archive_sha256 }}", verify)
+        self.assertIn("EXPECTED_TRIAL_ARCHIVE_SHA256: ${{ needs.verify.outputs.archive_sha256 }}", publish)
+        self.assertIn("Publisher ZIP bytes differ", publish)
+        self.assertNotIn("gh release create", verify)
+        self.assertIn("if: ${{ needs.verify.result == 'success' && inputs.publish_release", publish)
+        self.assertIn("Report incomplete draft recovery", publish)
+
+    def test_stable_candidate_requires_release_audit_before_remote_commit(self):
+        upgrade = self.files["01"]
+        read_only, writer = upgrade.split("\n  commit:", 1)
+        self.assertIn("Pre-commit complete Windows audit", read_only)
+        self.assertIn("if: ${{ success() && inputs.commit_changes }}", read_only)
+        self.assertIn("release-audit.py --release", read_only)
+        self.assertIn("release-audit.py --verify", read_only)
+        self.assertIn("tool\\package-release.py --version $tag", read_only)
+        self.assertIn("safe recovery", writer.lower())
+        self.assertNotIn("gh release create", writer)
+
+    def test_lfs_growth_estimates_and_new_upstream_fields_are_reported(self):
+        source = read(ROOT / ".github/maintenance/01-upgrade-runtime.py")
+        self.assertIn("NEW_VERSION_LFS_BYTES=", source)
+        self.assertIn("LFS_CAPACITY_WARNING=", source)
+        self.assertIn("Missing=", source)
+        self.assertIn("New package fields require compatibility review:", source)
+
     def test_windows_powershell_does_not_strip_native_python_hash_quotes(self):
         source = self.files["01"]
         # Windows PowerShell 5.1 strips nested double quotes in single-quoted

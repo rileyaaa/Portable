@@ -25,14 +25,15 @@ jobs:
       contents: read
     outputs:
       source_sha: ${{ steps.prepare.outputs.source_sha }}
+      archive_sha256: ${{ steps.trial_package.outputs.archive_sha256 }}
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 70
     defaults:
       run:
         shell: powershell
     steps:
       - name: Check out selected commit and real LFS binaries
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
         with:
           lfs: true
           fetch-depth: 1
@@ -118,7 +119,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           & .\tool\python\python.exe -B .\.github\maintenance\02-compatibility.py --repo . --native
-          if ($LASTEXITCODE -ne 0) { throw 'Variable/schema/native compatibility gate failed. Run 02 manually and fix issues before publishing.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Variable/schema/native compatibility gate failed. Review the compatibility audit before publishing.' }
 
       - name: Windows PowerShell 5.1 - test_portable_config
         if: ${{ success() }}
@@ -275,6 +276,55 @@ jobs:
           & .\tool\python\python.exe -B .\.github\scripts\release-audit.py --verify
           if ($LASTEXITCODE -ne 0) { throw 'Audited source changed; restart all ten rounds.' }
 
+      - name: Trial-build and verify the real customer ZIP even when publishing is disabled
+        if: ${{ success() }}
+        id: trial_package
+        timeout-minutes: 15
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $result = & .\tool\python\python.exe -B .\tool\package-release.py --version $env:RELEASE_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Full customer ZIP trial packaging failed.' }
+          $package = ($result -join [Environment]::NewLine) | ConvertFrom-Json
+          if ($package.source_commit -cne $env:GITHUB_SHA) { throw 'Trial ZIP source SHA differs from the audited commit.' }
+          $expectedRoot = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE 'tmp'))
+          $folder = [IO.Path]::GetFullPath($package.output_dir)
+          if ([IO.Path]::GetDirectoryName($folder) -cne $expectedRoot -or [IO.Path]::GetFileName($folder) -notlike 'release-*') {
+            throw 'Trial packaging returned an unsafe output path.'
+          }
+          try {
+            $zip = [IO.Path]::GetFullPath($package.archive)
+            $manifestPath = [IO.Path]::GetFullPath($package.manifest)
+            $checksumsPath = [IO.Path]::GetFullPath($package.checksums)
+            foreach ($file in @($zip,$manifestPath,$checksumsPath)) {
+              if ([IO.Path]::GetDirectoryName($file) -cne $folder -or -not (Test-Path -LiteralPath $file -PathType Leaf)) {
+                throw 'A verified trial release artifact is missing or outside the private output folder.'
+              }
+            }
+            $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($manifest.source_commit -cne $env:GITHUB_SHA -or $manifest.release_version -cne $env:RELEASE_VERSION -or
+                $manifest.package_kind -cne 'customer' -or $manifest.file_count -le 0) {
+              throw 'Trial ZIP manifest identity does not match the audited runtime.'
+            }
+            $expectedChecksums = @(
+              ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + [IO.Path]::GetFileName($zip)),
+              ((Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + [IO.Path]::GetFileName($manifestPath))
+            )
+            $lines = @(Get-Content -LiteralPath $checksumsPath -Encoding ASCII)
+            if ($lines.Count -ne 2 -or $lines[0] -cne $expectedChecksums[0] -or $lines[1] -cne $expectedChecksums[1]) {
+              throw 'Trial ZIP SHA256SUMS does not match the generated artifacts.'
+            }
+            $sha = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($sha -cne $package.archive_sha256) { throw 'Trial archive hash differs from the package builder.' }
+            "archive_sha256=$sha" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "TRIAL_RELEASE_ZIP=PASS SHA256=$sha files=$($manifest.file_count)" |
+              Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            Write-Output "TRIAL_RELEASE_ZIP=PASS SHA256=$sha"
+          } finally {
+            if (Test-Path -LiteralPath $folder) { Remove-Item -LiteralPath $folder -Recurse -Force }
+          }
+
       - name: Remove this validation runner's private state
         if: always()
         run: |
@@ -294,7 +344,7 @@ jobs:
         shell: powershell
     steps:
       - name: Checkout the verified source SHA without persisted Git credentials
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
         with:
           ref: ${{ needs.verify.outputs.source_sha }}
           lfs: true
@@ -306,6 +356,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.version }}
           VERIFIED_SOURCE_SHA: ${{ needs.verify.outputs.source_sha }}
+          EXPECTED_TRIAL_ARCHIVE_SHA256: ${{ needs.verify.outputs.archive_sha256 }}
         run: |
           $ErrorActionPreference = 'Stop'
           $checkedOut = (& git rev-parse HEAD).Trim()
@@ -316,6 +367,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Release packaging failed.' }
           $package = ($result -join "`n") | ConvertFrom-Json
           if ($package.source_commit -cne $env:VERIFIED_SOURCE_SHA) { throw 'Package came from another commit.' }
+          if ($env:EXPECTED_TRIAL_ARCHIVE_SHA256 -cnotmatch '^[0-9a-f]{64}$' -or
+              $package.archive_sha256 -cne $env:EXPECTED_TRIAL_ARCHIVE_SHA256) {
+            throw 'Publisher ZIP bytes differ from the customer ZIP that passed read-only trial packaging.'
+          }
           foreach ($name in @('output_dir','archive','manifest','checksums','source_commit')) {
             "$name=$($package.$name)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           }
@@ -344,7 +399,9 @@ jobs:
           }
           Assert-PublishedSourceIsLatestMain
           $tags = & git ls-remote --tags origin "refs/tags/$env:RELEASE_VERSION"
-          if ($LASTEXITCODE -ne 0 -or $tags) { throw 'Release tag exists or could not be checked.' }
+          if ($LASTEXITCODE -ne 0 -or $tags) {
+            throw "Release tag exists or cannot be checked. Review any existing draft and do not overwrite $env:RELEASE_VERSION."
+          }
           $notes = Join-Path $env:RELEASE_DIRECTORY 'release-notes.txt'
           $scopeNotes = @(
             'Full Windows validation and ten fresh seeded rounds passed before publication, in a separate read-only job.',
@@ -414,6 +471,22 @@ jobs:
           Write-Output ("PUBLISHED_RELEASE=" + $remote.html_url)
           Write-Output ("RELEASE_SOURCE_COMMIT=" + $env:RELEASE_COMMIT)
           Write-Output ("RELEASE_SHA256=" + (Get-FileHash -LiteralPath $env:RELEASE_ARCHIVE -Algorithm SHA256).Hash)
+
+      - name: Report incomplete draft recovery without deleting any release
+        if: ${{ failure() && steps.package.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $response = & gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_VERSION" 2>$null
+          if ($LASTEXITCODE -ne 0) { exit 0 }
+          $found = ($response -join [Environment]::NewLine) | ConvertFrom-Json
+          if ($found.draft) {
+            "Draft remains for manual inspection: $($found.html_url)" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            'Inspect all three attachments; if the draft is unusable, delete only that draft manually before a new release attempt. Nothing was automatically deleted.' |
+              Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
 
       - name: Remove only this publisher's generated artifacts
         if: always()

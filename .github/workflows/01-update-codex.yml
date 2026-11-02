@@ -31,13 +31,13 @@ jobs:
       changelog_date: ${{ steps.official.outputs.changelog_date }}
       candidate_sha256: ${{ steps.candidate.outputs.sha256 }}
     runs-on: windows-latest
-    timeout-minutes: 55
+    timeout-minutes: 105
     defaults:
       run:
         shell: powershell
     steps:
       - name: Check out full source and hydrate existing Git LFS binaries
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
         with:
           lfs: true
           fetch-depth: 1
@@ -147,6 +147,51 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $fingerprint -cnotmatch '^[0-9a-f]{64}$') { throw 'Cannot hash validated candidate diff.' }
           "sha256=$fingerprint" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      - name: Pre-commit complete Windows audit and real ZIP trial without repository write access
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 42
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:UPGRADE_VERSION -match '-') { throw 'Only stable releases may be committed.' }
+          # The commit is local to this read-only runner; no remote credentials are available.
+          & git config user.name 'github-actions[bot]'
+          & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          & git commit -m ("test(runtime): local candidate " + $env:UPGRADE_VERSION)
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot create the local candidate checkpoint for full validation.' }
+          $candidate = (& git rev-parse HEAD).Trim()
+          $tag = "v$env:UPGRADE_VERSION-portable.1"
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Complete Python regression failed before stable commit.' }
+          & .\tool\python\python.exe -B .\tool\automation\install-browser.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Browser payload validation failed before stable commit.' }
+          foreach ($entry in @('test_automation.js','test_portable_npm.js')) {
+            & .\tool\node\node.exe --test (Join-Path '.\tests' $entry)
+            if ($LASTEXITCODE -ne 0) { throw "Node regression failed before stable commit: $entry" }
+          }
+          & .\tool\python\python.exe -B .\.github\scripts\release-audit.py --release
+          if ($LASTEXITCODE -ne 0) { throw 'Ten seeded Windows rounds failed; main remains unchanged.' }
+          & .\tool\python\python.exe -B .\.github\scripts\release-audit.py --verify
+          if ($LASTEXITCODE -ne 0) { throw 'Source changed during Windows audit; main remains unchanged.' }
+          $result = & .\tool\python\python.exe -B .\tool\package-release.py --version $tag
+          if ($LASTEXITCODE -ne 0) { throw 'Customer ZIP trial failed; main remains unchanged.' }
+          $package = ($result -join [Environment]::NewLine) | ConvertFrom-Json
+          $trial = [IO.Path]::GetFullPath($package.output_dir)
+          $root = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE 'tmp'))
+          if ([IO.Path]::GetDirectoryName($trial) -cne $root -or [IO.Path]::GetFileName($trial) -notlike 'release-*') {
+            throw 'Unsafe trial ZIP output path.'
+          }
+          try {
+            if ($package.source_commit -cne $candidate -or $package.archive_sha256 -cnotmatch '^[0-9a-f]{64}$' -or
+                $package.file_count -le 0) { throw 'Candidate trial ZIP did not match the verified local commit.' }
+            if ((Get-FileHash -LiteralPath $package.archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $package.archive_sha256) {
+              throw 'Trial ZIP checksum differs from the package builder.'
+            }
+            "PRECOMMIT_FULL_WINDOWS_AUDIT_AND_ZIP=PASS candidate=$candidate SHA256=$($package.archive_sha256)" |
+              Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          } finally {
+            if (Test-Path -LiteralPath $trial) { Remove-Item -LiteralPath $trial -Recurse -Force }
+          }
+
       - name: Report validation and optional separate write job
         if: ${{ success() }}
         run: |
@@ -175,7 +220,7 @@ jobs:
         shell: powershell
     steps:
       - name: Check out the same source SHA with no persisted credentials
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
         with:
           ref: ${{ github.sha }}
           lfs: true
@@ -272,6 +317,9 @@ jobs:
           Write-Output ("UPGRADED_SOURCE_COMMIT=" + $commit)
           "Stable source candidate committed: $env:UPGRADE_VERSION" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "Commit: $commit" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "Original stable baseline: $env:GITHUB_SHA" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "Safe recovery if the later Release workflow fails: inspect main and, only if HEAD is still $commit and no release uses it, create a normal git revert of this upgrade commit; do not force-reset main." |
+            Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           'Next run the Release validation workflow with publishing disabled until reviewed.' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
       - name: Remove the trusted job's own temporary download

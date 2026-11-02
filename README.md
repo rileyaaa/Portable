@@ -185,9 +185,9 @@ $env:CODEX_TUI_FULLSCREEN_TRANSCRIPT = "true"
 
 ## 工具、更新与故障处理
 
-升级 Codex 现在只需关注两个手动 GitHub Actions：[01 官方组件升级](https://github.com/rileyaaa/Codex-Portable/actions/workflows/01-update-codex.yml) → [02 Windows 全量验证与 Release 发布](https://github.com/rileyaaa/Codex-Portable/actions/workflows/release.yml)。01 进行官方来源与 SHA-256 校验、临时运行组件替换和基础 Windows 检查；只有经过验证的稳定版才允许显式提交候选源码。发布工作流内置兼容性审查、完整 Windows 回归和十轮测试，成功后才能生成并核验正式 ZIP；无需再手动跑单独的兼容检查工作流。新包仍须单独试用，确认正常前保留旧稳定包。详见 [开发文档](DEVELOPMENT.md#codex-上游版本升级与便携包发布标准流程)。
+升级 Codex 现在只需关注两个手动 GitHub Actions：[01 官方组件升级](https://github.com/rileyaaa/Codex-Portable/actions/workflows/01-update-codex.yml) → [02 Windows 全量验证与 Release 发布](https://github.com/rileyaaa/Codex-Portable/actions/workflows/release.yml)。01 进行官方来源与 SHA-256 校验、临时运行组件替换和基础 Windows 检查；只有经过验证的稳定版才允许显式提交候选源码。发布工作流内置兼容性审查、完整 Windows 回归和十轮测试，且无论是否发布都真实生成并校验测试 ZIP；验证 Job 结束会删除临时 ZIP。正式发布 Job 会重新打包，并要求 ZIP SHA-256 与只读测试结果完全一致，无需再手动跑单独的兼容检查工作流。新包仍须单独试用，确认正常前保留旧稳定包。详见 [开发文档](DEVELOPMENT.md#codex-上游版本升级与便携包发布标准流程)。
 
-01 的 `release_url` 直接粘贴官方完整发布页面，例如 `https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.3`。`commit_changes=false`（默认）只执行验证，不改 `main`；Alpha/Beta/RC 只能这样测试。稳定版可主动选择 `commit_changes=true`：只读 Job 完成新版 EXE 验证后，独立的写权限 Job 会核对完全一致的候选差异和 Git LFS 摘要，再提交 `main`，仍不发布。需要 ZIP 时再运行发布工作流，填写 `version=v<稳定版本>-portable.1`，默认 `publish_release=false` 只做全量检查，明确打开才会发布；发布 Job 与测试 Job 的权限隔离，并核对来源 SHA。
+01 的 `release_url` 直接粘贴官方完整发布页面，例如 `https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.3`。`commit_changes=false`（默认）只执行验证，不改 `main`；Alpha/Beta/RC 只能这样测试。稳定版可主动选择 `commit_changes=true`：只读 Job 完成新版 EXE、全套 Python 回归、十轮 Windows 审计和真实 ZIP 试打包，才交给独立写权限 Job 再核对完全一致的候选差异、官方 SHA-256 和 Git LFS 摘要，最后提交 `main`，仍不发布。需要 ZIP 时再运行发布工作流，填写 `version=v<稳定版本>-portable.1`，默认 `publish_release=false` 会执行全量检查与本地 ZIP 实际试打包（不上传、不发布），明确打开才会发布；发布 Job 与测试 Job 的权限隔离，并核对来源 SHA 与测试 ZIP 的 SHA-256。每次真实稳定版升级应保留 Actions 输出的原始基线与升级提交：若后续 02 失败且无人继续修改主分支、没有对应正式发布，可检查后通过正常的 `git revert <升级提交SHA>` 恢复旧运行组件；禁止强制重置或直接删除历史 LFS 对象。Git LFS 用量应在仓库账单中监测，01 只报告本次组件的预估体积，不代表实际额度余额。
 
 当前包保留 Python 的网络、数据、Office/PDF 依赖，支持日常脚本开发和调试；Node 用于已有浏览器工具与账号转换器，Android 已有工具和技能也保留。Git、完整 Android SDK/JDK、Office 渲染和 OCR 等可选工具尚未预置，目录或变量存在不表示工具已安装。
 

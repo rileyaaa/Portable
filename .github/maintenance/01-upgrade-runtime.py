@@ -266,11 +266,15 @@ def collect(archive: Path, plan: dict) -> tuple[dict[str, bytes], dict, int, str
     required = set(UPSTREAM.values()) | {"codex-package.json"}
     actual = set(files)
     require(actual == required or actual == required | {OPTIONAL_EXEC},
-            "Missing or unexpected upstream components in canonical archive")
+            "Missing or unexpected upstream components in canonical archive. "
+            "Missing=" + repr(sorted(required - actual)) +
+            " Unexpected=" + repr(sorted(actual - required - {OPTIONAL_EXEC})))
     original = json.loads(files["codex-package.json"].decode("utf-8"))
     known = {"layoutVersion", "version", "target", "variant", "entrypoint",
              "resourcesDir", "pathDir", "execServer"}
-    require(set(original) <= known, "New package fields require compatibility review")
+    require(set(original) <= known,
+            "New package fields require compatibility review: " +
+            repr(sorted(set(original) - known)))
     expected_fields = {
         "layoutVersion": 1, "version": plan["version"], "target": TARGET,
         "variant": "codex", "entrypoint": "bin/codex.exe",
@@ -489,6 +493,7 @@ def check_index(repo: Path) -> None:
     manifest = json.loads(read_safe(repo, "tool/runtime-manifest.json"))
     require(set(manifest.get("files", {})) == set(UPSTREAM) | {"codex-package.json"},
             "Staged runtime inventory no longer matches the local-only contract")
+    total_lfs_bytes = 0
     for path in UPSTREAM:
         pointer = git(repo, "show", ":" + path)
         match = re.fullmatch(
@@ -502,6 +507,12 @@ def check_index(repo: Path) -> None:
                 file_digest(actual_path) == manifest_hash and
                 int(match.group(2)) == actual_path.stat().st_size,
                 "Staged LFS oid/size differs from official verified binary: " + path)
+        total_lfs_bytes += int(match.group(2))
+    print("NEW_VERSION_LFS_BYTES=" + str(total_lfs_bytes))
+    print("NEW_VERSION_LFS_MIB=" + format(total_lfs_bytes / (1024 ** 2), ".1f"))
+    if total_lfs_bytes >= 1024 ** 3:
+        print("LFS_CAPACITY_WARNING=New runtime binaries exceed 1 GiB per version. "
+              "Check actual GitHub LFS storage/bandwidth billing before committing.")
     print("STAGED_EXACT_ALLOWLIST=PASS files=" + str(len(names)))
     print("STAGED_LFS_OID_SIZE_AND_MANIFEST_HASHES=PASS")
 
