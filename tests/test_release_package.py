@@ -169,6 +169,10 @@ class ReleasePackageTests(unittest.TestCase):
         # Validate the exact read-only entrypoint used ahead of ten audit
         # rounds. Keep this within an existing test so release-audit's fixed
         # 21 runtime-test count and independent test IDs do not change.
+        # Prior synthetic builds intentionally created tmp; --check must not
+        # add outputs to that existing directory.
+        prior_outputs = tuple(sorted((self.root / "tmp").iterdir()))
+        self.assertGreaterEqual(len(prior_outputs), 3)
         preflight_command = [
             sys.executable, "-B", "-c",
             "import runpy,sys; sys.stdout.reconfigure(encoding='ascii'); "
@@ -184,13 +188,13 @@ class ReleasePackageTests(unittest.TestCase):
         self.assertGreater(report["file_count"], 0)
         self.assertEqual(self.git("status", "--porcelain=v1", "--untracked-files=no"), b"")
         # --check must not create a new archive or output directory.
-        self.assertFalse((self.root / "tmp").exists())
+        self.assertEqual(tuple(sorted((self.root / "tmp").iterdir())), prior_outputs)
 
         self.write("README.md", b"uncommitted synthetic change\\n")
         rejected = subprocess.run(preflight_command, capture_output=True, timeout=30)
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn(b"Commit tracked changes before building a release", rejected.stderr)
-        self.assertFalse((self.root / "tmp").exists())
+        self.assertEqual(tuple(sorted((self.root / "tmp").iterdir())), prior_outputs)
 
     def test_release_label_cannot_claim_another_native_version(self):
         for bad in (
