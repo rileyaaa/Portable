@@ -184,11 +184,11 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $tests = @(
-            'test_portable_config.ps1', 'test_portable_paths.ps1', 'test_instruction_paths.ps1',
+            'test_launcher_smoke.ps1', 'test_portable_config.ps1', 'test_portable_paths.ps1', 'test_instruction_paths.ps1',
             'test_bootstrap_paths.ps1', 'test_extension_policy.ps1', 'test_runtime_preflight.ps1',
             'test_python_setup.ps1', 'test_automation_paths.ps1', 'test_automation_process.ps1',
             'test_browser_login_flow.ps1', 'test_system_policy.ps1', 'test_npm_entrypoints.ps1',
-            'test_browser_smoke.ps1', 'test_launcher_smoke.ps1', 'test_cli_model_options.ps1',
+            'test_browser_smoke.ps1', 'test_cli_model_options.ps1',
             'test_login_input_errors.ps1', 'test_permission_display.ps1',
             'test_extension_persistence.ps1', 'test_extension_migration.ps1'
           )
