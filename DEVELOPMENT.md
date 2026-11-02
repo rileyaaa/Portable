@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-02：03 第四次失败后再次全面预审（Node 26 Corepack、转换器、SSH 运行目录）
+
+- **检视范围：** 以 `main` 的 `d74ce851` 为基线，审查 `03-update-tools.yml` 的只读验证、独立写入、LFS 对象上传、候选 PR、真实 ZIP/十轮审计和 01/02 正式发布测试覆盖。此前 [Run #41425693314](https://github.com/rileyaaa/Codex-Portable/actions/runs/41425693314) 已经通过 Windows Node LFS 候选暂存、SSH 原生导入，但因 2 项默认编码错误和 1 项 Git LFS 反向夹具错误中止了 341 项 Python 回归；本节不是新的 Windows 通过记录。
+- **防止升级静默删工具：** Node.js 官方从 25 起不再随包发行 Corepack（参见 `https://github.com/nodejs/node/blob/main/doc/contributing/distribution.md`）。本项目当前确实已安装 Corepack **0.35.0**，其 `engines.node` 支持 `>=26.0.0`；原升级程序整个替换 `tool/node` 会误删 `corepack`、`corepack.cmd` 与 `node_modules/corepack`。现按原始字节保留并检查普通文件、单链接、安全路径和体积上限；Node 26 原生版本验证中额外用**新的包内 node.exe**执行保留 Corepack 的 `--version`，确认不调用宿主 Node 或下载外部依赖。`tool/installed-tools.json` 和工具表新增 Corepack 项，成功升级后继续记录其真实版本；不得把“沿用现有组件”说成“升级了 Corepack”。
+- **补足现有测试门禁：** 对照 02 正式发布与 01 稳定版写入流程，03 原先遗漏 `Version_History/AI account format conversion/test/smoke.js` 和 `static-audit.js`。现在加入完整 Node 回归之后、Windows PowerShell 前的相同转换器专项，原 Python 全套、Playwright、19 项 PS5.1（原 18 项加持久化）、十轮随机动态审计和 ZIP 试打包不减少。
+- **统一 SSH 运行用户目录：** `run-codex.ps1` 实际将 `HOME`/`USERPROFILE` 指向包根 `home-runtime`，因此默认 `~/.ssh/known_hosts`、SSH 密钥目录应位于 `home-runtime/.ssh`，而不是之前文档误写的 `home/.ssh`。同步修正 `prepare-ssh.py` 安装时的隔离用户目录、README 和工具说明；用户脚本本身仍不能靠环境变量获得绝对的 OS 级写入沙箱。
+- **离线验证及仍需 Windows 验收的部分：** 使用本地 Python 的严格 `ResourceWarning` 模式完成 **31 项工具维护 unittest**，新增原 Node ZIP 无 Corepack 时原包的保留、链接/重解析拒绝、真实 Node/Corepack CLI 结果不符时阻断、npm/Corepack/Node 台账同步、转换器测试覆盖和 SSH HOME 验证。AST/YAML 基础检查、两 Job LFS/OID/二进制 diff 静态门禁以及 Corepack 54 个普通文件无链接的 Git 清单复核通过。**没有运行新的 Actions、没有真正更新 main 中 Node 24.16.0/Paramiko、没有创建 Release。** Node 26 和 Corepack 的真实 Windows 执行、19 项 PowerShell、十轮审计、完整 ZIP 以及写入 Job 的 Git LFS 推送必须通过下次授权的完整 AC，不能以本地模拟替代。
 ## 2026-11-02：03 工具升级第 4 次 Windows 运行的编码与 LFS 测试修复（Run 41425693314）
 
 **真实日志：** [Windows Actions #41425693314](https://github.com/rileyaaa/Codex-Portable/actions/runs/41425693314)，来源 main `a11840fa`，已通过固定 actionlint、包内环境准备、官方 Node/Paramiko 下载与候选暂存、`NODE_LFS_INDEX=PASS`、原生 SSH 导入 `SSH_NATIVE_IMPORT=PASS 5.1.0` 和 Windows 工具版本探测。第 8 步运行 Python 全量回归时实际执行 **341 项，338 项通过、2 项报错、1 项失败**；后续 Node/npm、19 项 PowerShell、十轮审计、ZIP、候选 PR 都没有执行，不得记为已通过。

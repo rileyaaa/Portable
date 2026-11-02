@@ -113,7 +113,7 @@ def child_env(base: Path) -> dict[str, str]:
     result = {key: os.environ[key] for key in allowed if key in os.environ}
     dirs = {
         'TEMP': base / 'tmp', 'TMP': base / 'tmp', 'TMPDIR': base / 'tmp',
-        'HOME': ROOT / 'home', 'USERPROFILE': ROOT / 'home',
+        'HOME': ROOT / 'home-runtime', 'USERPROFILE': ROOT / 'home-runtime',
         'APPDATA': ROOT / 'appdata', 'LOCALAPPDATA': ROOT / 'localappdata',
         'XDG_CACHE_HOME': ROOT / 'cache' / 'xdg',
         'PIP_CACHE_DIR': ROOT / 'cache' / 'pip',

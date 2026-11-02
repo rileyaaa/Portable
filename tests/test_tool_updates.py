@@ -210,6 +210,12 @@ class ToolUpdateTests(unittest.TestCase):
             node.mkdir(parents=True)
             for name in tools.NODE_PORTABLE_FILES:
                 (node / name).write_text('guarded-' + name, encoding='utf-8')
+            corepack = node / 'node_modules/corepack'
+            (corepack / 'dist').mkdir(parents=True)
+            (corepack / 'dist/corepack.js').write_bytes(b'preserved corepack js')
+            (corepack / 'package.json').write_text(
+                '{"name":"corepack","version":"0.35.0","engines":{"node":">=26.0.0"}}',
+                encoding='utf-8')
             (node / 'node.exe').write_bytes(fake_executable())
             archive_data = io.BytesIO()
             with zipfile.ZipFile(archive_data, 'w') as z:
@@ -228,6 +234,10 @@ class ToolUpdateTests(unittest.TestCase):
                 tools.prepare_row(row, scratch)
             for name in tools.NODE_PORTABLE_FILES:
                 self.assertEqual((node/name).read_text(encoding='utf-8'), 'guarded-' + name)
+            self.assertEqual((node/'node_modules/corepack/dist/corepack.js').read_bytes(),
+                             b'preserved corepack js')
+            self.assertEqual(json.loads((node/'node_modules/corepack/package.json')
+                                        .read_text(encoding='utf-8'))['version'], '0.35.0')
             self.assertFalse((node/'install_tools.bat').exists())
             self.assertTrue((node/'node.exe').is_file())
             self.assertEqual(json.loads((node/'node_modules/npm/package.json').read_text(encoding='utf-8'))['version'], '9.8.7')
@@ -271,6 +281,64 @@ class ToolUpdateTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'linked/special'):
                     tools.prepare_row(row,root)
             self.assertEqual((node/'marker.txt').read_text(encoding='utf-8'),'keep')
+
+    def test_official_node26_corepack_and_converter_regressions_are_preserved(self):
+        # Node.js 25+ stops bundling Corepack. A whole-directory replacement
+        # must retain the existing local Corepack distribution and CLI shims.
+        self.assertIn('corepack', tools.NODE_PORTABLE_FILES)
+        self.assertIn('corepack.cmd', tools.NODE_PORTABLE_FILES)
+        self.assertIn('node_modules/corepack', tools.NODE_PORTABLE_DIRS)
+        source = (ROOT / '.github/workflows/03-update-tools.yml').read_text(encoding='utf-8')
+        original = (ROOT / '.github/workflows/02-verify-and-publish-portable.yml').read_text(encoding='utf-8')
+        for marker in ('smoke.js', 'static-audit.js'):
+            self.assertIn(marker, original)
+            self.assertIn(marker, source)
+        self.assertIn('COREPACK_PORTABLE=PASS',
+                      (ROOT / 'tool/update-tools.py').read_text(encoding='utf-8'))
+        self.assertIn('corepack', tools.load_json(tools.LEDGER)['tools'])
+
+    def test_ssh_userprofile_matches_launcher_runtime_home(self):
+        # On Windows run-codex.ps1 uses home-runtime; storing SSH credentials
+        # in home/ would be misleading and break default ~/.ssh resolution.
+        source = (ROOT / 'tool/prepare-ssh.py').read_text(encoding='utf-8')
+        self.assertIn("'HOME': ROOT / 'home-runtime'", source)
+        self.assertIn("'USERPROFILE': ROOT / 'home-runtime'", source)
+
+    def test_node_corepack_retention_rejects_linked_legacy_payload(self):
+        def pe():
+            b = bytearray(256)
+            b[:2] = b'MZ'
+            b[0x3c:0x40] = (0x80).to_bytes(4,'little')
+            b[0x80:0x84] = b'PE\0\0'
+            b[0x84:0x86] = (0x8664).to_bytes(2,'little')
+            return bytes(b)
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            node=root/'tool/node'; node.mkdir(parents=True)
+            for name in tools.NODE_PORTABLE_FILES:
+                (node/name).write_text('guarded', encoding='utf-8')
+            (node/'node.exe').write_bytes(pe())
+            outside=root/'outside'; outside.mkdir()
+            (outside/'corepack.js').write_bytes(b'outside')
+            (node/'node_modules').mkdir()
+            try:
+                (node/'node_modules/corepack').symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest('This host cannot create symlinks')
+            archive=io.BytesIO()
+            with zipfile.ZipFile(archive,'w') as z:
+                z.writestr('node-v1.2.3-win-x64/node.exe', pe())
+            payload=archive.getvalue()
+            row=dict(tool='node',version='1.2.3',kind='directory', destination='tool/node',
+                     source_prefix='node-v1.2.3-win-x64/',
+                     sha256=hashlib.sha256(payload).hexdigest(),url='https://nodejs.org/')
+            checksum=(row['sha256']+'  node-v1.2.3-win-x64.zip\n').encode()
+            tmp=root/'tmp'; tmp.mkdir()
+            with patch.object(tools,'ROOT',root), patch.object(tools,'fetch_bytes',side_effect=[checksum,payload]):
+                with self.assertRaisesRegex(ValueError, 'Reparse/symlink'):
+                    tools.prepare_row(row,tmp)
+            self.assertEqual((node/'node.exe').read_bytes(),pe())
+            self.assertEqual((outside/'corepack.js').read_bytes(),b'outside')
 
     def test_sidecar_wheels_reject_symlinks_and_duplicate_contents(self):
         expected = {'paramiko':'5.1.0', 'bcrypt':'5.0.0'}
@@ -317,7 +385,7 @@ class ToolUpdateTests(unittest.TestCase):
             ledger.write_text(json.dumps({'schema':1,'platform':'win32-x64','tools':{
                 'paramiko':{'version':None,'status':'not-installed','path':'tool/python/ssh-packages'}},
                 'lastSuccessfulToolUpdate':None}), encoding='utf-8')
-            doc.write_text('before\n' + tools.BEGIN + '\nold\n' + tools.END + '\nafter\n', encoding='utf-8')
+            doc.write_text('before\n| Python SSH / Paramiko | 候选未安装 | 原始来源 |\n' + tools.BEGIN + '\nold\n' + tools.END + '\nafter\n', encoding='utf-8')
             with patch.object(tools, 'ROOT', root), patch.object(tools,'TOOL',tool), \
                     patch.object(tools, 'LEDGER', ledger), patch.object(tools,'DOC',doc):
                 tools.record_updates([], ssh=True, day='2026-11-02')
@@ -326,11 +394,70 @@ class ToolUpdateTests(unittest.TestCase):
                 self.assertEqual(updated['lastSuccessfulToolUpdate'],'2026-11-02')
                 self.assertIn('paramiko | 5.1.0 | bundled',doc.read_text(encoding='utf-8'))
                 self.assertEqual(doc.read_text(encoding='utf-8').count(tools.BEGIN),1)
+                self.assertIn('已安装 Paramiko 5.1.0',doc.read_text(encoding='utf-8'))
+                self.assertIn('home-runtime',doc.read_text(encoding='utf-8'))
                 before=ledger.read_bytes()
                 with self.assertRaises(ValueError):
                     tools.record_updates([], ssh=False, day='2026-11-02')
                 self.assertEqual(ledger.read_bytes(),before)
 
+
+    def test_node_inventory_records_upgraded_npm_and_retained_corepack(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); tool=root/'tool'
+            pkg=tool/'node/node_modules'
+            (pkg/'npm').mkdir(parents=True)
+            (pkg/'corepack').mkdir(parents=True)
+            (pkg/'npm/package.json').write_text('{"name":"npm","version":"11.20.0"}',
+                                                encoding='utf-8')
+            (pkg/'corepack/package.json').write_text(
+                '{"name":"corepack","version":"0.35.0"}',encoding='utf-8')
+            inventory={'schema':1,'platform':'win32-x64','lastSuccessfulToolUpdate':None,
+                       'tools':{k:{'version':version,'status':'bundled','path':'tool/node'}
+                                for k,version in [('node','24.16.0'),('npm','11.13.0'),
+                                                  ('corepack','0.35.0')]}}
+            ledger=tool/'installed-tools.json'
+            ledger.write_text(json.dumps(inventory),encoding='utf-8')
+            doc=tool/'工具更新说明.md'
+            doc.write_text('before\n'+tools.BEGIN+'\nold\n'+tools.END+'\nafter\n',
+                           encoding='utf-8')
+            with patch.object(tools,'ROOT',root),patch.object(tools,'TOOL',tool),\
+                 patch.object(tools,'LEDGER',ledger),patch.object(tools,'DOC',doc):
+                tools.record_updates([{'tool':'node','version':'26.13.0'}],ssh=False,
+                                     day='2026-11-02')
+            result=json.loads(ledger.read_text(encoding='utf-8'))
+            self.assertEqual(result['tools']['node']['version'],'26.13.0')
+            self.assertEqual(result['tools']['npm']['version'],'11.20.0')
+            self.assertEqual(result['tools']['corepack']['version'],'0.35.0')
+            self.assertIn('corepack | 0.35.0 | bundled',doc.read_text(encoding='utf-8'))
+            self.assertEqual(result['lastSuccessfulToolUpdate'],'2026-11-02')
+
+    def test_native_corepack_probe_rejects_mismatched_runtime(self):
+        # The verification Job must actually invoke retained Corepack under
+        # the reviewed upgraded Node, not just trust package.json metadata.
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); node=root/'tool/node'
+            dest=node/'node_modules/corepack/dist'; dest.mkdir(parents=True)
+            (node/'node.exe').write_bytes(b'MZ'+b'0'*256)
+            (node/'corepack').write_text('reviewed',encoding='utf-8')
+            (node/'corepack.cmd').write_text('reviewed',encoding='utf-8')
+            (node/'node_modules/corepack/package.json').write_text(
+                '{"name":"corepack","version":"0.35.0"}',encoding='utf-8')
+            (dest/'corepack.js').write_text('reviewed',encoding='utf-8')
+            observed={'node':'26.13.0'}
+            with patch.object(tools,'ROOT',root),\
+                 patch.object(tools,'probe_versions',return_value=observed),\
+                 patch.object(tools.subprocess,'run',return_value=subprocess.CompletedProcess(
+                     args=[],returncode=0,stdout=b'0.35.0\n',stderr=b'')) as runner:
+                tools.verify_candidates('all')
+                self.assertEqual(runner.call_count,1)
+                self.assertEqual(runner.call_args.args[0][0],str(node/'node.exe'))
+            with patch.object(tools,'ROOT',root),\
+                 patch.object(tools,'probe_versions',return_value=observed),\
+                 patch.object(tools.subprocess,'run',return_value=subprocess.CompletedProcess(
+                     args=[],returncode=0,stdout=b'0.34.0\n',stderr=b'')):
+                with self.assertRaisesRegex(ValueError,'functional package-local Corepack'):
+                    tools.verify_candidates('all')
 
     def test_vendor_whitespace_kept_but_generated_records_still_checked(self):
         # Regression for Windows AC run 41419650909: the fetched official

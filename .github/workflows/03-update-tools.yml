@@ -158,6 +158,11 @@ jobs:
             & .\tool\node\node.exe --test (Join-Path '.\tests' $script)
             if ($LASTEXITCODE -ne 0) { throw "Node regression failed: $script" }
           }
+          # Match the existing 01/02 release gates: converter smoke and static audit.
+          foreach ($script in @('smoke.js', 'static-audit.js')) {
+            & .\tool\node\node.exe (Join-Path '.\Version_History\AI account format conversion\test' $script)
+            if ($LASTEXITCODE -ne 0) { throw "Converter regression failed: $script" }
+          }
           & .\tool\python\python.exe -E -s -B .\tool\automation\install-browser.py --check
           if ($LASTEXITCODE -ne 0) { throw 'Bundled browser identity failed.' }
           [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)

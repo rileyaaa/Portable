@@ -185,7 +185,7 @@ $env:CODEX_TUI_FULLSCREEN_TRANSCRIPT = "true"
 
 ## 工具、更新与故障处理
 
-工具更新另有 [03 手动盘点与候选流程](https://github.com/rileyaaa/Codex-Portable/actions/workflows/03-update-tools.yml)，与现有 01（Codex 本体）和 02（验证/发布）相互独立。03 默认 `check` 仅报告版本；本批 `prepare` 已预置 Node 26.13.0 LTS 与 Paramiko 5.1.0 的待验候选；`prepare` 在 Windows Runner 暂存/测试经过来源和哈希审查的候选，`create_pr=false` 默认不写分支，打开后也仅创建待审 PR，绝不自动合并或发布。当前 Paramiko 5.1.0 为**已准备安装流程、尚未随包安装**的 SSH 候选；实际就绪必须等待 Windows 运行时验证并合并相应工件。其独立路径为 `tool/python/ssh-packages`，同原有基础 Python 固定依赖隔离。版本状态及精简建议以 [工具说明](tool/工具更新说明.md) 为准。
+工具更新另有 [03 手动盘点与候选流程](https://github.com/rileyaaa/Codex-Portable/actions/workflows/03-update-tools.yml)，与现有 01（Codex 本体）和 02（验证/发布）相互独立。03 默认 `check` 仅报告版本；本批 `prepare` 已预置 Node 26.13.0 LTS 与 Paramiko 5.1.0 的待验候选；`prepare` 在 Windows Runner 暂存/测试经过来源和哈希审查的候选，`create_pr=false` 默认不写分支，打开后也仅创建待审 PR，绝不自动合并或发布。Paramiko 5.1.0 为固定 SSH 候选；**是否已经随包安装，以 `tool/installed-tools.json` 的 `paramiko.status` 为准**（未合并成功前为 `not-installed`，验证并合并后为 `bundled`）。SSH 独立依赖位于 `tool/python/ssh-packages`，同原有基础 Python 固定依赖隔离；日常启动器将 `HOME`/`USERPROFILE` 定位于包根 `home-runtime`，因此 SSH 密钥和 `known_hosts` 应放在 `home-runtime/.ssh`，而非宿主用户目录。版本状态及精简建议以 [工具说明](tool/工具更新说明.md) 为准。
 
 
 升级 Codex 现在只需关注两个手动 GitHub Actions：[01 官方组件升级](https://github.com/rileyaaa/Codex-Portable/actions/workflows/01-upgrade-codex-runtime.yml) → [02 Windows 全量验证与 Release 发布](https://github.com/rileyaaa/Codex-Portable/actions/workflows/02-verify-and-publish-portable.yml)。01 进行官方来源与 SHA-256 校验、临时运行组件替换和基础 Windows 检查；只有经过验证的稳定版才允许显式提交候选源码。发布工作流内置兼容性审查、完整 Windows 回归和十轮测试，且无论是否发布都真实生成并校验测试 ZIP；验证 Job 结束会删除临时 ZIP。正式发布 Job 会重新打包，并要求 ZIP SHA-256 与只读测试结果完全一致，无需再手动跑单独的兼容检查工作流。新包仍须单独试用，确认正常前保留旧稳定包。详见 [开发文档](DEVELOPMENT.md#codex-上游版本升级与便携包发布标准流程)。

@@ -50,7 +50,12 @@ EXPAND_MAX = 450 * 1024 * 1024
 NODE_LFS_ATTRIBUTE = b'tool/node/node.exe filter=lfs diff=lfs merge=lfs -text\n'
 NODE_LFS_PATH = 'tool/node/node.exe'
 NODE_PORTABLE_FILES = ('portable-npm.js', 'npm', 'npm.cmd', 'npm.ps1',
-                       'npx', 'npx.cmd', 'npx.ps1')
+                       'npx', 'npx.cmd', 'npx.ps1', 'corepack', 'corepack.cmd')
+# Node.js 25+ no longer ships Corepack. The existing 0.35.x package
+# supports Node 26 and must not disappear as a side effect of upgrading Node.
+NODE_PORTABLE_DIRS = ('node_modules/corepack',)
+COREPACK_MAX_BYTES = 60 * 1024 * 1024
+COREPACK_MAX_ENTRIES = 10000
 REPO_BY_TOOL = {'ripgrep': 'BurntSushi/ripgrep', 'fd': 'sharkdp/fd',
                 'jq': 'jqlang/jq'}
 
@@ -269,6 +274,31 @@ def verify_candidates(group: str = 'all') -> None:
             require(version is not None, 'ADB executable probe failed')
         else:
             require(version == row['version'], 'Native installed version mismatch for ' + row['tool'])
+        if row['tool'] == 'node':
+            pkg = ROOT / 'tool/node/node_modules/corepack/package.json'
+            corepack = load_json(pkg)
+            require(corepack.get('name') == 'corepack' and
+                    re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', str(corepack.get('version', ''))),
+                    'Bundled Corepack metadata is invalid after Node upgrade')
+            cli = bounded(ROOT / 'tool/node/node_modules/corepack/dist/corepack.js')
+            ordinary(cli)
+            for shim in ('corepack', 'corepack.cmd'):
+                ordinary(bounded(ROOT / 'tool/node' / shim))
+            node = bounded(ROOT / 'tool/node/node.exe')
+            ordinary(node)
+            safe_env = {key: os.environ[key] for key in
+                        ('SystemRoot', 'WINDIR', 'COMSPEC', 'PATHEXT', 'HOME',
+                         'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP')
+                        if key in os.environ}
+            safe_env['PATH'] = str(node.parent) + os.pathsep + str(
+                Path(safe_env.get('SystemRoot', 'C:\\Windows')) / 'System32')
+            result = subprocess.run([str(node), str(cli), '--version'],
+                                    cwd=ROOT, env=safe_env, capture_output=True,
+                                    timeout=20, check=False)
+            require(result.returncode == 0 and
+                    result.stdout.decode('utf-8', errors='replace').strip() == corepack['version'],
+                    'Node 26 must retain a functional package-local Corepack')
+            print('COREPACK_PORTABLE=PASS version=' + corepack['version'])
     print('WINDOWS_TOOL_VERSION_PROBES=PASS')
 
 
@@ -389,6 +419,26 @@ def prepare_row(row: dict, temp: Path) -> None:
                     bounded(original)
                     ordinary(original)
                     shutil.copy2(original, staging / name)
+                for relative in NODE_PORTABLE_DIRS:
+                    original_dir = dest.joinpath(*PurePosixPath(relative).parts)
+                    bounded(original_dir)
+                    ordinary(original_dir, directory=True)
+                    count = 0
+                    size = 0
+                    for child in original_dir.rglob('*'):
+                        bounded(child)
+                        is_dir = child.is_dir()
+                        ordinary(child, directory=is_dir)
+                        count += 1
+                        if not is_dir:
+                            size += child.stat().st_size
+                        require(count <= COREPACK_MAX_ENTRIES and size <= COREPACK_MAX_BYTES,
+                                'Existing Corepack payload exceeds reviewed bounds')
+                    require(count > 0, 'Existing Corepack package is empty')
+                    target_dir = staging.joinpath(*PurePosixPath(relative).parts)
+                    require(not target_dir.exists(), 'Unexpected upstream Corepack conflict')
+                    target_dir.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copytree(original_dir, target_dir)
             backup = temp / ('backup-' + row['tool'])
             dest.rename(backup)
             try:
@@ -462,6 +512,14 @@ def record_updates(rows: list[dict], *, ssh: bool, day: str) -> None:
         if row['tool'] == 'node':
             npm = json.loads((ROOT / 'tool/node/node_modules/npm/package.json').read_text(encoding='utf-8'))
             state['tools']['npm'].update(version=npm['version'], status='bundled')
+            corepack = json.loads((ROOT / 'tool/node/node_modules/corepack/package.json')
+                                  .read_text(encoding='utf-8'))
+            require(corepack.get('name') == 'corepack' and
+                    re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',
+                                 str(corepack.get('version', ''))),
+                    'Retained Corepack metadata is invalid')
+            require('corepack' in state['tools'], 'Corepack must remain in the tool ledger')
+            state['tools']['corepack'].update(version=corepack['version'], status='bundled')
         if row['tool'] == 'adb':
             doc = re.sub(r'Platform Tools \d+(?:\.\d+)+', 'Platform Tools ' + row['version'], doc)
     if ssh:
@@ -469,6 +527,15 @@ def record_updates(rows: list[dict], *, ssh: bool, day: str) -> None:
         match = re.search(r'^paramiko==([^\s]+)', ssh_data, flags=re.MULTILINE)
         require(match is not None, 'Missing pinned Paramiko version')
         state['tools']['paramiko'].update(version=match.group(1), status='bundled')
+        # Keep the human-facing CURRENT tool row synchronized with the ledger.
+        row_pattern = r'(?m)^\| Python SSH / Paramiko \|[^\n]+$'
+        require(len(re.findall(row_pattern, doc)) == 1,
+                'Expected exactly one current Paramiko documentation row')
+        new_row = ('| Python SSH / Paramiko | 已安装 Paramiko ' + match.group(1) +
+                   ' 与六项固定依赖，位于 `tool\\python\\ssh-packages` | '
+                   'Windows x64 官方 PyPI wheel 与 SHA-256 lock 已经过候选验证；'
+                   '主 Python 42 项固定依赖不变，SSH 运行凭据位于 `home-runtime\\.ssh` |')
+        doc = re.sub(row_pattern, lambda _: new_row, doc, count=1)
     require(rows or ssh, 'No successful change to record')
     state['lastSuccessfulToolUpdate'] = day
     ledger_text = json.dumps(state, ensure_ascii=False, indent=2) + '\n'

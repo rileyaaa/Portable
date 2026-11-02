@@ -28,6 +28,11 @@
       "status": "bundled",
       "path": "tool/node/node_modules/npm"
     },
+    "corepack": {
+      "version": "0.35.0",
+      "status": "bundled",
+      "path": "tool/node/node_modules/corepack"
+    },
     "playwright-mcp": {
       "version": "0.0.83",
       "status": "bundled",
