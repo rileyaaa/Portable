@@ -261,7 +261,7 @@ def verify_candidates(group: str = 'all') -> None:
     for row in selected_rows(group):
         version = observed.get(row['tool'])
         if row['tool'] == 'adb':
-            prop = (ROOT / 'tool/android/platform-tools/source.properties').read_text()
+            prop = (ROOT / 'tool/android/platform-tools/source.properties').read_text(encoding='utf-8')
             metadata = re.search(r'^Pkg.Revision=(.+)$', prop, re.M)
             require(metadata is not None and metadata.group(1).strip() == row['version'],
                     'ADB package metadata differs from candidate version')

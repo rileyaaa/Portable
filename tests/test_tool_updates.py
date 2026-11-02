@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import ast
 import contextlib
 import hashlib
 import io
@@ -41,7 +42,7 @@ class ToolUpdateTests(unittest.TestCase):
         })
         self.assertEqual((ROOT / 'tool/python/Lib/site-packages/codex_portable_ssh.pth')
                          .read_text(encoding='utf-8').strip(), '../../ssh-packages')
-        self.assertNotIn('paramiko==', (ROOT / 'tool/python-packages.in.txt').read_text())
+        self.assertNotIn('paramiko==', (ROOT / 'tool/python-packages.in.txt').read_text(encoding='utf-8'))
 
     def test_reject_wheel_traversal_and_extra_data(self):
         for name in ('../evil', '/absolute', r'..\evil', 'dir/../bad',
@@ -77,7 +78,7 @@ class ToolUpdateTests(unittest.TestCase):
                       (ROOT / 'DEVELOPMENT.md').read_text(encoding='utf-8'))
 
     def test_hand_triggered_three_workflows_and_split_permissions(self):
-        workflow = (ROOT / '.github/workflows/03-update-tools.yml').read_text()
+        workflow = (ROOT / '.github/workflows/03-update-tools.yml').read_text(encoding='utf-8')
         self.assertIn('\non:\n  workflow_dispatch:\n', workflow)
         for forbidden in ('\n  push:', '\n  schedule:', '\n  pull_request:',
                           '\n  workflow_run:'):
@@ -86,7 +87,7 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertIn('default: false', workflow)
         self.assertIn('needs: verify', workflow)
         self.assertIn('candidate_digest:', workflow)
-        self.assertIn('sha256', (ROOT / 'tool/update-tools.py').read_text())
+        self.assertIn('sha256', (ROOT / 'tool/update-tools.py').read_text(encoding='utf-8'))
         self.assertIn('pull-requests: write', workflow)
         self.assertIn("inputs.create_pr && github.ref == 'refs/heads/main'", workflow)
         self.assertIn('--writer', workflow)
@@ -94,6 +95,41 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertIn('release-audit.py --verify', workflow)
         self.assertNotIn('gh release create', workflow)
         self.assertNotIn('git push origin HEAD:refs/heads/main', workflow)
+
+    def test_all_maintainer_text_io_is_explicit_utf8(self):
+        # A Windows PS5.1 runner can use CP1252. Source test files have UTF-8
+        # Chinese labels; unspecified Path.read_text/write_text is not portable.
+        # Cover all first-party scripts involved in this workflow, not only
+        # the test file where Windows CP1252 originally caused a failure.
+        checked = ('tests/test_tool_updates.py', 'tool/update-tools.py',
+                   'tool/prepare-ssh.py')
+        for relative in checked:
+            tree = ast.parse((ROOT / relative).read_text(encoding='utf-8'))
+            calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                     and isinstance(node.func, ast.Attribute)
+                     and node.func.attr in ('read_text', 'write_text')]
+            self.assertTrue(calls, relative)
+            for node in calls:
+                explicit = (any(arg.arg == 'encoding' and isinstance(arg.value, ast.Constant)
+                                and str(arg.value.value).lower().replace('-', '') == 'utf8'
+                                for arg in node.keywords)
+                            or node.func.attr == 'read_text' and bool(node.args)
+                            and isinstance(node.args[0], ast.Constant)
+                            and str(node.args[0].value).lower().replace('-', '') == 'utf8')
+                self.assertTrue(explicit, f'Implicit {node.func.attr} encoding in {relative}:{node.lineno}')
+
+    def test_tool_maintenance_regressions_run_before_any_candidate_download(self):
+        # Prevent repeat of AC run #41425693314: tests must fail fast before
+        # downloading large Windows tool/wheel payloads. Full-suite testing
+        # after installation remains mandatory.
+        workflow = (ROOT / '.github/workflows/03-update-tools.yml').read_text(
+            encoding='utf-8')
+        needle = "-m unittest discover -s tests -p 'test_tool_updates.py' -v"
+        self.assertEqual(workflow.count(needle), 1)
+        self.assertIn('Pre-download tool maintenance regression failure.', workflow)
+        self.assertLess(workflow.index(needle), workflow.index('Stage checked wheel'))
+        self.assertIn("if: ${{ inputs.mode == 'prepare' }}", workflow)
+        self.assertIn("-m unittest discover -s tests -p 'test_*.py' -v", workflow)
 
     def test_archive_rejects_link_and_zip_bomb(self):
         # No source download: verify the extraction-boundary predicate itself.
@@ -173,7 +209,7 @@ class ToolUpdateTests(unittest.TestCase):
             node = root / 'tool/node'
             node.mkdir(parents=True)
             for name in tools.NODE_PORTABLE_FILES:
-                (node / name).write_text('guarded-' + name)
+                (node / name).write_text('guarded-' + name, encoding='utf-8')
             (node / 'node.exe').write_bytes(fake_executable())
             archive_data = io.BytesIO()
             with zipfile.ZipFile(archive_data, 'w') as z:
@@ -191,10 +227,10 @@ class ToolUpdateTests(unittest.TestCase):
                     patch.object(tools, 'fetch_bytes', side_effect=[pin, payload]):
                 tools.prepare_row(row, scratch)
             for name in tools.NODE_PORTABLE_FILES:
-                self.assertEqual((node/name).read_text(), 'guarded-' + name)
+                self.assertEqual((node/name).read_text(encoding='utf-8'), 'guarded-' + name)
             self.assertFalse((node/'install_tools.bat').exists())
             self.assertTrue((node/'node.exe').is_file())
-            self.assertEqual(json.loads((node/'node_modules/npm/package.json').read_text())['version'], '9.8.7')
+            self.assertEqual(json.loads((node/'node_modules/npm/package.json').read_text(encoding='utf-8'))['version'], '9.8.7')
 
     def test_staged_diff_scope_rejects_unrelated_tool_code(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -202,7 +238,7 @@ class ToolUpdateTests(unittest.TestCase):
             subprocess.run(['git','init','-q',str(root)], check=True)
             (root/'tool').mkdir()
             file=root/'tool/prepare-ssh.py'
-            file.write_text('unexpected rewrite\n')
+            file.write_text('unexpected rewrite\n', encoding='utf-8')
             subprocess.run(['git','-C',str(root),'add','tool/prepare-ssh.py'],check=True)
             with patch.object(tools,'ROOT',root):
                 with self.assertRaisesRegex(ValueError,'unrelated'):
@@ -210,7 +246,7 @@ class ToolUpdateTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'unrelated'):
                     tools.diff_digest('tools')
             subprocess.run(['git','-C',str(root),'reset','-q'],check=True)
-            (root/'tool/installed-tools.json').write_text('{}\n')
+            (root/'tool/installed-tools.json').write_text('{}\n', encoding='utf-8')
             subprocess.run(['git','-C',str(root),'add','tool/installed-tools.json'],check=True)
             with patch.object(tools,'ROOT',root):
                 self.assertRegex(tools.diff_digest('ssh'),r'^[0-9a-f]{64}$')
@@ -218,7 +254,7 @@ class ToolUpdateTests(unittest.TestCase):
     def test_node_rejects_symlink_archive_before_replacing_existing_files(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d); node=root/'tool/node'; node.mkdir(parents=True)
-            (node/'marker.txt').write_text('keep')
+            (node/'marker.txt').write_text('keep', encoding='utf-8')
             payload=io.BytesIO()
             with zipfile.ZipFile(payload,'w') as z:
                 link=zipfile.ZipInfo('node-v1.2.3-win-x64/node.exe')
@@ -234,7 +270,7 @@ class ToolUpdateTests(unittest.TestCase):
                     patch.object(tools,'fetch_bytes',side_effect=[checksum,blob]):
                 with self.assertRaisesRegex(ValueError,'linked/special'):
                     tools.prepare_row(row,root)
-            self.assertEqual((node/'marker.txt').read_text(),'keep')
+            self.assertEqual((node/'marker.txt').read_text(encoding='utf-8'),'keep')
 
     def test_sidecar_wheels_reject_symlinks_and_duplicate_contents(self):
         expected = {'paramiko':'5.1.0', 'bcrypt':'5.0.0'}
@@ -277,19 +313,19 @@ class ToolUpdateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d); tool=root/'tool'; tool.mkdir()
             ledger=tool/'installed-tools.json'; doc=tool/'工具更新说明.md'
-            (tool/'python-ssh-packages.in.txt').write_text('paramiko==5.1.0\n')
+            (tool/'python-ssh-packages.in.txt').write_text('paramiko==5.1.0\n', encoding='utf-8')
             ledger.write_text(json.dumps({'schema':1,'platform':'win32-x64','tools':{
                 'paramiko':{'version':None,'status':'not-installed','path':'tool/python/ssh-packages'}},
-                'lastSuccessfulToolUpdate':None}))
-            doc.write_text('before\n' + tools.BEGIN + '\nold\n' + tools.END + '\nafter\n')
+                'lastSuccessfulToolUpdate':None}), encoding='utf-8')
+            doc.write_text('before\n' + tools.BEGIN + '\nold\n' + tools.END + '\nafter\n', encoding='utf-8')
             with patch.object(tools, 'ROOT', root), patch.object(tools,'TOOL',tool), \
                     patch.object(tools, 'LEDGER', ledger), patch.object(tools,'DOC',doc):
                 tools.record_updates([], ssh=True, day='2026-11-02')
-                updated=json.loads(ledger.read_text())
+                updated=json.loads(ledger.read_text(encoding='utf-8'))
                 self.assertEqual(updated['tools']['paramiko']['version'], '5.1.0')
                 self.assertEqual(updated['lastSuccessfulToolUpdate'],'2026-11-02')
-                self.assertIn('paramiko | 5.1.0 | bundled',doc.read_text())
-                self.assertEqual(doc.read_text().count(tools.BEGIN),1)
+                self.assertIn('paramiko | 5.1.0 | bundled',doc.read_text(encoding='utf-8'))
+                self.assertEqual(doc.read_text(encoding='utf-8').count(tools.BEGIN),1)
                 before=ledger.read_bytes()
                 with self.assertRaises(ValueError):
                     tools.record_updates([], ssh=False, day='2026-11-02')
@@ -366,6 +402,21 @@ class ToolUpdateTests(unittest.TestCase):
             node = root / 'tool/node/node.exe'
             node.parent.mkdir(parents=True)
             node.write_bytes(b'MZ' + b'\x01' * (2 * 1024 * 1024))
+            # Simulate Git-for-Windows with Git LFS clean already registered.
+            # A path-based hash is then *not* guaranteed to give raw content;
+            # the negative test below must bypass the filter explicitly.
+            filter_script = root / 'mock-lfs-clean.py'
+            filter_script.write_text(
+                'import sys,hashlib\n'
+                'data=sys.stdin.buffer.read()\n'
+                'sys.stdout.buffer.write(("version https://git-lfs.github.com/spec/v1\\n"'
+                '+"oid sha256:"+hashlib.sha256(data).hexdigest()'
+                '+"\\nsize "+str(len(data))+"\\n").encode("ascii"))\n',
+                encoding='utf-8')
+            subprocess.run(['git', '-C', str(root), 'config', 'filter.lfs.clean',
+                            f'"{sys.executable}" "{filter_script}"'], check=True)
+            subprocess.run(['git', '-C', str(root), 'config', 'filter.lfs.required', 'true'],
+                           check=True)
             with patch.object(tools, 'ROOT', root):
                 tools.enable_node_lfs()
                 self.assertEqual(attrs.read_bytes(), b'other.exe -text\n' + tools.NODE_LFS_ATTRIBUTE)
@@ -400,10 +451,29 @@ class ToolUpdateTests(unittest.TestCase):
                 # Restaging raw Node.exe instead of its pointer is also fatal.
                 attrs.write_bytes(b'other.exe -text\n' + tools.NODE_LFS_ATTRIBUTE)
                 subprocess.run(['git', '-C', str(root), 'add', '.gitattributes'], check=True)
-                raw_oid = subprocess.check_output(['git', '-C', str(root), 'hash-object', '-w',
-                                                   'tool/node/node.exe']).strip().decode()
+                # Prove the fixture filter would otherwise turn the path
+                # into a canonical pointer, masking the negative test.
+                filter_oid = subprocess.check_output(
+                    ['git', '-C', str(root), 'hash-object', '-w',
+                     '--path=tool/node/node.exe', 'tool/node/node.exe']).strip().decode('ascii')
+                filtered = subprocess.check_output(['git', '-C', str(root),
+                                                    'cat-file', 'blob', filter_oid])
+                self.assertTrue(filtered.startswith(
+                    b'version https://git-lfs.github.com/spec/v1\n'))
+                # Supply raw bytes on stdin, bypassing ALL worktree filters.
+                # Windows has Git LFS clean installed, so using hash-object's
+                # worktree path can unexpectedly create another *valid pointer*
+                # rather than the corrupt raw blob this negative test needs.
+                raw_blob = node.read_bytes()
+                raw_oid = subprocess.check_output(
+                    ['git', '-C', str(root), 'hash-object', '-w', '--stdin'],
+                    input=raw_blob).strip().decode('ascii')
+                self.assertEqual(subprocess.check_output(
+                    ['git', '-C', str(root), 'cat-file', 'blob', raw_oid]), raw_blob)
                 subprocess.run(['git', '-C', str(root), 'update-index', '--add', '--cacheinfo',
                                 f'100644,{raw_oid},tool/node/node.exe'], check=True)
+                self.assertEqual(subprocess.check_output(
+                    ['git', '-C', str(root), 'show', ':tool/node/node.exe'])[:2], b'MZ')
                 with self.assertRaisesRegex(ValueError, 'canonical staged Git LFS pointer'):
                     tools.verify_node_lfs_index('all')
 

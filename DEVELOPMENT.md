@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-02：03 工具升级第 4 次 Windows 运行的编码与 LFS 测试修复（Run 41425693314）
+
+**真实日志：** [Windows Actions #41425693314](https://github.com/rileyaaa/Codex-Portable/actions/runs/41425693314)，来源 main `a11840fa`，已通过固定 actionlint、包内环境准备、官方 Node/Paramiko 下载与候选暂存、`NODE_LFS_INDEX=PASS`、原生 SSH 导入 `SSH_NATIVE_IMPORT=PASS 5.1.0` 和 Windows 工具版本探测。第 8 步运行 Python 全量回归时实际执行 **341 项，338 项通过、2 项报错、1 项失败**；后续 Node/npm、19 项 PowerShell、十轮审计、ZIP、候选 PR 都没有执行，不得记为已通过。
+
+- **两个 Windows 编码错误：** `tests/test_tool_updates.py` 的工作流源码与中文工具说明读取采用默认 `Path.read_text()`，Windows CP1252 上产生 `UnicodeDecodeError`。统一为 `encoding='utf-8'`；本文件所有文本读写和 `tool/update-tools.py` 对 Android source.properties 的读取也明确编码。新增 AST 回归检查 `tests/test_tool_updates.py`、`tool/update-tools.py`、`tool/prepare-ssh.py` 里所有 `Path.read_text/write_text` 必须明确 UTF-8，以防类似问题再次进入 Windows 门禁。
+- **一个 LFS 反向测试失效：** 原测试试图用 `git hash-object -w tool/node/node.exe` 构造没有 LFS 指针的原始暂存 Blob。在配置了 Git LFS clean 的 Windows Git 上，这种路径式哈希可能被 LFS 过滤器转换成有效指针，因此 `assertRaises(ValueError)` 没有触发；这是测试夹具没有真正制造被篡改对象，不是已验证的业务校验漏洞。现在改成 `git hash-object -w --stdin` 以原始 EXE 字节写入 Git 对象、读取 `cat-file` 与暂存 Blob 确认确实为原始 `MZ` 文件，再要求 `verify_node_lfs_index` 拒绝。夹具也安装可控的模拟 LFS clean 过滤器，复现“路径哈希可能被过滤”的场景。
+- **减少浪费 AC 时间：** 03 `prepare` 的隔离状态准备完毕后，新增 **下载前工具维护回归**，Windows Python 先执行 `python -m unittest discover -s tests -p test_tool_updates.py -v`，失败即停止，不先下载大型 Node/SSH wheel；原安装后的完整 341+ Python/Node、19 项 PS5.1、10 轮动态审计和真实 ZIP 门禁不删减。
+- **此次离线验证与边界：** 26 项定向工具回归在本地全部通过；额外以 Python `EncodingWarning/ResourceWarning` 为错误、模拟 Windows CP1252 默认文本编码、模拟 Git `core.autocrlf=true`、模拟 Git LFS clean 过滤器多组复测通过；三个 Python 脚本 AST 和 YAML 基本结构检查通过。**没有再运行 AC，也未更新 main 中 Node 24.16.0 或正式安装 Paramiko、未生成新 Release。** Windows 3.14、Node 26/npm、19 项 PowerShell、十轮审计、真实 ZIP 与可信写入 PR 仍须下次真正的手动 Windows 流程验收。
 ## 2026-11-02：03 工具更新第三次失败后的系统性修复（Run 41422353149）
 
 **故障证据：** 手动运行 https://github.com/rileyaaa/Codex-Portable/actions/runs/41422353149 在 Windows 候选准备第 6 步失败：Node 26.13.0 的 node.exe 超过 GitHub 普通 Git 100 MB 限额。先前固定 actionlint、版本盘点通过，但 Windows 全量 Python/Node、PowerShell、10 轮动态审计、真实 ZIP 和 PR 尚未运行，不能算通过。第一次运行 #41419650909 已验证 Paramiko 5.1.0 的原生 wheel 安装和导入，但其后失败，仍未随包发布。
