@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-02：03 工具更新第三次失败后的系统性修复（Run 41422353149）
+
+**故障证据：** 手动运行 https://github.com/rileyaaa/Codex-Portable/actions/runs/41422353149 在 Windows 候选准备第 6 步失败：Node 26.13.0 的 node.exe 超过 GitHub 普通 Git 100 MB 限额。先前固定 actionlint、版本盘点通过，但 Windows 全量 Python/Node、PowerShell、10 轮动态审计、真实 ZIP 和 PR 尚未运行，不能算通过。第一次运行 #41419650909 已验证 Paramiko 5.1.0 的原生 wheel 安装和导入，但其后失败，仍未随包发布。
+
+- **完整 LFS 交付：** 只在 Node 更新候选工作树添加精确的 .gitattributes LFS 规则；只读与可信写入 Job 均验证 Git 索引中只有规范 Node LFS 指针，且指针 SHA256、文件大小与原始 exe 完全相等；候选 diff SHA256 覆盖 LFS 规则。可信写入 Job 重建固定来源和散列，先通过 git lfs push --object-id 只上传本次 Node 对象，再推候选分支；绝不自动合并 main、发布 Release。Node LFS 对象会占用账户存储与带宽，区别于 Actions 分钟。
+- **预先修复后续测试问题：** 原工具回归固定断言 Paramiko 不存在，现成功安装时改为验证实际发行元数据；03 原遗漏正式 Release 的 test_extension_migration.ps1，现覆盖原 18 项并额外保留 test_extension_persistence.ps1，合计 19 项；PowerShell 5.1 的摘要/OID 分组改用明确正则匹配对象。若仓库不允许 Actions 自动创建 PR，完整验证后的分支依旧可由 GitHub Connector 直接创建 PR，不重跑 Actions。
+- **离线验证：** 24 项工具维护 unittest 通过（ResourceWarning 严格模式）、三个 Python 文件 AST 解析与 03 YAML 结构检查通过；通过合成 Git 索引和模拟 LFS clean filter 验证指针规范、文件篡改、属性越界拒绝，以及两个独立 Job 生成相同 diff SHA256。此测试不能代替真实 Windows 的 Node 26/Paramiko 加载、19 项 PowerShell、10 轮审计、ZIP 或 LFS 远端推送。此次不运行新 AC。
+- **原生版本盘点：** Run #41422353149 在任何候选写入前测得 Node 24.16.0、7-Zip 26.01、ripgrep 15.1.0、fd 10.4.2、jq 1.8.1 和 ADB 37.0.1；仅同步基线台账，不把 Node 26 或 Paramiko 候选标成现有安装成果。lastSuccessfulToolUpdate 继续保留 null。
 ## 2026-11-02：03 工具更新首次 Windows 运行故障修复（Run 41419650909）
 
 - **现场证据与范围：** 首次手动 `03-update-tools.yml` 在 `main` 的 `cefd304a` 执行 `mode=prepare`、`group=all`、`create_pr=true`，运行日志见 [GitHub Actions #41419650909](https://github.com/rileyaaa/Codex-Portable/actions/runs/41419650909)。固定 actionlint、隔离目录、只读工具盘点均通过；Windows x64 成功下载和准备固定 Node 26.13.0 以及 Paramiko 5.1.0 和六项原生依赖，日志有 `SSH_IMPORT_NATIVE=PASS`、`SSH_INSTALLED=PASS`、`TOOL_CANDIDATE_STAGED=PASS`。但在阶段 6 执行全量 `git diff --cached --check` 时，因为官方 wheel 自带 LICENSE、WHEEL 元数据和 vendored YAML 文件中原有行尾空格/尾端空行而失败，错误为 `Malformed tool candidate diff`；**阶段 7 之后的完整 Python/Node/PowerShell 回归、十轮动态审计、客户 ZIP 和候选 PR 都尚未执行，不能列为通过**。

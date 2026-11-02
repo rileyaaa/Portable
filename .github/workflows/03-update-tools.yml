@@ -106,17 +106,22 @@ jobs:
           $day = [DateTime]::UtcNow.ToString('yyyy-MM-dd')
           & .\tool\python\python.exe -E -s -B .\tool\update-tools.py prepare --group $env:TOOL_GROUP --day $day
           if ($LASTEXITCODE -ne 0) { throw 'Windows tool staging failed; no branch will be written.' }
-          & git add -A -- tool
-          if ($LASTEXITCODE -ne 0) { throw 'Staging verified tool files failed.' }
+          if ($env:TOOL_GROUP -ne 'ssh') {
+            & git lfs install --local
+            if ($LASTEXITCODE -ne 0) { throw 'Git LFS filter is unavailable for the Node candidate.' }
+          }
+          & git add -A -- tool .gitattributes
+          if ($LASTEXITCODE -ne 0) { throw 'Staging verified tool files and LFS rules failed.' }
           & .\tool\python\python.exe -E -s -B .\tool\update-tools.py lint-staged --group $env:TOOL_GROUP
           if ($LASTEXITCODE -ne 0) { throw 'Unsafe candidate scope or malformed first-party records.' }
           $line = (& .\tool\python\python.exe -E -s -B .\tool\update-tools.py digest --group $env:TOOL_GROUP) -join ''
-          if ($LASTEXITCODE -ne 0 -or $line -cnotmatch '^TOOL_DIFF_SHA256=([a-f0-9]{64})$') {
+          $digestMatch = [regex]::Match($line, '^TOOL_DIFF_SHA256=([a-f0-9]{64})$')
+          if ($LASTEXITCODE -ne 0 -or -not $digestMatch.Success) {
             throw 'Unexpected tool candidate change scope.'
           }
-          "digest=$($Matches[1])" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "digest=$($digestMatch.Groups[1].Value)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "day=$day" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "Candidate diff digest: $($Matches[1])" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "Candidate diff digest: $($digestMatch.Groups[1].Value)" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
       - name: Verify pinned base Python closure and native Paramiko import
         if: ${{ inputs.mode == 'prepare' }}
@@ -167,7 +172,7 @@ jobs:
             'test_browser_login_flow.ps1', 'test_system_policy.ps1', 'test_npm_entrypoints.ps1',
             'test_browser_smoke.ps1', 'test_launcher_smoke.ps1', 'test_cli_model_options.ps1',
             'test_login_input_errors.ps1', 'test_permission_display.ps1',
-            'test_extension_persistence.ps1'
+            'test_extension_persistence.ps1', 'test_extension_migration.ps1'
           )
           foreach ($entry in $tests) {
             $args = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path '.\tests' $entry))
@@ -250,8 +255,12 @@ jobs:
           if ($env:EXPECTED_DIGEST -cnotmatch '^[a-f0-9]{64}$') { throw 'No validated candidate digest.' }
           & .\tool\python\python.exe -E -s -B .\tool\update-tools.py prepare --group $env:TOOL_GROUP --day $env:APPROVED_DAY --writer
           if ($LASTEXITCODE -ne 0) { throw 'Trusted writer could not reproduce official pinned archive.' }
-          & git add -A -- tool
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot stage reproduced tool bytes.' }
+          if ($env:TOOL_GROUP -ne 'ssh') {
+            & git lfs install --local
+            if ($LASTEXITCODE -ne 0) { throw 'Git LFS filter is unavailable for the Node candidate.' }
+          }
+          & git add -A -- tool .gitattributes
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot stage reproduced tool bytes and LFS rules.' }
           & .\tool\python\python.exe -E -s -B .\tool\update-tools.py lint-staged --group $env:TOOL_GROUP
           if ($LASTEXITCODE -ne 0) { throw 'Unsafe reproduced scope or malformed first-party records.' }
           $value = (& .\tool\python\python.exe -E -s -B .\tool\update-tools.py digest --group $env:TOOL_GROUP) -join ''
@@ -267,7 +276,31 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Candidate commit failed.' }
           & gh auth setup-git
           if ($LASTEXITCODE -ne 0) { throw 'Cannot authenticate trusted Git push.' }
+          if ($env:TOOL_GROUP -ne 'ssh') {
+            # Upload only the newly reviewed Node OID, not old browser and
+            # Codex LFS objects. A pointer without payload is not a release.
+            $ptr = (& git show 'HEAD:tool/node/node.exe') -join "`n"
+            $oidMatch = [regex]::Match($ptr, '(?m)^oid sha256:([0-9a-f]{64})$')
+            if ($LASTEXITCODE -ne 0 -or -not $oidMatch.Success) {
+              throw 'Committed Node object is not a verified LFS pointer.'
+            }
+            $newNodeOid = $oidMatch.Groups[1].Value
+            & git lfs push --object-id origin $newNodeOid
+            if ($LASTEXITCODE -ne 0) { throw 'New Node LFS content upload failed; no candidate branch pushed.' }
+          }
           & git push origin ('HEAD:refs/heads/' + $name)
           if ($LASTEXITCODE -ne 0) { throw 'Candidate branch push failed.' }
           & gh pr create --base main --head $name --title 'Verified Windows portable tool candidates' --body ('Pinned tool update; group=' + $env:TOOL_GROUP + '; verified diff SHA256=' + $env:EXPECTED_DIGEST + '. Review payload and merge manually. No Release was created.')
-          if ($LASTEXITCODE -ne 0) { throw 'Candidate branch exists; PR creation needs manual recovery.' }
+          if ($LASTEXITCODE -ne 0) {
+            # Some repositories disallow Actions-created PRs even when the
+            # write-scoped branch push succeeds. Preserve a usable verified
+            # branch; the GitHub Connector can create the PR from it without
+            # running Windows verification for a second time.
+            Write-Warning 'GitHub denied automatic PR creation. Verified candidate branch is pushed and can be reviewed via the GitHub Connector.'
+            ('VERIFIED_TOOL_BRANCH=' + $name + '; PR creation needs Connector review, NOT another Actions run.') |
+              Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            # PowerShell GitHub runner exits with the last native CLI status
+            # even after successful Write-Warning/Out-File. Explicitly clear
+            # the failed gh pr status only after the branch was pushed.
+            exit 0
+          }

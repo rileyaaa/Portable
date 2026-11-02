@@ -6,6 +6,8 @@ import contextlib
 import hashlib
 import io
 import os
+import re
+import sys
 import stat
 import subprocess
 from unittest.mock import patch
@@ -59,8 +61,10 @@ class ToolUpdateTests(unittest.TestCase):
 
     def test_only_reviewed_candidates_are_installable(self):
         self.assertEqual([item['tool'] for item in tools.plan()], ['node'])
-        self.assertEqual(tools.load_json(tools.LEDGER)['tools']['paramiko']['status'],
-                         'not-installed')
+        ssh_status = tools.load_json(tools.LEDGER)['tools']['paramiko']['status']
+        self.assertIn(ssh_status, ('not-installed', 'bundled'))
+        if ssh_status == 'bundled':
+            self.assertTrue(ssh.installed(ssh.DEST, ssh.pins()))
         self.assertNotIn('github-actions', tools.HOSTS)
         self.assertNotIn('pypi.org', tools.HOSTS)
 
@@ -338,10 +342,180 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertEqual(workflow.count('update-tools.py lint-staged --group'), 2)
         self.assertNotIn('git -c core.whitespace=cr-at-eol diff --cached --check',
                          workflow)
-        self.assertIn('GitHub 100 MB non-LFS blob limit',
+        self.assertIn('verify_node_lfs_index(group)',
                       (ROOT / 'tool/update-tools.py').read_text(encoding='utf-8'))
+        self.assertIn('git lfs push --object-id origin $newNodeOid', workflow)
         self.assertIn('TOOL_STAGED_FIRST_PARTY_STYLE=PASS',
                       (ROOT / 'tool/update-tools.py').read_text(encoding='utf-8'))
+
+
+    def test_node_lfs_attribute_and_index_pointer_checked_end_to_end(self):
+        # A real Git index is used, but no external GitHub or LFS service is
+        # required. Simulate Git LFS clean's exact canonical pointer bytes.
+        # This covers the previous 100 MB Node exe blocking run (#41422353149).
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(['git', 'init', '-q', str(root)], check=True)
+            subprocess.run(['git', '-C', str(root), 'config', 'user.name', 'fixture'], check=True)
+            subprocess.run(['git', '-C', str(root), 'config', 'user.email', 'fixture@example.invalid'],
+                           check=True)
+            attrs = root / '.gitattributes'
+            attrs.write_bytes(b'other.exe -text\n')
+            subprocess.run(['git', '-C', str(root), 'add', '.gitattributes'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'baseline'], check=True)
+            node = root / 'tool/node/node.exe'
+            node.parent.mkdir(parents=True)
+            node.write_bytes(b'MZ' + b'\x01' * (2 * 1024 * 1024))
+            with patch.object(tools, 'ROOT', root):
+                tools.enable_node_lfs()
+                self.assertEqual(attrs.read_bytes(), b'other.exe -text\n' + tools.NODE_LFS_ATTRIBUTE)
+                with self.assertRaisesRegex(ValueError, 'Unexpected attributes'):
+                    tools.enable_node_lfs()
+                subprocess.run(['git', '-C', str(root), 'add', '.gitattributes'], check=True)
+                original_sha = hashlib.sha256(node.read_bytes()).hexdigest()
+                pointer = (b'version https://git-lfs.github.com/spec/v1\n'
+                           + b'oid sha256:' + original_sha.encode('ascii') + b'\n'
+                           + b'size ' + str(node.stat().st_size).encode('ascii') + b'\n')
+                # git update-index is intentionally equivalent to what git-lfs
+                # clean stores, while the working copy retains the real EXE.
+                oid = subprocess.check_output(['git', '-C', str(root), 'hash-object', '-w',
+                                               '--stdin'], input=pointer).strip().decode()
+                subprocess.run(['git', '-C', str(root), 'update-index', '--add', '--cacheinfo',
+                                f'100644,{oid},tool/node/node.exe'], check=True)
+                self.assertEqual(tools.verify_node_lfs_index('all'), original_sha)
+                self.assertRegex(tools.diff_digest('all'), r'^[0-9a-f]{64}$')
+                with self.assertRaisesRegex(ValueError, 'Unexpected file'):
+                    tools.diff_digest('ssh')
+                # Tamper the working payload while keeping the index unchanged.
+                with node.open('ab') as sink:
+                    sink.write(b'corrupt')
+                with self.assertRaisesRegex(ValueError, 'does not match'):
+                    tools.verify_node_lfs_index('all')
+                node.write_bytes(b'MZ' + b'\x01' * (2 * 1024 * 1024))
+                # Any extra staged attribute rule must be rejected too.
+                attrs.write_bytes(attrs.read_bytes() + b'unreviewed.exe filter=lfs\n')
+                subprocess.run(['git', '-C', str(root), 'add', '.gitattributes'], check=True)
+                with self.assertRaisesRegex(ValueError, 'reviewed one-line'):
+                    tools.verify_node_lfs_index('all')
+                # Restaging raw Node.exe instead of its pointer is also fatal.
+                attrs.write_bytes(b'other.exe -text\n' + tools.NODE_LFS_ATTRIBUTE)
+                subprocess.run(['git', '-C', str(root), 'add', '.gitattributes'], check=True)
+                raw_oid = subprocess.check_output(['git', '-C', str(root), 'hash-object', '-w',
+                                                   'tool/node/node.exe']).strip().decode()
+                subprocess.run(['git', '-C', str(root), 'update-index', '--add', '--cacheinfo',
+                                f'100644,{raw_oid},tool/node/node.exe'], check=True)
+                with self.assertRaisesRegex(ValueError, 'canonical staged Git LFS pointer'):
+                    tools.verify_node_lfs_index('all')
+
+    def test_node_lfs_rule_rejects_preexisting_unreviewed_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(['git', 'init', '-q', str(root)], check=True)
+            subprocess.run(['git', '-C', str(root), 'config', 'user.name', 'fixture'], check=True)
+            subprocess.run(['git', '-C', str(root), 'config', 'user.email', 'fixture@example.invalid'],
+                           check=True)
+            path = root / '.gitattributes'
+            path.write_bytes(b'other.exe -text\n')
+            subprocess.run(['git', '-C', str(root), 'add', '.gitattributes'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'baseline'], check=True)
+            path.write_bytes(b'evil.exe filter=lfs\n')
+            with patch.object(tools, 'ROOT', root):
+                with self.assertRaisesRegex(ValueError, 'Unexpected attributes'):
+                    tools.enable_node_lfs()
+            self.assertEqual(path.read_bytes(), b'evil.exe filter=lfs\n')
+
+    def test_post_prepare_checks_accept_validated_installed_ssh(self):
+        # Full regression runs *after* successful sidecar installation. It must
+        # not assert that the exact functionality it just installed is absent.
+        code = (ROOT / 'tests/test_tool_updates.py').read_text(encoding='utf-8')
+        self.assertNotIn("'not-installed')\n        self.assertNotIn('github-actions'", code)
+        self.assertIn("if ssh_status == 'bundled':", code)
+        self.assertIn('ssh.installed(ssh.DEST, ssh.pins())', code)
+
+    def test_ci_writer_lfs_upload_and_windows_gates_have_exact_parity(self):
+        workflow = (ROOT / '.github/workflows/03-update-tools.yml').read_text(
+            encoding='utf-8')
+        verify, writer = workflow.split('\n  propose:', 1)
+        self.assertEqual(verify.count('git lfs install --local'), 1)
+        self.assertEqual(writer.count('git lfs install --local'), 1)
+        self.assertEqual(workflow.count('git add -A -- tool .gitattributes'), 2)
+        self.assertIn('git lfs push --object-id origin $newNodeOid', writer)
+        self.assertLess(writer.index('git lfs push --object-id origin $newNodeOid'),
+                        writer.index("git push origin ('HEAD:refs/heads/' + $name)"))
+        self.assertLess(writer.index('git push origin'), writer.index('gh pr create'))
+        self.assertIn('PR creation needs Connector review, NOT another Actions run.', writer)
+        self.assertIn('exit 0', writer.split('gh pr create', 1)[1])
+        self.assertIn('$digestMatch = [regex]::Match', verify)
+        self.assertIn('$oidMatch = [regex]::Match', writer)
+        self.assertIn('update-tools.py lint-staged --group', verify)
+        self.assertIn('update-tools.py lint-staged --group', writer)
+        self.assertIn('release-audit.py --release', verify)
+        self.assertIn('release-audit.py --verify', verify)
+        self.assertIn('tool\\package-release.py --version', verify)
+        self.assertNotIn('gh release create', workflow)
+
+
+    def test_two_independent_checkouts_generate_same_node_lfs_diff(self):
+        # Reproduce both read-only and write-credential job content with an
+        # actual Git clean filter. A tiny stand-in mimics Git LFS canonical
+        # pointer generation, without a network connection or large EXE.
+        def candidate(tmp: Path) -> str:
+            tmp.mkdir()
+            subprocess.run(['git', 'init', '-q', str(tmp)], check=True)
+            for key, value in [('user.name', 'fixture'),
+                               ('user.email', 'fixture@example.invalid')]:
+                subprocess.run(['git', '-C', str(tmp), 'config', key, value], check=True)
+            (tmp / '.gitattributes').write_bytes(b'legacy.exe -text\n')
+            node = tmp / 'tool/node/node.exe'
+            node.parent.mkdir(parents=True)
+            node.write_bytes(b'MZ' + b'0' * (2 * 1024 * 1024))
+            subprocess.run(['git', '-C', str(tmp), 'add', '-A'], check=True)
+            subprocess.run(['git', '-C', str(tmp), 'commit', '-qm', 'preupgrade'], check=True)
+            filter_tool = tmp / 'mock-lfs-filter.py'
+            filter_tool.write_text(
+                'import sys,hashlib\n'
+                'data=sys.stdin.buffer.read()\n'
+                'sha=hashlib.sha256(data).hexdigest()\n'
+                'sys.stdout.buffer.write(("version https://git-lfs.github.com/spec/v1\\n"'
+                '+"oid sha256:"+sha+"\\nsize "+str(len(data))+"\\n").encode())\n',
+                encoding='utf-8')
+            subprocess.run(['git', '-C', str(tmp), 'config', 'filter.lfs.clean',
+                            f'"{sys.executable}" "{filter_tool}"'], check=True)
+            subprocess.run(['git', '-C', str(tmp), 'config', 'filter.lfs.required', 'true'],
+                           check=True)
+            # Candidate changes are independently reproduced from the same
+            # base version and source archive in the two simulated jobs.
+            node.write_bytes(b'MZ' + b'1' * (3 * 1024 * 1024))
+            with patch.object(tools, 'ROOT', tmp):
+                tools.enable_node_lfs()
+                subprocess.run(['git', '-C', str(tmp), 'add', '-A', '--',
+                                'tool', '.gitattributes'], check=True)
+                digest = tools.diff_digest('all')
+                self.assertEqual(tools.verify_node_lfs_index('all'),
+                                 hashlib.sha256(node.read_bytes()).hexdigest())
+                self.assertEqual(subprocess.run(['git', '-C', str(tmp), 'diff',
+                                                 '--cached', '--check'],
+                                                capture_output=True).returncode, 0)
+            return digest
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertEqual(candidate(root / 'readonly'), candidate(root / 'writer'))
+
+
+    def test_03_windows_powershell_includes_all_release_gates_and_persistence(self):
+        # Unlike the original 03, do not silently substitute persistence
+        # for the official release's extension_migration regression.
+        source = (ROOT / '.github/workflows/03-update-tools.yml').read_text('utf-8')
+        official = (ROOT / '.github/workflows/02-verify-and-publish-portable.yml').read_text('utf-8')
+        release_names = set(re.findall(r'(?m)^      - name: Windows PowerShell 5\.1 - (test_[a-z_]+)$',
+                                       official))
+        suite = re.search(r'\$tests = @\((.*?)\n          \)', source, re.S)
+        self.assertIsNotNone(suite)
+        tool_names = re.findall(r'test_[a-z_]+(?=\.ps1)', suite.group(1))
+        self.assertEqual(len(release_names), 18)
+        self.assertEqual(len(tool_names), 19)
+        self.assertEqual(set(tool_names) - release_names, {'test_extension_persistence'})
+        self.assertFalse(release_names - set(tool_names))
 
 
 if __name__ == '__main__':

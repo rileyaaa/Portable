@@ -47,6 +47,8 @@ TOOL_GROUP = {'node': 'node', 'adb': 'adb', 'ripgrep': 'cli',
 EXPAND_MAX = 450 * 1024 * 1024
 # Original wrappers must survive Node ZIP replacement. They enforce the
 # package-local npm/npx project, user profile and executable boundaries.
+NODE_LFS_ATTRIBUTE = b'tool/node/node.exe filter=lfs diff=lfs merge=lfs -text\n'
+NODE_LFS_PATH = 'tool/node/node.exe'
 NODE_PORTABLE_FILES = ('portable-npm.js', 'npm', 'npm.cmd', 'npm.ps1',
                        'npx', 'npx.cmd', 'npx.ps1')
 REPO_BY_TOOL = {'ripgrep': 'BurntSushi/ripgrep', 'fd': 'sharkdp/fd',
@@ -324,10 +326,9 @@ def prepare_row(row: dict, temp: Path) -> None:
             require(info.file_size <= ARCHIVE_MAX and total + info.file_size <= EXPAND_MAX,
                     'Unbounded archive expansion')
             if row['tool'] == 'node' and file == prefix + 'node.exe':
-                # tool/node/node.exe is an ordinary Git blob, not Git LFS.
-                # Fail before 10 Windows audit rounds if GitHub would refuse it.
-                require(info.file_size < 100_000_000,
-                        'Node.exe exceeds the GitHub 100 MB non-LFS blob limit')
+                # Node 26 exceeds ordinary Git's 100 MB blob cap. The index
+                # must contain an authenticated Git LFS pointer instead.
+                require(info.file_size > 0, 'Node.exe cannot be empty')
             mode = (info.external_attr >> 16) & 0o170000
             require(mode in (0, stat.S_IFREG, stat.S_IFDIR), 'Archive contains linked/special files')
             if not file.startswith(prefix):
@@ -397,6 +398,58 @@ def prepare_row(row: dict, temp: Path) -> None:
                 raise
 
 
+def enable_node_lfs() -> None:
+    """Add an exact LFS rule to the candidate; leave current main untouched.
+
+    The same base .gitattributes bytes are used by verifier and writer.
+    Reject local changes to existing attributes rather than overwriting them.
+    """
+    attributes = bounded(ROOT / '.gitattributes')
+    ordinary(attributes)
+    baseline = subprocess.check_output(['git', 'show', 'HEAD:.gitattributes'], cwd=ROOT)
+    require(attributes.read_bytes().replace(b'\r\n', b'\n') == baseline,
+            'Unexpected attributes modification before Node update')
+    require(baseline.endswith(b'\n') and NODE_LFS_ATTRIBUTE not in baseline,
+            'Node LFS rule already exists or .gitattributes lacks final LF; review manually')
+    attributes.write_bytes(baseline + NODE_LFS_ATTRIBUTE)
+
+
+def verify_node_lfs_index(group: str) -> str | None:
+    """Verify staged LFS pointer against the actual hydrated Node binary.
+
+    This is mandatory in *both* jobs before comparing the staged SHA-256.
+    Merely putting an LFS line in .gitattributes is not enough: a 100 MB raw
+    object could otherwise remain in the Git index and be rejected at push.
+    """
+    if not any(row['tool'] == 'node' for row in selected_rows(group)):
+        return None
+    baseline = subprocess.check_output(['git', 'show', 'HEAD:.gitattributes'], cwd=ROOT)
+    staged = subprocess.check_output(['git', 'show', ':.gitattributes'], cwd=ROOT)
+    require(staged == baseline + NODE_LFS_ATTRIBUTE,
+            'Staged Node LFS rule must be the exact reviewed one-line addition')
+    pointer = subprocess.check_output(['git', 'show', ':' + NODE_LFS_PATH], cwd=ROOT)
+    match = re.fullmatch(
+        rb'version https://git-lfs.github.com/spec/v1\n'
+        rb'oid sha256:([0-9a-f]{64})\nsize ([1-9][0-9]*)\n', pointer)
+    require(match is not None, 'Node.exe is not a canonical staged Git LFS pointer')
+    on_disk = bounded(ROOT / NODE_LFS_PATH)
+    ordinary(on_disk)
+    observed_size = 0
+    digest = hashlib.sha256()
+    with on_disk.open('rb') as inp:
+        pe_magic = inp.read(2)
+        inp.seek(0)
+        while block := inp.read(1024 * 1024):
+            digest.update(block)
+            observed_size += len(block)
+    require(int(match.group(2)) == observed_size and
+            match.group(1).decode('ascii') == digest.hexdigest(),
+            'Staged Node LFS pointer does not match hydrated executable bytes')
+    require(observed_size >= 1024 * 1024 and pe_magic == b'MZ',
+            'Node LFS content must be a real Windows executable, not a pointer')
+    return match.group(1).decode('ascii')
+
+
 def record_updates(rows: list[dict], *, ssh: bool, day: str) -> None:
     require(re.fullmatch(r'20[0-9]{2}-[0-9]{2}-[0-9]{2}', day) is not None,
             'Pass a fixed reviewed update date')
@@ -457,6 +510,8 @@ def prepare(group: str, *, day: str, writer: bool = False) -> None:
         if writer:
             args.append('--skip-runtime-test')
         subprocess.run(args, cwd=ROOT, timeout=600, check=True)
+    if any(row['tool'] == 'node' for row in selected):
+        enable_node_lfs()
     record_updates(selected, ssh=ssh, day=day)
     print('TOOL_CANDIDATE_STAGED=PASS')
 
@@ -469,7 +524,10 @@ def diff_digest(group: str) -> str:
     selected = selected_rows(group)
     allowed_prefixes = [r['destination'] + ('/' if r['kind'] == 'directory' else '')
                         for r in selected]
+    node_selected = any(row['tool'] == 'node' for row in selected)
     for path in paths:
+        if path == '.gitattributes' and node_selected:
+            continue  # Verified by verify_node_lfs_index, not a blanket exception.
         require(path.startswith('tool/') and not path.endswith(('.pyc', '.pyo')) and
                 not path.startswith('tool/automation/browsers/'),
                 'Unexpected file touched by tool update: ' + path)
@@ -479,6 +537,10 @@ def diff_digest(group: str) -> str:
                          for p in allowed_prefixes)
         require(always or (group != 'tools' and ssh_owned) or tool_owned,
                 'Staged changes include an unrelated tool file: ' + path)
+    require(('.gitattributes' in paths) == node_selected,
+            'Node LFS attributes must be staged exactly when updating Node')
+    if node_selected:
+        verify_node_lfs_index(group)
     patch = subprocess.check_output(['git', '-c', 'core.quotepath=false', 'diff',
                                      '--cached', '--binary', '--no-ext-diff'], cwd=ROOT)
     return hashlib.sha256(patch).hexdigest()
@@ -494,10 +556,13 @@ def lint_staged(group: str) -> None:
     """
     # This also rejects any unrelated staged file before granting the exception.
     diff_digest(group)
+    if any(row['tool'] == 'node' for row in selected_rows(group)):
+        print('NODE_LFS_INDEX=PASS verified staged pointer and hydrated Node SHA-256')
     owned_metadata = (
         LEDGER.relative_to(ROOT).as_posix(),
         DOC.relative_to(ROOT).as_posix(),
         'tool/python-ssh-packages.lock.txt',
+        '.gitattributes',
     )
     check = subprocess.run(
         ['git', '-c', 'core.whitespace=cr-at-eol', 'diff', '--cached',
