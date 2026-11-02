@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-02：03 第七次 Windows 原生搬迁测试失败，先止损并审查（Run 41459805288）
+
+- **实测故障：** [Windows Actions #41459805288](https://github.com/rileyaaa/Codex-Portable/actions/runs/41459805288) 使用 main `ce38b0d3`，通过 actionlint、前置工具维护测试、Node 26.13.0 / Paramiko 5.1.0 候选准备与原生导入、转换器检查、全量 Python / Node 回归及浏览器校验；19 项 Windows PowerShell 阶段中，`test_launcher_smoke.ps1` 的正常模式 BAT / 原生配置检查通过后，在第 95 行将已启动过的合成便携目录重命名时收到 Windows `Access to the path ... is denied`。此轮没有运行十轮审计、真实 ZIP 试打包、可信写入 Job，也没有创建工具候选 PR。
+- **根因边界：** 现有测试在子进程退出后立即调用 `Directory.Move`，没有为 Windows 的延迟句柄释放留出有限缓冲。原始日志能证明移动时存在访问拒绝，不能仅凭这条错误就断言 Codex 主程序存在持久句柄泄漏，也不能断言只是短暂扫描占用；后续必须由原生 Windows 测试区分。
+- **本次修改：** 仅调整维护测试和 03 门禁顺序。合成目录搬迁保留真实 `Directory.Move`，只对 Windows access denied / sharing / lock（错误码 5、32、33）采用最多 20 秒、间隔 250 毫秒的有限重试；路径消失、目标已存在、其它错误或持续锁定一律拒绝通过。03 现在在下载 Node/Paramiko 之前，用当前受信任便携运行时执行一次完整 `test_launcher_smoke.ps1`，先发现可复现的启动/搬迁故障；准备候选后仍把该测试作为 19 项 PowerShell 回归第一项，再次验证升级后的真实环境。增加原有工具维护 Python 测试的顺序与失败门禁断言。重复测试会增加一次启动开销，但失败时可省下候选下载与后续长回归。未删除任何门禁、未改生产启动器、未扩大更新来源。
+- **验证边界：** 源码审查已核对 ten-round release-audit 的 unit/tcp/property/runtime 分组计数 64/19/6/21，与现有 unittest 测试方法一致；已核对实际 ZIP 的文件身份、工件摘要和源检出验证路径、双 Job 差异摘要比对、LFS 指针及远端对象上传语句、候选 PR 权限回退逻辑。修改在独立维护分支，新增预检及回归次序也经过最终源文件静态检查；因当前环境无完整包内 Windows 可执行文件和 PowerShell 5.1，**尚未在 Windows Runner 执行修复后的实际测试**。完整十轮审计、ZIP、LFS 远端上传和 propose Job 仍无本轮成功证据；不能将源码审查称为 Windows 通过，不自动重跑 AC，不合并未经完整验证的 Node / Paramiko 工件，不创建 Release。
+
 ## 2026-11-02：第六次 03 运行在下载前自检失败（Run 41450908392）
 
 - **错误实况：** [Windows Actions #41450908392](https://github.com/rileyaaa/Codex-Portable/actions/runs/41450908392) 在 main `31c7ad44` 完成固定 SHA actionlint、包内 Windows 测试状态准备后，下载前执行工具维护预检：`Ran 32 tests`、31 项通过，`test_all_maintainer_text_io_is_explicit_utf8` 一项失败；原因是上一提交新增 `tests/test_tool_updates.py:303` 使用合法的 `encoding='utf-8-sig'` 读取有 BOM 的转换器 JS，但编码 AST 检查器只识别 `'utf-8'`，误报为隐式系统编码。**此轮没有下载 Node/Paramiko，没有执行 Windows 候选、完整回归/发布审计、ZIP，也没有生成候选 PR**。

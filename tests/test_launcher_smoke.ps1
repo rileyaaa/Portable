@@ -37,6 +37,34 @@ function Invoke-OwnedSmokeProcess {
         }
     }
 }
+function Move-OwnedFixtureAfterChildExit {
+    param([string]$Source, [string]$Destination)
+    # Windows may finish releasing native process handles shortly after exit.
+    # Retry only transient access/sharing/lock errors; never skip relocation.
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $retries = 0
+    while ($true) {
+        try {
+            [IO.Directory]::Move($Source, $Destination)
+            if ($retries -gt 0) {
+                Write-Output ('INFO launcher fixture rename waited ' + $watch.ElapsedMilliseconds + ' ms for handle release')
+            }
+            return
+        } catch {
+            $cause = $_.Exception
+            while ($null -ne $cause.InnerException) { $cause = $cause.InnerException }
+            $win32 = $cause.HResult -band 0xFFFF
+            if ($win32 -notin @(5, 32, 33)) { throw }
+            if (-not [IO.Directory]::Exists($Source) -or [IO.Directory]::Exists($Destination)) { throw }
+            if ($watch.ElapsedMilliseconds -ge 20000) {
+                throw ('Real launcher left the disposable package locked after process exit; Windows error ' + $win32 + '; no relocation pass granted.')
+            }
+            $retries++
+            Start-Sleep -Milliseconds 250
+        }
+    }
+}
+
 try {
     $manifest = Get-Content -LiteralPath (Join-Path $root 'tool/runtime-manifest.json') -Raw | ConvertFrom-Json
     $relativeFiles = @('env.ps1','run-codex.ps1','tool/runtime-manifest.json','tool/portable-process.ps1',$entry,$maintenance)
@@ -92,7 +120,7 @@ print('PASS full launcher generated configuration: ' + mode)
     foreach ($case in @('normal', 'relocated', 'maintenance')) {
         if ($case -eq 'relocated') {
             $newRoot = Join-Path $owned ('Portable ' + [char]0x642c + [char]0x8fc1 + ' renamed')
-            [IO.Directory]::Move($fixture, $newRoot)
+            Move-OwnedFixtureAfterChildExit -Source $fixture -Destination $newRoot
             $fixture = $newRoot
             [void](New-AutomationDirectory -Root $root -Path $oldRoot)
             [IO.File]::WriteAllText((Join-Path $oldRoot 'env.local.ps1'), 'SENTINEL - obsolete path must not be read', $utf8)

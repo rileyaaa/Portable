@@ -755,6 +755,20 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertEqual(len(tool_names), 19)
         self.assertEqual(set(tool_names) - release_names, {'test_extension_persistence'})
         self.assertFalse(release_names - set(tool_names))
+        # Catch expensive Windows-only issues before Node and SSH downloads.
+        # Retain the post-update run for full candidate coverage.
+        preflight = source.index('Preflight real launcher and relocation before downloading large candidates')
+        download = source.index('Stage checked wheel or SHA256-pinned archive candidates')
+        self.assertLess(source.index('Run tool-maintenance tests before downloading any candidate'),
+                        preflight)
+        self.assertLess(preflight, download)
+        self.assertEqual(tool_names[0], 'test_launcher_smoke')
+        self.assertEqual(source.count('test_launcher_smoke.ps1'), 2)
+        launcher = (ROOT / 'tests/test_launcher_smoke.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('Move-OwnedFixtureAfterChildExit -Source $fixture -Destination $newRoot',
+                      launcher)
+        self.assertIn('ElapsedMilliseconds -ge 20000', launcher)
+        self.assertIn('no relocation pass granted.', launcher)
 
 
 if __name__ == '__main__':
