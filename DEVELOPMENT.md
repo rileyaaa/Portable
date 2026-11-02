@@ -4,8 +4,8 @@
 
 - **实测故障：** [Windows Actions #41459805288](https://github.com/rileyaaa/Codex-Portable/actions/runs/41459805288) 使用 main `ce38b0d3`，通过 actionlint、前置工具维护测试、Node 26.13.0 / Paramiko 5.1.0 候选准备与原生导入、转换器检查、全量 Python / Node 回归及浏览器校验；19 项 Windows PowerShell 阶段中，`test_launcher_smoke.ps1` 的正常模式 BAT / 原生配置检查通过后，在第 95 行将已启动过的合成便携目录重命名时收到 Windows `Access to the path ... is denied`。此轮没有运行十轮审计、真实 ZIP 试打包、可信写入 Job，也没有创建工具候选 PR。
 - **根因边界：** 现有测试在子进程退出后立即调用 `Directory.Move`，没有为 Windows 的延迟句柄释放留出有限缓冲。原始日志能证明移动时存在访问拒绝，不能仅凭这条错误就断言 Codex 主程序存在持久句柄泄漏，也不能断言只是短暂扫描占用；后续必须由原生 Windows 测试区分。
-- **本次修改：** 仅调整测试和 03 门禁顺序。合成目录搬迁保留真实 `Directory.Move`，只对 Windows access denied / sharing / lock（错误码 5、32、33）采用最多 20 秒、间隔 250 毫秒的有限重试；路径消失、目标已存在、其它错误或持续锁定一律拒绝通过。将完整 `test_launcher_smoke.ps1` 移到 03 的 19 项 PowerShell 任务第一项，降低再次发生类似错误时浪费在前面较慢回归上的时间。未删除任何门禁、未改生产启动器、未扩大更新来源。
-- **验证边界：** 本修改在隔离维护分支准备并检查 GitHub 最终文件与 03 的 19 项清单，尚未在 Windows Runner 执行；完整十轮审计、ZIP、LFS 远端对象上传和独立 propose Job 仍未有本轮成功证据。不能将静态检查称为 Windows 通过，不要求立即重跑 Actions，不合并未经完整验证的 Node / Paramiko 工件，不创建 Release。
+- **本次修改：** 仅调整维护测试和 03 门禁顺序。合成目录搬迁保留真实 `Directory.Move`，只对 Windows access denied / sharing / lock（错误码 5、32、33）采用最多 20 秒、间隔 250 毫秒的有限重试；路径消失、目标已存在、其它错误或持续锁定一律拒绝通过。03 现在在下载 Node/Paramiko 之前，用当前受信任便携运行时执行一次完整 `test_launcher_smoke.ps1`，先发现可复现的启动/搬迁故障；准备候选后仍把该测试作为 19 项 PowerShell 回归第一项，再次验证升级后的真实环境。增加原有工具维护 Python 测试的顺序与失败门禁断言。重复测试会增加一次启动开销，但失败时可省下候选下载与后续长回归。未删除任何门禁、未改生产启动器、未扩大更新来源。
+- **验证边界：** 源码审查已核对 ten-round release-audit 的 unit/tcp/property/runtime 分组计数 64/19/6/21，与现有 unittest 测试方法一致；已核对实际 ZIP 的文件身份、工件摘要和源检出验证路径、双 Job 差异摘要比对、LFS 指针及远端对象上传语句、候选 PR 权限回退逻辑。修改在独立维护分支，新增预检及回归次序也经过最终源文件静态检查；因当前环境无完整包内 Windows 可执行文件和 PowerShell 5.1，**尚未在 Windows Runner 执行修复后的实际测试**。完整十轮审计、ZIP、LFS 远端上传和 propose Job 仍无本轮成功证据；不能将源码审查称为 Windows 通过，不自动重跑 AC，不合并未经完整验证的 Node / Paramiko 工件，不创建 Release。
 
 ## 2026-11-02：第六次 03 运行在下载前自检失败（Run 41450908392）
 
