@@ -259,9 +259,15 @@ def build_release(root: Path, version: str | None = None) -> dict:
     names, excluded = customer_files(source_names)
     manifest = runtime_identity(root, names)
     browser = browser_identity(root, names)
-    version = version or manifest["version"]
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", version):
-        raise ValueError("Invalid release version/tag.")
+    # A caller may choose a portable revision, but never impersonate a
+    # different native CLI version. Keep the default a valid official tag.
+    version = version or "v" + manifest["version"] + "-portable.1"
+    label = re.fullmatch(
+        r"v(?P<codex>(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2})"
+        r"-portable\.(?P<revision>[1-9][0-9]*)", version)
+    if label is None or label.group("codex") != manifest["version"]:
+        raise ValueError("Release tag must be v" + manifest["version"] +
+                         "-portable.<positive revision>; refusing a mismatched or invalid version.")
     scratch = root / "tmp"
     try:
         ordinary(scratch, directory=True)

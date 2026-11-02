@@ -91,6 +91,45 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertEqual(source.count("    permissions:\n      contents: write"), 1)
         self.assertEqual(source.count("    permissions:\n      contents: read"), 1)
 
+    def test_pinned_actionlint_is_a_required_read_only_gate(self):
+        verifier = read(ROOT / ".github/maintenance/check-actionlint.ps1")
+        self.assertIn("rhysd/actionlint", verifier)
+        self.assertIn("actionlint_", verifier)
+        self.assertIn("_windows_amd64.zip", verifier)
+        self.assertIn(
+            "6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9",
+            verifier)
+        self.assertIn("Get-FileHash -LiteralPath $archive -Algorithm SHA256", verifier)
+        for key, source in self.files.items():
+            with self.subTest(workflow=key):
+                self.assertIn("check-actionlint.ps1", source)
+                self.assertIn("if ($LASTEXITCODE -ne 0) { throw 'actionlint failed.' }", source)
+
+    def test_stable_precommit_windows_matrix_matches_release_verification(self):
+        import re
+        upgrade = self.files["01"]
+        release = self.files["release"]
+        pattern = r"^      - name: Windows PowerShell 5\.1 - (test_[a-z_]+)$"
+        standard = re.findall(pattern, release, re.M)
+        stable = re.findall(pattern, upgrade, re.M)
+        self.assertEqual(len(standard), 18)
+        self.assertEqual(stable, standard)
+        self.assertIn("Prepare isolated environment for stable-only precommit Windows tests", upgrade)
+        self.assertIn("Copy-Item -LiteralPath $env:UPGRADE_MODELS", upgrade)
+        before_write = upgrade.split("\n  commit:", 1)[0]
+        for step in before_write.split("      - name: Windows PowerShell 5.1 - ")[1:]:
+            self.assertIn("if: ${{ success() && inputs.commit_changes }}", step.split("\n      - name:", 1)[0])
+        self.assertLess(
+            upgrade.index("Make an unpushed local stable candidate checkpoint"),
+            upgrade.index("      - name: Windows PowerShell 5.1 - test_portable_config"))
+        self.assertIn("CANDIDATE_LOCAL_SHA=", upgrade)
+        self.assertIn("Converter regression failed", before_write)
+        self.assertIn("tool\\python-lock.py validate-runtime", before_write)
+        self.assertLess(
+            upgrade.index("      - name: Windows PowerShell 5.1 - test_browser_smoke"),
+            upgrade.index("      - name: Pre-commit complete Windows audit"))
+        self.assertIn("    timeout-minutes: 125", before_write)
+
     def test_pinned_checkout_uses_reviewed_node24_commit(self):
         for source in self.files.values():
             self.assertEqual(
@@ -204,6 +243,7 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         script = import_script(
             ROOT / ".github/scripts/release-audit.py",
             "portable_release_audit")
+        self.assertEqual(script.GROUPS["runtime"][1], 21)
         version = json.loads(read(ROOT / "tool/runtime-manifest.json"))["version"]
         if "-" in version:
             # 03 release seeds deliberately reject a prerelease runtime.

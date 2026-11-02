@@ -39,6 +39,15 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Lint two official YAMLs with pinned actionlint
+        timeout-minutes: 6
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\check-actionlint.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'actionlint failed.' }
+
       - name: Prepare package-local test state
         id: prepare
         env:

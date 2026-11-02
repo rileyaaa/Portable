@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-02：维护代码二次回归修复
+
+- **01 稳定版写入前完整 Windows 复核：** 在只读 Job 完成官方 SHA 和 Git LFS 候选差异验证后，先建立不推送的本地候选提交，准备与 02 相同的隔离环境和原生模型目录，再逐项执行完全一致的 18 项 PowerShell 5.1 回归（每项沿用 02 的超时与失败阻断）、Python/Node 检查、十轮动态审计和真实 ZIP 试打包。主分支写权限仍只在独立 Commit Job；Alpha/Beta/RC 仍只允许只读干运行。两个工作流的 Windows Checkout 和 Actionlint 均使用固定审核版本。
+- **YAML 静态语法门禁：** 两个正式入口在执行升级/发布前都从 `rhysd/actionlint` 下载固定 `v1.7.12` Windows x64 包，校验该归档的完整 SHA-256，再检查两份正式工作流。失败阻断，不新增常驻 YAML。
+- **正式包标签身份：** `tool/package-release.py` 只接受与 `tool/runtime-manifest.json` 三段稳定版本完全相同的 `v<版本>-portable.<正整数修订号>`，省略标签时默认 `<版本>` 对应 `.1`；任何错误版本标签均拒绝生成客户 ZIP，补齐正反向合成测试。
+- **十轮审计测试数量更新：** 新增对错误正式版本标签的负向打包测试，`test_release_package.py` 测试数量增加一项；将 runtime 组预期从 20 调整为 21，每轮 110 项、十轮合计 1,100 项动态执行，保留数量不符即拒绝发布的原则。
+- **验证边界：** 本轮维护测试均使用测试分支和合成数据；若未真正执行 01 写入和 02 发布 Job，不得将其列为已实测通过。原生 0.166.0 二进制与正式 Release 保持不变。
+
 ## 2026-11-02：长期升级维护加固（Node 24、ZIP 试打包、恢复路径）
 
 - GitHub 官方 `actions/checkout` 更新为固定完整 SHA 的 `v7.0.1`（声明 `node24`），仍只使用手动 `01-update-codex.yml` 和 `release.yml` 两个正式入口。保留 `lfs: true` 和 `persist-credentials: false`。

@@ -32,7 +32,7 @@ GROUPS = {
     "unit": (["test_socks_http_bridge", "test_socks_http_bridge_boundaries"], 64),
     "tcp": (["test_socks_http_bridge_network", "test_socks_http_bridge_stress.LiveBoundaryTests"], 19),
     "property": (["test_socks_http_bridge_stress.SeededProtocolTests"], 6),
-    "runtime": (["test_runtime_package", "test_mode_copies", "test_tui_fullscreen", "test_release_package"], 20),
+    "runtime": (["test_runtime_package", "test_mode_copies", "test_tui_fullscreen", "test_release_package"], 21),
 }
 REPORT = ROOT / "tmp/windows-release-state/release-audit/report.json"
 

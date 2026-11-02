@@ -31,7 +31,7 @@ jobs:
       changelog_date: ${{ steps.official.outputs.changelog_date }}
       candidate_sha256: ${{ steps.candidate.outputs.sha256 }}
     runs-on: windows-latest
-    timeout-minutes: 105
+    timeout-minutes: 125
     defaults:
       run:
         shell: powershell
@@ -42,6 +42,15 @@ jobs:
           lfs: true
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Lint two official YAMLs with pinned actionlint
+        timeout-minutes: 6
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\check-actionlint.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'actionlint failed.' }
 
       - name: Validate official Release URL, prerelease status and SHA-256 digests
         id: official
@@ -147,26 +156,220 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $fingerprint -cnotmatch '^[0-9a-f]{64}$') { throw 'Cannot hash validated candidate diff.' }
           "sha256=$fingerprint" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      - name: Make an unpushed local stable candidate checkpoint before Windows parity tests
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:UPGRADE_VERSION -match '-') { throw 'Prereleases are never committed.' }
+          & git config user.name 'github-actions[bot]'
+          & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          & git commit -m ('test(runtime): unpushed Windows candidate ' + $env:UPGRADE_VERSION)
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot commit local candidate for full precommit tests.' }
+          $checkpoint = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $checkpoint -cnotmatch '^[a-f0-9]{40}$') { throw 'Invalid local candidate SHA.' }
+          'CANDIDATE_LOCAL_SHA=' + $checkpoint | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare isolated environment for stable-only precommit Windows tests
+        if: ${{ success() && inputs.commit_changes }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state'
+          $state = @{
+            HOME = 'home'; USERPROFILE = 'home'; APPDATA = 'appdata'; LOCALAPPDATA = 'localappdata';
+            PROGRAMDATA = 'programdata'; ALLUSERSPROFILE = 'programdata';
+            TEMP = 'temp'; TMP = 'temp'; TMPDIR = 'temp';
+            XDG_CACHE_HOME = 'cache'; XDG_CONFIG_HOME = 'config'; XDG_DATA_HOME = 'data'; XDG_STATE_HOME = 'state';
+            CODEX_HOME = 'codex-home'; CODEX_SQLITE_HOME = 'sqlite'; GH_CONFIG_DIR = 'gh'
+          }
+          foreach ($name in $state.Keys) {
+            $path = Join-Path $base $state[$name]
+            New-Item -ItemType Directory -Force -Path $path | Out-Null
+            "$name=$path" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+          'PIP_CONFIG_FILE=nul' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'PYTHONDONTWRITEBYTECODE=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'POWERSHELL_TELEMETRY_OPTOUT=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          $modules = Join-Path $base 'cache/modules'
+          New-Item -ItemType Directory -Force -Path $modules | Out-Null
+          "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          $modelCatalog = Join-Path $base 'bundled-models.json'
+          if (-not (Test-Path -LiteralPath $env:UPGRADE_MODELS -PathType Leaf)) { throw 'Candidate model catalog is missing.' }
+          Copy-Item -LiteralPath $env:UPGRADE_MODELS -Destination $modelCatalog -Force
+
+      - name: Windows PowerShell 5.1 - test_portable_config
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_config.ps1 -BundledModelsPath .\tmp\windows-release-state\bundled-models.json
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_portable_config' }
+
+      - name: Windows PowerShell 5.1 - test_portable_paths
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_portable_paths' }
+
+      - name: Windows PowerShell 5.1 - test_instruction_paths
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_instruction_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_instruction_paths' }
+
+      - name: Windows PowerShell 5.1 - test_bootstrap_paths
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_bootstrap_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_bootstrap_paths' }
+
+      - name: Windows PowerShell 5.1 - test_extension_policy
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_extension_policy.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_extension_policy' }
+
+      - name: Windows PowerShell 5.1 - test_extension_migration
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_extension_migration.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_extension_migration' }
+
+      - name: Windows PowerShell 5.1 - test_permission_display
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_permission_display.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_permission_display' }
+
+      - name: Windows PowerShell 5.1 - test_cli_model_options
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_cli_model_options.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_cli_model_options' }
+
+      - name: Windows PowerShell 5.1 - test_runtime_preflight
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_runtime_preflight.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_runtime_preflight' }
+
+      - name: Windows PowerShell 5.1 - test_python_setup
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_python_setup.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_python_setup' }
+
+      - name: Windows PowerShell 5.1 - test_automation_paths
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_automation_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_automation_paths' }
+
+      - name: Windows PowerShell 5.1 - test_automation_process
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_automation_process.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_automation_process' }
+
+      - name: Windows PowerShell 5.1 - test_login_input_errors
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_login_input_errors.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_login_input_errors' }
+
+      - name: Windows PowerShell 5.1 - test_browser_login_flow
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_login_flow.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_browser_login_flow' }
+
+      - name: Windows PowerShell 5.1 - test_npm_entrypoints
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_npm_entrypoints.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_npm_entrypoints' }
+
+      - name: Windows PowerShell 5.1 - test_system_policy
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_system_policy.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_system_policy' }
+
+      - name: Windows PowerShell 5.1 - test_launcher_smoke
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 10
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_launcher_smoke' }
+
+      - name: Windows PowerShell 5.1 - test_browser_smoke
+        if: ${{ success() && inputs.commit_changes }}
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_browser_smoke' }
+
       - name: Pre-commit complete Windows audit and real ZIP trial without repository write access
         if: ${{ success() && inputs.commit_changes }}
         timeout-minutes: 42
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:UPGRADE_VERSION -match '-') { throw 'Only stable releases may be committed.' }
-          # The commit is local to this read-only runner; no remote credentials are available.
-          & git config user.name 'github-actions[bot]'
-          & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          & git commit -m ("test(runtime): local candidate " + $env:UPGRADE_VERSION)
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot create the local candidate checkpoint for full validation.' }
+          # All Windows parity tests saw this same unpushed, fully committed checkout.
           $candidate = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $candidate -cne $env:CANDIDATE_LOCAL_SHA) {
+            throw 'Candidate changed during Windows parity tests; do not publish or push.'
+          }
           $tag = "v$env:UPGRADE_VERSION-portable.1"
+          & .\tool\python\python.exe -B -c "import pymupdf, pymupdf4llm"
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled PDF Python dependencies are unavailable.' }
           & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Complete Python regression failed before stable commit.' }
+          & .\tool\python\python.exe -B .\tool\python-lock.py validate-runtime --requirements .\tool\python-packages.in.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Python dependency verification failed.' }
           & .\tool\python\python.exe -B .\tool\automation\install-browser.py --check
           if ($LASTEXITCODE -ne 0) { throw 'Browser payload validation failed before stable commit.' }
           foreach ($entry in @('test_automation.js','test_portable_npm.js')) {
             & .\tool\node\node.exe --test (Join-Path '.\tests' $entry)
             if ($LASTEXITCODE -ne 0) { throw "Node regression failed before stable commit: $entry" }
+          }
+          foreach ($script in @('smoke.js', 'static-audit.js')) {
+            & .\tool\node\node.exe (Join-Path '.\Version_History\AI account format conversion\test' $script)
+            if ($LASTEXITCODE -ne 0) { throw "Converter regression failed: $script" }
           }
           & .\tool\python\python.exe -B .\.github\scripts\release-audit.py --release
           if ($LASTEXITCODE -ne 0) { throw 'Ten seeded Windows rounds failed; main remains unchanged.' }
