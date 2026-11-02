@@ -1,5 +1,14 @@
 # 开发与维护记录
 
+## 2026-11-03：Node 26 / Paramiko 5.1 合并后的便携环境变量复核（不重跑 AC）
+
+- **核查基线与边界：** 已合并的 `main` 为 `088718ae1f8f575469956f0000598f1cc3ee028c`，工具记录含 Node.js 26.13.0、npm 11.20.0、Paramiko 5.1.0、Corepack 0.35.0，Codex 仍为 0.166.0。此次只核查仓库已跟踪配置、启动器、工具脚本及前次 Windows 结果；用户本机不入库的 `env.local.ps1`、真实 API/SSH 凭据、真实 Android 设备及用户自装可选工具不在验证范围。
+- **配置项交叉核对：** 对 `env.ps1` 中 **59 个实际环境变量赋值**逐项与 `run-codex.ps1`、`login-json.ps1` 使用处比对，未发现孤立的已配置变量；其中五项 `CODEX_LOGIN_JSON_CONNECT_TIMEOUT_SEC`、`CODEX_LOGIN_JSON_HTTP_BACKEND`、`CODEX_LOGIN_JSON_JOB_TIMEOUT_SEC`、`CODEX_LOGIN_JSON_THROTTLE`、`CODEX_LOGIN_JSON_MAX_FILES` 由独立登录管理脚本读取，并非启动器废弃配置。常用 `Version_History` env 副本与根 `env.ps1` **字节一致**；YOLO 版本只在 `CODEX_APPROVAL_POLICY`、`CODEX_SANDBOX_MODE`、`CODEX_SANDBOX_NETWORK_ACCESS` 三个既定预设值上不同，变量名称集合一致；三个 run-codex 启动器副本字节一致。
+- **路径和环境边界：** 启动器 `PATH` 以当前包根动态组合 `tool/bin`、`tool/node`、`tool/python` 等路径和 Windows 必需目录；`CODEX_INSTALL_DIR`、`CODEX_PYTHON`、`CODEX_HOME`、`HOME`、`USERPROFILE`、`APPDATA`、`LOCALAPPDATA`、`TEMP/TMP`、XDG 及 pip/npm 缓存均由包根重新固定。执行 Codex 子进程前先清空继承环境，再只传入核准变量。Node/npm 仍使用包内 npm/npx 包装器及 `NPM_CONFIG_CACHE/PREFIX/GLOBALCONFIG/USERCONFIG`；`NODE_REPL_HISTORY` 仍为 Node 26 支持的配置；宿主 `NODE_OPTIONS/NODE_PATH` 等注入变量刻意清除，不是意外遗漏。Paramiko 通过 `tool/python/Lib/site-packages/codex_portable_ssh.pth` 中相对路径 `../../ssh-packages` 装载，不依赖宿主 `PYTHONPATH`。
+- **动态证据：** [Windows Actions #41481792646](https://github.com/rileyaaa/Codex-Portable/actions/runs/41481792646) 在候选 Node/SSH 上通过 `test_portable_paths.ps1`、`test_npm_entrypoints.ps1`（9 个原生 npm/npx 入口检查）、`test_python_setup.ps1`、`test_launcher_smoke.ps1` 及 19 项完整 Windows PowerShell 回归；真实 normal/relocated/maintenance BAT 和原生配置读取均通过，Paramiko 5.1.0 原生导入及 Corepack 0.35.0 原生版本探测通过。候选合入后比较 Git 树，工具内容未变化；此次未为文档核查再启动 Actions。
+- **不能误判为安装成功的变量：** `ANDROID_HOME`、`ANDROID_SDK_ROOT`、`JAVA_HOME`、`APPIUM_HOME`、`APKTOOL_FRAMEWORK_DIR` 等指向包内的**预留位置**，并不证明 SDK/JDK/Appium/apktool 已安装；`tool/installed-tools.json` 仍有 `git=not-installed`，其余未纳入本批更新的已安装工具版本保持原样。这些变量并非因升级失效，但实际执行对应可选工具必须先安装、验证二进制。
+- **结果与限制：** 没有发现因本轮 Node 26 / Paramiko 5.1 升级造成的现有环境变量失效或包外硬编码路径。上述结论是“仓库静态映射 + 已完成的 Windows 原生回归”范围内的证据，不涵盖用户私有覆盖值和真实在线登录/SSH 服务端。未修改 `env.ps1`、运行代码或工具文件；不新建 Release，不重复运行 AC。当前正式 Release ZIP 仍是旧包，新工具只在新 `main` 源码中。
+
 ## 2026-11-03：第八次 03 Windows 验证完成，Node/Paramiko 候选经 PR #5 合入 main（不发布 Release）
 
 - **真实运行与起点：** [Actions #41481792646](https://github.com/rileyaaa/Codex-Portable/actions/runs/41481792646) 在 2026-11-02 UTC 以原 main `6073eadecdd8c6eab9333d67cc639c4248304faa` 执行 `mode=prepare / group=all / create_pr=true`。只读 `verify` 和隔离写入 `propose` 两个 Job 均为 **success**，无需重跑。此次验证来自真实 Windows Runner，区别于前述各轮仅源码预审。
