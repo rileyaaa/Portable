@@ -93,6 +93,11 @@ jobs:
           $ErrorActionPreference = 'Stop'
           & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p 'test_tool_updates.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Pre-download tool maintenance regression failure.' }
+          # Fail on the actual synthetic customer package tests before any
+          # expensive Node/SSH download, not only in the post-update full suite.
+          & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p 'test_release_package.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Pre-download customer package regression failure.' }
+
 
       - name: Preflight real launcher and relocation before downloading large candidates
         if: ${{ inputs.mode == 'prepare' }}
