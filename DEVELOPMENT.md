@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-02：第六次 03 运行在下载前自检失败（Run 41450908392）
+
+- **错误实况：** [Windows Actions #41450908392](https://github.com/rileyaaa/Codex-Portable/actions/runs/41450908392) 在 main `31c7ad44` 完成固定 SHA actionlint、包内 Windows 测试状态准备后，下载前执行工具维护预检：`Ran 32 tests`、31 项通过，`test_all_maintainer_text_io_is_explicit_utf8` 一项失败；原因是上一提交新增 `tests/test_tool_updates.py:303` 使用合法的 `encoding='utf-8-sig'` 读取有 BOM 的转换器 JS，但编码 AST 检查器只识别 `'utf-8'`，误报为隐式系统编码。**此轮没有下载 Node/Paramiko，没有执行 Windows 候选、完整回归/发布审计、ZIP，也没有生成候选 PR**。
+- **修复办法：** 将检查器提取为单独的 `explicit_utf8_text_io`，只认可显式的 `utf-8` 或 `utf-8-sig`（支持 read_text 的 positional / keyword 和 write_text 的 positional / keyword），继续拒绝 `cp1252`、`latin-1`、默认编码和 `encoding=None`。增加独立正反向测试确保检查器不会再次把合法的 BOM 感知 UTF-8 当成错误，也不允许任何未明确编码的文本 I/O；维持第一次发现 Windows CP1252 时设立的安全门禁，不直接删除测试。
+- **离线可证据边界：** 使用本地 Python AST 和 unittest 独立执行这段编码检查器的正反向测试，通过；检查仓库三个维护脚本内的 `read_text/write_text` 的编码声明和现有 03 检查门槛。由于仓库为私有且当前运行环境无法取得全部包内 Windows 原生组件，未在本地完成包含真实 Python 3.14/Node26 的整套 03 运行。**下一次手动 AC 才能证明完整版；用户未批准重跑前不运行 AC，也不会直接合并任何失败工具候选**。
+
 ## 2026-11-02：03 第五次 Windows 运行及 Node 26 转换器断言修复（Run 41430341405）
 
 - **实测状态：** 手动 `03` 的 [Run #41430341405](https://github.com/rileyaaa/Codex-Portable/actions/runs/41430341405) 在 main `05977f33` 执行 `prepare/all/create_pr=true`，前置 31 项维护回归、官方 Node 26.13.0 候选、SHA-256 + LFS 指针、Paramiko 5.1.0 Windows 原生导入、包内 Corepack 0.35.0 及 Node/npm 版本探测均通过。其后完整 **348 项 Python 测试全数通过**，两套 Node 测试各 10 项全数通过；随后 `Version_History/AI account format conversion/test/smoke.js` 第 181 行出现 `AssertionError [ERR_ASSERTION]`：Node 26 的 `util.parseEnv` 空映射为 null-prototype 对象，而旧测试错误地与普通 `{}` 严格深比较。后续 `static-audit.js`、19 项 PowerShell、十轮 Windows 审计、真实 ZIP、独立写入和候选 PR **没有执行**，因此不存在可审查或合并的工具更新 PR。

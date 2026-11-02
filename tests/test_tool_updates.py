@@ -33,6 +33,17 @@ ssh = load('portable_ssh_maintenance', ROOT / 'tool/prepare-ssh.py')
 tools = load('portable_tools_maintenance', ROOT / 'tool/update-tools.py')
 
 
+def explicit_utf8_text_io(call: ast.Call) -> bool:
+    """Accept explicitly declared UTF-8 or UTF-8-SIG, never host defaults."""
+    choices = [kw.value for kw in call.keywords if kw.arg == 'encoding']
+    index = 0 if call.func.attr == 'read_text' else 1
+    if len(call.args) > index:
+        choices.append(call.args[index])
+    return any(isinstance(value, ast.Constant) and isinstance(value.value, str)
+               and value.value.lower().replace('-', '').replace('_', '')
+               in ('utf8', 'utf8sig') for value in choices)
+
+
 class ToolUpdateTests(unittest.TestCase):
     def test_separate_ssh_closure_and_pth_path(self):
         self.assertEqual(ssh.pins(), {
@@ -110,13 +121,32 @@ class ToolUpdateTests(unittest.TestCase):
                      and node.func.attr in ('read_text', 'write_text')]
             self.assertTrue(calls, relative)
             for node in calls:
-                explicit = (any(arg.arg == 'encoding' and isinstance(arg.value, ast.Constant)
-                                and str(arg.value.value).lower().replace('-', '') == 'utf8'
-                                for arg in node.keywords)
-                            or node.func.attr == 'read_text' and bool(node.args)
-                            and isinstance(node.args[0], ast.Constant)
-                            and str(node.args[0].value).lower().replace('-', '') == 'utf8')
-                self.assertTrue(explicit, f'Implicit {node.func.attr} encoding in {relative}:{node.lineno}')
+                self.assertTrue(explicit_utf8_text_io(node),
+                                f'Implicit {node.func.attr} encoding in {relative}:{node.lineno}')
+
+    def test_utf8_encoding_guard_accepts_bom_and_rejects_host_defaults(self):
+        # Regression for Actions run 41450908392: UTF-8-SIG is valid UTF-8.
+        # Verify the checker itself before it scans this very source file.
+        allowed = (
+            "p.read_text(encoding='utf-8')",
+            "p.read_text(encoding='utf-8-sig')",
+            "p.read_text('utf-8')",
+            "p.write_text('hello', encoding='utf-8')",
+            "p.write_text('hello', 'utf-8-sig')",
+        )
+        rejected = (
+            "p.read_text()",
+            "p.read_text(encoding='cp1252')",
+            "p.read_text(encoding=None)",
+            "p.write_text('hello')",
+            "p.write_text('hello', encoding='latin-1')",
+        )
+        for snippet in allowed:
+            with self.subTest(snippet=snippet):
+                self.assertTrue(explicit_utf8_text_io(ast.parse(snippet).body[0].value))
+        for snippet in rejected:
+            with self.subTest(snippet=snippet):
+                self.assertFalse(explicit_utf8_text_io(ast.parse(snippet).body[0].value))
 
     def test_tool_maintenance_regressions_run_before_any_candidate_download(self):
         # Prevent repeat of AC run #41425693314: tests must fail fast before
