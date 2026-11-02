@@ -86,10 +86,33 @@ def plain(path: Path) -> None:
             "Unsafe input path: " + str(path))
 
 
-def version_tuple(raw: str) -> tuple[int, int, int]:
-    require(bool(re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", raw)),
-            "Use an explicit stable Codex CLI version such as 0.167.0")
-    return tuple(int(p) for p in raw.split("."))
+VERSION_PATTERN = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:alpha|beta|rc)\.(?:0|[1-9][0-9]*))?"
+OFFICIAL_RELEASE_URL = re.compile(
+    r"https://github\.com/openai/codex/releases/tag/rust-v(?P<version>" +
+    VERSION_PATTERN + r")\Z"
+)
+
+
+def parse_official_release_url(value: str) -> str:
+    """Accept only an exact canonical OpenAI Codex release page URL."""
+    match = OFFICIAL_RELEASE_URL.fullmatch(value) if isinstance(value, str) else None
+    require(match is not None,
+            "Enter the exact official GitHub release URL, without query, fragment or trailing slash")
+    version = match.group("version")
+    version_tuple(version)
+    return version
+
+
+def version_tuple(raw: str) -> tuple[int, int, int, int, int, int]:
+    """Order alpha < beta < rc < stable for each numeric Codex version."""
+    require(isinstance(raw, str) and re.fullmatch(VERSION_PATTERN, raw) is not None,
+            "Use an exact Codex version, e.g. 0.167.0 or 0.167.0-alpha.3")
+    base, _, suffix = raw.partition("-")
+    major, minor, patch = (int(part) for part in base.split("."))
+    if not suffix:
+        return major, minor, patch, 1, 0, 0
+    stage, sequence = suffix.split(".")
+    return major, minor, patch, 0, {"alpha": 0, "beta": 1, "rc": 2}[stage], int(sequence)
 
 
 def replace_once(data: bytes, old: bytes, new: bytes, label: str) -> bytes:
@@ -135,18 +158,20 @@ def github_request(url: str) -> bytes:
     return content
 
 
-def official_plan(repo: Path, target_version: str) -> dict:
-    version_tuple(target_version)
+def official_plan(repo: Path, release_url: str) -> dict:
+    target_version = parse_official_release_url(release_url)
+    is_prerelease = "-" in target_version
     old = json.loads(read_safe(repo, "tool/runtime-manifest.json"))
     require(old.get("target") == TARGET, "Current runtime target differs")
     previous = old.get("version")
     require(version_tuple(target_version) > version_tuple(previous),
-            "01 only upgrades to a newer official stable CLI version")
+            "01 requires an official release newer than the pinned CLI version")
     tag = "rust-v" + target_version
     obj = json.loads(github_request(
         "https://api.github.com/repos/openai/codex/releases/tags/" + tag))
     require(obj.get("tag_name") == tag and obj.get("draft") is False and
-            obj.get("prerelease") is False, "Upstream tag is not a published stable release")
+            obj.get("prerelease") is is_prerelease,
+            "Official release is unpublished or its stable/prerelease status disagrees with the tag")
     assets = {a.get("name"): a for a in obj.get("assets", [])}
     expected = [ARCHIVE] + list(RAW_ASSETS.values())
     results = {}
@@ -163,9 +188,11 @@ def official_plan(repo: Path, target_version: str) -> dict:
                 "Suspicious asset size for " + name)
         results[name] = {"url": url, "sha256": sha[7:], "size": item["size"]}
     plan = {"version": target_version, "old_version": previous, "tag": tag,
+            "release_url": release_url, "prerelease": is_prerelease,
             "archive": results[ARCHIVE],
             "raw": {local: results[name] for local, name in RAW_ASSETS.items()}}
     print("OFFICIAL_RELEASE_APPROVED=" + tag)
+    print("OFFICIAL_RELEASE_KIND=" + ("prerelease-dry-run" if is_prerelease else "stable"))
     print("OFFICIAL_ARCHIVE_SHA256=" + results[ARCHIVE]["sha256"])
     return plan
 
@@ -390,9 +417,11 @@ def compile_updates(repo: Path, archive: Path, plan: dict) -> dict[str, bytes]:
         ("取自官方 " + chr(96) + "rust-v" + old_version + chr(96) + " 标签的同名文件").encode("utf-8"),
         ("取自官方 " + chr(96) + "rust-v" + plan["version"] + chr(96) + " 标签的同名文件").encode("utf-8"),
         "tool license provenance")
-    old_example = re.search(rb"python -B tool/package-release\.py --version v\d+\.\d+\.\d+-portable\.\d+", tool)
+    example_pattern = (rb"python -B tool/package-release\.py --version v" +
+                       VERSION_PATTERN.encode("ascii") + rb"-portable\.\d+")
+    old_example = re.search(example_pattern, tool)
     require(old_example is not None, "Missing unique package invocation")
-    require(len(re.findall(rb"python -B tool/package-release\.py --version v\d+\.\d+\.\d+-portable\.\d+", tool)) == 1,
+    require(len(re.findall(example_pattern, tool)) == 1,
             "Ambiguous package version example")
     tool = tool.replace(old_example.group(), (
         "python -B tool/package-release.py --version v" + plan["version"] + "-portable.1").encode(), 1)
@@ -410,9 +439,15 @@ def compile_updates(repo: Path, archive: Path, plan: dict) -> dict[str, bytes]:
         "通过后再手动执行 03 完整 Windows 测试、10 轮回归、附件回读及发布。"
         "实际账号、联网 Agent 和用户终端显示须另行实测。\n\n"
     ).encode("utf-8")
-    marker = b"# " + "开发与维护记录".encode("utf-8") + b"\n\n"
+    # Git autocrlf on Windows may convert this tracked Markdown to CRLF.
+    # Preserve the checkout's newline convention when inserting the audit log.
+    newline = b"\r\n" if b"\r\n" in development else b"\n"
+    require(development.count(b"\n") == development.count(newline),
+            "Mixed DEVELOPMENT.md line endings require manual review")
+    marker = b"# " + "开发与维护记录".encode("utf-8") + newline * 2
     result["DEVELOPMENT.md"] = replace_once(
-        development, marker, marker + log, "add upgrade candidate development record")
+        development, marker, marker + log.replace(b"\n", newline),
+        "add upgrade candidate development record")
     # Always restore the exact licenses from the same upstream source tag.
     for name in ("LICENSE", "NOTICE"):
         url = ("https://raw.githubusercontent.com/openai/codex/" +
@@ -468,6 +503,7 @@ def main() -> int:
     mode.add_argument("--check-index", action="store_true")
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--version")
+    parser.add_argument("--release-url")
     parser.add_argument("--plan", type=Path)
     parser.add_argument("--archive", type=Path)
     args = parser.parse_args()
@@ -480,15 +516,21 @@ def main() -> int:
     if args.check_index:
         check_index(root)
     elif args.metadata:
-        require(args.version and args.plan, "Expected --version and --plan")
-        plan = official_plan(root, args.version)
+        require(args.release_url and args.plan and not args.version,
+                "Metadata requires --release-url and --plan, not a version argument")
+        plan = official_plan(root, args.release_url)
         args.plan.parent.mkdir(parents=True, exist_ok=True)
         args.plan.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
         print("UPGRADE_PLAN_CREATED=PASS")
     else:
         require(args.plan and args.archive, "Expected --plan and --archive")
         plan = json.loads(args.plan.read_text(encoding="utf-8"))
-        require(args.version == plan["version"], "Upgrade version does not match plan")
+        require(args.version == plan["version"] and not args.release_url,
+                "Upgrade version does not match validated plan")
+        require(parse_official_release_url(plan["release_url"]) == plan["version"] and
+                plan["tag"] == "rust-v" + plan["version"] and
+                plan["prerelease"] is ("-" in plan["version"]),
+                "Verified official release identity changed in the plan")
         require(version_tuple(plan["version"]) > version_tuple(plan["old_version"]),
                 "Not an upgrade")
         require(plan["archive"]["url"] ==

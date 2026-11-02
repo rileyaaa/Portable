@@ -85,7 +85,7 @@ def source_check(root: Path) -> dict:
     manifest = json.loads(txt(root, "tool/runtime-manifest.json"))
     version = manifest.get("version")
     check(isinstance(version, str) and
-          re.fullmatch(r"\d+\.\d+\.\d+", version) is not None,
+          re.fullmatch(r"\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?", version) is not None,
           "Invalid pinned version")
     check(manifest.get("target") == "x86_64-pc-windows-msvc",
           "Runtime architecture changed")

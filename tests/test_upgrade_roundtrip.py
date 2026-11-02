@@ -88,7 +88,7 @@ def canonical_fixture(directory: Path, version: str, *, extra: bool = False):
 
 
 def next_version(raw: str, increment: int) -> str:
-    major, minor, patch = map(int, raw.split("."))
+    major, minor, patch = UPGRADE.version_tuple(raw)[:3]
     return f"{major}.{minor}.{patch + increment}"
 
 
@@ -101,6 +101,66 @@ def fake_components(version: str):
     metadata["entrypoint"] = "codex.exe"
     exe["codex-package.json"] = (json.dumps(metadata, indent=2) + "\n").encode()
     return exe, metadata, 0, None
+
+
+
+class OfficialReleaseUrlTests(TestCase):
+    def test_accepts_canonical_stable_and_alpha_links(self):
+        self.assertEqual(
+            UPGRADE.parse_official_release_url(
+                "https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.3"),
+            "0.167.0-alpha.3")
+        self.assertEqual(
+            UPGRADE.parse_official_release_url(
+                "https://github.com/openai/codex/releases/tag/rust-v0.167.0"),
+            "0.167.0")
+        self.assertGreater(UPGRADE.version_tuple("0.167.0"),
+                           UPGRADE.version_tuple("0.167.0-alpha.3"))
+        self.assertGreater(UPGRADE.version_tuple("0.167.0-alpha.3"),
+                           UPGRADE.version_tuple("0.167.0-alpha.2"))
+
+    def test_rejects_unofficial_or_ambiguous_urls(self):
+        invalid = (
+            "http://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.3",
+            "https://github.com/evil/codex/releases/tag/rust-v0.167.0-alpha.3",
+            "https://github.com/openai/codex/releases/download/rust-v0.167.0-alpha.3/file",
+            "https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.3/",
+            "https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.3?download=1",
+            "https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.3#frag",
+            "https://github.com@evil.example/openai/codex/releases/tag/rust-v0.167.0-alpha.3",
+            "https://github.com/openai/codex/releases/tag/rust-v0.167.0-rc",
+            "https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.03",
+            "https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.٣",
+            "https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.3\nX",
+            "0.167.0-alpha.3",
+        )
+        for url in invalid:
+            with self.subTest(url=url), self.assertRaises(RuntimeError):
+                UPGRADE.parse_official_release_url(url)
+
+    def test_official_published_channel_must_match_url_tag(self):
+        current = json.loads((ROOT / "tool/runtime-manifest.json").read_text())["version"]
+        major, minor, patch = UPGRADE.version_tuple(current)[:3]
+        version = f"{major}.{minor}.{patch + 1}-alpha.3"
+        tag = "rust-v" + version
+        names = [UPGRADE.ARCHIVE] + list(UPGRADE.RAW_ASSETS.values())
+        assets = [{"name": name, "size": 65540, "digest": "sha256:" + "a" * 64,
+                   "browser_download_url":
+                       "https://github.com/openai/codex/releases/download/" + tag + "/" + name}
+                  for name in names]
+        release = {"tag_name": tag, "draft": False, "prerelease": True, "assets": assets}
+        url = "https://github.com/openai/codex/releases/tag/" + tag
+        with mock.patch.object(UPGRADE, "github_request",
+                               return_value=json.dumps(release).encode("utf-8")):
+            plan = UPGRADE.official_plan(ROOT, url)
+        self.assertEqual(plan["version"], version)
+        self.assertTrue(plan["prerelease"])
+        self.assertEqual(plan["release_url"], url)
+        release["prerelease"] = False
+        with mock.patch.object(UPGRADE, "github_request",
+                               return_value=json.dumps(release).encode("utf-8")):
+            with self.assertRaisesRegex(RuntimeError, "status disagrees"):
+                UPGRADE.official_plan(ROOT, url)
 
 
 class OfficialArchiveContractTests(TestCase):
@@ -190,6 +250,21 @@ class RepeatedUpgradeAndCompatibilityTests(TestCase):
         readme = (self.repo / "README.md").read_text(encoding="utf-8")
         self.assertIn("当前为 " + next_version(self.start_version, 2) +
                       "；运行组件的查找顺序须经 02 兼容检查确认", readme)
+
+    def test_windows_crlf_development_log_insert_remains_consistent(self):
+        changelog = self.repo / "DEVELOPMENT.md"
+        plain = changelog.read_bytes().replace(b"\r\n", b"\n")
+        changelog.write_bytes(plain.replace(b"\n", b"\r\n"))
+        self.apply_mock_upgrade(next_version(self.start_version, 1))
+        updated = changelog.read_bytes()
+        self.assertEqual(updated.count(b"\n"), updated.count(b"\r\n"))
+        self.assertNotIn(b"\r\r\n", updated)
+        self.assertIn(("## " + "20").encode("utf-8"), updated)
+
+    def test_alpha_upgrade_then_stable_promotion_is_repeatable(self):
+        stable = next_version(self.start_version, 1)
+        self.apply_mock_upgrade(stable + "-alpha.3")
+        self.apply_mock_upgrade(stable)
 
     def test_computed_package_local_variable_removal_is_not_silently_skipped(self):
         self.apply_mock_upgrade(next_version(self.start_version, 1))

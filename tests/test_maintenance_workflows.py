@@ -72,6 +72,10 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
             self.assertIn(marker, source)
         self.assertNotIn("gh release create", source)
         self.assertNotIn("gh workflow run", source)
+        self.assertIn("release_url:", source)
+        self.assertIn("default: false", source)
+        self.assertIn("if ($approved.prerelease -and $env:COMMIT_CHANGES -eq 'true')", source)
+        self.assertIn("UPGRADE_TAG=$($approved.tag)", source)
 
     def test_compatibility_action_has_no_write_permissions(self):
         source = self.files["02"]
@@ -90,7 +94,13 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
             "portable_maintenance_upgrader")
         self.assertGreater(script.version_tuple("0.167.0"),
                            script.version_tuple("0.166.0"))
-        for bad in ("0.167.0-rc.1", "../0.167.0", "latest", "0.167", "1.2.3/"):
+        self.assertGreater(script.version_tuple("0.167.0"),
+                           script.version_tuple("0.167.0-rc.3"))
+        self.assertGreater(script.version_tuple("0.167.0-rc.3"),
+                           script.version_tuple("0.167.0-beta.2"))
+        self.assertGreater(script.version_tuple("0.167.0-alpha.3"),
+                           script.version_tuple("0.167.0-alpha.2"))
+        for bad in ("0.167.0-rc", "0.167.0-foo.1", "../0.167.0", "latest", "0.167", "1.2.3/"):
             with self.subTest(input=bad), self.assertRaises(RuntimeError):
                 script.version_tuple(bad)
         for bad in ("../secret", "/abs/file", "dir/../evil", "dir\\evil", "a//b"):
@@ -126,9 +136,14 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
             ROOT / ".github/scripts/release-audit.py",
             "portable_release_audit")
         version = json.loads(read(ROOT / "tool/runtime-manifest.json"))["version"]
-        major, minor, patch = (int(part) for part in version.split("."))
-        self.assertEqual(script.version_seed_base(),
-                         major * 1_000_000 + minor * 1_000 + patch * 10 + 200)
+        if "-" in version:
+            # 03 release seeds deliberately reject a prerelease runtime.
+            with self.assertRaisesRegex(RuntimeError, "Invalid pinned release version"):
+                script.version_seed_base()
+        else:
+            major, minor, patch = (int(part) for part in version.split("."))
+            self.assertEqual(script.version_seed_base(),
+                             major * 1_000_000 + minor * 1_000 + patch * 10 + 200)
 
 
 if __name__ == "__main__":

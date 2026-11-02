@@ -3,15 +3,15 @@ name: "01 - 更新官方 Codex 运行组件（手动）"
 on:
   workflow_dispatch:
     inputs:
-      target_version:
-        description: "目标官方 Codex CLI 稳定版本，例如 0.167.0"
+      release_url:
+        description: "官方完整 Release 链接，例如 https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.3"
         required: true
         type: string
       commit_changes:
-        description: "验证成功后提交新版 LFS、配置和说明；关闭则仅检查"
+        description: "默认只检查；仅稳定版允许提交到 main，Alpha/Beta/RC 只能测试"
         required: true
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: write
@@ -36,29 +36,37 @@ jobs:
           fetch-depth: 1
           persist-credentials: true
 
-      - name: Confirm stable official release and published SHA-256 digests
+      - name: Validate official Release URL, prerelease status and SHA-256 digests
         timeout-minutes: 5
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_VERSION: ${{ inputs.target_version }}
+          RELEASE_URL: ${{ inputs.release_url }}
+          COMMIT_CHANGES: ${{ inputs.commit_changes }}
         run: |
           $ErrorActionPreference = 'Stop'
           $tmp = Join-Path $env:RUNNER_TEMP 'codex-portable-manual-upgrade'
           New-Item -ItemType Directory -Force -Path $tmp | Out-Null
           $plan = Join-Path $tmp 'verified-upstream.json'
-          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --metadata --repo . --version $env:TARGET_VERSION --plan $plan
-          if ($LASTEXITCODE -ne 0) { throw 'Official stable version and upstream digest verification failed.' }
+          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --metadata --repo . --release-url $env:RELEASE_URL --plan $plan
+          if ($LASTEXITCODE -ne 0) { throw 'Official Release URL or published digest verification failed.' }
+          $approved = Get-Content -LiteralPath $plan -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($approved.prerelease -and $env:COMMIT_CHANGES -eq 'true') {
+            throw 'Alpha/Beta/RC are dry-run only. Disable commit_changes and rerun 01.'
+          }
           "UPGRADE_PLAN=$plan" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
           "UPGRADE_TEMP=$tmp" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_VERSION=$($approved.version)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_TAG=$($approved.tag)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "Official Release: $env:RELEASE_URL" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "Channel: $(if ($approved.prerelease) { 'prerelease test only' } else { 'stable' })" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
       - name: Download only the official canonical Windows x64 archive
         timeout-minutes: 12
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_VERSION: ${{ inputs.target_version }}
         run: |
           $ErrorActionPreference = 'Stop'
-          & gh release download ("rust-v" + $env:TARGET_VERSION) --repo openai/codex --pattern 'codex-package-x86_64-pc-windows-msvc.tar.gz' --dir $env:UPGRADE_TEMP
+          & gh release download $env:UPGRADE_TAG --repo openai/codex --pattern 'codex-package-x86_64-pc-windows-msvc.tar.gz' --dir $env:UPGRADE_TEMP
           if ($LASTEXITCODE -ne 0) { throw 'Official Windows runtime download failed.' }
           $archive = Join-Path $env:UPGRADE_TEMP 'codex-package-x86_64-pc-windows-msvc.tar.gz'
           if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw 'Downloaded upstream package is missing.' }
@@ -68,13 +76,12 @@ jobs:
         timeout-minutes: 9
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_VERSION: ${{ inputs.target_version }}
         run: |
           $ErrorActionPreference = 'Stop'
-          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --apply --repo . --version $env:TARGET_VERSION --plan $env:UPGRADE_PLAN --archive $env:UPGRADE_ARCHIVE
+          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --apply --repo . --version $env:UPGRADE_VERSION --plan $env:UPGRADE_PLAN --archive $env:UPGRADE_ARCHIVE
           if ($LASTEXITCODE -ne 0) { throw 'Unsupported upstream layout or code adaptation. No commit or release will be made.' }
           $reported = & .\codex.exe --version
-          if ($LASTEXITCODE -ne 0 -or (($reported -join [Environment]::NewLine).Trim() -cne ('codex-cli ' + $env:TARGET_VERSION))) {
+          if ($LASTEXITCODE -ne 0 -or (($reported -join [Environment]::NewLine).Trim() -cne ('codex-cli ' + $env:UPGRADE_VERSION))) {
             throw 'Native Codex version did not match the target.'
           }
           [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
@@ -122,7 +129,6 @@ jobs:
         if: ${{ inputs.commit_changes }}
         timeout-minutes: 9
         env:
-          TARGET_VERSION: ${{ inputs.target_version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
@@ -133,7 +139,7 @@ jobs:
           }
           & git config user.name 'github-actions[bot]'
           & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          & git commit -m ("chore(runtime): manually upgrade pinned Codex to " + $env:TARGET_VERSION)
+          & git commit -m ("chore(runtime): manually upgrade pinned Codex to " + $env:UPGRADE_VERSION)
           if ($LASTEXITCODE -ne 0) { throw 'Upgrade commit failed.' }
           $commit = (& git rev-parse HEAD).Trim()
           & git lfs push origin HEAD
@@ -143,7 +149,7 @@ jobs:
           $after = (& git ls-remote origin refs/heads/main) -join [Environment]::NewLine
           if ($LASTEXITCODE -ne 0 -or -not $after.StartsWith($commit)) { throw 'Remote commit readback failed.' }
           Write-Output ("UPGRADED_SOURCE_COMMIT=" + $commit)
-          "01 source candidate: $env:TARGET_VERSION" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "01 source candidate: $env:UPGRADE_VERSION" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "Commit: $commit" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           'Next run 02, then 03 (check_set=full). No Release was created.' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
