@@ -178,7 +178,11 @@ for(const key of ['synthetic-custom-key-A91-B82-C73','quote"and#hash','single\'q
 }
 for(const key of ['synthetic\nOTHER_SETTING=injected',`both'and"quotes`]){
  const env=C.convertAll(C.canonicalize(JSON.stringify({api_key:key}))).find(o=>o.id==='env').content;
- assert.deepEqual(require('node:util').parseEnv(env),{});
+ const parsed=require('node:util').parseEnv(env);
+ // Node 26 may return a null-prototype object. The security contract is
+ // that an injected newline or quote cannot produce ANY own environment key.
+ assert.ok(parsed!==null&&typeof parsed==='object');
+ assert.deepEqual(Reflect.ownKeys(parsed),[], 'Injected dotenv created environment variables');
 }
 console.log('PASS credential redaction and dotenv roundtrip/rejection');
 

@@ -147,6 +147,16 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Paramiko Windows native dependency test failed.' }
           }
 
+      - name: Check converter compatibility on candidate Node before long regressions
+        if: ${{ inputs.mode == 'prepare' }}
+        timeout-minutes: 7
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Keep both original release converter gates; check the upgraded Node first.
+          foreach ($script in @('smoke.js', 'static-audit.js')) {
+            & .\tool\node\node.exe (Join-Path '.\Version_History\AI account format conversion\test' $script)
+            if ($LASTEXITCODE -ne 0) { throw "Candidate Node converter regression failed: $script" }
+          }
       - name: Run complete Python and Node regression suites
         if: ${{ inputs.mode == 'prepare' }}
         timeout-minutes: 18
@@ -157,11 +167,6 @@ jobs:
           foreach ($script in @('test_automation.js','test_portable_npm.js')) {
             & .\tool\node\node.exe --test (Join-Path '.\tests' $script)
             if ($LASTEXITCODE -ne 0) { throw "Node regression failed: $script" }
-          }
-          # Match the existing 01/02 release gates: converter smoke and static audit.
-          foreach ($script in @('smoke.js', 'static-audit.js')) {
-            & .\tool\node\node.exe (Join-Path '.\Version_History\AI account format conversion\test' $script)
-            if ($LASTEXITCODE -ne 0) { throw "Converter regression failed: $script" }
           }
           & .\tool\python\python.exe -E -s -B .\tool\automation\install-browser.py --check
           if ($LASTEXITCODE -ne 0) { throw 'Bundled browser identity failed.' }

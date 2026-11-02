@@ -297,6 +297,18 @@ class ToolUpdateTests(unittest.TestCase):
                       (ROOT / 'tool/update-tools.py').read_text(encoding='utf-8'))
         self.assertIn('corepack', tools.load_json(tools.LEDGER)['tools'])
 
+    def test_node26_converter_env_rejection_is_prototype_independent_and_early(self):
+        # Node 26 util.parseEnv may yield a null-prototype empty mapping.
+        # Check all own keys instead of depending on the mapping prototype.
+        smoke = (ROOT / 'Version_History/AI account format conversion/test/smoke.js').read_text(
+            encoding='utf-8-sig')
+        self.assertIn('Reflect.ownKeys(parsed)', smoke)
+        self.assertIn('Injected dotenv created environment variables', smoke)
+        self.assertNotIn("assert.deepEqual(require('node:util').parseEnv(env),{});", smoke)
+        flow = (ROOT / '.github/workflows/03-update-tools.yml').read_text(encoding='utf-8')
+        self.assertLess(flow.index('Check converter compatibility on candidate Node'),
+                        flow.index('Run complete Python and Node regression suites'))
+        self.assertEqual(flow.count("foreach ($script in @('smoke.js', 'static-audit.js'))"), 1)
     def test_ssh_userprofile_matches_launcher_runtime_home(self):
         # On Windows run-codex.ps1 uses home-runtime; storing SSH credentials
         # in home/ would be misleading and break default ~/.ssh resolution.

@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-02：03 第五次 Windows 运行及 Node 26 转换器断言修复（Run 41430341405）
+
+- **实测状态：** 手动 `03` 的 [Run #41430341405](https://github.com/rileyaaa/Codex-Portable/actions/runs/41430341405) 在 main `05977f33` 执行 `prepare/all/create_pr=true`，前置 31 项维护回归、官方 Node 26.13.0 候选、SHA-256 + LFS 指针、Paramiko 5.1.0 Windows 原生导入、包内 Corepack 0.35.0 及 Node/npm 版本探测均通过。其后完整 **348 项 Python 测试全数通过**，两套 Node 测试各 10 项全数通过；随后 `Version_History/AI account format conversion/test/smoke.js` 第 181 行出现 `AssertionError [ERR_ASSERTION]`：Node 26 的 `util.parseEnv` 空映射为 null-prototype 对象，而旧测试错误地与普通 `{}` 严格深比较。后续 `static-audit.js`、19 项 PowerShell、十轮 Windows 审计、真实 ZIP、独立写入和候选 PR **没有执行**，因此不存在可审查或合并的工具更新 PR。
+- **兼容与安全修复：** 转换器测试不再要求 `parseEnv` 返回映射的内部原型；保留空变量的安全要求，验证返回非 null 对象且 `Reflect.ownKeys(parsed)` 严格为空（连不可枚举/Symbol 属性也不能出现）。生产转换器 `app/converter.js` 未改，不能以测试兼容为名放松输入或密钥安全约束。新增 03 维护合同测试以防恢复原型敏感断言。
+- **动作顺序优化：** 03 现在把完整 `smoke.js` 与 `static-audit.js` 两项转换器测试放在已下载并验证候选 Node 后、耗时较长的全量 Python 回归之前；不是删除测试，而是早发现新版 Node 的运行时不兼容。19 项 Windows PowerShell、release-audit 的 10 轮随机测试、正式 ZIP 试打包、独立可信写权限复现及 Git LFS 上传门禁均保留。
+- **离线验证与边界：** 已检查 `smoke.js` 整体 JavaScript 语法及空普通对象、空 null-prototype 对象与异常非空对象的自有属性断言行为，检查 03 顺序和测试保护；实际 Windows Node 26 转换器、`static-audit.js`、19 项 PowerShell、十轮审计、ZIP 与新候选 PR 仍须下次手动 Windows AC 验收。本轮不自动启动 AC、不把未通过的工具二进制合并 main、不发布 Release。
 ## 2026-11-02：03 第四次失败后再次全面预审（Node 26 Corepack、转换器、SSH 运行目录）
 
 - **检视范围：** 以 `main` 的 `d74ce851` 为基线，审查 `03-update-tools.yml` 的只读验证、独立写入、LFS 对象上传、候选 PR、真实 ZIP/十轮审计和 01/02 正式发布测试覆盖。此前 [Run #41425693314](https://github.com/rileyaaa/Codex-Portable/actions/runs/41425693314) 已经通过 Windows Node LFS 候选暂存、SSH 原生导入，但因 2 项默认编码错误和 1 项 Git LFS 反向夹具错误中止了 341 项 Python 回归；本节不是新的 Windows 通过记录。
