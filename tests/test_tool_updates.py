@@ -761,6 +761,8 @@ class ToolUpdateTests(unittest.TestCase):
         download = source.index('Stage checked wheel or SHA256-pinned archive candidates')
         self.assertLess(source.index('Run tool-maintenance tests before downloading any candidate'),
                         preflight)
+        package_regression = source.index("-p 'test_release_package.py' -v")
+        self.assertLess(package_regression, preflight)
         self.assertLess(preflight, download)
         self.assertEqual(tool_names[0], 'test_launcher_smoke')
         self.assertEqual(source.count('test_launcher_smoke.ps1'), 2)
