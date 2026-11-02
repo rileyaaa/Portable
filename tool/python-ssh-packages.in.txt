@@ -1,0 +1,10 @@
+# Windows x64 CPython 3.14 SSH add-on, isolated from the 42 fixed runtime packages.
+# Every distribution is explicitly pinned; the corresponding wheel-only hash lock
+# is generated on a controlled Windows runner, never guessed or checked in early.
+paramiko==5.1.0
+bcrypt==5.0.0
+cryptography==50.0.2
+invoke==3.0.3
+PyNaCl==1.6.0
+cffi==2.1.1
+pycparser==3.12

@@ -1,6 +1,9 @@
 env.local.ps1
 
 # Runtime credentials and generated state
+/home/.ssh/
+/home/ssh/
+/work/
 home/auth*.json
 home/auth*.json.*
 home/mode

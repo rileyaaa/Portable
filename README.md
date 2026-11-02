@@ -185,6 +185,9 @@ $env:CODEX_TUI_FULLSCREEN_TRANSCRIPT = "true"
 
 ## 工具、更新与故障处理
 
+工具更新另有 [03 手动盘点与候选流程](https://github.com/rileyaaa/Codex-Portable/actions/workflows/03-update-tools.yml)，与现有 01（Codex 本体）和 02（验证/发布）相互独立。03 默认 `check` 仅报告版本；本批 `prepare` 已预置 Node 26.13.0 LTS 与 Paramiko 5.1.0 的待验候选；`prepare` 在 Windows Runner 暂存/测试经过来源和哈希审查的候选，`create_pr=false` 默认不写分支，打开后也仅创建待审 PR，绝不自动合并或发布。当前 Paramiko 5.1.0 为**已准备安装流程、尚未随包安装**的 SSH 候选；实际就绪必须等待 Windows 运行时验证并合并相应工件。其独立路径为 `tool/python/ssh-packages`，同原有基础 Python 固定依赖隔离。版本状态及精简建议以 [工具说明](tool/工具更新说明.md) 为准。
+
+
 升级 Codex 现在只需关注两个手动 GitHub Actions：[01 官方组件升级](https://github.com/rileyaaa/Codex-Portable/actions/workflows/01-upgrade-codex-runtime.yml) → [02 Windows 全量验证与 Release 发布](https://github.com/rileyaaa/Codex-Portable/actions/workflows/02-verify-and-publish-portable.yml)。01 进行官方来源与 SHA-256 校验、临时运行组件替换和基础 Windows 检查；只有经过验证的稳定版才允许显式提交候选源码。发布工作流内置兼容性审查、完整 Windows 回归和十轮测试，且无论是否发布都真实生成并校验测试 ZIP；验证 Job 结束会删除临时 ZIP。正式发布 Job 会重新打包，并要求 ZIP SHA-256 与只读测试结果完全一致，无需再手动跑单独的兼容检查工作流。新包仍须单独试用，确认正常前保留旧稳定包。详见 [开发文档](DEVELOPMENT.md#codex-上游版本升级与便携包发布标准流程)。
 
 01 的 `release_url` 直接粘贴官方完整发布页面，例如 `https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.3`。`commit_changes=false`（默认）只执行验证，不改 `main`；Alpha/Beta/RC 只能这样测试。稳定版可主动选择 `commit_changes=true`：只读 Job 先创建**不推送**的本地候选提交，以与 02 相同的 18 项 Windows PowerShell 回归、全套 Python 回归、十轮审计和真实 ZIP 试打包验证候选，才交给独立写权限 Job 再核对完全一致的候选差异、官方 SHA-256 和 Git LFS 摘要，最后提交 `main`，仍不发布。需要 ZIP 时再运行发布工作流，填写 `version=v<稳定版本>-portable.1`，默认 `publish_release=false` 会执行全量检查与本地 ZIP 实际试打包（不上传、不发布），明确打开才会发布；发布 Job 与测试 Job 的权限隔离，并核对来源 SHA 与测试 ZIP 的 SHA-256。每次真实稳定版升级应保留 Actions 输出的原始基线与升级提交：若后续 02 失败且无人继续修改主分支、没有对应正式发布，可检查后通过正常的 `git revert <升级提交SHA>` 恢复旧运行组件；禁止强制重置或直接删除历史 LFS 对象。Git LFS 用量应在仓库账单中监测，01 只报告本次组件的预估体积，不代表实际额度余额。

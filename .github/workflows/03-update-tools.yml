@@ -1,0 +1,273 @@
+name: "03 - 检查与准备便携工具更新（手动）"
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check=只读检查；prepare=Windows 构建并验证候选（默认不提交）"
+        required: true
+        type: choice
+        options: [check, prepare]
+        default: check
+      group:
+        description: "ssh=Paramiko；tools=仅审核过的更新计划；all=两者"
+        required: true
+        type: choice
+        options: [ssh, tools, all]
+        default: all
+      create_pr:
+        description: "仅 prepare 且全量验证通过时，建立候选 PR；从不自动合并 main"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-portable-manual-tool-update
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    runs-on: windows-latest
+    timeout-minutes: 155
+    outputs:
+      candidate_digest: ${{ steps.candidate.outputs.digest }}
+      candidate_date: ${{ steps.candidate.outputs.day }}
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Check out source and hydrate tracked LFS without write credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          lfs: true
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Lint all three hand-triggered workflows with pinned actionlint
+        timeout-minutes: 6
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\check-actionlint.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'actionlint failed.' }
+
+      - name: Prepare isolated package-local test state for Windows candidates
+        if: ${{ inputs.mode == 'prepare' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state'
+          $state = @{
+            HOME = 'home'; USERPROFILE = 'home'; APPDATA = 'appdata'; LOCALAPPDATA = 'localappdata';
+            PROGRAMDATA = 'programdata'; ALLUSERSPROFILE = 'programdata';
+            TEMP = 'temp'; TMP = 'temp'; TMPDIR = 'temp';
+            XDG_CACHE_HOME = 'cache'; XDG_CONFIG_HOME = 'config'; XDG_DATA_HOME = 'data'; XDG_STATE_HOME = 'state';
+            CODEX_HOME = 'codex-home'; CODEX_SQLITE_HOME = 'sqlite'; GH_CONFIG_DIR = 'gh'
+          }
+          foreach ($name in $state.Keys) {
+            $path = Join-Path $base $state[$name]
+            New-Item -ItemType Directory -Force -Path $path | Out-Null
+            "$name=$path" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+          'PIP_CONFIG_FILE=nul' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'PYTHONDONTWRITEBYTECODE=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'POWERSHELL_TELEMETRY_OPTOUT=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          $modules = Join-Path $base 'cache/modules'
+          New-Item -ItemType Directory -Force -Path $modules | Out-Null
+          "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" |
+            Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Inspect tracked versions, official upstream metadata, and SSH presence
+        timeout-minutes: 6
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -E -s -B .\tool\update-tools.py check --online
+          if ($LASTEXITCODE -ne 0) { throw 'Tool inventory audit failed.' }
+          & .\tool\python\python.exe -E -s -B .\tool\prepare-ssh.py check
+          if ($LASTEXITCODE -ne 0) { throw 'SSH installed-state audit failed.' }
+
+      - name: Stage checked wheel or SHA256-pinned archive candidates in the checkout
+        id: candidate
+        if: ${{ inputs.mode == 'prepare' }}
+        timeout-minutes: 24
+        env:
+          TOOL_GROUP: ${{ inputs.group }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $day = [DateTime]::UtcNow.ToString('yyyy-MM-dd')
+          & .\tool\python\python.exe -E -s -B .\tool\update-tools.py prepare --group $env:TOOL_GROUP --day $day
+          if ($LASTEXITCODE -ne 0) { throw 'Windows tool staging failed; no branch will be written.' }
+          & git add -A -- tool
+          if ($LASTEXITCODE -ne 0) { throw 'Staging verified tool files failed.' }
+          & git -c core.whitespace=cr-at-eol diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Malformed tool candidate diff.' }
+          $line = (& .\tool\python\python.exe -E -s -B .\tool\update-tools.py digest --group $env:TOOL_GROUP) -join ''
+          if ($LASTEXITCODE -ne 0 -or $line -cnotmatch '^TOOL_DIFF_SHA256=([a-f0-9]{64})$') {
+            throw 'Unexpected tool candidate change scope.'
+          }
+          "digest=$($Matches[1])" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "day=$day" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "Candidate diff digest: $($Matches[1])" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Verify pinned base Python closure and native Paramiko import
+        if: ${{ inputs.mode == 'prepare' }}
+        timeout-minutes: 6
+        env:
+          TOOL_GROUP: ${{ inputs.group }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -E -s -B .\tool\update-tools.py verify --group $env:TOOL_GROUP
+          if ($LASTEXITCODE -ne 0) { throw 'Updated tool native versions differ from reviewed pins.' }
+          & .\tool\python\python.exe -E -s -B .\tool\python-lock.py validate-runtime --requirements .\tool\python-packages.in.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Base Python closure changed.' }
+          if ($env:TOOL_GROUP -ne 'tools') {
+            & .\tool\python\python.exe -E -s -B -c "import paramiko,cryptography,bcrypt,nacl,invoke,cffi; print('SSH_NATIVE_IMPORT=PASS',paramiko.__version__)"
+            if ($LASTEXITCODE -ne 0) { throw 'Paramiko Windows native dependency test failed.' }
+          }
+
+      - name: Run complete Python and Node regression suites
+        if: ${{ inputs.mode == 'prepare' }}
+        timeout-minutes: 18
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Python full regression failed.' }
+          foreach ($script in @('test_automation.js','test_portable_npm.js')) {
+            & .\tool\node\node.exe --test (Join-Path '.\tests' $script)
+            if ($LASTEXITCODE -ne 0) { throw "Node regression failed: $script" }
+          }
+          & .\tool\python\python.exe -E -s -B .\tool\automation\install-browser.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled browser identity failed.' }
+          [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+          $models = & .\codex.exe debug models --bundled
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled model export failed.' }
+          $catalog = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state/bundled-models.json'
+          [IO.File]::WriteAllText($catalog, ($models -join "`n"), (New-Object Text.UTF8Encoding($true)))
+          & .\tool\python\python.exe -E -s -B .\.github\maintenance\02-compatibility.py --repo . --native
+          if ($LASTEXITCODE -ne 0) { throw 'Portable compatibility audit failed.' }
+
+      - name: Check Windows PowerShell 5.1 regressions
+        if: ${{ inputs.mode == 'prepare' }}
+        timeout-minutes: 25
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tests = @(
+            'test_portable_config.ps1', 'test_portable_paths.ps1', 'test_instruction_paths.ps1',
+            'test_bootstrap_paths.ps1', 'test_extension_policy.ps1', 'test_runtime_preflight.ps1',
+            'test_python_setup.ps1', 'test_automation_paths.ps1', 'test_automation_process.ps1',
+            'test_browser_login_flow.ps1', 'test_system_policy.ps1', 'test_npm_entrypoints.ps1',
+            'test_browser_smoke.ps1', 'test_launcher_smoke.ps1', 'test_cli_model_options.ps1',
+            'test_login_input_errors.ps1', 'test_permission_display.ps1',
+            'test_extension_persistence.ps1'
+          )
+          foreach ($entry in $tests) {
+            $args = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path '.\tests' $entry))
+            if ($entry -eq 'test_portable_config.ps1') {
+              $args += @('-BundledModelsPath', '.\tmp\windows-release-state\bundled-models.json')
+            }
+            & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" @args
+            if ($LASTEXITCODE -ne 0) { throw "Windows native regression failed: $entry" }
+          }
+
+      - name: Verify unchanged staged digest, ten Windows audit rounds and real customer ZIP
+        if: ${{ inputs.mode == 'prepare' }}
+        timeout-minutes: 55
+        env:
+          EXPECTED_DIGEST: ${{ steps.candidate.outputs.digest }}
+          TOOL_GROUP: ${{ inputs.group }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $again = (& .\tool\python\python.exe -E -s -B .\tool\update-tools.py digest --group $env:TOOL_GROUP) -join ''
+          if ($LASTEXITCODE -ne 0 -or $again -cne ('TOOL_DIFF_SHA256=' + $env:EXPECTED_DIGEST)) {
+            throw 'Tool files changed during Windows testing.'
+          }
+          # Package builder requires clean committed source. Make a local-only trial commit.
+          & git -c user.name='tool-verifier' -c user.email='tool-verifier@users.noreply.github.com' commit -m 'test: verified tools trial only'
+          if ($LASTEXITCODE -ne 0) { throw 'Local trial commit failed.' }
+          & .\tool\python\python.exe -E -s -B .\.github\scripts\release-audit.py --release
+          if ($LASTEXITCODE -ne 0) { throw 'Ten seeded Windows regression rounds failed.' }
+          & .\tool\python\python.exe -E -s -B .\.github\scripts\release-audit.py --verify
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate source changed during ten-round audit.' }
+          $codexVersion = (Get-Content .\tool\runtime-manifest.json -Raw | ConvertFrom-Json).version
+          $trial = (& .\tool\python\python.exe -E -s -B .\tool\package-release.py --version ('v' + $codexVersion + '-portable.1')) -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw 'Real ZIP trial failed.' }
+          $result = $trial | ConvertFrom-Json
+          if ($result.archive_sha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Bad ZIP digest.' }
+          if ((Get-FileHash -LiteralPath $result.archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $result.archive_sha256) {
+            throw 'Trial ZIP hash mismatch.'
+          }
+          $tmpRoot = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE 'tmp'))
+          $trialDir = [IO.Path]::GetFullPath($result.output_dir)
+          if ([IO.Path]::GetDirectoryName($trialDir) -cne $tmpRoot -or [IO.Path]::GetFileName($trialDir) -notlike 'release-*') {
+            throw 'Unsafe trial cleanup path.'
+          }
+          Remove-Item -LiteralPath $trialDir -Recurse -Force
+          'Windows tool candidate, full regressions and ZIP trial passed; no main commit or Release.' |
+            Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+  propose:
+    name: Propose verified tools without running downloaded binaries in a write-token job
+    needs: verify
+    if: ${{ needs.verify.result == 'success' && inputs.mode == 'prepare' && inputs.create_pr && github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: windows-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Check out unchanged trusted source; disable persisted token
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          lfs: true
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Rebuild pinned bytes only and reject changed main/diff
+        timeout-minutes: 25
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_DIGEST: ${{ needs.verify.outputs.candidate_digest }}
+          APPROVED_DAY: ${{ needs.verify.outputs.candidate_date }}
+          TOOL_GROUP: ${{ inputs.group }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $remote = (& gh api "repos/$env:GITHUB_REPOSITORY/branches/main" --jq '.commit.sha') -join ''
+          if ($LASTEXITCODE -ne 0 -or $remote.Trim() -cne $env:GITHUB_SHA) {
+            throw 'Main moved after the read-only validation; refuse PR.'
+          }
+          if ($env:EXPECTED_DIGEST -cnotmatch '^[a-f0-9]{64}$') { throw 'No validated candidate digest.' }
+          & .\tool\python\python.exe -E -s -B .\tool\update-tools.py prepare --group $env:TOOL_GROUP --day $env:APPROVED_DAY --writer
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted writer could not reproduce official pinned archive.' }
+          & git add -A -- tool
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot stage reproduced tool bytes.' }
+          & git -c core.whitespace=cr-at-eol diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Malformed reproduced diff.' }
+          $value = (& .\tool\python\python.exe -E -s -B .\tool\update-tools.py digest --group $env:TOOL_GROUP) -join ''
+          if ($LASTEXITCODE -ne 0 -or $value -cne ('TOOL_DIFF_SHA256=' + $env:EXPECTED_DIGEST)) {
+            throw 'Writer diff does not match the read-only Windows-verified candidate.'
+          }
+          $name = 'maintenance/tools-' + $env:GITHUB_RUN_ID
+          & git config user.name 'github-actions[bot]'
+          & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          & git switch -c $name
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot create candidate branch.' }
+          & git commit -m ("chore(tools): verified Windows x64 candidates " + $env:APPROVED_DAY)
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate commit failed.' }
+          & gh auth setup-git
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot authenticate trusted Git push.' }
+          & git push origin ('HEAD:refs/heads/' + $name)
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate branch push failed.' }
+          & gh pr create --base main --head $name --title 'Verified Windows portable tool candidates' --body ('Pinned tool update; group=' + $env:TOOL_GROUP + '; verified diff SHA256=' + $env:EXPECTED_DIGEST + '. Review payload and merge manually. No Release was created.')
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate branch exists; PR creation needs manual recovery.' }

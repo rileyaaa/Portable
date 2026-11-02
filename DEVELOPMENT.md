@@ -1,5 +1,21 @@
 # 开发与维护记录
 
+## 2026-11-02：工具候选离线加固与一次性 Windows 验证设计（未运行 AC）
+
+- **Node 便携入口保护：** 本地审查发现直接以官方 Node ZIP 覆盖整个 tool/node，会删除现有 portable-npm.js 和 npm/npx 的 CMD、PowerShell 入口。现已修复为保留七个已审查的入口，同时跳过上游 install_tools.bat 系统安装器，禁止恢复宿主 npm 搜索或系统安装行为。
+- **本批拟更新的真实候选：** tool/tool-update-plan.json 固定 Node.js 26.13.0 LTS Windows x64 官方 ZIP 一项；核对官方 URL、版本、ZIP SHA-256，并要求在 Windows 准备阶段取得官方 SHASUMS256.txt 再独立交叉验证；原有 Node 真正版本待 Windows 原生探测，候选不代表已安装。其他未审核的工具不盲升。
+- **集中门禁：** 03-update-tools.yml 的 prepare 一次性执行 Paramiko 原生导入、完整 Python/Node 回归、Chromium 校验、18 项 Windows PowerShell 5.1 回归、十轮随机种子 Windows 发布审计及真实 ZIP 试打包。只读 Job 验证完整候选差异 SHA；独立写权限 Job 重建同一差异才可创建 PR，不会自动合并 main 或创建 Release。
+- **离线复核状态：** 本地通过 16 个定向合成回归（路径遍历、符号链接、归属目标、官方摘要不符、Node 自定义入口保持、版本台账同步、异常 Git 暂存范围）、Python 语法及 YAML 基本解析。不能将其等同于 Windows 原生测试、全套项目回归或任何已经运行的 GitHub Actions；本次仍未触发 AC。
+## 2026-11-02：工具便携维护与 SSH 支持（候选源码，未运行 AC）
+
+**范围与状态：** 按用户授权，审查全部现有说明和当日提交，再在独立维护分支准备 Python SSH 组件、第三个手动工具更新入口、版本台账和离线边界回归。此阶段只提交维护代码；**没有触发 GitHub Actions、没有下载或安装 Windows Paramiko 原生 wheel、没有升级现有 Node/ADB/Chromium/CLI 二进制，也没有生成正式 Release**。后续只在用户单独批准 AC 后执行 Windows 真实验证和候选 PR；PR 仍需人工复核合并。
+
+- **当日历史提交复核：** `bebb67a` 修正 PS5.1 原生 `python -c` 参数中的引号丢失，避免候选 Git diff 摘要核对失效；`c052eb1` 恢复遭正则替换误伤的完整发布 YAML；`5e9fbe9` 加入稳定版写入前 18 项 Windows 回归、固定 SHA actionlint、严格发行标签和更新的十轮测试计数；`badd0cb` 将两个原生 Codex 入口最终命名为 `01-upgrade-codex-runtime.yml`、`02-verify-and-publish-portable.yml` 并同步引用。上述均属于先前代码历史，本节不冒充重新运行验收。
+- **SSH 组件：** `tool/python-ssh-packages.in.txt` 固定 Paramiko 5.1.0 及 bcrypt、cryptography、Invoke、PyNaCl、cffi、pycparser 的 Windows x64 / CPython 3.14 候选版本；`tool/prepare-ssh.py` 仅用包内 Python/pip，官方 wheel-only 解析、真实 SHA-256 lock、限制解压、原生导入及同包临时目录。库放 `tool/python/ssh-packages`，由 `tool/python/Lib/site-packages/codex_portable_ssh.pth` 以相对路径挂载，不改原 42 项基础锁；SSH host key/凭据应留包内 `home/.ssh`，工作文件留 `work`，均不进发行包或 Git。安装工具的约束不等于对任意用户 SSH 脚本输出提供操作系统级绝对沙箱。
+- **第三个手动工作流：** `.github/workflows/03-update-tools.yml` 仅支持 `workflow_dispatch`；`check` 为默认只读盘点，`prepare` 用包内 Windows Python 构建完整候选并回归验证；`create_pr=false` 为默认，仅明确打开后才由独立写权限 Job 重建并核对同一暂存 diff SHA-256，建立候选 PR，**绝不自动合并 main 或创建 Release**。Python SSH 可作为首批候选；Node/ADB/bin 走 `tool/tool-update-plan.json` 中人工审核过的确切来源、版本、SHA-256 和映射（当前计划为空），Playwright/Chromium 与默认 Python 全套升级仅盘点，待专用适配。
+- **版本台账：** `tool/installed-tools.json` 是实际随包组件版本的机器来源；工具更新成功后，同步生成 `tool/工具更新说明.md` 内受控版本表格，失败不改写。当前未知的独立 EXE 精确版本标记“待 Windows 原生核对”，Paramiko 标记“尚未随包安装”，不把候选版本误报为成品。
+- **验证与遗留：** 纯 Python 静态编译、YAML 结构和合成路径/哈希检查可在不调用 AC 的本地环境开展；`tool/python/ssh-packages` 真实 Windows wheel 安装、源 lock、Paramiko import、PS5.1/原生 ZIP、全量 10 轮审计及用户 Win11 实际运行尚待独立授权验收。生成 PR 后仍应先检查完整差异、来源摘要、许可证、Git 大文件及发行体积，再决定合并和正式发行。
+
 ## 2026-11-02：维护代码二次回归修复
 
 - **01 稳定版写入前完整 Windows 复核：** 在只读 Job 完成官方 SHA 和 Git LFS 候选差异验证后，先建立不推送的本地候选提交，准备与 02 相同的隔离环境和原生模型目录，再逐项执行完全一致的 18 项 PowerShell 5.1 回归（每项沿用 02 的超时与失败阻断）、Python/Node 检查、十轮动态审计和真实 ZIP 试打包。主分支写权限仍只在独立 Commit Job；Alpha/Beta/RC 仍只允许只读干运行。两个工作流的 Windows Checkout 和 Actionlint 均使用固定审核版本。
