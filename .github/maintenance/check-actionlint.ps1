@@ -17,7 +17,7 @@ try {
     Expand-Archive -LiteralPath $archive -DestinationPath $bin -Force
     $exe = Join-Path $bin 'actionlint.exe'
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Pinned actionlint executable is missing.' }
-    & $exe -oneline '.github/workflows/01-update-codex.yml' '.github/workflows/release.yml'
+    & $exe -oneline '.github/workflows/01-upgrade-codex-runtime.yml' '.github/workflows/02-verify-and-publish-portable.yml'
     if ($LASTEXITCODE -ne 0) { throw 'actionlint rejected a production GitHub Actions workflow.' }
     Write-Output 'ACTIONLINT_TWO_WORKFLOWS=PASS'
     if ($env:GITHUB_STEP_SUMMARY) {

@@ -1,4 +1,4 @@
-name: "01 - 更新官方 Codex 运行组件（手动）"
+name: "01 - 升级 Codex 官方组件（手动）"
 
 on:
   workflow_dispatch:

@@ -10,7 +10,7 @@
 
 ## 2026-11-02：长期升级维护加固（Node 24、ZIP 试打包、恢复路径）
 
-- GitHub 官方 `actions/checkout` 更新为固定完整 SHA 的 `v7.0.1`（声明 `node24`），仍只使用手动 `01-update-codex.yml` 和 `release.yml` 两个正式入口。保留 `lfs: true` 和 `persist-credentials: false`。
+- GitHub 官方 `actions/checkout` 更新为固定完整 SHA 的 `v7.0.1`（声明 `node24`），仍只使用手动 `01-upgrade-codex-runtime.yml` 和 `02-verify-and-publish-portable.yml` 两个正式入口。保留 `lfs: true` 和 `persist-credentials: false`。
 - 01 仅在正式稳定版明确设置 `commit_changes=true` 时，额外于只读 Runner 创建**不推送**的本地候选提交，运行完整 Python 回归、Node/浏览器测试、十轮 Windows 发布审计及真实客户 ZIP 试打包；全部成功之后独立写权限 Job 才核对官方发布、固定日期、候选 Git 差异 SHA-256 和 LFS 并快进提交。Alpha/Beta/RC 始终不得提交。稳定版提交后在 Job Summary 记录原始 SHA 和新 SHA；若随后 02 失败，人工确认远端 HEAD 未改变及无关联 Release 后，使用正常 `git revert` 生成恢复提交，不强制重置、不删除仍需的 LFS 对象。
 - 02 不论 `publish_release` 是否开启，都先在只读 Job 真正生成 ZIP、校验 manifest 与 SHA256SUMS 并清理临时文件；明确开启发布时，独立写权限 Job 以同一原始来源 SHA 重新生成 ZIP，并核对与先前验证 ZIP 的**完整 SHA-256 一致**，再进行 draft 上传、下载回读和公开。失败后若已有草稿，保留草稿供人工检查并输出恢复提示，不盲目覆盖或删除。
 - 01 输出新版本五个 LFS 程序的总大小及容量提醒；这是每次升级候选的文件体积，不是账户真实存储/带宽额度。官方归档文件名或 JSON schema 变化继续采用拒绝未知内容的策略，并在失败原因中列出待人工适配的变化。
@@ -18,7 +18,7 @@
 
 ## 2026-11-02：维护 Actions 简化为两个手动入口、隔离写权限
 
-- 工作流只保留 `01-update-codex.yml` 与 `release.yml`。独立 `02-check-compatibility.yml` 已移除，但兼容性审核脚本 `.github/maintenance/02-compatibility.py` 保留，01 和 Release 继续调用。与升级、发布无关的临时浏览器下载工作流 `download-browser.yml` 已删除；包内固定浏览器及其清单/校验器不变。
+- 工作流只保留 `01-upgrade-codex-runtime.yml` 与 `02-verify-and-publish-portable.yml`。独立 `02-check-compatibility.yml` 已移除，但兼容性审核脚本 `.github/maintenance/02-compatibility.py` 保留，01 和 Release 继续调用。与升级、发布无关的临时浏览器下载工作流 `download-browser.yml` 已删除；包内固定浏览器及其清单/校验器不变。
 - 01 只读 Job 下载并运行官方候选 EXE，检验来源、Windows 配置与 LFS；另由写权限 Job 在不执行新 EXE 的前提下重新取得官方文件、核对稳定版身份、候选差异 SHA-256 与 LFS，才可快进提交。候选维护记录日期在两 Job 中固定，避免跨 UTC 日期导致差异漂移。
 - Release 统一执行完整兼容检查、Python/Node/PowerShell 回归和十轮审计，不再依赖先前独立 02 的运行记录。无论是否发布，验证 Job 均需执行真实 ZIP 试打包并删除临时包；只有验证 Job 成功、来源 SHA 与 `main` 相同且人工设置 `publish_release=true` 时，独立写权限 Job 才以一致的 ZIP SHA 重新打包、回读校验三个附件并发布。两个工作流的发布/提交开关均默认关闭；`package_hotfix`、`windows_fixes` 旧选项已清除。
 - 不启用 push、定时或自动串联入口，仍需人工分别决定是否提交稳定源码及是否正式发布。此次只变更维护代码、测试和文档，不改动 0.166.0 EXE、Git LFS 固定摘要或现有正式 Release。静态检查不替代新结构上线后的 GitHub Actions 实测。
@@ -47,13 +47,13 @@
 
 原 `v0.166.0-portable.1` 的 Release 与标签均已不存在；原 r2 仍已发布，但尚未经过使用者实际验收。本次将前一批本地独立执行器精简后的源码重新命名为 `v0.166.0-portable.1`，并保持 `0.166.0` 官方主客户端、Host 与沙箱组件不变。r1 必须通过新的完整 Windows 工作流和十轮随机测试，客户 ZIP 及三个附件回读成功后才能成为正式版；**只有新 r1 验证成功，才允许删除旧 r2 Release 及其标签**。不要先删掉唯一已发布的 0.166.0 包，也不修改 0.164.0 稳定发行版。
 
-现有 GitHub Connector 无法直接调用 workflow_dispatch 或删除 Release。为执行此项明确授权的重新打包和删旧发布任务，允许本次使用一个严格匹配提交信息和专用文件路径的单次 push 引导器；它只调度既有 `release.yml` 的 `workflow_dispatch` 全量门禁，等待成功并回读后才删除旧 r2。成功后必须从 main 删除临时引导工作流，现有正式发布工作流仍仅允许手动调度。若失败，保留 r2 并报告真实失败状态，不绕过全量门禁或重用旧测试结果。
+现有 GitHub Connector 无法直接调用 workflow_dispatch 或删除 Release。为执行此项明确授权的重新打包和删旧发布任务，允许本次使用一个严格匹配提交信息和专用文件路径的单次 push 引导器；它只调度既有 `02-verify-and-publish-portable.yml` 的 `workflow_dispatch` 全量门禁，等待成功并回读后才删除旧 r2。成功后必须从 main 删除临时引导工作流，现有正式发布工作流仍仅允许手动调度。若失败，保留 r2 并报告真实失败状态，不绕过全量门禁或重用旧测试结果。
 
 ## 2026-10-30：可选独立执行器精简（0.166.0 便携修订）
 
 仅面向本地 Windows TUI/文字 Agent，删除未使用的 `codex-exec-server.exe` Git LFS 文件及 `codex-package.json` 的 `execServer` 字段。官方 `rust-v0.166.0` 的 npm staging 同样省略二者；主 `codex.exe`、Code Mode Host、沙箱助手和 `--no-daemon` 不变。此操作只移除可选独立程序，不声称从主客户端二进制中删除全部远程相关代码；便携启动器原本就拒绝 `exec-server` 等服务端子命令。
 
-同步 `tool/runtime-manifest.json`、`codex-package.json`、启动器固定摘要及常用/YOLO 模式副本，调整打包身份白名单、回归和使用说明。已完成任务的一次性 0.166 升级 Actions/适配脚本清理，不允许再次自动引入该 EXE。客户包以固定源码的干净工作树生成；重新打包的 `v0.166.0-portable.1` 必须由现有 `release.yml` 的手动分发入口运行完整 Windows 检查与十轮回归，通过 ZIP/远端附件逐项回读后才发布。线上账号、实际端到端模型调用、用户终端滚动显示不在自动验收范围。只有用户实际使用的 0.164.0 可作为已确认稳定基准。
+同步 `tool/runtime-manifest.json`、`codex-package.json`、启动器固定摘要及常用/YOLO 模式副本，调整打包身份白名单、回归和使用说明。已完成任务的一次性 0.166 升级 Actions/适配脚本清理，不允许再次自动引入该 EXE。客户包以固定源码的干净工作树生成；重新打包的 `v0.166.0-portable.1` 必须由现有 `02-verify-and-publish-portable.yml` 的手动分发入口运行完整 Windows 检查与十轮回归，通过 ZIP/远端附件逐项回读后才发布。线上账号、实际端到端模型调用、用户终端滚动显示不在自动验收范围。只有用户实际使用的 0.164.0 可作为已确认稳定基准。
 
 ## 2026-10-30：Codex 0.166.0 官方运行时升级（自动化候选）
 
@@ -63,18 +63,18 @@
 
 ## Codex 上游版本升级与便携包发布标准流程
 
-**当前升级专用的两个手动 GitHub Actions：** [01 更新官方 Codex 运行组件](https://github.com/rileyaaa/Codex-Portable/actions/workflows/01-update-codex.yml) → [02 完整 Windows 兼容验证、打包及发布](https://github.com/rileyaaa/Codex-Portable/actions/workflows/release.yml)。仅允许人工分别触发，不创建 push、定时或自动接力入口。独立的 `02-check-compatibility.yml` 已被发布工作流内置审核替代，兼容性审核代码仍由 `.github/maintenance/02-compatibility.py` 维护；完整十轮审计由 `.github/scripts/release-audit.py` 承担。独立浏览器下载工作流已移除，包内固定浏览器校验功能继续保留。
+**当前升级专用的两个手动 GitHub Actions：** [01 更新官方 Codex 运行组件](https://github.com/rileyaaa/Codex-Portable/actions/workflows/01-upgrade-codex-runtime.yml) → [02 完整 Windows 兼容验证、打包及发布](https://github.com/rileyaaa/Codex-Portable/actions/workflows/02-verify-and-publish-portable.yml)。仅允许人工分别触发，不创建 push、定时或自动接力入口。独立的 `02-check-compatibility.yml` 已被发布工作流内置审核替代，兼容性审核代码仍由 `.github/maintenance/02-compatibility.py` 维护；完整十轮审计由 `.github/scripts/release-audit.py` 承担。独立浏览器下载工作流已移除，包内固定浏览器校验功能继续保留。
 
-**01 的自动范围：** 输入完整官方 `release_url`，支持 `rust-v0.167.0-alpha.3` 等 Alpha/Beta/RC 用于只读临时测试；正式稳定版也默认只检查。核对官方 SHA-256、Windows x64 归档布局及固定白名单，替换五个原生程序并同步 manifest、启动器、登录映射、环境模式副本、许可证及说明。仅当显式选择 `commit_changes=true` 且目标为稳定版，01 的只读 Job 才额外运行完整十轮审计及真实 ZIP 试打包，之后单独的可信写权限 Job 重新构建、核对候选差异和 LFS 后提交；不会执行刚下载的 EXE，也不会创建 Release。**发布与兼容范围：** [Release 工作流](https://github.com/rileyaaa/Codex-Portable/actions/workflows/release.yml) 直接执行全部受控变量、模型/schema、启动器、Python/Node/PowerShell、完整 Windows 回归与十轮审计；失败停止，且默认不发布时也实际试打包客户 ZIP，不要求单独手动跑兼容检查。写权限发布 Job 只能在同一来源提交全部验证成功、人工选择发布后运行，再次核对 `main`、构建 ZIP、回读三个附件才公开。真实账号和第三方 API 的实机兼容仍需另行验收。
+**01 的自动范围：** 输入完整官方 `release_url`，支持 `rust-v0.167.0-alpha.3` 等 Alpha/Beta/RC 用于只读临时测试；正式稳定版也默认只检查。核对官方 SHA-256、Windows x64 归档布局及固定白名单，替换五个原生程序并同步 manifest、启动器、登录映射、环境模式副本、许可证及说明。仅当显式选择 `commit_changes=true` 且目标为稳定版，01 的只读 Job 才额外运行完整十轮审计及真实 ZIP 试打包，之后单独的可信写权限 Job 重新构建、核对候选差异和 LFS 后提交；不会执行刚下载的 EXE，也不会创建 Release。**发布与兼容范围：** [Release 工作流](https://github.com/rileyaaa/Codex-Portable/actions/workflows/02-verify-and-publish-portable.yml) 直接执行全部受控变量、模型/schema、启动器、Python/Node/PowerShell、完整 Windows 回归与十轮审计；失败停止，且默认不发布时也实际试打包客户 ZIP，不要求单独手动跑兼容检查。写权限发布 Job 只能在同一来源提交全部验证成功、人工选择发布后运行，再次核对 `main`、构建 ZIP、回读三个附件才公开。真实账号和第三方 API 的实机兼容仍需另行验收。
 本节是今后升级 Codex CLI 稳定版本或重新打包便携修订时必须遵循的操作顺序；具体安全、权限和目录边界继续执行下方「维护约定」。不要用上一个版本的测试结果代替新版验收，也不要因为上游发布新版就自动覆盖当前可用包。
 
 1. **确认目标与回退基线。** 核对官方稳定版、仓库 `main`、现有 Releases/标签、当前运行清单与最近的 Windows Actions 结果，区分「自动化验证通过」和「用户实际用过且确认正常」。先保留已确认稳定的旧 ZIP、配置与可回退版本，不读取或复制真实账号、密钥、会话及缓存；本轮只操作明确授权的项目文件。
 2. **核对上游变更与发行组件。** 阅读目标 `rust-v<版本>` 官方 Release、更新记录、源码和配置 schema，确认 Windows x64 官方工件、SHA-256、许可证及 `codex.exe`、`codex-code-mode-host.exe`、搜索工具、Windows 沙箱助手的版本与实际查找路径。检查新增/删除的 EXE、DLL、资源与依赖；本包默认仅支持本地文字/TUI/Agent，不打包语音、可选独立 `codex-exec-server.exe` 或已证明可省的重复文件。每次升级都重新核对查找顺序，不能照搬旧版删除名单，更不能删掉本地 Agent、Code Mode 或沙箱真正需要的组件。
 3. **逐项复核配置变量和协议。** 以新版实际源码消费点为准，检查 `env.ps1` 的每项默认值、`env.local.ps1` 白名单、命令行覆盖、最终生成的 `home/config.toml` 及子进程继承值；失效、改名或语义变化的变量必须修正或删除。重点验证包内 `CODEX_HOME`、交互式 `--no-daemon`、`CODEX_FAST_MODE=false`、`CODEX_TUI_FULLSCREEN_TRANSCRIPT=false`、默认关闭的 Plugins/MCP、普通/维护/YOLO 权限以及 `resume`/`fork`。自定义 API 要对照新版实际请求验证标准 Responses 的模型名、headers、tools、代理与 SOCKS/HTTP 桥，不能只凭 `wire_api=responses` 或配置解析成功推断兼容；官方账号流程单独验证。
 4. **成对更新运行时和固定身份。** 从同一官方版本取得主客户端、Host 及配套文件，保留上游二进制原始字节并校验 Windows x64 PE、文件数量和摘要；同步 `tool/runtime-manifest.json`（来源、归档和逐文件 SHA-256、排除项）、`codex-package.json`、`run-codex.ps1` 的版本/固定摘要及 `login-json.ps1` 的登录版本映射。更新需要的 `env.ps1`，并同步 `Version_History` 的四份常用/YOLO 模式副本；正常副本须一致，YOLO 仅保留既定权限/联网差异。校验 Git LFS 实际文件，严禁把 LFS 指针当 EXE，亦不得通过关闭身份校验掩盖缺件。
-5. **清理过期适配与同步文档。** 检查启动器中的旧版判断、已废弃参数、模型目录与代理兼容代码；核对 `tests/`、`tool/package-release.py`、`.github/workflows/release.yml`、`.github/scripts/release-audit.py` 中固定的旧版本、运行文件白名单、测试数量、随机种子、校验条件和 Release Notes，确保真实覆盖本次目标版本，不能复用上一次的特例说明。同步现有 `README.md`、本文件及 `tool/工具更新说明.md`，不另外创建项目说明文件。检查 `.github/workflows/` 是否残留一次性下载/升级/代触发工作流；旧 `request-release-r2.yml` 已随本次规范化移除，未来同类临时入口不得长期保留；常驻正式发布工作流只允许手动 `workflow_dispatch`。
+5. **清理过期适配与同步文档。** 检查启动器中的旧版判断、已废弃参数、模型目录与代理兼容代码；核对 `tests/`、`tool/package-release.py`、`.github/workflows/02-verify-and-publish-portable.yml`、`.github/scripts/release-audit.py` 中固定的旧版本、运行文件白名单、测试数量、随机种子、校验条件和 Release Notes，确保真实覆盖本次目标版本，不能复用上一次的特例说明。同步现有 `README.md`、本文件及 `tool/工具更新说明.md`，不另外创建项目说明文件。检查 `.github/workflows/` 是否残留一次性下载/升级/代触发工作流；旧 `request-release-r2.yml` 已随本次规范化移除，未来同类临时入口不得长期保留；常驻正式发布工作流只允许手动 `workflow_dispatch`。
 6. **修复并执行升级回归。** 在 Windows x64、PowerShell 5.1 和包内 Python/Node 环境运行相关及全量测试，覆盖 BAT 菜单与启动链、原生客户端版本、模型配置与实际请求、HTTP/SOCKS 代理、认证切换/异常恢复、会话恢复、Agent/Code Mode、沙箱权限、中文/空格及跨盘搬迁、模式副本、浏览器和工具依赖、发行文件清单。失败先修复再重新运行；Linux 或合成假接口只能作为补充，不可冒充真实 Windows、账号、模型或终端验收。每次正式升级还需由 Windows 发布门禁在最终提交执行新鲜的 **10 轮**随机回归，任何失败、错误、跳过、测试数量不符或源码变更都应阻止发布。
-7. **依次手动运行 01 与 Release。** 对干净的 `main` 执行 01，`release_url` 输入完整官方页面链接，例如 `https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.3`，默认 `commit_changes=false` 为测试；Alpha/Beta/RC 不允许提交。只有正式稳定版且明确选择 `commit_changes=true` 时，01 完成只读验证后由单独写权限 Job 再次检验相同来源、精确候选差异、LFS 和远端 SHA，随后才快进提交 `main`。需要发布 ZIP 时，手动启动 [Release 工作流](https://github.com/rileyaaa/Codex-Portable/actions/workflows/release.yml)，选 `main`，输入匹配 manifest 的 `version=v<上游稳定版本>-portable.1`；`publish_release=false` 为默认全量验证与真实 ZIP 试打包模式；只有全部测试成功且显式开启 `publish_release=true`，并且测试 ZIP 和发布 ZIP 的 SHA-256 一致，才能正式发布。同一上游版本后续修订用 `.2`、`.3`；不再需要 `check_set` 或独立 02 的成功运行记录。任何失败都不得发布；无法触发 Actions 应如实报告，不默认增加 push/定时入口。
+7. **依次手动运行 01 与 Release。** 对干净的 `main` 执行 01，`release_url` 输入完整官方页面链接，例如 `https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.3`，默认 `commit_changes=false` 为测试；Alpha/Beta/RC 不允许提交。只有正式稳定版且明确选择 `commit_changes=true` 时，01 完成只读验证后由单独写权限 Job 再次检验相同来源、精确候选差异、LFS 和远端 SHA，随后才快进提交 `main`。需要发布 ZIP 时，手动启动 [Release 工作流](https://github.com/rileyaaa/Codex-Portable/actions/workflows/02-verify-and-publish-portable.yml)，选 `main`，输入匹配 manifest 的 `version=v<上游稳定版本>-portable.1`；`publish_release=false` 为默认全量验证与真实 ZIP 试打包模式；只有全部测试成功且显式开启 `publish_release=true`，并且测试 ZIP 和发布 ZIP 的 SHA-256 一致，才能正式发布。同一上游版本后续修订用 `.2`、`.3`；不再需要 `check_set` 或独立 02 的成功运行记录。任何失败都不得发布；无法触发 Actions 应如实报告，不默认增加 push/定时入口。
 8. **核对打包与 GitHub Release。** GitHub Actions 应在 Windows 完成全量门禁、10 轮回归和源码再次校验，从干净提交生成客户 ZIP、`release-manifest.json`、`SHA256SUMS` 三个附件；先上传草稿，再下载回读逐项核对 SHA-256、ZIP 文件清单、文件数、来源提交、原生 EXE 与 LFS 实体，成功后才转正式发布。确认 Release 的 tag、target commit、三个附件和工作流成功状态一致。客户 ZIP 不含第一方测试、CI、Git 配置、构建脚本、用户认证、工作目录、缓存和临时状态；GitHub 自动生成的 Source code ZIP 不算便携发行包。未成功发布不得报告为「已打包上线」。
 9. **独立实机试用与决定稳定性。** 用户将新 ZIP 解压到不同目录，不直接覆盖稳定包；按日常真实条件检查双击启动、中文/空格路径、API 或账号登录、代理、模型回复、一项实际 Agent/Host 工具调用、`resume`/`fork`、终端显示与退出后的数据保留。明确区分已通过、失败、未执行；真实账号、在线模型或设备测试未经授权不主动运行。只有用户确认日常使用正常，才将该版本视为「已实用验证稳定」。
 10. **清理与回退。** 先保留旧版供回退；新版本已正式发布且经实际使用确认后，才按用户要求清理不再需要的旧 Release/附件及其标签，不删除仍在使用的稳定版或历史提交。清理本次临时工件、临时工作流与任务专属缓存，保留合法用户资料。若出现兼容问题，停止推广新版、保留故障证据并退回上一确认稳定版本，修复后使用新的便携修订重新走完整流程；不得覆盖已有发布标签或附件。
@@ -158,7 +158,7 @@
 
 **重新复核：** 测试修正后重新计数：Actions `40207107803` 的三个全新 Linux runner 对固定提交 `fc188e9ab77617698a8b348759f56744662eb9c9` 分别正序、逆序和固定随机顺序执行 164 项源码／元数据回归，失败、错误、跳过和遗留 SQLite 连接均为 0；每轮浏览器离线策略、转换器、源码解析和 PowerShell 离线契约均通过。Windows 原生项目留待同一最终提交的完整发布门禁，不借用此前未完成的 Windows 结果。
 
-**发布边界：** 仅当三轮复核通过后，才清理本次临时工作流并请求既有 release.yml 的 check_set=full。完整 Windows 验证、干净提交打包、上传附件回读全部通过才发布；实际状态以 Release 和对应工作流为准，不用源码检查冒充 Windows 通过。真实账号、在线 Agent/Host、提权沙箱、任意 PyInstaller spec/hook 的实际冻结产物与真实设备不在本轮范围。
+**发布边界：** 仅当三轮复核通过后，才清理本次临时工作流并请求既有 02-verify-and-publish-portable.yml 的 check_set=full。完整 Windows 验证、干净提交打包、上传附件回读全部通过才发布；实际状态以 Release 和对应工作流为准，不用源码检查冒充 Windows 通过。真实账号、在线 Agent/Host、提权沙箱、任意 PyInstaller spec/hook 的实际冻结产物与真实设备不在本轮范围。
 
 
 ## 2026-10-25：按授权恢复 Python EXE 打包工具（不编译、不发布）
@@ -193,7 +193,7 @@
 
 **复现与前两轮：** 原有 128 项源码回归通过，但未覆盖暂存位置。原数据库测试文件新增 5 项纯合成写入回归，旧实现共 12 项中 3 项失败，修复后 12 项全部通过。第一轮重新运行 133 项源码回归、8 项浏览器策略以及转换器 12 项输入/映射、8 项模板和 18 项界面/ZIP/账号库检查，并核对 573 份源码、6,941 个跟踪路径及 Python/JavaScript 语法；第二轮新进程逆序通过同组 133 项，并用 10 个独立子进程检查 Unicode、大文本、搬迁、链接、替换失败和编码失败，独立核对 6,893 个客户路径及 48 项开发文件排除。两轮未发现新问题；临时产物仅在本轮包内 tmp，测试未使用真实账号。
 
-**第三轮与发布门禁：** Actions `40183181411` 的全新 Linux/Windows runner 检出修复提交 `057a49ed362bd78e3f2eacf47a2ef961d4986374`：134 项随机顺序源码回归无失败、错误或跳过，浏览器策略、转换器、101 份 Python 和 41 份 PowerShell 解析及离线策略通过；Windows 包内 Python 的 159 项回归（含真实 PDF 提取与本轮暂存检查）、20 项 Node 回归、真实 Chromium、账号库、Cookie 持久化和主动清理均通过。本地 133 与 CI 134 的差异为完整 Git 检出的文件清单检查。修复后三轮连续未发现新的可复现问题。已下载校验的临时源码 artifact 主动删除，本工作流随记录清理；再由未修改的 release.yml 对最终提交完整验证、打包及上传回读，成功后才发布新版本。真实账号、在线 Agent/Host、提权沙箱和真实设备未测；三轮通过不是所有场景绝对无 Bug 的保证。
+**第三轮与发布门禁：** Actions `40183181411` 的全新 Linux/Windows runner 检出修复提交 `057a49ed362bd78e3f2eacf47a2ef961d4986374`：134 项随机顺序源码回归无失败、错误或跳过，浏览器策略、转换器、101 份 Python 和 41 份 PowerShell 解析及离线策略通过；Windows 包内 Python 的 159 项回归（含真实 PDF 提取与本轮暂存检查）、20 项 Node 回归、真实 Chromium、账号库、Cookie 持久化和主动清理均通过。本地 133 与 CI 134 的差异为完整 Git 检出的文件清单检查。修复后三轮连续未发现新的可复现问题。已下载校验的临时源码 artifact 主动删除，本工作流随记录清理；再由未修改的 02-verify-and-publish-portable.yml 对最终提交完整验证、打包及上传回读，成功后才发布新版本。真实账号、在线 Agent/Host、提权沙箱和真实设备未测；三轮通过不是所有场景绝对无 Bug 的保证。
 **后续补丁（只提交源码，不启动 Actions）：** 后续检查还发现：初次核对索引的生成 Markdown 后，耗时的 PDF 渲染可能与用户新建／修改／删除 Markdown 交错，旧流程会覆盖新内容；删除源 PDF 时，旧流程可能删除初检后刚被用户修改的 Markdown。现在输出写入时在暂存文件准备完成后、最终替换之前再次检查旧文件 SHA-256 或新文件必须不存在；删除旧源输出前再次校验归属。原有的正常增量复用、输出原子替换与失败暂存清理不变。新增 7 项合成场景覆盖渲染及暂存期间的新增、修改、删除、旧源清理与正常增量；原有源码负例中 4 项失败，修复后本地三轮可运行回归通过。该检查不能宣称消除检查与系统调用之间的所有极短竞争窗口；Windows 原生与正式发布验收未执行，仍待后续单独验证。
 
 ## 2026-10-25：转换模板的字符串与命令参数保护
@@ -202,7 +202,7 @@
 
 **本地复现与前两轮检查：** 在原 smoke 中新增 8 项模板回归，未修复代码 8 项失败，修复后全部通过。第一轮 128 项 Python 源码回归、8 项浏览器策略、12 项输入/映射和 18 项 UI/ZIP/账号库检查通过；解析 101 份 Python、9 份第一方 JavaScript，并核对 573 份源码及 6,941 个跟踪路径。第二轮在新进程逆序复核同组 128 项源码回归；独立 YAML 解析器验证 500 组字符串往返，真实 POSIX shell 以无联网的 curl 替身验证 98 组参数，另对照 24 组原实现输出，确认除 YAML/cURL 及文件包中对应 cURL 内容外均逐字节一致。两轮未发现新的可复现问题，所有输入均为合成数据。
 
-**第三轮与发布门禁：** Actions `40179590268` 的全新 Linux runner 检出修复提交 `45b8cffcbf8af8fb11c31e152180340457292833`：129 项随机顺序 Python 源码回归无失败、错误或跳过，8 项浏览器策略、12 项输入/映射、8 项模板和 18 项 UI/ZIP/账号库检查全部通过；101 份 Python、41 份 PowerShell 解析，以及 33 项模型参数、12 项权限显示、9 项登录保护、7 项登录流程与共享 URL 契约也通过。129 与本地 128 的差异是完整 Git checkout 额外执行实际跟踪清单检查。修复后三轮连续未发现新的可复现问题。本记录与临时审核工作流清理后，仍须由未修改的 release.yml 对最终提交执行 check_set=full；Windows 包内运行环境、PowerShell 5.1、原生启动链、浏览器、干净源码打包及上传附件回读全部通过才发布新版本，不覆盖已有 Release。实际发布状态和来源提交以新 Release 为准；本次未导出新的源码 artifact。真实账号、在线 Agent/Host、提权沙箱及真实设备未测，三轮源码复查不能冒充 Windows 验收或所有场景无 Bug 的保证。
+**第三轮与发布门禁：** Actions `40179590268` 的全新 Linux runner 检出修复提交 `45b8cffcbf8af8fb11c31e152180340457292833`：129 项随机顺序 Python 源码回归无失败、错误或跳过，8 项浏览器策略、12 项输入/映射、8 项模板和 18 项 UI/ZIP/账号库检查全部通过；101 份 Python、41 份 PowerShell 解析，以及 33 项模型参数、12 项权限显示、9 项登录保护、7 项登录流程与共享 URL 契约也通过。129 与本地 128 的差异是完整 Git checkout 额外执行实际跟踪清单检查。修复后三轮连续未发现新的可复现问题。本记录与临时审核工作流清理后，仍须由未修改的 02-verify-and-publish-portable.yml 对最终提交执行 check_set=full；Windows 包内运行环境、PowerShell 5.1、原生启动链、浏览器、干净源码打包及上传附件回读全部通过才发布新版本，不覆盖已有 Release。实际发布状态和来源提交以新 Release 为准；本次未导出新的源码 artifact。真实账号、在线 Agent/Host、提权沙箱及真实设备未测，三轮源码复查不能冒充 Windows 验收或所有场景无 Bug 的保证。
 
 ## 2026-10-25：账号库与异步导入保护
 
@@ -210,13 +210,13 @@
 
 **复现与验证：** 旧账号库代码在新回归中失败 5 项；仅修复账号库而未加异步保护时，新增 5 项竞争回归全部失败。最终本地版本的 18 项 UI/ZIP/账号库检查及原有 12 项 smoke 回归均通过。第一轮正序 128 项 Python 源码回归、8 项浏览器策略通过；第二轮分两个新进程逆序跑完同组 128 项，并通过独立 Python/Node 加密交叉验证：8 次解密（最大明文 1189316 字节）、16 次错误密码/篡改拒绝、10 组 Base64、1331 组包装输入、10 种无效导入保护、5 次兼容导入、21 组代理边界和 10 个 Python CLI 子进程场景。本地两轮未发现新的可复现问题，未使用真实凭据。
 
-**第三轮与发布门禁：** Actions `40176018534` 在全新 Linux/Windows runner 检出修复提交 `7a2847eeeed89769a90fba18de619a537347b798`：129 项随机顺序源码回归无失败、错误或跳过；浏览器策略、18 项转换器检查、既有包装/映射 smoke、PowerShell 解析及离线策略通过。包内 Windows Python/Node、真实 Chromium Web Crypto/FileReader、大账号库往返、错误密码保留、清空取消导入、既有 HTML/ZIP/规则映射、截图、Cookie 持久化及主动清理均通过。三轮连续未发现新的可复现问题。临时源码 artifact 已主动删除，本工作流随本记录一并移除；正式发布仍由原 release.yml 对最终提交执行 check_set=full，完整验证、打包、上传回读全部成功后才发布，不覆盖已有 Release。真实账号、在线 Agent/Host、提权沙箱及设备未测，三轮通过不等于任何场景绝对无 Bug。
+**第三轮与发布门禁：** Actions `40176018534` 在全新 Linux/Windows runner 检出修复提交 `7a2847eeeed89769a90fba18de619a537347b798`：129 项随机顺序源码回归无失败、错误或跳过；浏览器策略、18 项转换器检查、既有包装/映射 smoke、PowerShell 解析及离线策略通过。包内 Windows Python/Node、真实 Chromium Web Crypto/FileReader、大账号库往返、错误密码保留、清空取消导入、既有 HTML/ZIP/规则映射、截图、Cookie 持久化及主动清理均通过。三轮连续未发现新的可复现问题。临时源码 artifact 已主动删除，本工作流随本记录一并移除；正式发布仍由原 02-verify-and-publish-portable.yml 对最终提交执行 check_set=full，完整验证、打包、上传回读全部成功后才发布，不覆盖已有 Release。真实账号、在线 Agent/Host、提权沙箱及设备未测，三轮通过不等于任何场景绝对无 Bug。
 
 ## 2026-10-25：包装数组与字段映射的后续复查
 
 **原因与修复：** 以已发布 `v2026.10.25.1` 的 `a716f58213b523215fbca2742575f2b57e1ad205` 为基线，再次复现两类转换器问题：`data/items` 是元数据、后续字段才是数组时，原逻辑仍选中前面的非数组并报错；规则映射会读取继承属性，破坏 `constructor/toString` 等合法 JSON 键，映射到 `__proto__` 还会改变结果原型并丢失字段。现只调整数组选取、规则自有属性判断和普通数据属性写入三处，不改变合法数组优先级、账号内容、认证或输出格式。新增 12 项输入/映射回归，旧代码稳定失败 8 项，修复后全部通过；既有 Windows 浏览器测试增加真实页面导入和规则映射检查。
 
-**本次验证：** 第一轮重新通过 128 项 Python 源码回归、8 项浏览器策略、转换器 smoke/UI/ZIP 检查，解析 101 份 Python 和 10 份 JavaScript，并核对 573 份源码及 6,941 个跟踪路径。第二轮使用独立 Python 参考实现核对 512 组包装字段组合和 200 组递归映射输入，另执行 10 个独立 Python CLI 场景及逆序 128 项源码回归，均未发现新问题。第三轮 Actions `40173977873` 在全新 Linux/Windows runner 检出修复提交 `0309d53936090e48def86125c8cf832cd39055d2`：129 项随机顺序 Python 源码回归无失败/错误/跳过，浏览器策略、转换器及 PowerShell 解析/离线策略检查通过；Windows 包内 Python/Node、真实 Chromium 页面导入/规则映射、既有 HTML/ZIP、截图、Cookie 持久化和清理检查也通过。三轮连续未发现新的可复现问题。完整发布仍须对清理后的最终提交执行原有 `release.yml` 的 `check_set=full`，只有打包及上传附件回读通过后才发布 `v2026.10.25.2`，以对应 Release 的实际来源提交和运行结果为准。
+**本次验证：** 第一轮重新通过 128 项 Python 源码回归、8 项浏览器策略、转换器 smoke/UI/ZIP 检查，解析 101 份 Python 和 10 份 JavaScript，并核对 573 份源码及 6,941 个跟踪路径。第二轮使用独立 Python 参考实现核对 512 组包装字段组合和 200 组递归映射输入，另执行 10 个独立 Python CLI 场景及逆序 128 项源码回归，均未发现新问题。第三轮 Actions `40173977873` 在全新 Linux/Windows runner 检出修复提交 `0309d53936090e48def86125c8cf832cd39055d2`：129 项随机顺序 Python 源码回归无失败/错误/跳过，浏览器策略、转换器及 PowerShell 解析/离线策略检查通过；Windows 包内 Python/Node、真实 Chromium 页面导入/规则映射、既有 HTML/ZIP、截图、Cookie 持久化和清理检查也通过。三轮连续未发现新的可复现问题。完整发布仍须对清理后的最终提交执行原有 `02-verify-and-publish-portable.yml` 的 `check_set=full`，只有打包及上传附件回读通过后才发布 `v2026.10.25.2`，以对应 Release 的实际来源提交和运行结果为准。
 
 **范围与边界：** 仅修改账号转换器、对应原有测试和两份既有说明，不变更官方 0.164.0 工件、普通/YOLO 权限、Fast、MCP/Plugins 默认值或用户状态。所有输入均为合成数据；三轮复查通过不等于所有场景绝对无 Bug，真实账号、在线 Agent/Host、提权沙箱和真实设备仍不在本次验证范围。正式发布须沿用完整 Windows 门禁，不覆盖已有版本。
 
@@ -230,7 +230,7 @@
 
 **最终重新计数的三轮复查：** 发现转换器问题后停止尚未打包的 `40159811138`，此前三轮不再作为新修改的最终验收。第一轮对最新修复的源码副本重新执行 128 项 Python 回归、8 项浏览器策略、账号转换器 smoke 和四项 UI/ZIP 检查，均通过。第二轮重新执行 13 个独立 Python 进程场景、11 组代理/路径/发行清单边界；另以独立 Python HTML 解析器检查九类导入字段，以标准 ZIP 解码器检查八种多语言路径、原始内容和 CRC，全部通过。第三轮 Actions `40161313406` 在全新 Linux 和 Windows runner 检出上述同一转换器修复提交：129 项源码回归无失败/错误/跳过，8 项浏览器策略、转换器测试、101 份 Python 与 41 份 PowerShell 解析，以及 33 项模型参数、12 项权限显示、9 项登录输入保护、7 项登录流程和共享 URL 契约检查均通过；Windows PowerShell 5.1 和真实配套 Chromium 的新增页面/ZIP、截图、Cookie 持久化与清理检查也通过。129 与 128 的差异为完整 Git checkout 额外执行实际跟踪清单测试，不是重复引用旧日志。三轮均未发现新的可复现问题。
 
-**发布门禁与边界：** 清理临时审核工作流并更新本记录后，既有 `release.yml` 必须对最终提交重新执行 `check_set=full`；完整 Windows 启动链、中文/空格路径、权限、MCP、Python/Node、浏览器、干净 Git/LFS 打包及上传附件回读全部通过后，才允许发布 `v2026.10.25.1`。实际发布状态、来源提交和完整验证链接以对应 Release 为准，不覆盖 `v2026.10.25`。本次私有源码 artifact 已主动删除，不长期保留自动触发入口。测试只使用合成账号/传输/设备输入；真实账号刷新、全部在线 Agent/Host、提权沙箱及真实设备仍未测。三轮通过不代表所有场景绝对没有 Bug。
+**发布门禁与边界：** 清理临时审核工作流并更新本记录后，既有 `02-verify-and-publish-portable.yml` 必须对最终提交重新执行 `check_set=full`；完整 Windows 启动链、中文/空格路径、权限、MCP、Python/Node、浏览器、干净 Git/LFS 打包及上传附件回读全部通过后，才允许发布 `v2026.10.25.1`。实际发布状态、来源提交和完整验证链接以对应 Release 为准，不覆盖 `v2026.10.25`。本次私有源码 artifact 已主动删除，不长期保留自动触发入口。测试只使用合成账号/传输/设备输入；真实账号刷新、全部在线 Agent/Host、提权沙箱及真实设备仍未测。三轮通过不代表所有场景绝对没有 Bug。
 
 ## 2026-10-25：SQLite 归属检查与发布复查
 

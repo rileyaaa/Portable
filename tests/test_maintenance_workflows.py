@@ -8,8 +8,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = {
-    "01": ROOT / ".github/workflows/01-update-codex.yml",
-    "release": ROOT / ".github/workflows/release.yml",
+    "01": ROOT / ".github/workflows/01-upgrade-codex-runtime.yml",
+    "release": ROOT / ".github/workflows/02-verify-and-publish-portable.yml",
 }
 
 
@@ -100,6 +100,8 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
             "6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9",
             verifier)
         self.assertIn("Get-FileHash -LiteralPath $archive -Algorithm SHA256", verifier)
+        for workflow_path in WORKFLOWS.values():
+            self.assertIn("'" + workflow_path.relative_to(ROOT).as_posix() + "'", verifier)
         for key, source in self.files.items():
             with self.subTest(workflow=key):
                 self.assertIn("check-actionlint.ps1", source)
@@ -190,7 +192,7 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
     def test_removed_workflow_entries_cannot_reappear(self):
         self.assertEqual(
             sorted(path.name for path in (ROOT / ".github/workflows").glob("*.yml")),
-            ["01-update-codex.yml", "release.yml"])
+            ["01-upgrade-codex-runtime.yml", "02-verify-and-publish-portable.yml"])
         for retired in ("request-release-r2.yml", "02-check-compatibility.yml",
                         "download-browser.yml"):
             self.assertFalse((ROOT / ".github/workflows" / retired).exists())

@@ -1,4 +1,4 @@
-name: "02 - Windows 完整验证与 Release 发布（手动）"
+name: "02 - 验证并发布 Windows 便携包（手动）"
 
 on:
   workflow_dispatch:

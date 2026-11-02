@@ -200,7 +200,7 @@ def source_check(root: Path) -> dict:
     for name in REQUIRED - {"codex-package.json"}:
         check(name + " filter=lfs diff=lfs merge=lfs -text" in attributes,
               "Native binary not Git LFS-tracked: " + name)
-    release = txt(root, ".github/workflows/release.yml")
+    release = txt(root, ".github/workflows/02-verify-and-publish-portable.yml")
     check("  workflow_dispatch:" in release and "\n  push:" not in release and
           "release-audit.py --release" in release and
           "release-audit.py --verify" in release,

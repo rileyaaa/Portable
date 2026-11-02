@@ -205,7 +205,7 @@ class RepeatedUpgradeAndCompatibilityTests(TestCase):
         # Copy only the small, tracked configuration/test inputs. Real 500 MB
         # EXEs and package caches must never be copied or modified by this test.
         text_sources = set(UPGRADE.ALLOWED) - set(UPGRADE.UPSTREAM)
-        text_sources |= {".gitattributes", ".github/workflows/release.yml"}
+        text_sources |= {".gitattributes", ".github/workflows/02-verify-and-publish-portable.yml"}
         for relative in sorted(text_sources):
             original = ROOT / relative
             if not original.is_file():

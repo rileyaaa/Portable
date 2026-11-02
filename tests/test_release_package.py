@@ -58,7 +58,7 @@ class ReleasePackageTests(unittest.TestCase):
         for name in (PROJECT_DOCS - {"README.md"}) | MODE_COPIES | CONVERTER_RUNTIME:
             self.write(name, b"synthetic customer content\n")
         self.development_files = {
-            ".gitignore", ".gitattributes", ".github/workflows/release.yml",
+            ".gitignore", ".gitattributes", ".github/workflows/02-verify-and-publish-portable.yml",
             "tests/test_synthetic.py", "tests/fixtures/synthetic.json",
             CONVERTER + "test/smoke.js", CONVERTER + "test/static-audit.js",
             CONVERTER + "test/multi-array-sample.json",
@@ -275,7 +275,7 @@ class ReleasePackageTests(unittest.TestCase):
                         .issubset(included))
         self.assertTrue({name for name in names if name.endswith(".bat")}.issubset(included))
         self.assertTrue({".gitignore", ".gitattributes", "tool/package-release.py",
-                         "tests/test_release_package.py", ".github/workflows/release.yml",
+                         "tests/test_release_package.py", ".github/workflows/02-verify-and-publish-portable.yml",
                          CONVERTER + "test/smoke.js", CONVERTER + "test/static-audit.js",
                          CONVERTER + "test/multi-array-sample.json"}.issubset(excluded))
         self.assertFalse(any(name.startswith(("tests/", ".github/", CONVERTER + "test/"))

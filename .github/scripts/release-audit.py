@@ -56,7 +56,7 @@ def source_files(release: bool) -> list[Path]:
     if release:
         names.update(["run-codex.ps1", "env.ps1", "login-json.ps1", "codex-package.json",
                       "tool/runtime-manifest.json", "tool/package-release.py",
-                      "tool/python-packages.in.txt", ".github/workflows/release.yml",
+                      "tool/python-packages.in.txt", ".github/workflows/02-verify-and-publish-portable.yml",
                       ".github/maintenance/02-compatibility.py"])
         names.update(str(p.relative_to(ROOT)).replace(os.sep, "/")
                      for p in (ROOT / "Version_History").glob("*-*.ps1"))
