@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "platform": "win32-x64",
+  "note": "Only manually reviewed exact upstream URLs, versions, sha256 digests, and owned paths may be added. Empty plan is an intentional no-op; the checker does not invent checksums.",
+  "candidates": []
+}

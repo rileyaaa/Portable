@@ -39,7 +39,7 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Lint two official YAMLs with pinned actionlint
+      - name: Lint three official YAMLs with pinned actionlint
         timeout-minutes: 6
         env:
           GH_TOKEN: ${{ github.token }}

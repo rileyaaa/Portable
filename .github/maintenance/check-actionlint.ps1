@@ -1,4 +1,4 @@
-# Windows PowerShell 5.1. Validate both production workflows with a pinned actionlint binary.
+# Windows PowerShell 5.1. Validate all three manual production workflows with a pinned actionlint binary.
 # This script runs offline after downloading a release ZIP whose digest was reviewed.
 $ErrorActionPreference = 'Stop'
 $version = '1.7.12'
@@ -17,11 +17,11 @@ try {
     Expand-Archive -LiteralPath $archive -DestinationPath $bin -Force
     $exe = Join-Path $bin 'actionlint.exe'
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Pinned actionlint executable is missing.' }
-    & $exe -oneline '.github/workflows/01-upgrade-codex-runtime.yml' '.github/workflows/02-verify-and-publish-portable.yml'
+    & $exe -oneline '.github/workflows/01-upgrade-codex-runtime.yml' '.github/workflows/02-verify-and-publish-portable.yml' '.github/workflows/03-update-tools.yml'
     if ($LASTEXITCODE -ne 0) { throw 'actionlint rejected a production GitHub Actions workflow.' }
-    Write-Output 'ACTIONLINT_TWO_WORKFLOWS=PASS'
+    Write-Output 'ACTIONLINT_THREE_WORKFLOWS=PASS'
     if ($env:GITHUB_STEP_SUMMARY) {
-        'ACTIONLINT_TWO_WORKFLOWS=PASS (pinned v1.7.12 SHA-256)' |
+        'ACTIONLINT_THREE_WORKFLOWS=PASS (pinned v1.7.12 SHA-256)' |
             Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
     }
 } finally {

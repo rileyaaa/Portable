@@ -189,10 +189,21 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertNotIn("gh release create", upgrade)
         self.assertNotIn("git push origin", publisher)
 
+    def test_tool_updater_is_manual_and_not_a_coredex_release_path(self):
+        workflow = read(ROOT / ".github/workflows/03-update-tools.yml")
+        self.assertIn("\\non:\\n  workflow_dispatch:", workflow)
+        self.assertNotIn("\\n  push:", workflow)
+        self.assertNotIn("\\n  schedule:", workflow)
+        self.assertIn("default: check", workflow)
+        self.assertIn("default: false", workflow)
+        self.assertIn("needs: verify", workflow)
+        self.assertNotIn("gh release create", workflow)
+
     def test_removed_workflow_entries_cannot_reappear(self):
         self.assertEqual(
             sorted(path.name for path in (ROOT / ".github/workflows").glob("*.yml")),
-            ["01-upgrade-codex-runtime.yml", "02-verify-and-publish-portable.yml"])
+            ["01-upgrade-codex-runtime.yml", "02-verify-and-publish-portable.yml",
+             "03-update-tools.yml"])
         for retired in ("request-release-r2.yml", "02-check-compatibility.yml",
                         "download-browser.yml"):
             self.assertFalse((ROOT / ".github/workflows" / retired).exists())
