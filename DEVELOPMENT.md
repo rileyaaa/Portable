@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-02：十轮审计前止损预检的测试夹具修正（无 AC）
+
+- **发现的确定错误：** 在合成发行包原有 `test_archive_is_reproducible_and_excludes_untracked_private_state` 内，前面已成功调用两次 `build_release` 并通过 CLI 生成第三个 ZIP，因此新增的 `--check` 测试不能断言 `tmp` 不存在；该断言若进入下次完整回归必然误报失败。
+- **修复：** 在 `--check` 前拍下已经存在的输出目录清单，成功检查和故意制造未提交修改后的失败检查，都要求目录清单完全不变；保持真实 `--check`、ASCII JSON、干净 Git 与拒绝脏 Git 的正反向验证。仍然只使用原来的 8 个发行包测试方法，十轮审计的 `runtime=21` 计数未改。
+- **减少再次浪费：** 在 03 下载 Node/Paramiko 前的维护回归中，附加执行原有 `test_release_package.py` 8 个合成 Git/ZIP 测试；候选阶段完整 Python 回归和十轮审计仍执行该套测试，不删减后续覆盖。顺序合同测试也要求这套早期回归位于下载前。
+- **范围：** 仅测试/03 工作流/本开发记录；未执行 Windows 原生 runner、未上传 Node/SSH 或发布 ZIP，仍不将未执行步骤视为通过。
+
 ## 2026-11-02：03 后段审查与十轮审计前的 ZIP 输入止损预检（未运行 AC）
 
 - **原因与范围：** 第七次 `03` 在原生启动/搬迁测试失败，十轮审计、正式客户 ZIP、独立写权限 `propose` 仍未实测。继续审查发现现有流程先跑十轮 `release-audit.py --release`，才第一次检查真实候选能否通过 `package-release.py` 的客户输入检验；若 Node/SSH 新文件与 Windows 路径、LFS 水合、浏览器清单或 Codex 身份冲突，十轮审计的费用会白花。
