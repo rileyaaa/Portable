@@ -32,6 +32,7 @@ def load(path: str, alias: str):
 
 stage = load("tool/full-stable-prepare.py", "portable_full_stage")
 transfer = load("tool/full-stable-transfer.py", "portable_full_transfer")
+fast = load("tool/full-stable-diagnose.py", "portable_fast_diagnose")
 pure = load("tool/full_stable_pure_wheels.py", "portable_pinned_pyyaml")
 
 
@@ -43,7 +44,7 @@ class FullStableUpgradeTests(unittest.TestCase):
             ast.parse((ROOT / path).read_text(encoding="utf-8"), filename=path)
         source = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
-        self.assertIn("options: [check, prepare, full]", source)
+        self.assertIn("options: [check, diagnose, prepare, full]", source)
         self.assertIn("    if: github.ref == 'refs/heads/main' && inputs.mode != 'full'", source)
         self.assertIn("name: Full tool stable refresh - Windows read-only verifier", source)
         self.assertIn("name: Full tool trusted writer", source)
@@ -76,6 +77,53 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertLess(writer.index("full-stable-transfer.py apply"),
                         writer.index("git push origin"))
         self.assertNotIn("full-stable-prepare.py prepare", writer)
+
+    def test_fast_batch_diagnostics_no_full_action_artifacts_and_aggregate_errors(self):
+        workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
+            encoding="utf-8")
+        self.assertIn("options: [check, diagnose, prepare, full]", workflow)
+        self.assertIn("inputs.mode != 'full' && inputs.mode != 'diagnose'", workflow)
+        quick = workflow.split("\n  fast_diagnose:", 1)[1]
+        self.assertIn("inputs.mode == 'diagnose'", quick)
+        self.assertIn("inputs.create_pr == false", quick)
+        self.assertIn("permissions:\n      contents: read", quick)
+        self.assertNotIn("contents: write", quick)
+        self.assertNotIn("actions: write", quick)
+        self.assertIn("runs-on: ubuntu-latest", quick)
+        self.assertIn("lfs: false", quick)
+        self.assertIn("persist-credentials: false", quick)
+        self.assertIn("tool/full-stable-diagnose.py --network", quick)
+        for forbidden in ("upload-artifact", "download-artifact",
+                          "gh release create", "git push", "stage_npm"):
+            self.assertNotIn(forbidden, quick)
+        program = (ROOT / "tool/full-stable-diagnose.py").read_text(encoding="utf-8")
+        ast.parse(program)
+        self.assertNotIn("stage.prepare(", program)
+        self.assertNotIn("stage.stage_npm(", program)
+        plan = json.loads((ROOT / "tool/full-stable-upgrade-plan.json").read_text(
+            encoding="utf-8"))
+        def fake_probe(name, *_):
+            if name == "corepack":
+                raise ValueError("mock registry error")
+            return "mock official metadata OK"
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(fast, "ROOT", Path(directory)), \
+             patch.object(fast, "offline_suite", return_value="mock local PASS"), \
+             patch.object(fast, "network_probe", side_effect=fake_probe):
+            records = fast.diagnose(include_network=True, plan=plan, stage=stage)
+            self.assertEqual([r["probe"] for r in records],
+                             ["plan", "contracts", "workflows", "npm",
+                              "corepack", "playwright", "pip", "pdf"])
+            self.assertEqual([r["probe"] for r in records if r["status"] == "FAIL"],
+                             ["corepack"])
+            self.assertEqual(sum(r["status"] == "PASS" for r in records), 7)
+            self.assertFalse(any((Path(directory) / "tmp").iterdir()))
+        with patch.object(fast, "network_probe",
+                          side_effect=AssertionError("network attempted")), \
+             patch.object(fast, "offline_suite", return_value="PASS"):
+            no_network = fast.diagnose(include_network=False, plan=plan, stage=stage)
+            self.assertEqual([r["probe"] for r in no_network],
+                             ["plan", "contracts", "workflows"])
 
     def test_full_candidate_artifact_short_retention_and_same_run_cleanup(self):
         workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
