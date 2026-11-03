@@ -127,6 +127,77 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertIn('run(new_python, "-E", "-s", "-B", "-m", "pip", "--version")', code)
         self.assertNotIn("pyyaml-cp315", code)
 
+    def test_optional_pypi_release_metadata_wheel_only_and_rejects_forgery(self):
+        import copy
+        digest = "a" * 64
+        base = "https://files.pythonhosted.org/packages/verified/"
+        filename = "pymupdf4llm-2.1-py3-none-any.whl"
+        wheelurl = base + filename
+        release = {"info": {"name": "pymupdf4llm", "version": "2.1"}, "urls": [
+            {"filename": filename, "packagetype": "bdist_wheel", "url": wheelurl,
+             "digests": {"sha256": digest}, "yanked": False}]}
+        check = stage.optional_release_provenance
+        self.assertEqual(check(release, "pymupdf4llm", "2.1", filename, wheelurl, digest),
+                         (None, "not_published_on_pypi"))
+        src = {"filename": "pymupdf4llm-2.1.tar.gz", "packagetype": "sdist",
+               "url": base + "pymupdf4llm-2.1.tar.gz",
+               "digests": {"sha256": digest}, "yanked": False}
+        release["urls"].append(src)
+        self.assertEqual(check(release, "pymupdf4llm", "2.1", filename, wheelurl, digest),
+                         ({"url": src["url"], "sha256": digest}, "published"))
+        for mode in ("name", "version", "hash", "wheel_host", "wheel_yanked",
+                     "missing_wheel", "source_hash", "source_host",
+                     "source_yanked", "source_filename", "duplicate_source"):
+            bad = copy.deepcopy(release)
+            if mode == "name": bad["info"]["name"] = "attacker"
+            if mode == "version": bad["info"]["version"] = "1.0"
+            if mode == "hash": bad["urls"][0]["digests"]["sha256"] = "b" * 64
+            if mode == "wheel_host": bad["urls"][0]["url"] = "https://invalid.example/w"
+            if mode == "wheel_yanked": bad["urls"][0]["yanked"] = True
+            if mode == "missing_wheel": bad["urls"].pop(0)
+            if mode == "source_hash": bad["urls"][-1]["digests"]["sha256"] = "bad"
+            if mode == "source_host": bad["urls"][-1]["url"] = "https://invalid.example/s"
+            if mode == "source_yanked": bad["urls"][-1]["yanked"] = True
+            if mode == "source_filename": bad["urls"][-1]["filename"] = "wrong.tar.gz"
+            if mode == "duplicate_source": bad["urls"].append(copy.deepcopy(src))
+            with self.subTest(mode=mode), self.assertRaisesRegex(ValueError, "optional"):
+                check(bad, "pymupdf4llm", "2.1", filename, wheelurl, digest)
+
+    def test_metadata_only_4llm_license_requires_exact_matching_core_and_layout(self):
+        stub = {"tool/python/Lib/site-packages/pymupdf4llm-2.1.dist-info/METADATA":
+                "a" * 64}
+        parent = [{"name": "PyMuPDF", "version": "2.1",
+                   "files": {"tool/python/Lib/site-packages/pymupdf4llm/__init__.py":
+                             "a" * 64,
+                             "tool/python/Lib/site-packages/pymupdf-2.1.dist-info/LICENSE":
+                             "b" * 64}}]
+        deps = {"pymupdf": {"version": "2.1"},
+                "pymupdf-layout": {"version": "2.1"}}
+        check = stage.optional_license_origin
+        self.assertEqual(check("pymupdf4llm", "2.1", stub, parent, deps), "PyMuPDF")
+        self.assertIsNone(check("defusedxml", "0.7.1",
+                                {"tool/python/Lib/site-packages/d/LICENSE": "a" * 64},
+                                [], {}))
+        for name, version, files, pkg, closure in (
+                ("tabulate", "0.10.0", stub, parent, deps),
+                ("pymupdf4llm", "0.2.9", stub, parent, deps),
+                ("pymupdf4llm", "2.1", dict(stub, **{"other.py": "b" * 64}), parent, deps),
+                ("pymupdf4llm", "2.1", stub, [], deps),
+                ("pymupdf4llm", "2.1", stub, parent,
+                 {"pymupdf": {"version": "1.28.2"}, "pymupdf-layout": {"version": "2.1"}}),
+                ("pymupdf4llm", "2.1", stub, parent,
+                 {"pymupdf": {"version": "2.1"}, "pymupdf-layout": {"version": "1.28.2"}})):
+            with self.subTest(name=name, version=version, files=files), self.assertRaises(ValueError):
+                check(name, version, files, pkg, closure)
+
+    def test_new_pymupdf_stable_floor_and_native_4llm_check(self):
+        source = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
+            encoding="utf-8")
+        self.assertIn('x + ">=2.1"', source)
+        self.assertIn("optional_license_origin(name, version, files, packages, resolved)", source)
+        self.assertIn("PYMUPDF4LLM_NATIVE=PASS", workflow)
+
     def test_pip_pinned_json_never_accepts_wrong_hash_or_untrusted_wheel(self):
         wheel = "pip-26.3-py3-none-any.whl"
         checksum = "f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13"
