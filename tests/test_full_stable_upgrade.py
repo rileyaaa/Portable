@@ -89,9 +89,12 @@ class FullStableUpgradeTests(unittest.TestCase):
             art = entries[name]["artifact"]
             self.assertTrue(art["url"].startswith("https://"))
             self.assertRegex(art["sha256"], r"^[a-f0-9]{64}$")
-        self.assertFalse((ROOT / "tool/installed-tools.json").read_text(
-            encoding="utf-8").find('"version": "3.15.2"') >= 0 and
-            plan["state"] == "PREPARATION_ONLY_NOT_INSTALLED")
+        # Same test runs before AND after Windows candidate staging. Never
+        # mistake the read-only candidate's temporary ledger for a main merge.
+        installed = json.loads((ROOT / "tool/installed-tools.json").read_text(
+            encoding="utf-8"))["tools"]
+        self.assertIn(installed["python"]["version"], ("3.14", "3.15.2"))
+        self.assertIn(installed["npm"]["version"], ("11.20.0", "12.2.1"))
 
     def test_archive_paths_fail_closed(self):
         for text in ("", "..", "../evil", "a/../evil", "C:/thing",
