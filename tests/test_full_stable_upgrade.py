@@ -100,6 +100,11 @@ class FullStableUpgradeTests(unittest.TestCase):
         ast.parse(program)
         self.assertNotIn("stage.prepare(", program)
         self.assertNotIn("stage.stage_npm(", program)
+        release = load("tool/package-release.py", "portable_release_diagnose_exclusion")
+        included, excluded = release.customer_files(["tool/full-stable-diagnose.py",
+                                                    "tool/installed-tools.json"])
+        self.assertEqual(included, ["tool/installed-tools.json"])
+        self.assertIn("tool/full-stable-diagnose.py", excluded)
         plan = json.loads((ROOT / "tool/full-stable-upgrade-plan.json").read_text(
             encoding="utf-8"))
         def fake_probe(name, *_):
