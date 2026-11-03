@@ -220,6 +220,11 @@ class ToolUpdateTests(unittest.TestCase):
                         tools.plan()
 
     def test_group_selection_and_staged_scope(self):
+        # Keep the historical Node LFS fixture compatible with the actual
+        # staged-digest contract. Missing destination/kind caused run #41554504292.
+        self.assertEqual(set(NODE_LFS_FIXTURE), {'tool', 'version', 'destination', 'kind'})
+        self.assertEqual((NODE_LFS_FIXTURE['destination'], NODE_LFS_FIXTURE['kind']),
+                         ('tool/node', 'directory'))
         self.assertEqual(tools.selected_rows('ssh'), [])
         self.assertEqual([r['tool'] for r in tools.selected_rows('all')], ['ripgrep', 'fd', 'jq'])
         self.assertEqual([r['tool'] for r in tools.selected_rows('tools')], ['ripgrep', 'fd', 'jq'])
