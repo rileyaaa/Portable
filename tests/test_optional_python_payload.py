@@ -22,16 +22,29 @@ class OptionalPythonPayloadTests(unittest.TestCase):
             with self.subTest(package=package["name"]):
                 self.assertIn(f'{package["name"]}=={package["version"]}', requirements)
                 self.assertTrue(package["source"].startswith("https://files.pythonhosted.org/"))
-                self.assertTrue(
-                    package["source_distribution"]["url"].startswith(
-                        "https://files.pythonhosted.org/"
-                    )
-                )
+                source = package["source_distribution"]
+                if source is None:
+                    self.assertEqual(package["source_distribution_status"],
+                                     "not_published_on_pypi")
+                else:
+                    self.assertTrue(source["url"].startswith("https://files.pythonhosted.org/"))
+                    self.assertRegex(source["sha256"], r"^[0-9a-f]{64}$")
+                    if "source_distribution_status" in package:
+                        self.assertEqual(package["source_distribution_status"], "published")
                 self.assertRegex(package["sha256"], r"^[0-9a-f]{64}$")
-                self.assertRegex(package["source_distribution"]["sha256"], r"^[0-9a-f]{64}$")
-                self.assertTrue(
-                    any(Path(name).name in {"LICENSE", "COPYING"} for name in package["files"])
-                )
+                origin = package.get("license_provided_by")
+                if origin is None:
+                    self.assertTrue(any(Path(n).name in {"LICENSE", "COPYING"}
+                                        for n in package["files"]))
+                else:
+                    self.assertEqual(origin, "PyMuPDF")
+                    self.assertEqual(package["name"].lower(), "pymupdf4llm")
+                    parent = next(p for p in self.packages
+                                  if p["name"].lower() == "pymupdf")
+                    self.assertEqual(parent["version"], package["version"])
+                    self.assertTrue(any("/pymupdf4llm/" in n for n in parent["files"]))
+                    self.assertTrue(any(Path(n).name in {"LICENSE", "COPYING"}
+                                        for n in parent["files"]))
                 for name, expected in package["files"].items():
                     target = ROOT / name
                     self.assertFalse(target.is_symlink(), name)

@@ -369,6 +369,9 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     require(sum(x.lower().replace("_", "-") == "pyyaml" for x in requested) == 1,
             "Expected exactly one bundled PyYAML distribution")
     binary_requests = [x for x in requested if x.lower().replace("_", "-") != "pyyaml"]
+    # Avoid upstream 2.0 Core/Layout/4LLM mismatch while allowing future major releases.
+    binary_requests = [x + ">=2.1" if x.lower().replace("_", "-") in
+                       ("pymupdf", "pymupdf4llm") else x for x in binary_requests]
     spellings = {x.lower().replace('_', '-'): x for x in base_names + ssh_names}
     (temp / "requirements.in").write_text("\n".join(binary_requests) + "\n", encoding="utf-8")
     report_path = temp / "python-resolution.json"
@@ -852,6 +855,81 @@ def stage_browser(temp: Path, version: str, revision: str, evidence: dict) -> No
     write_json(versions_file, versions)
 
 
+
+def official_optional_url(value: str) -> bool:
+    """Accept only canonical PyPI-hosted HTTPS archives."""
+    if not isinstance(value, str):
+        return False
+    try:
+        url = urllib.parse.urlsplit(value)
+        return (url.scheme == "https" and url.hostname == "files.pythonhosted.org" and
+                url.username is None and url.password is None and url.port in (None, 443) and
+                url.path.startswith("/packages/") and not url.query and not url.fragment)
+    except ValueError:
+        return False
+
+
+def optional_release_provenance(release: dict, name: str, version: str,
+                                wheelname: str, wheelurl: str,
+                                wheeldigest: str) -> tuple[dict | None, str]:
+    """A wheel-only release is valid, but its official wheel identity is mandatory."""
+    label = name + "==" + version
+    info = release.get("info", {})
+    require(isinstance(info, dict) and
+            str(info.get("name", "")).lower().replace("_", "-") == name and
+            str(info.get("version", "")) == version,
+            "Official optional package identity mismatch: " + label)
+    rows = release.get("urls", [])
+    require(isinstance(rows, list) and all(isinstance(x, dict) for x in rows),
+            "Invalid official PyPI release file list: " + label)
+    wheels = [x for x in rows if x.get("packagetype") == "bdist_wheel" and
+              x.get("filename") == wheelname]
+    require(len(wheels) == 1 and official_optional_url(wheelurl) and
+            wheels[0].get("url") == wheelurl and
+            re.fullmatch(r"[a-f0-9]{64}", wheeldigest or "") is not None and
+            wheels[0].get("digests", {}).get("sha256") == wheeldigest and
+            wheels[0].get("yanked") is not True,
+            "Official optional wheel provenance mismatch: " + label)
+    sdists = [x for x in rows if x.get("packagetype") == "sdist"]
+    require(len(sdists) <= 1, "Ambiguous official optional source distributions: " + label)
+    if not sdists:
+        return None, "not_published_on_pypi"
+    source = sdists[0]
+    source_url = source.get("url")
+    digest = source.get("digests", {}).get("sha256", "")
+    filename = source.get("filename")
+    require(official_optional_url(source_url) and
+            isinstance(filename, str) and
+            urllib.parse.unquote(urllib.parse.urlsplit(source_url).path.rsplit("/", 1)[-1]) == filename and
+            filename.endswith((".tar.gz", ".zip")) and
+            re.fullmatch(r"[a-f0-9]{64}", digest or "") is not None and
+            source.get("yanked") is not True,
+            "Official optional source distribution provenance invalid: " + label)
+    return {"url": source_url, "sha256": digest}, "published"
+
+
+def optional_license_origin(name: str, version: str, files: dict,
+                            packages: list, resolved: dict) -> str | None:
+    """Verify the licensed real code behind PyMuPDF 2.x's metadata-only 4LLM shim."""
+    require(bool(files), "Bundled optional wheel has no installed files: " + name)
+    if any(Path(f).name in ("LICENSE", "COPYING") for f in files):
+        return None
+    label = name + "==" + version
+    require(name == "pymupdf4llm" and
+            re.fullmatch(r"2\.[0-9]+(?:\.[0-9]+)*", version) is not None and
+            all("/pymupdf4llm-" in f and ".dist-info/" in f for f in files) and
+            any(f.endswith("/METADATA") for f in files),
+            "Bundled wheel license file missing: " + label)
+    parent = next((p for p in packages if p["name"].lower() == "pymupdf"), None)
+    require(parent is not None and parent["version"] == version and
+            resolved.get("pymupdf", {}).get("version") == version and
+            resolved.get("pymupdf-layout", {}).get("version") == version and
+            any("/pymupdf4llm/" in p for p in parent["files"]) and
+            any(Path(p).name in ("LICENSE", "COPYING") for p in parent["files"]),
+            "PyMuPDF 4LLM metadata-only wheel lacks matching licensed core/layout: " + label)
+    return "PyMuPDF"
+
+
 def python_manifests(temp: Path, resolved: dict, evidence: dict) -> None:
     """Rebuild manifests from installed bytes; never keep stale CPython 3.14 hashes."""
     optional_file = TOOL / "optional-python-manifest.json"
@@ -867,12 +945,9 @@ def python_manifests(temp: Path, resolved: dict, evidence: dict) -> None:
         download("https://pypi.org/pypi/" + urllib.parse.quote(name) +
                  "/" + urllib.parse.quote(version) + "/json", meta, limit=4*1024*1024)
         release = obj(meta)
-        sdists = [u for u in release.get("urls", [])
-                  if u.get("packagetype") == "sdist"]
-        require(len(sdists) == 1 and
-                sdists[0]["url"].startswith("https://files.pythonhosted.org/") and
-                re.fullmatch(r"[a-f0-9]{64}", sdists[0].get("digests", {}).get("sha256", "")),
-                "Official optional package source provenance missing")
+        source_distribution, source_status = optional_release_provenance(
+            release, name, version, resolved[name]["wheel"],
+            evidence["wheels"][name]["url"], resolved[name]["sha256"])
         wheel = temp / "wheels" / resolved[name]["wheel"]
         files = {}
         with zipfile.ZipFile(wheel) as archive:
@@ -883,8 +958,7 @@ def python_manifests(temp: Path, resolved: dict, evidence: dict) -> None:
                 installed = site.joinpath(*item.filename.split("/"))
                 if installed.is_file():
                     files[installed.relative_to(ROOT).as_posix()] = sha(installed)
-        require(files and any(Path(f).name in ("LICENSE", "COPYING") for f in files),
-                "Bundled wheel license file missing: " + label)
+        license_origin = optional_license_origin(name, version, files, packages, resolved)
         if name == "pymupdf":
             require(any(p.endswith((".pyd", ".dll")) for p in files),
                     "Native PyMuPDF wheel missing")
@@ -892,9 +966,9 @@ def python_manifests(temp: Path, resolved: dict, evidence: dict) -> None:
             "name": label, "version": version, "wheel": resolved[name]["wheel"],
             "source": evidence["wheels"][name]["url"],
             "sha256": resolved[name]["sha256"],
-            "source_distribution": {
-                "url": sdists[0]["url"],
-                "sha256": sdists[0]["digests"]["sha256"]},
+            "source_distribution": source_distribution,
+            "source_distribution_status": source_status,
+            "license_provided_by": license_origin,
             "files": dict(sorted(files.items()))})
     write_json(optional_file, {
         "target": "Windows x64 CPython 3.15.2",
