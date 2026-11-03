@@ -477,7 +477,9 @@ def stage_7zip(plan: dict, temp: Path, evidence: dict) -> None:
             "7z.exe and 7z.dll must come from the same official x64 package root")
     for name in ("7z.exe", "7z.dll"):
         shutil.copyfile(chosen[name], TOOL / "bin" / name)
-    run(TOOL / "bin/7z.exe", "i")
+    version = run(TOOL / "bin/7z.exe", "i", capture=True).stdout
+    require(re.search(r"(?i)7-Zip\s+26\.05\b", version) is not None,
+            "Extracted full 7-Zip native version differs from official 26.05")
 
 def npm_env(temp: Path) -> dict:
     empty = temp / "empty.npmrc"
