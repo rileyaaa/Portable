@@ -11,6 +11,7 @@ import base64
 import csv
 from email.parser import BytesParser
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -26,10 +27,18 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-from full_stable_pure_wheels import build_pyyaml_pure_wheel
 
 ROOT = Path(__file__).resolve().parent.parent
 TOOL = ROOT / "tool"
+# Exact repo-owned sibling import works both as a script and via unittest importlib.
+_pure_spec = importlib.util.spec_from_file_location(
+    "codex_portable_pure_wheels", Path(__file__).resolve().with_name("full_stable_pure_wheels.py"))
+require_pure_spec = _pure_spec is not None and _pure_spec.loader is not None
+if not require_pure_spec:
+    raise RuntimeError("Missing trusted source-only wheel builder")
+_pure_module = importlib.util.module_from_spec(_pure_spec)
+_pure_spec.loader.exec_module(_pure_module)
+build_pyyaml_pure_wheel = _pure_module.build_pyyaml_pure_wheel
 PLAN = TOOL / "full-stable-upgrade-plan.json"
 MAX_BYTES = 1100 * 1024 * 1024
 MAX_FILES = 25000
