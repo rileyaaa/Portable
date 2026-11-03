@@ -144,7 +144,7 @@ class FullStableUpgradeTests(unittest.TestCase):
         modern = {"info": {"name": "onnxruntime", "version": "1.31.1"},
                   "urls": [cp314]}
         legacy = {
-            "pymupdf": ("1.28.2", wheel("pymupdf-1.28.2-cp311-abi3-win_amd64.whl")),
+            "pymupdf": ("1.28.2", wheel("pymupdf-1.28.2-cp310-abi3-win_amd64.whl")),
             "pymupdf4llm": ("0.3.4", wheel("pymupdf4llm-0.3.4-py3-none-any.whl"))}
         calls = []
         def fake_download(url, file, **kwargs):
@@ -188,7 +188,7 @@ class FullStableUpgradeTests(unittest.TestCase):
             return {"filename": filename, "url": base + filename,
                     "packagetype": "bdist_wheel",
                     "digests": {"sha256": "a" * 64}, "yanked": False}
-        file = "pymupdf-1.28.2-cp311-abi3-win_amd64.whl"
+        file = "pymupdf-1.28.2-cp310-abi3-win_amd64.whl"
         record = wheel(file)
         release = {"info": {"name": "pymupdf", "version": "1.28.2"},
                    "urls": [record]}
