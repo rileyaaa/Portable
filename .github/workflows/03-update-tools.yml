@@ -10,11 +10,11 @@ on:
         options: [check, prepare]
         default: check
       group:
-        description: "ssh=Paramiko；tools=仅审核过的更新计划；all=两者"
+        description: "tools=仅本批已核准工具（默认）；ssh=Paramiko；all=两者（会重装 SSH）"
         required: true
         type: choice
         options: [ssh, tools, all]
-        default: all
+        default: tools
       create_pr:
         description: "仅 prepare 且全量验证通过时，建立候选 PR；从不自动合并 main"
         required: true
