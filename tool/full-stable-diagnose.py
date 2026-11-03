@@ -155,6 +155,8 @@ def diagnose(*, include_network: bool, selected: set[str] | None = None,
     if not enabled.issubset(valid):
         raise ValueError("Unrecognized fast diagnostics: " + ",".join(sorted(enabled - valid)))
     if not include_network and enabled.intersection(NETWORK_PROBES):
+        if selected is not None:
+            raise ValueError("Selected upstream probes require --network")
         enabled = enabled - set(NETWORK_PROBES)
     result = []
     if "plan" in enabled:
