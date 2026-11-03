@@ -141,6 +141,46 @@ class FullStableUpgradeTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 stage.untar_checked(archive, root / "bad")
 
+    def test_7zip_official_full_sfx_pe_amd64_and_paired_dll_policy(self):
+        plan = json.loads((ROOT / "tool/full-stable-upgrade-plan.json").read_text(
+            encoding="utf-8"))
+        seven = next(x for x in plan["targets"] if x["name"] == "7zip")
+        self.assertEqual(seven["artifact"]["url"],
+                         "https://github.com/ip7z/7zip/releases/download/26.05/7z2605-x64.exe")
+        self.assertEqual(seven["artifact"]["sha256"],
+                         "fd99e86f57d8f429ef5ed045bf98315af962e2309b0f1ba87a147a44c71647d0")
+        code = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
+        self.assertIn("run(old_exe, \"x\",", code)
+        self.assertNotIn("run(archive,", code)
+        self.assertIn('chosen["7z.exe"].parent == chosen["7z.dll"].parent', code)
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "candidate.exe"
+            def pe(machine):
+                data = bytearray(320)
+                data[0:2] = b"MZ"
+                data[0x3c:0x40] = (0x90).to_bytes(4, "little")
+                data[0x90:0x94] = b"PE\x00\x00"
+                data[0x94:0x96] = machine.to_bytes(2, "little")
+                return data
+            path.write_bytes(pe(0x8664))
+            self.assertTrue(stage.pe_amd64(path))
+            path.write_bytes(pe(0x14c))
+            self.assertFalse(stage.pe_amd64(path))
+            path.write_bytes(pe(0xaa64))
+            self.assertFalse(stage.pe_amd64(path))
+            path.write_bytes(b"MZ" + b"\x00" * 5)
+            self.assertFalse(stage.pe_amd64(path))
+
+    def test_pip_upgrade_preserves_all_local_portable_wrappers(self):
+        code = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
+        for name in ("pip.exe", "pip3.exe", "pip3.15.exe"):
+            self.assertIn(name, code)
+        self.assertIn('pip_launcher_lock.write_text(', code)
+        self.assertIn('"--require-hashes", "--no-warn-script-location"', code)
+        self.assertIn('TOOL / "refresh-python-cli-shims.py"', code)
+        self.assertLess(code.index('vendor = pip_launch / "bin"'),
+                        code.index('replace_tree(staged_python, TOOL / "python", temp)'))
+
     def test_writer_filenames_allow_only_owned_tool_files(self):
         for name in (".github/workflows/02.yml", "codex.exe", "tool/python/../evil",
                      "tool/bin/evil.exe", "tool/bin/other.ps1", "tool/python/x.pyc",
