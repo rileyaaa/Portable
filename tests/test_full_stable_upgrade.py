@@ -145,6 +145,44 @@ class FullStableUpgradeTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 stage.untar_checked(archive, root / "bad")
 
+    def test_pip_generated_console_launchers_are_owned_by_hash_record(self):
+        # Reproduce pip wheel bootstrap on a synthetic target (no network, EXE
+        # execution or host-site changes). python-lock.validate_runtime must
+        # accept only the three hash-registered launchers.
+        wheel_lock = load("tool/python-lock.py", "full_stable_lock_synthetic")
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            site = root / "tool/python/Lib/site-packages"
+            bin_dir = site / "bin"
+            info = site / "pip-26.2.2.dist-info"
+            bin_dir.mkdir(parents=True)
+            info.mkdir()
+            (info / "METADATA").write_text(
+                "Metadata-Version: 2.3\nName: pip\nVersion: 26.2.2\n",
+                encoding="utf-8")
+            record = info / "RECORD"
+            record.write_text(
+                "pip/__init__.py,,\npip-26.2.2.dist-info/RECORD,,\n",
+                encoding="utf-8")
+            for name in ("pip.exe", "pip3.exe", "pip3.15.exe"):
+                (bin_dir / name).write_bytes(b"MZ" + bytes(range(256)) * 5)
+            stage.register_generated_pip_launchers(site)
+            import csv
+            with record.open("r", encoding="utf-8", newline="") as src:
+                entries = list(csv.reader(src))
+            launched = [row for row in entries if row[0].startswith("bin/")]
+            self.assertEqual([row[0] for row in launched],
+                             ["bin/pip.exe", "bin/pip3.exe", "bin/pip3.15.exe"])
+            for name, digest, size in launched:
+                path = site / name
+                self.assertTrue(digest.startswith("sha256="))
+                self.assertEqual(int(size), path.stat().st_size)
+            wheel_lock.validate_runtime(root, b"pip==26.2.2\n")
+            record.write_text("pip/__init__.py,,\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Unowned Python bin"):
+                wheel_lock.validate_runtime(root, b"pip==26.2.2\n")
+
+
     def test_7zip_official_full_sfx_pe_amd64_and_paired_dll_policy(self):
         plan = json.loads((ROOT / "tool/full-stable-upgrade-plan.json").read_text(
             encoding="utf-8"))
