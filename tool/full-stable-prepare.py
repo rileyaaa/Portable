@@ -8,6 +8,7 @@ replace its own loaded DLLs. All downloads are confined to package tmp/.
 from __future__ import annotations
 
 import base64
+import csv
 from email.parser import BytesParser
 import hashlib
 import io
@@ -218,6 +219,37 @@ def target(plan: dict, name: str) -> dict:
     return values[0]
 
 
+def register_generated_pip_launchers(site: Path) -> None:
+    """Own only three standard pip Windows entrypoints in pip's wheel RECORD.
+
+    Pip's wheel ZIP has no EXE launchers, but the official wheel installed
+    into --target creates three from its console_scripts. The original wheel
+    RECORD must not be silently repurposed to claim arbitrary files.
+    """
+    record_files = list(site.glob("pip-*.dist-info/RECORD"))
+    require(len(record_files) == 1,
+            "Expected exactly one official pip dist-info RECORD")
+    record = record_files[0]
+    with record.open("r", encoding="utf-8", newline="") as stream:
+        rows = list(csv.reader(stream))
+    require(all(len(row) == 3 for row in rows),
+            "Malformed pip wheel RECORD")
+    owned = {row[0].casefold() for row in rows}
+    require(len(owned) == len(rows), "Duplicate path in pip wheel RECORD")
+    for name in ("pip.exe", "pip3.exe", "pip3.15.exe"):
+        rel = "bin/" + name
+        require(rel.casefold() not in owned,
+                "Generated pip launcher unexpectedly already owned")
+        binary = site / rel
+        require(binary.is_file() and binary.stat().st_size > 1024,
+                "Missing actual official pip Windows launcher " + name)
+        digest = base64.urlsafe_b64encode(
+            bytes.fromhex(sha(binary))).rstrip(b"=").decode("ascii")
+        rows.append([rel, "sha256=" + digest, str(binary.stat().st_size)])
+    with record.open("w", encoding="utf-8", newline="") as stream:
+        csv.writer(stream, lineterminator="\n").writerows(rows)
+
+
 def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     row, pip = target(plan, "python"), target(plan, "pip")
     require(row["latestStable"] == "3.15.2" and pip["latestStable"] == "26.2.2",
@@ -342,6 +374,7 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
         require(candidate.is_file() and candidate.stat().st_size > 1024,
                 "pip 26.2.2 is missing expected Windows launcher " + name)
         shutil.copyfile(candidate, scripts / name)
+    register_generated_pip_launchers(stage / "Lib/site-packages")
     # pip was bootstrapped directly from the same officially hashed wheel.
     for label, output in (("base", stage / "Lib/site-packages"),
                           ("ssh", stage / "ssh-packages")):

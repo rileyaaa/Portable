@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-03：第十二次 03 / full 运行下载前失败，修复跨模式回归断言和 pip RECORD（不触发 AC）
+
+- **实际运行：** 用户手动运行 [Actions #41573391951](https://github.com/rileyaaa/Codex-Portable/actions/runs/41573391951)，基于 `main=f084d5205473a7a0c5a3ca59411fc2ceb6f50d6d`，`full_verify` 在第 4 步下载前中断，总耗时约 1 分 53 秒；`actionlint` 成功，35 项 `test_tool_updates.py` 中 34 项通过、1 项 `FAIL`，`full_propose` 跳过。完整日志：`tests/test_tool_updates.py:172` 的 `workflow.count(needle)` 要求维护测试命令只出现一次，但 `03` 新旧流程合并后实际出现三次，抛出 `AssertionError: 3 != 1`。本次**没有下载新工具、替换版本、上传候选分支或发布 Release**。
+- **修复原因与范围：** 在 `test_tool_maintenance_regressions_run_before_any_candidate_download` 中独立检查旧 `verify` 和新增 `full_verify` 的下载前回归（每条路径恰好一组，且必须早于各自候选准备步骤），而不是统计整个 YAML；删掉 `full_verify` 中原先重复继承的旧维护测试步骤，保留独立测试、受控临时环境及真实启动器搬迁验证。不会减少 19 项 Windows PowerShell 5.1 回归、十轮发行审计及真实 ZIP 检查。
+- **后续确定性故障预防：** 独立审查发现 Python 3.15 更新时，从固定 SHA-256 pip wheel 生成的 `pip.exe / pip3.exe / pip3.15.exe` 缺少 `RECORD` 所有权记录，旧 `python-lock.py validate-runtime` 会按设计拒绝这些 `bin` 文件。现对这三个固定官方入口登记文件 SHA-256、大小及规范相对路径，新增不联网、不执行 EXE 的模拟 pip RECORD 正反向测试，并验证缺少记录时仍应失败。其他文件及原始 wheel 下载摘要不变。
+- **不消耗额外 AC 的检查：** 已核对下载前日志与 Job 状态（并非 Python 3.15 原生测试失败）；固定官方 CPython 3.15.2 embeddable ZIP 和 pip 26.2.2 wheel 的摘要与公开上游资料一致；验证新旧流程各只执行一次对应维护测试、失败分支不获得写入权限。合成 Python wheel 的本地 `pip install --target --require-hashes` 证明使用 `bin/` 及 `../../bin/` 记录形式。上述证据属于源码、合成输入与静态合同检查，**不冒充 GitHub Windows 原生验收已完成**。
+- **待执行范围：** 源码修复合入后，仅用户负责手动启动新的 `03 / mode=full / group=tools / create_pr=true`。不能重跑先前的旧 SHA 失败 Job；若下一次仍失败，先读真实 Job 日志定位，再修代码，绝不自动触发、合并未验证工具或发布 Release。
+
 ## 2026-11-03：第十一次 03 Windows CLI 工具更新验证完成，PR #12 合入 main（不发布 Release）
 
 - **验证运行：** 用户手动启动 [03 Actions #41561816105](https://github.com/rileyaaa/Codex-Portable/actions/runs/41561816105)，`workflow_dispatch` 在原 `main=e6d65b4623df85e318683ec7bdcf414b7caa3fc1` 执行 `mode=prepare / group=tools / create_pr=true`。整体 `success`，只读 `verify` 与隔离可信写入 `propose` 均为 `success`；无需再次运行 03。前一次 25 分钟 PowerShell 超时已经由 PR #11 的 45 分钟上限解决，此次 19 个 PowerShell 5.1 测试都有 `WINDOWS_PS_TEST_END` 且 `exit=0`，约 18 分 54 秒完成。
