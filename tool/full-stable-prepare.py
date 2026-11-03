@@ -378,12 +378,46 @@ def official_onnx_win315_wheel(record: dict, version: str) -> bool:
     return False
 
 
-def preflight_python315_onnxruntime(temp: Path, evidence: dict) -> None:
-    """Fail before npm/Chromium downloads when PyMuPDF 2.x cannot run on 3.15."""
-    meta = temp / "pypi-onnxruntime-latest.json"
-    download("https://pypi.org/pypi/onnxruntime/json", meta, limit=4 * 1024 * 1024)
-    data = obj(meta)
+def official_legacy_pdf_wheels(data: dict, name: str, version: str) -> dict:
+    """Pinned-in-run official CPython 3.15 compatible PDF wheels, without Layout."""
+    require((name, version) in (("pymupdf", "1.28.2"), ("pymupdf4llm", "0.3.4")),
+            "Unreviewed PDF legacy compatibility candidate")
     info, rows = data.get("info", {}), data.get("urls", [])
+    require(isinstance(info, dict) and isinstance(rows, list) and
+            str(info.get("name", "")).lower().replace("_", "-") == name and
+            str(info.get("version", "")) == version and
+            all(isinstance(row, dict) for row in rows),
+            "Untrusted PyPI PDF fallback metadata: " + name)
+    found = {}
+    for record in rows:
+        filename = record.get("filename")
+        if record.get("packagetype") != "bdist_wheel" or not isinstance(filename, str):
+            continue
+        if name == "pymupdf":
+            # PyMuPDF uses the stable ABI, so its official Windows x64
+            # cp311-abi3 wheel is compatible with CPython 3.15.
+            match = re.fullmatch(r"pymupdf-1\.28\.2-cp3(11|12|13|14|15)-abi3-win_amd64\.whl",
+                                 filename)
+        else:
+            match = filename == "pymupdf4llm-0.3.4-py3-none-any.whl"
+        if not match:
+            continue
+        url = record.get("url")
+        digests = record.get("digests", {})
+        digest = digests.get("sha256") if isinstance(digests, dict) else None
+        require(official_optional_url(url) and record.get("yanked") is not True and
+                urllib.parse.unquote(urllib.parse.urlsplit(url).path.rsplit("/", 1)[-1]) == filename and
+                re.fullmatch(r"[a-f0-9]{64}", digest or "") is not None and
+                filename not in found,
+                "Untrusted official PyPI PDF fallback wheel: " + str(filename))
+        found[filename] = {"url": url, "sha256": digest}
+    require(1 <= len(found) <= 3, "Missing compatible official PDF wheel: " + name)
+    return dict(sorted(found.items()))
+
+
+def select_pdf_compatibility(onnx: dict, temp: Path, evidence: dict) -> dict:
+    """Use latest 2.x with ONNX if possible; otherwise stay with official 1.x legacy PDF."""
+    info, rows = onnx.get("info", {}), onnx.get("urls", [])
     require(isinstance(info, dict) and isinstance(rows, list) and
             str(info.get("name", "")).lower().replace("_", "-") == "onnxruntime" and
             isinstance(info.get("version"), str) and
@@ -391,13 +425,66 @@ def preflight_python315_onnxruntime(temp: Path, evidence: dict) -> None:
             "Untrusted ONNX Runtime official PyPI latest-stable metadata")
     version = info["version"]
     compatible = [x for x in rows if official_onnx_win315_wheel(x, version)]
-    require(bool(compatible),
-            "No official stable ONNX Runtime CPython 3.15 Windows x64 wheel "
-            "(latest=" + version + "); PyMuPDF >=2.1 requires it. "
-            "Do not run a full tool refresh until compatible upstream wheels exist.")
-    evidence["onnxruntime_preflight"] = {
-        "version": version, "wheel_sha256": compatible[0]["digests"]["sha256"],
-        "filename": compatible[0]["filename"]}
+    if compatible:
+        compatible.sort(key=lambda x: x["filename"])
+        evidence["onnxruntime_preflight"] = {
+            "version": version,
+            "wheels": {row["filename"]: {"url": row["url"],
+                                         "sha256": row["digests"]["sha256"]}
+                       for row in compatible}}
+        policy = {"mode": "latest-with-layout", "pymupdf": ">=2.1",
+                  "pymupdf4llm": ">=2.1", "onnxruntime": version}
+    else:
+        # The official 4LLM 0.3.4 release makes Layout an OPTIONAL extra.
+        # It retains the pre-upgrade package's text/Markdown functionality.
+        fallback = {}
+        for name, selected_version in (("pymupdf", "1.28.2"),
+                                       ("pymupdf4llm", "0.3.4")):
+            file = temp / ("pypi-" + name + "-" + selected_version + ".json")
+            download("https://pypi.org/pypi/" + name + "/" + selected_version + "/json",
+                     file, limit=4 * 1024 * 1024)
+            fallback[name] = official_legacy_pdf_wheels(obj(file), name, selected_version)
+        evidence["pdf_fallback_wheels"] = fallback
+        policy = {"mode": "latest-compatible-legacy-pdf", "pymupdf": "1.28.2",
+                  "pymupdf4llm": "0.3.4",
+                  "layout": "not installed: no official CPython 3.15 ONNX Runtime",
+                  "onnxruntime_latest": version}
+    evidence["pdf_compatibility"] = policy
+    print("PDF_PYTHON315_COMPATIBILITY=" + policy["mode"], flush=True)
+    return policy
+
+
+def verify_pdf_resolver(policy: dict, resolved: dict, evidence: dict) -> None:
+    """Reject downgrades, mismatched shims and changed wheels after the PyPI preflight."""
+    mode = policy["mode"]
+    if mode == "latest-compatible-legacy-pdf":
+        for name in ("pymupdf", "pymupdf4llm"):
+            item = resolved.get(name)
+            require(item is not None and item["version"] == policy[name],
+                    "Official CPython 3.15 legacy PDF package not selected: " + name)
+            expected = evidence["pdf_fallback_wheels"][name].get(item["wheel"])
+            require(expected is not None and expected["sha256"] == item["sha256"] and
+                    expected["url"] == evidence["wheels"][name]["url"],
+                    "PDF fallback official wheel provenance changed: " + name)
+        require("pymupdf-layout" not in resolved and "onnxruntime" not in resolved,
+                "Legacy PDF compatibility path must not silently install Layout/ONNX")
+    else:
+        version = resolved["pymupdf"]["version"]
+        require(version == resolved["pymupdf4llm"]["version"] ==
+                resolved["pymupdf-layout"]["version"] and
+                tuple(int(x) for x in version.split(".")) >= (2, 1),
+                "Modern PyMuPDF Core/Layout/4LLM versions differ")
+        item = resolved.get("onnxruntime")
+        require(item is not None and item["version"] == policy["onnxruntime"] and
+                evidence["onnxruntime_preflight"]["wheels"].get(item["wheel"], {}).get("sha256") == item["sha256"],
+                "Latest ONNX Runtime CPython 3.15 wheel provenance mismatch")
+
+
+def preflight_python315_onnxruntime(temp: Path, evidence: dict) -> None:
+    """Before downloads, choose verified modern Layout or official legacy PDF."""
+    meta = temp / "pypi-onnxruntime-latest.json"
+    download("https://pypi.org/pypi/onnxruntime/json", meta, limit=4 * 1024 * 1024)
+    select_pdf_compatibility(obj(meta), temp, evidence)
 
 
 def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
@@ -429,9 +516,16 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     require(sum(x.lower().replace("_", "-") == "pyyaml" for x in requested) == 1,
             "Expected exactly one bundled PyYAML distribution")
     binary_requests = [x for x in requested if x.lower().replace("_", "-") != "pyyaml"]
-    # Avoid upstream 2.0 Core/Layout/4LLM mismatch while allowing future major releases.
-    binary_requests = [x + ">=2.1" if x.lower().replace("_", "-") in
-                       ("pymupdf", "pymupdf4llm") else x for x in binary_requests]
+    # An upstream CPython 3.15 ONNX Runtime gap must not block the entire
+    # Python refresh or silently degrade already bundled PDF-to-Markdown.
+    pdf = evidence["pdf_compatibility"]
+    require(pdf["mode"] in ("latest-with-layout", "latest-compatible-legacy-pdf"),
+            "Unreviewed PDF compatibility policy")
+    binary_requests = [
+        x + (">=2.1" if pdf["mode"] == "latest-with-layout"
+             else "==" + pdf[x.lower().replace("_", "-")])
+        if x.lower().replace("_", "-") in ("pymupdf", "pymupdf4llm") else x
+        for x in binary_requests]
     spellings = {x.lower().replace('_', '-'): x for x in base_names + ssh_names}
     (temp / "requirements.in").write_text("\n".join(binary_requests) + "\n", encoding="utf-8")
     report_path = temp / "python-resolution.json"
@@ -474,6 +568,7 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
         resolved[name] = {"version": version, "sha256": digest, "wheel": wheelname,
                           "display_name": spellings.get(name, str(info["name"]))}
     require("pyyaml" not in resolved, "Wheel-only resolver unexpectedly selected PyYAML")
+    verify_pdf_resolver(pdf, resolved, evidence)
     resolved["pyyaml"] = stage_pyyaml_pure_wheel(plan, temp, wheels, evidence)
     for name in requested:
         norm = name.lower().replace("_", "-")
