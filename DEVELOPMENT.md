@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-03：第十三、十四次 03 / full Windows 依赖解析失败——PyYAML cp315 无官方 wheel，固定纯源码打包与 pip 26.3
+
+- **实际 Windows 日志：** 第十三次 [#41575652433](https://github.com/rileyaaa/Codex-Portable/actions/runs/41575652433) 与第十四次 [#41595966300](https://github.com/rileyaaa/Codex-Portable/actions/runs/41595966300) 都基于同一已合并提交 `28da7137d6fdb3e158f5434fe4a0b11aa9bc70bf`，两次均在只读 `full_verify` 的 `Stage full latest-stable Python npm Corepack 7-Zip and matched browser` 步骤失败。之前的 `actionlint`、下载前维护/发行模拟测试及真实启动器搬迁通过；Python **3.15.2** 官方嵌入式包正确运行，pip 26.2.2 也成功加载。失败日志：`ERROR: Could not find a version that satisfies the requirement pyyaml (from versions: none)`，随后 `No matching distribution found for pyyaml`。写入 `full_propose` 跳过，**没有更新 main 工具、生成候选 PR 或发布 Release**。重复执行同一提交不会解决缺少 wheel 的问题。
+- **根因：** 原 `stage_python()` 对全部依赖一律要求 `--only-binary=:all:` 且只接受 PyPI wheel；官方 PyYAML 最新稳定版 **6.0.3** 仅发布至 CPython 3.14 的 Windows 二进制 wheel，尚无 `cp315-win_amd64`；CPython 3.15 可以使用 PyYAML 的**纯 Python 代码**，无需其可选 C 加速模块。不能绕开哈希门禁、采用来源未经核准的 `pyyaml-cp315` 替代发行包、改装旧 CPython 或放开全部源码自动编译。
+- **改动：** 为**唯一** PyYAML 6.0.3 添加例外，固定 PyPI 官方 `pyyaml-6.0.3.tar.gz` 的 SHA-256 `d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f`。新增 `tool/full_stable_pure_wheels.py`：仅从该固定源码安全读取 17 个上游 `lib/yaml/*.py`、原版 `PKG-INFO` 和 `LICENSE`，不执行 `setup.py`、不编译 C、不使用第三方发行包，生成可重复的 `py3-none-any` wheel 和逐文件 SHA-256 `RECORD`；将其实际哈希并入新的 base 输入和 hash lock。其他 Python 包仍使用官方 PyPI wheel + 固定下载 SHA-256，不放宽安全边界。
+- **修正最新版：** 2026-11-02 PyPI 官方已发布 **pip 26.3**（原计划 26.2.2 非最新），改为从其固定官方版本 JSON 精确选择唯一 `pip-26.3-py3-none-any.whl`，校验 SHA-256 `f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13` 后才加载；安装、pip3.15 便携入口及 `RECORD` 登记全程使用同一版本。
+- **离线检查及边界：** 本地 Python 3.13 上用实际 PyYAML 6.0.3 纯 Python 模块构建源码模拟包，验证独立两次输出 wheel 哈希一致，`pip --no-index --require-hashes --target` 安装成功、`yaml.safe_load/safe_dump` 正常；新增仅用内存/临时目录的多项回归，覆盖恶意 tar 路径、软链接、额外模块、错源 SHA、pip PyPI JSON 错 SHA/错域名/yanked/重复文件。工作流新增 Windows Python 3.15 `yaml.safe_load/safe_dump` 原生冒烟；其余 19 项 PowerShell、十轮发行审计、客户 ZIP 和隔离写入 Job 保留。**以上是离线/静态和本地模拟检查，不代表已通过下一次 GitHub Windows 原生验收。** 用户仅手动运行最新 `main` 的 `03 / mode=full / group=tools / create_pr=true`，旧 SHA 不可重跑。
+
 ## 2026-11-03：第十二次 03 / full 运行下载前失败，修复跨模式回归断言和 pip RECORD（不触发 AC）
 
 - **实际运行：** 用户手动运行 [Actions #41573391951](https://github.com/rileyaaa/Codex-Portable/actions/runs/41573391951)，基于 `main=f084d5205473a7a0c5a3ca59411fc2ceb6f50d6d`，`full_verify` 在第 4 步下载前中断，总耗时约 1 分 53 秒；`actionlint` 成功，35 项 `test_tool_updates.py` 中 34 项通过、1 项 `FAIL`，`full_propose` 跳过。完整日志：`tests/test_tool_updates.py:172` 的 `workflow.count(needle)` 要求维护测试命令只出现一次，但 `03` 新旧流程合并后实际出现三次，抛出 `AssertionError: 3 != 1`。本次**没有下载新工具、替换版本、上传候选分支或发布 Release**。

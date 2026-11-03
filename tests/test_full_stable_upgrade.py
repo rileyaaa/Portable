@@ -32,11 +32,13 @@ def load(path: str, alias: str):
 
 stage = load("tool/full-stable-prepare.py", "portable_full_stage")
 transfer = load("tool/full-stable-transfer.py", "portable_full_transfer")
+pure = load("tool/full_stable_pure_wheels.py", "portable_pinned_pyyaml")
 
 
 class FullStableUpgradeTests(unittest.TestCase):
     def test_source_and_workflow_parse_without_running_downloads(self):
         for path in ("tool/full-stable-prepare.py", "tool/full-stable-transfer.py",
+                     "tool/full_stable_pure_wheels.py",
                      "tests/test_full_stable_upgrade.py"):
             ast.parse((ROOT / path).read_text(encoding="utf-8"), filename=path)
         source = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
@@ -83,7 +85,7 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertEqual(len(names), 14)
         entries = {x["name"]: x for x in plan["targets"]}
         for name, value in (
-                ("python", "3.15.2"), ("pip", "26.2.2"),
+                ("python", "3.15.2"), ("pip", "26.3"),
                 ("npm", "12.2.1"), ("corepack", "0.36.0"),
                 ("7zip", "26.05"), ("playwright-mcp", "0.0.84"),
                 ("pyinstaller", "6.22.3")):
@@ -99,6 +101,141 @@ class FullStableUpgradeTests(unittest.TestCase):
             encoding="utf-8"))["tools"]
         self.assertIn(installed["python"]["version"], ("3.14", "3.15.2"))
         self.assertIn(installed["npm"]["version"], ("11.20.0", "12.2.1"))
+
+    def test_pip_263_and_source_only_pyyaml_are_official_and_hash_pinned(self):
+        plan = json.loads((ROOT / "tool/full-stable-upgrade-plan.json").read_text(
+            encoding="utf-8"))
+        entries = {x["name"]: x for x in plan["targets"]}
+        self.assertEqual(entries["pip"]["artifact"], {
+            "url": "https://pypi.org/pypi/pip/26.3/json",
+            "sha256": "f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13",
+            "kind": "official-PyPI-metadata-pinned-wheel",
+        })
+        exceptions = plan["pythonPureSourceExceptions"]
+        self.assertEqual(len(exceptions), 1)
+        self.assertEqual(exceptions[0]["name"], "PyYAML")
+        self.assertEqual(exceptions[0]["version"], "6.0.3")
+        self.assertEqual(exceptions[0]["sourceSha256"],
+                         "d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f")
+        self.assertTrue(exceptions[0]["sourceUrl"].startswith(
+            "https://files.pythonhosted.org/packages/"))
+        code = (ROOT / "tool/full-stable-prepare.py").read_text(
+            encoding="utf-8")
+        self.assertIn('binary_requests = [x for x in requested', code)
+        self.assertIn('resolved["pyyaml"] = stage_pyyaml_pure_wheel(', code)
+        self.assertIn('build_pyyaml_pure_wheel(source, wheels, item["sourceSha256"])', code)
+        self.assertIn('run(new_python, "-E", "-s", "-B", "-m", "pip", "--version")', code)
+        self.assertNotIn("pyyaml-cp315", code)
+
+    def test_pip_pinned_json_never_accepts_wrong_hash_or_untrusted_wheel(self):
+        wheel = "pip-26.3-py3-none-any.whl"
+        checksum = "f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13"
+        url = "https://files.pythonhosted.org/packages/verified/" + wheel
+        record = {"info": {"name": "pip", "version": "26.3"}, "urls": [
+            {"filename": wheel, "packagetype": "bdist_wheel",
+             "digests": {"sha256": checksum}, "url": url, "yanked": False}]}
+        self.assertEqual(stage.select_official_pip_release_wheel(
+            record, "26.3", checksum), url)
+        import copy
+        bad = copy.deepcopy(record)
+        bad["urls"][0]["digests"]["sha256"] = "0" * 64
+        with self.assertRaises(ValueError):
+            stage.select_official_pip_release_wheel(bad, "26.3", checksum)
+        bad = copy.deepcopy(record)
+        bad["urls"][0]["url"] = "https://attacker.example/pip-26.3-py3-none-any.whl"
+        with self.assertRaises(ValueError):
+            stage.select_official_pip_release_wheel(bad, "26.3", checksum)
+        bad = copy.deepcopy(record)
+        bad["urls"][0]["yanked"] = True
+        with self.assertRaises(ValueError):
+            stage.select_official_pip_release_wheel(bad, "26.3", checksum)
+        bad = copy.deepcopy(record)
+        bad["urls"].append(copy.deepcopy(bad["urls"][0]))
+        bad["urls"][1]["yanked"] = False
+        with self.assertRaises(ValueError):
+            stage.select_official_pip_release_wheel(bad, "26.3", checksum)
+        bad = copy.deepcopy(record)
+        bad["info"]["version"] = "0.0.1"
+        with self.assertRaises(ValueError):
+            stage.select_official_pip_release_wheel(bad, "26.3", checksum)
+
+    def test_offline_pyyaml_sdist_repackage_is_deterministic_and_never_runs_setup(self):
+        import csv
+        import base64
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "official.tar.gz"
+            members = {
+                "pyyaml-6.0.3/PKG-INFO": b"Metadata-Version: 2.3\nName: PyYAML\nVersion: 6.0.3\n",
+                "pyyaml-6.0.3/LICENSE": b"Upstream MIT license test fixture\n",
+                **{"pyyaml-6.0.3/lib/yaml/" + name:
+                   (b"__version__ = '6.0.3'\n" if name == "__init__.py"
+                    else b"# Verified upstream module structure test fixture\n")
+                   for name in pure.PY_YAML_MODULES}
+            }
+            with tarfile.open(source, "w:gz") as archive:
+                for name, content in sorted(members.items()):
+                    entry = tarfile.TarInfo(name)
+                    entry.size = len(content)
+                    archive.addfile(entry, io.BytesIO(content))
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            first, second = root / "first", root / "second"
+            first.mkdir()
+            second.mkdir()
+            built = pure.build_pyyaml_pure_wheel(source, first, digest)
+            built2 = pure.build_pyyaml_pure_wheel(source, second, digest)
+            self.assertEqual(hashlib.sha256(built.read_bytes()).hexdigest(),
+                             hashlib.sha256(built2.read_bytes()).hexdigest())
+            with zipfile.ZipFile(built) as archive:
+                self.assertEqual(archive.testzip(), None)
+                self.assertEqual(set(archive.namelist()),
+                                 {"yaml/" + n for n in pure.PY_YAML_MODULES} |
+                                 {"PyYAML-6.0.3.dist-info/METADATA",
+                                  "PyYAML-6.0.3.dist-info/WHEEL",
+                                  "PyYAML-6.0.3.dist-info/licenses/LICENSE",
+                                  "PyYAML-6.0.3.dist-info/RECORD"})
+                with archive.open("PyYAML-6.0.3.dist-info/RECORD") as f:
+                    rows = list(csv.reader(io.TextIOWrapper(f, encoding="utf-8")))
+                self.assertEqual(len(rows), len(pure.PY_YAML_MODULES) + 4)
+                for name, record_sha, size in rows[:-1]:
+                    payload = archive.read(name)
+                    expected = base64.urlsafe_b64encode(
+                        hashlib.sha256(payload).digest()).rstrip(b"=").decode("ascii")
+                    self.assertEqual(record_sha, "sha256=" + expected)
+                    self.assertEqual(int(size), len(payload))
+            with self.assertRaisesRegex(ValueError, "SHA256"):
+                pure.build_pyyaml_pure_wheel(source, root / "second", "0"*64)
+            # The following ensures this path can never execute upstream code.
+            pure_source = (ROOT / "tool/full_stable_pure_wheels.py").read_text(
+                encoding="utf-8")
+            self.assertNotIn("subprocess", pure_source)
+            self.assertNotIn("setup.py", pure_source.split("def build_pyyaml_pure_wheel(", 1)[1])
+            self.assertNotIn("compile(", pure_source)
+            self.assertNotIn("eval(", pure_source)
+
+    def test_pyyaml_source_rejects_traversal_symlink_and_unreviewed_modules(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name, kind in (
+                    ("pyyaml-6.0.3/../../payload.py", "file"),
+                    ("pyyaml-6.0.3/lib/yaml/other.py", "file"),
+                    ("pyyaml-6.0.3/link", "link")):
+                source = root / "case.tar.gz"
+                with tarfile.open(source, "w:gz") as archive:
+                    item = tarfile.TarInfo(name)
+                    if kind == "link":
+                        item.type = tarfile.SYMTYPE
+                        item.linkname = "../../evil"
+                        archive.addfile(item)
+                    else:
+                        item.size = 4
+                        archive.addfile(item, io.BytesIO(b"data"))
+                out = root / "empty"
+                out.mkdir(exist_ok=True)
+                digest = hashlib.sha256(source.read_bytes()).hexdigest()
+                with self.subTest(name=name), self.assertRaises(ValueError):
+                    pure.build_pyyaml_pure_wheel(source, out, digest)
+                source.unlink()
 
     def test_archive_paths_fail_closed(self):
         for text in ("", "..", "../evil", "a/../evil", "C:/thing",
@@ -154,15 +291,15 @@ class FullStableUpgradeTests(unittest.TestCase):
             root = Path(folder)
             site = root / "tool/python/Lib/site-packages"
             bin_dir = site / "bin"
-            info = site / "pip-26.2.2.dist-info"
+            info = site / "pip-26.3.dist-info"
             bin_dir.mkdir(parents=True)
             info.mkdir()
             (info / "METADATA").write_text(
-                "Metadata-Version: 2.3\nName: pip\nVersion: 26.2.2\n",
+                "Metadata-Version: 2.3\nName: pip\nVersion: 26.3\n",
                 encoding="utf-8")
             record = info / "RECORD"
             record.write_text(
-                "pip/__init__.py,,\npip-26.2.2.dist-info/RECORD,,\n",
+                "pip/__init__.py,,\npip-26.3.dist-info/RECORD,,\n",
                 encoding="utf-8")
             for name in ("pip.exe", "pip3.exe", "pip3.15.exe"):
                 (bin_dir / name).write_bytes(b"MZ" + bytes(range(256)) * 5)
@@ -177,10 +314,10 @@ class FullStableUpgradeTests(unittest.TestCase):
                 path = site / name
                 self.assertTrue(digest.startswith("sha256="))
                 self.assertEqual(int(size), path.stat().st_size)
-            wheel_lock.validate_runtime(root, b"pip==26.2.2\n")
+            wheel_lock.validate_runtime(root, b"pip==26.3\n")
             record.write_text("pip/__init__.py,,\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Unowned Python bin"):
-                wheel_lock.validate_runtime(root, b"pip==26.2.2\n")
+                wheel_lock.validate_runtime(root, b"pip==26.3\n")
 
 
     def test_7zip_official_full_sfx_pe_amd64_and_paired_dll_policy(self):

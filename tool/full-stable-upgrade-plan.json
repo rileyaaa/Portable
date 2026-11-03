@@ -10,7 +10,7 @@
     "omitted": "Uninstalled git/ and uv-tools/ placeholders are not new installs",
     "sideEffects": "never install globally, alter host PATH or registry, or use Windows installers to modify host",
     "compatibility": "require Windows 11 x64 native tests, launcher/relocation, package-local paths, Python wheels, npm shim, SSH and browser parity",
-    "validation": "official source and SHA256 for each artifact; PE architecture, full Python/Node, 19 PowerShell, ten release audits, actual customer ZIP and SHA256; reader/writer identical staged digest",
+    "validation": "official source and SHA256 for each artifact; PE architecture, full Python/Node, 19 PowerShell, ten release audits, actual customer ZIP and SHA256; reader/writer identical staged digest; source-only CPython 3.15 wheel exceptions require upstream source hash, audited pure-Python files, deterministic local wheel and explicit import smoke",
     "publish": "do not edit installed-tools.json in main until all Windows native tests pass and verified bytes are merged; temporary isolated checkout ledger changes are candidate-only; never create Release",
     "actions": "manual user-triggered only; one prepared full refresh batch; no automatic runs"
   },
@@ -29,12 +29,14 @@
     {
       "name": "pip",
       "installed": "26.1.2",
-      "latestStable": "26.2.2",
+      "latestStable": "26.3",
       "status": "needs_python_3_15_compatible_locked_wheel_rebuild",
       "artifact": {
-        "url": "https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl",
-        "sha256": "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
-      }
+        "url": "https://pypi.org/pypi/pip/26.3/json",
+        "sha256": "f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13",
+        "kind": "official-PyPI-metadata-pinned-wheel"
+      },
+      "note": "Official pip 26.3 stable release (2026-11-02), resolve the one py3-none-any wheel from official PyPI version JSON; verify exact SHA256 before extracting, do not trust an unpinned redirect."
     },
     {
       "name": "paramiko",
@@ -166,5 +168,16 @@
     "Require a complete all-tools-capable, bounded writer/verifier implementation and offline regression before requesting the sole manual Windows Actions run.",
     "Require exact official SHA256 and downloaded bytes for every new wheel/tarball/binary and pinned lockfile reconciliation.",
     "Do not change an installed version record until the verified exact bytes are merged into main."
+  ],
+  "pythonPureSourceExceptions": [
+    {
+      "name": "PyYAML",
+      "version": "6.0.3",
+      "platform": "CPython 3.15 Windows x64",
+      "reason": "PyYAML official 6.0.3 has no cp315-win_amd64 wheel. Do not install unapproved pyyaml-cp315 fork or downgrade Python.",
+      "sourceUrl": "https://files.pythonhosted.org/packages/05/8e/961c0007c59b8dd7729d542c61a4d537767a59645b82a0b521206e1e25c2/pyyaml-6.0.3.tar.gz",
+      "sourceSha256": "d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f",
+      "strategy": "From the exact official source tar.gz, repackage the 17 pure-Python lib/yaml/*.py modules and upstream license/PKG-INFO as a verified local py3-none-any wheel. Never run setup.py, compile the optional C extension, or fetch a third-party wheel. Lock generated wheel digest and test yaml.safe_load/safe_dump."
+    }
   ]
 }
