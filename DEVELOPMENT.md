@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-03：第十七次失败后的进一步验证——可选 Python Manifest 在 Chromium 前完成
+
+- **问题复核：** Run #41617214862 的实际日志证明，npm/Corepack、Playwright、Python 3.15.2 + PyInstaller 6.22.3、7-Zip、Chromium 均准备成功，并且 18 个 Python CLI CMD 入口重建成功；但随后 `python_manifests()` 在官方源码溯源记录阶段中断。这类后置清单检查不能用“前五个阶段通过”代替通过，也没有必要等到浏览器下载完才执行。
+- **代码调整：** 现在在隔离的 CPython 3.15 wheel 安装完成后，立即使用 `tmp/full-stable-*/python-runtime/Lib/site-packages` 中的**候选实际安装字节**重建 `tool/optional-python-manifest.json` 和 PyInstaller 构建清单。文件路径仍按最终的 `tool/python/Lib/site-packages` 记录；此时原有 `tool/python` 尚未替换，避免误把 CPython 3.14 字节哈希写成 3.15 清单。新增阶段日志 `optional_python_manifests`，任何官方 wheel/sdist/license 校验失败均早于 7-Zip、Chromium 下载和运行时替换。
+- **测试：** 增加完全离线的合成 wheel、PyPI JSON 和暂存站点测试，核对最终 manifest 路径、逐文件 SHA-256、原运行时不被读取或覆盖，并在许可证文件缺失、传入错误暂存站点时要求失败闭锁。检查实际 staging 顺序。原有完整 Windows 回归、十轮发行审计、读写 Job、客户 ZIP、LFS 校验均未删减。源码测试并不等于新候选已通过 Windows 原生验收；不自行触发 Actions 或更新正式 Release。
+
+
 ## 2026-11-03：全量 Python 3.15 稳定兼容 PDF 方案（对前一条 ONNX 阻塞结论的后续解决）
 
 - **继续推进而非停等上游：** 当前 PyMuPDF 2.1 的 Layout 默认依赖 ONNX Runtime，而官方 ONNX Runtime 1.31.1 无 CPython 3.15 Windows x64 wheel。官方 `pymupdf4llm==0.3.4`（2026-02-14）把 Layout 作为**可选**扩展，保留完整 PDF→Markdown 功能；`pymupdf==1.28.2`（2026-08-06）是 1.x 最后稳定版本，发布兼容 Python 3.15 的 Windows x64 abi3 wheel。这一组合可保留已有项目的默认文本/PDF 功能，同时继续升级 Python 3.15.2、pip 26.3、npm/Corepack/Playwright/7zip，不借用旧 3.14 原生扩展，不采用 ONNX nightly。参考官方 PyPI https://pypi.org/project/pymupdf4llm/0.3.4/ 及 https://pypi.org/project/pymupdf/1.28.2/ 。**不是所有 PDF 组件都是最新主版本**，而是经过选择的官方最新兼容组合。
