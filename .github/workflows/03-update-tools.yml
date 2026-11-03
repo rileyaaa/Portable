@@ -10,7 +10,7 @@ on:
         options: [check, prepare, full]
         default: check
       group:
-        description: "tools=仅本批已核准工具（默认）；ssh=Paramiko；all=两者（会重装 SSH）"
+        description: "旧 prepare 批次：tools/ssh/all；full 全目录模式忽略此选项；all=两者（会重装 SSH）"
         required: true
         type: choice
         options: [ssh, tools, all]
