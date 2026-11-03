@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-03：第十六次 03 / full Windows 失败——npm 12 user/global 配置文件重复加载
+
+- **实际运行：** 用户手动执行 [Run #41605992170](https://github.com/rileyaaa/Codex-Portable/actions/runs/41605992170)，验证来源 `main=201f15492d95767dd72f780a461fddf8ceae02cf`；`full_verify` 的 actionlint、维护及安全预检、原启动器搬迁均通过。Python **3.15.2** / pip **26.3** / PyYAML **6.0.3** / PyInstaller **6.22.3**、41 项基础依赖与七项 Paramiko/SSH 依赖成功安装；新版 npm **12.2.1** 与 Corepack **0.36.0** 原生 `--version` 成功，受固定 SHA-256 保护的官方 7-Zip **26.05** SFX 由旧受信任 7-Zip 成功解压并通过原生版本检查。随后在 `stage_playwright()` 的第一条 `npm install --package-lock-only` 失败，真实日志 `Exit prior to config file resolving / double-loading config ".../empty.npmrc" as "global", previously loaded as "user"`。**这不是 Playwright MCP 安装解析或 Chromium 文件失败**，而是 `npm_env()` 为 USERCONFIG、GLOBALCONFIG 传入了同一空文件。该次运行没有生成 verified candidate、没有执行独立写入 Job，也没有修改 `main` 已安装版本或 Release。
+- **确定性修复：** 改成分别在包内临时目录建立 `user.npmrc` 与 `global.npmrc`，要求路径互异、文件确实存在且为空、不能被软连接替换；继续覆盖 npm 缓存、HOME、USERPROFILE 与 registry 变量，将 npm 完全限制在隔离环境中。新增 `verify_npm_config_isolation()`，在 npm 发出任何 registry 请求之前，由**实际打包的 Node/npm** 读取并校验 `config get userconfig/globalconfig` 与隔离路径完全一致；出错立即停止，无候选写入。
+- **本地无网络复现：** npm **10.9.2** 对同一空 npmrc 的 `userconfig/globalconfig` 确实返回 `Exit prior to config file resolving; double-loading ...` 并退出 1；对两个独立空文件分别读取配置路径退出 0。新增 `test_full_stable_upgrade.py` 的独立临时目录、非空配置拒绝、Win11 上旧包内受信任 npm 原生运行及负向错误配置测试，防止将来再次误用同一路径。
+- **缩短下一次失败时的 AC 消耗：** 将隔离构建顺序调整为 npm/Corepack → Playwright MCP/npm 锁 → Python 3.15 全套 wheel → 7-Zip → 体积较大的 Chromium ZIP，标记 `FULL_STABLE_PHASE_BEGIN/END`。现在 npm 相关错误会在 Python 几分钟依赖重建之前发生；Chromium 仍等较小的候选全部过关后才下载。原 19 项 PowerShell 5.1、十轮发行审计、SHA-256 候选包及独立写入 Job **未删减、权限边界不变**。
+- **边界：** 本次仅源码/离线测试/开发记录修复，不能声称完整 Windows `full` 验证通过。用户只需在合并后的最新 `main` 手动启动 `03 / mode=full / group=tools / create_pr=true`；不要 `Re-run` 旧失败 SHA。无需为本次修复创建正式 Release。
+
 ## 2026-11-03：第十五次 03 / full Windows 运行失败——setuptools 32/ARM64 启动器被错误识别为运行目标
 
 - **实际 Run：** 用户手动触发 [#41599822488](https://github.com/rileyaaa/Codex-Portable/actions/runs/41599822488)，基于 `main=2b6a14ec9d089a4af406a0296e5889a053e9a4f2`。只读 `full_verify` 的 actionlint、下载前完整回归、启动器与迁移检查全部通过，Python 3.15.2、pip 26.3、PyYAML 6.0.3、自选最新稳定版 41 项基础依赖及 7 项 SSH wheel 下载并成功安装。随后在 `Stage full latest-stable...` 步骤由 `check_python_native_architecture` 的旧实现失败：`Staged Python/native package binary is not Windows x64: .../setuptools/cli-32.exe`。**并非 Python 3.15 ABI 或 pip 解析失败**，未执行 npm/7-Zip/Chromium 更换步骤；`full_propose` 跳过，未改动 main 已安装版本或发布 Release。
