@@ -541,3 +541,188 @@ def stage_browser(temp: Path, version: str, revision: str, evidence: dict) -> No
         "downloadUrl": f"https://cdn.playwright.dev/builds/cft/{version}/win64/chrome-win64.zip",
         "payloadManifest": "browser-manifest.json", "payloadBundled": True})
     write_json(versions_file, versions)
+
+
+def python_manifests(temp: Path, resolved: dict, evidence: dict) -> None:
+    """Rebuild manifests from installed bytes; never keep stale CPython 3.14 hashes."""
+    optional_file = TOOL / "optional-python-manifest.json"
+    old = obj(optional_file)
+    packages = []
+    site = TOOL / "python/Lib/site-packages"
+    for record in old["packages"]:
+        label = record["name"]
+        name = label.lower().replace("_", "-")
+        require(name in resolved, "Optional bundled package missing: " + label)
+        version = resolved[name]["version"]
+        meta = temp / ("pypi-" + name + ".json")
+        download("https://pypi.org/pypi/" + urllib.parse.quote(name) +
+                 "/" + urllib.parse.quote(version) + "/json", meta, limit=4*1024*1024)
+        release = obj(meta)
+        sdists = [u for u in release.get("urls", [])
+                  if u.get("packagetype") == "sdist"]
+        require(len(sdists) == 1 and
+                sdists[0]["url"].startswith("https://files.pythonhosted.org/") and
+                re.fullmatch(r"[a-f0-9]{64}", sdists[0].get("digests", {}).get("sha256", "")),
+                "Official optional package source provenance missing")
+        wheel = temp / "wheels" / resolved[name]["wheel"]
+        files = {}
+        with zipfile.ZipFile(wheel) as archive:
+            for item in archive.infolist():
+                if item.is_dir():
+                    continue
+                safe_path(item.filename)
+                installed = site.joinpath(*item.filename.split("/"))
+                if installed.is_file():
+                    files[installed.relative_to(ROOT).as_posix()] = sha(installed)
+        require(files and any(Path(f).name in ("LICENSE", "COPYING") for f in files),
+                "Bundled wheel license file missing: " + label)
+        if name == "pymupdf":
+            require(any(p.endswith((".pyd", ".dll")) for p in files),
+                    "Native PyMuPDF wheel missing")
+        packages.append({
+            "name": label, "version": version, "wheel": resolved[name]["wheel"],
+            "source": evidence["wheels"][name]["url"],
+            "sha256": resolved[name]["sha256"],
+            "source_distribution": {
+                "url": sdists[0]["url"],
+                "sha256": sdists[0]["digests"]["sha256"]},
+            "files": dict(sorted(files.items()))})
+    write_json(optional_file, {
+        "target": "Windows x64 CPython 3.15.2",
+        "purpose": "Office, PDF and document helpers bundled as official hash-pinned wheels",
+        "packages": packages,
+        "file_hash_policy": {"algorithm": "sha256",
+                             "scope": "Every named installed optional-wheel file"}})
+    build_keys = ("pyinstaller", "pyinstaller-hooks-contrib", "altgraph", "pefile",
+                  "pywin32-ctypes", "setuptools")
+    require(all(k in resolved for k in build_keys), "PyInstaller closure incomplete")
+    write_json(TOOL / "python-build-manifest.json", {
+        "schema": 2, "target": "Windows x64 CPython 3.15.2",
+        "note": ("Fresh official SHA256-pinned PyPI wheels, not historical Git objects. "
+                 "PyInstaller is invoked via package-local python -m PyInstaller."),
+        "packages": {name: resolved[name]["version"] for name in build_keys},
+        "wheel_sha256": {name: resolved[name]["sha256"] for name in build_keys},
+        "objects": []})
+
+
+def update_version_inventory(plan: dict, evidence: dict) -> None:
+    file = TOOL / "installed-tools.json"
+    state = obj(file)
+    require(state["schema"] == 1 and state["platform"] == "win32-x64",
+            "Untrusted installed-tools inventory")
+    updated = {
+        "python": "3.15.2",
+        "pip": evidence["python_packages"]["pip"]["version"],
+        "paramiko": evidence["python_packages"]["paramiko"]["version"],
+        "node": target(plan, "node")["latestStable"],
+        "npm": target(plan, "npm")["latestStable"],
+        "corepack": target(plan, "corepack")["latestStable"],
+        "playwright-mcp": evidence["playwright"]["mcp"],
+        "chromium": evidence["playwright"]["chromiumVersion"],
+        "adb": target(plan, "adb")["latestStable"],
+        "7zip": target(plan, "7zip")["latestStable"],
+        "ripgrep": target(plan, "ripgrep")["latestStable"],
+        "fd": target(plan, "fd")["latestStable"],
+        "jq": target(plan, "jq")["latestStable"]
+    }
+    require(set(updated) == set(state["tools"]) - {"git"},
+            "Tool inventory changed unexpectedly")
+    for key, version in updated.items():
+        require(re.fullmatch(r"[0-9]+(?:\.[0-9]+)+", version) is not None,
+                "Invalid newly installed version")
+        state["tools"][key].update(version=version, status="bundled")
+    state["lastSuccessfulToolUpdate"] = "2026-11-03"
+    write_json(file, state)
+    doc_file = TOOL / "工具更新说明.md"
+    doc = doc_file.read_text(encoding="utf-8")
+    begin, end = "<!-- TOOL_VERSIONS_BEGIN -->", "<!-- TOOL_VERSIONS_END -->"
+    require(doc.count(begin) == 1 and doc.count(end) == 1,
+            "Tool documentation version section must be unique")
+    lines = [begin, "| 工具 | 随包版本 | 状态 | 路径 |",
+             "| --- | --- | --- | --- |"]
+    for name, row in state["tools"].items():
+        lines.append("| " + name + " | " +
+                     (row["version"] or "待 Windows 原生核对") + " | " +
+                     row["status"] + " | " + chr(96) + row["path"] + chr(96) + " |")
+    lines.append(end)
+    block = "\n".join(lines)
+    doc = re.sub(re.escape(begin) + ".*?" + re.escape(end), lambda _: block, doc,
+                 count=1, flags=re.S)
+    current = (
+        "**全目录最新稳定版候选（2026-11-03 Windows 验证后方可合入）：** "
+        "Python 3.15.2（嵌入式 Windows x64）、最新兼容版官方 PyPI wheels（含 pip、SSH、"
+        "PyInstaller）、npm 12.2.1、Corepack 0.36.0、Playwright MCP 0.0.84 与其官方"
+        "锁定 Playwright 版本/唯一 Chromium、7-Zip 26.05 已重建并逐项核查；"
+        "Node、ADB、rg、fd、jq 保留已有最新稳定版。只有完整 Windows 验证及可信差异"
+        "核对成功、候选 PR 合并后，这些版本才代表 main 已安装事实。"
+        "当前旧正式 Release ZIP 不会自动更新。\n\n")
+    marker = "## 实际安装版本台账（随更新同步）"
+    require(doc.count(marker) == 1, "Cannot locate tool inventory header")
+    doc = doc.replace(marker, current + marker)
+    doc_file.write_text(doc, encoding="utf-8", newline="\n")
+
+
+def prepare(plan: dict) -> None:
+    require(os.name == "nt" and sys.maxsize > 2**32,
+            "Full stable preparation requires Windows x64")
+    require(Path(sys.executable).resolve() != (TOOL / "python/python.exe").resolve(),
+            "The host-owned Python must drive replacement, not loaded bundled CPython")
+    require((ROOT / "codex.exe").is_file() and
+            (ROOT / "env.ps1").is_file(), "Not the complete Codex portable source")
+    state = obj(TOOL / "installed-tools.json")["tools"]
+    for name in ("node", "adb", "ripgrep", "fd", "jq", "paramiko"):
+        require(state[name]["version"] == target(plan, name)["latestStable"],
+                "The retained component is not yet latest-stable: " + name)
+    scratch = ROOT / "tmp"
+    require(not scratch.is_symlink(), "Refuse linked update scratch")
+    scratch.mkdir(exist_ok=True)
+    evidence: dict = {
+        "schema": 1,
+        "platform": "win32-x64",
+        "source": "trusted official HTTPS release and package archives",
+        "candidatePolicy": "latest stable across supported major versions",
+        "plan_sha256": sha(PLAN)
+    }
+    with tempfile.TemporaryDirectory(prefix="full-stable-", dir=scratch) as name:
+        temp = Path(name)
+        staged_python, resolved = stage_python(plan, temp, evidence)
+        stage_npm(plan, temp, evidence)
+        stage_7zip(plan, temp, evidence)
+        version, revision = stage_playwright(plan, temp, evidence)
+        stage_browser(temp, version, revision, evidence)
+        replace_tree(staged_python, TOOL / "python", temp)
+        # Never load DLLs for the replaced Python from the trusted orchestrator.
+        new_python = TOOL / "python/python.exe"
+        run(new_python, "-E", "-s", "-B", "-m", "pip", "--version")
+        run(new_python, "-E", "-s", "-B", "-m", "PyInstaller", "--version")
+        run(new_python, "-E", "-s", "-B", TOOL / "refresh-python-cli-shims.py")
+        python_manifests(temp, resolved, evidence)
+    update_version_inventory(plan, evidence)
+    write_json(TOOL / "full-stable-evidence.json", evidence)
+    print("FULL_STABLE_CANDIDATE_STAGED=PASS")
+    print("FULL_STABLE_PYTHON=3.15.2")
+    print("FULL_STABLE_NODE=" + target(plan, "node")["latestStable"])
+    print("FULL_STABLE_BROWSER=" + evidence["playwright"]["chromiumVersion"])
+
+
+def main() -> int:
+    if len(sys.argv) != 2 or sys.argv[1] != "prepare":
+        print("Usage: host-python tool/full-stable-prepare.py prepare",
+              file=sys.stderr)
+        return 2
+    plan = obj(PLAN)
+    require(plan["schema"] == 1 and plan["platform"] == "win32-x64" and
+            plan["state"] == "PREPARATION_ONLY_NOT_INSTALLED" and
+            plan["policy"]["publish"].startswith("do not edit installed-tools.json"),
+            "Unreviewed full upgrade plan")
+    prepare(plan)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (ValueError, OSError, KeyError, subprocess.SubprocessError,
+            zipfile.BadZipFile, tarfile.TarError, urllib.error.URLError) as error:
+        print("FULL_STABLE_PREPARE_FAILED: " + str(error), file=sys.stderr)
+        raise SystemExit(2)
