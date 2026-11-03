@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "diagnose=轻量批量排错；check=只读盘点；prepare=原工具批次；full=整个 tool/ 最新稳定版 Win11 验证"
+        description: "diagnose=元数据+Windows隔离安装冒烟（较原诊断更耗时）；check=只读盘点；prepare=原工具批次；full=整目录验证"
         required: true
         type: choice
         options: [check, diagnose, prepare, full]
