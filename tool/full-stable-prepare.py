@@ -330,3 +330,211 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     plain_tree(stage)
     evidence["python_packages"] = resolved
     return stage, resolved
+
+
+def replace_tree(source: Path, destination: Path, scratch: Path) -> None:
+    require(source.is_dir() and destination.is_dir(), "Refuse missing tool tree")
+    plain_tree(source)
+    backup = scratch / ("backup-" + destination.name + "-" + str(len(list(scratch.iterdir()))))
+    destination.rename(backup)
+    try:
+        source.rename(destination)
+    except Exception:
+        backup.rename(destination)
+        raise
+
+
+def npm_metadata(name: str, version: str, temp: Path) -> tuple[str, str]:
+    require(re.fullmatch(r"[a-z0-9._-]+", name) and
+            re.fullmatch(r"[0-9]+(?:\.[0-9]+){2}", version),
+            "Bad npm identity")
+    meta_path = temp / (name + "-metadata.json")
+    download("https://registry.npmjs.org/" + name + "/" + version,
+             meta_path, limit=4*1024*1024)
+    row = obj(meta_path)
+    require(row.get("name") == name and row.get("version") == version,
+            "Registry package/version mismatch")
+    dist = row["dist"]
+    url = f"https://registry.npmjs.org/{name}/-/{name}-{version}.tgz"
+    require(dist.get("tarball") == url and
+            re.fullmatch(r"sha512-[A-Za-z0-9+/]+={0,2}", dist.get("integrity", "")),
+            "Official npm tarball/integrity not present")
+    return url, dist["integrity"]
+
+
+def stage_npm(plan: dict, temp: Path, evidence: dict) -> None:
+    node, npm = TOOL / "node/node.exe", target(plan, "npm")
+    core = target(plan, "corepack")
+    require(node.is_file() and npm["latestStable"] == "12.2.1" and
+            core["latestStable"] == "0.36.0", "Unexpected Node/npm/Corepack plan")
+    url, integrity = npm_metadata("npm", npm["latestStable"], temp)
+    npm_tar = temp / "npm.tgz"
+    evidence["npm_archive"] = download(url, npm_tar, limit=30*1024*1024,
+                                       integrity=integrity)
+    evidence["npm_archive"]["integrity"] = integrity
+    npm_dir = temp / "npm-unpacked"
+    untar_checked(npm_tar, npm_dir)
+    npm_info = obj(npm_dir / "package.json")
+    require(npm_info["name"] == "npm" and npm_info["version"] == npm["latestStable"] and
+            (npm_dir / "bin/npm-cli.js").is_file(), "Invalid npm v12 CLI payload")
+    core_tar = temp / "corepack.tgz"
+    evidence["corepack_archive"] = download(core["artifact"]["url"], core_tar,
+                                            expected=core["artifact"]["sha256"],
+                                            limit=40*1024*1024)
+    core_dir = temp / "corepack-unpacked"
+    untar_checked(core_tar, core_dir)
+    core_info = obj(core_dir / "package.json")
+    require(core_info["name"] == "corepack" and core_info["version"] == core["latestStable"] and
+            (core_dir / "dist/corepack.js").is_file(), "Invalid Corepack 0.36 payload")
+    replace_tree(npm_dir, TOOL / "node/node_modules/npm", temp)
+    replace_tree(core_dir, TOOL / "node/node_modules/corepack", temp)
+    require((TOOL / "node/portable-npm.js").is_file() and
+            all((TOOL / "node" / n).is_file()
+                for n in ("npm", "npm.cmd", "npm.ps1", "npx", "npx.cmd", "npx.ps1",
+                          "corepack", "corepack.cmd")),
+            "Existing portable npm/npx/Corepack shims were lost")
+    run(node, TOOL / "node/node_modules/npm/bin/npm-cli.js", "--version")
+    run(node, TOOL / "node/node_modules/corepack/dist/corepack.js", "--version")
+
+
+def stage_7zip(plan: dict, temp: Path, evidence: dict) -> None:
+    row = target(plan, "7zip")
+    require(row["latestStable"] == "26.05", "Review newer 7-Zip release")
+    archive = temp / "seven-extra.7z"
+    evidence["7zip_archive"] = download(row["artifact"]["url"], archive,
+                                        expected=row["artifact"]["sha256"],
+                                        limit=20*1024*1024)
+    old_exe = TOOL / "bin/7z.exe"
+    stage = temp / "seven-extracted"
+    stage.mkdir()
+    # This runs the OLD trusted bundled 7-Zip executable only in the read-only job.
+    run(old_exe, "x", "-y", "-bd", "-o" + str(stage), archive)
+    plain_tree(stage)
+    for name in ("7z.exe", "7z.dll"):
+        candidates = [p for p in stage.rglob(name) if p.is_file()]
+        require(len(candidates) == 1, "Official 7-Zip Extra lacks an unambiguous " + name)
+        with candidates[0].open("rb") as f:
+            require(f.read(2) == b"MZ", "7-Zip update is not PE")
+        shutil.copyfile(candidates[0], TOOL / "bin" / name)
+    run(TOOL / "bin/7z.exe", "i")
+
+
+def npm_env(temp: Path) -> dict:
+    empty = temp / "empty.npmrc"
+    if not empty.exists():
+        empty.write_text("", encoding="utf-8")
+    home = temp / "npm-home"
+    home.mkdir(exist_ok=True)
+    return {"NPM_CONFIG_CACHE": temp / "npm-cache",
+            "NPM_CONFIG_USERCONFIG": empty,
+            "NPM_CONFIG_GLOBALCONFIG": empty,
+            "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org",
+            "NPM_CONFIG_UPDATE_NOTIFIER": "false",
+            "NPM_CONFIG_AUDIT": "false",
+            "NPM_CONFIG_FUND": "false", "HOME": home, "USERPROFILE": home,
+            "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1"}
+
+
+def stage_playwright(plan: dict, temp: Path, evidence: dict) -> tuple[str, str]:
+    mcp = target(plan, "playwright-mcp")
+    require(mcp["latestStable"] == "0.0.84", "Review newer Playwright MCP release")
+    project = temp / "browser-project"
+    project.mkdir()
+    write_json(project / "package.json", {
+        "name": "codex-portable-browser-tools", "version": "1.0.0", "private": True,
+        "description": "Pinned latest stable Playwright MCP with package-local Chromium",
+        "dependencies": {"@playwright/mcp": mcp["latestStable"]}})
+    node = TOOL / "node/node.exe"
+    npm = TOOL / "node/node_modules/npm/bin/npm-cli.js"
+    env = npm_env(temp)
+    run(node, npm, "install", "--package-lock-only", "--ignore-scripts",
+        "--no-audit", "--no-fund", "--no-update-notifier", cwd=project, extra_env=env)
+    run(node, npm, "ci", "--ignore-scripts", "--bin-links=false",
+        "--no-audit", "--no-fund", "--no-update-notifier", cwd=project, extra_env=env)
+    lock = obj(project / "package-lock.json")
+    packages = lock["packages"]
+    require(packages["node_modules/@playwright/mcp"]["version"] == mcp["latestStable"],
+            "Wrong Playwright MCP dependency")
+    playwright_version = packages["node_modules/playwright"]["version"]
+    require(playwright_version == packages["node_modules/playwright-core"]["version"],
+            "Playwright / playwright-core must match exactly")
+    require(playwright_version == "1.65.0-alpha-2026-10-30",
+            "Upstream Playwright MCP pinned browser framework changed; review required")
+    for name, item in packages.items():
+        if not name:
+            continue
+        require(item.get("resolved", "").startswith("https://registry.npmjs.org/") and
+                item.get("integrity", "").startswith("sha512-"),
+                "npm lock contains unsigned/non-official dependency")
+    browsers = obj(project / "node_modules/playwright-core/browsers.json")["browsers"]
+    matching = [b for b in browsers if b.get("name") == "chromium"]
+    require(len(matching) == 1, "Missing unique pinned Chromium")
+    info = matching[0]
+    version, revision = str(info["browserVersion"]), str(info["revision"])
+    require(re.fullmatch(r"\d+\.\d+\.\d+\.\d+", version) and
+            re.fullmatch(r"\d+", revision), "Invalid Chromium identity")
+    replace_tree(project, TOOL / "automation/playwright", temp)
+    manifest_files = {}
+    for f in (TOOL / "automation/playwright/node_modules").rglob("*"):
+        if f.is_file():
+            manifest_files[f.relative_to(ROOT).as_posix()] = sha(f)
+    require(len(manifest_files) > 100, "Playwright dependencies are incomplete")
+    write_json(TOOL / "automation/dependency-manifest.json", {
+        "source": "https://registry.npmjs.org/@playwright/mcp",
+        "integrity_records": "playwright/package-lock.json",
+        "installation": "npm ci --ignore-scripts --bin-links=false; official archive payloads",
+        "files": dict(sorted(manifest_files.items()))})
+    evidence["playwright"] = {"mcp": mcp["latestStable"],
+                              "playwright": playwright_version,
+                              "chromiumVersion": version, "revision": revision}
+    return version, revision
+
+
+def stage_browser(temp: Path, version: str, revision: str, evidence: dict) -> None:
+    url = ("https://storage.googleapis.com/chrome-for-testing-public/" + version +
+           "/win64/chrome-win64.zip")
+    archive = temp / "chrome-win64.zip"
+    evidence["browser_archive"] = download(url, archive, limit=500*1024*1024)
+    stage = temp / "browser-unpacked"
+    unzip_checked(archive, stage, max_total=800*1024*1024)
+    require((stage / "chrome-win64/chrome.exe").is_file(),
+            "Browser ZIP lacks Chrome for Testing executable")
+    browser_dir = TOOL / "automation/browsers"
+    require(browser_dir.is_dir(), "Original Chromium package is missing")
+    for old in browser_dir.iterdir():
+        require(old.is_dir() and old.name.startswith("chromium-"),
+                "Unreviewed item in browsers root")
+        plain_tree(old)
+        shutil.rmtree(old)
+    (stage).rename(browser_dir / ("chromium-" + revision))
+    payload = browser_dir / ("chromium-" + revision)
+    paths: dict[str, dict] = {}
+    for file in payload.rglob("*"):
+        if file.is_file():
+            paths[file.relative_to(ROOT).as_posix()] = {
+                "sha256": sha(file), "size": file.stat().st_size}
+    require(150 <= len(paths) <= 800, "Unexpected browser file count")
+    write_json(TOOL / "automation/browser-manifest.json", {
+        "schemaVersion": 1, "browserVersion": version, "revision": revision,
+        "platform": "win32-x64",
+        "archive": {
+            "sourceUrl": f"https://cdn.playwright.dev/builds/cft/{version}/win64/chrome-win64.zip",
+            "resolvedUrl": url,
+            "sha256": evidence["browser_archive"]["sha256"],
+            "size": evidence["browser_archive"]["size"]
+        },
+        "fileCount": len(paths),
+        "uncompressedBytes": sum(item["size"] for item in paths.values()),
+        "files": dict(sorted(paths.items()))
+    })
+    versions_file = TOOL / "automation/versions.json"
+    versions = obj(versions_file)
+    versions["checkedAt"] = "2026-11-03"
+    versions["playwrightMcp"] = evidence["playwright"]["mcp"]
+    versions["playwright"] = evidence["playwright"]["playwright"]
+    versions["browser"].update({
+        "version": version, "revision": revision,
+        "executable": f"browsers/chromium-{revision}/chrome-win64/chrome.exe",
+        "downloadUrl": f"https://cdn.playwright.dev/builds/cft/{version}/win64/chrome-win64.zip",
+        "payloadManifest": "browser-manifest.json", "payloadBundled": True})
+    write_json(versions_file, versions)
