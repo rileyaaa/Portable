@@ -304,7 +304,8 @@ class FullStableUpgradeTests(unittest.TestCase):
         source = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
         workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
-        self.assertIn('x + ">=2.1"', source)
+        self.assertIn('x + (">=2.1" if pdf["mode"] == "latest-with-layout"', source)
+        self.assertIn('"latest-compatible-legacy-pdf"', source)
         self.assertIn("optional_license_origin(name, version, files, packages, resolved)", source)
         self.assertIn("PYMUPDF4LLM_NATIVE=PASS", workflow)
 
