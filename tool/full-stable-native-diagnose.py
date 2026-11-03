@@ -128,10 +128,14 @@ def check_python_shims(stage, root: Path, runtime: Path, folder: Path) -> str:
     stage.run(python, "-E", "-s", "-B", "-m", "pip", "--version")
     stage.run(python, "-E", "-s", "-B", "-m", "PyInstaller", "--version")
     stage.run(python, "-E", "-s", "-B", root / "tool/refresh-python-cli-shims.py")
-    scripts = list((root / "tool/bin").glob("*.cmd"))
-    if not any(file.name.casefold() == "pip.cmd" for file in scripts):
-        raise ValueError("Staged Python CLI smoke produced no pip.cmd")
-    return "Pinned pip/PyInstaller executable imports and Python CMD wrappers passed"
+    scripts = {item.name.casefold() for item in (root / "tool/bin").glob("*.cmd")}
+    if not {"pip.cmd", "pyinstaller.cmd"} <= scripts:
+        raise ValueError("Staged Python CMD wrappers missing pip or PyInstaller")
+    # Exercise *actual* Windows launchers, including their PowerShell path
+    # guard, rather than checking only that the generated files exist.
+    stage.run(root / "tool/bin/pip.cmd", "--version", cwd=root)
+    stage.run(root / "tool/bin/pyinstaller.cmd", "--version", cwd=root)
+    return "Pinned pip/PyInstaller native imports and real Windows CMD wrappers passed"
 
 
 def execute(root: Path, stage, plan: dict, node: Path) -> list[dict]:
@@ -193,8 +197,9 @@ def main() -> int:
     stage = real_stager()
     plan = stage.obj(PLAN)
     if plan.get("schema") != 1 or plan.get("platform") != "win32-x64" or \
-            plan.get("state") != "PREPARATION_ONLY_NOT_INSTALLED":
-        raise ValueError("Unreviewed official full tool upgrade plan")
+            plan.get("state") != "PREPARATION_ONLY_NOT_INSTALLED" or \
+            stage.target(plan, "node")["latestStable"] != NODE_VERSION:
+        raise ValueError("Unreviewed official full tool upgrade plan / Node identity")
     node = shutil.which("node")
     if not node:
         raise ValueError("Windows Node setup-node missing")
