@@ -138,11 +138,25 @@ def check_python_shims(stage, root: Path, runtime: Path, folder: Path) -> str:
     return "Pinned pip/PyInstaller native imports and real Windows CMD wrappers passed"
 
 
+def windows_tool_contracts() -> str:
+    """Use the same real maintenance unit suite invoked before full staging."""
+    command = [sys.executable, "-E", "-s", "-B", "-m", "unittest", "discover",
+               "-s", "tests", "-p", "test_tool_updates.py", "-q"]
+    completed = subprocess.run(command, cwd=SOURCE, capture_output=True,
+                               text=True, timeout=120, check=False,
+                               encoding="utf-8", errors="replace")
+    if completed.returncode != 0:
+        raise ValueError("Windows maintenance regressions failed: " +
+                         (completed.stdout + "\n" + completed.stderr)[-2300:])
+    return "Existing real Windows tool-maintenance regression suite passed"
+
+
 def execute(root: Path, stage, plan: dict, node: Path) -> list[dict]:
     """Batch independent Windows checks; never run full prepare or publish."""
     work = root / "work"
     evidence: dict = {}
     records: list[dict] = []
+    record(records, "windows_tool_contracts", windows_tool_contracts)
     record(records, "node26", lambda: check_node_version(node))
     record(records, "npm_corepack", lambda: stage.stage_npm(plan, work / "npm", evidence),
            after=("node26",))
