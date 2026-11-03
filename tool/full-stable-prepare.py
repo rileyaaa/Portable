@@ -312,6 +312,31 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     require(ssh_set == SSH and len(base_set) >= 38, "Python dependency closure too small")
     generate("python-packages.in.txt", base_set)
     generate("python-ssh-packages.in.txt", ssh_set)
+    # Build vendor pip EXE launchers in a separate isolated target. Merely
+    # unzipping pip's wheel into site-packages does not generate pip.exe,
+    # pip3.exe or pip3.15.exe; without these, refresh-python-cli-shims.py
+    # would delete the existing portable pip CMD wrappers as obsolete.
+    # Never replace pip's loaded code in its own running interpreter.
+    pip_launch = temp / "pip-launchers-target"
+    pip_launch.mkdir()
+    run(python, "-E", "-s", "-B", "-m", "pip", "install", "--no-input",
+        "--no-deps", "--no-compile", "--no-index", "--only-binary=:all:",
+        "--require-hashes", "--no-warn-script-location",
+        "--find-links", wheels, "--target", pip_launch,
+        "pip=="+resolved["pip"]["version"],
+        extra_env={"PIP_CACHE_DIR": temp / "pip-cache"})
+    # pip's own invocation above is anchored to official pinned wheel bytes,
+    # even though this synthetic pip launcher staging does not mutate the
+    # already verified bootstrapped pip import tree.
+    vendor = pip_launch / "bin"
+    require(vendor.is_dir(), "pip 3.15 vendor entry points not generated")
+    scripts = stage / "Lib/site-packages/bin"
+    scripts.mkdir(exist_ok=True)
+    for name in ("pip.exe", "pip3.exe", "pip3.15.exe"):
+        candidate = vendor / name
+        require(candidate.is_file() and candidate.stat().st_size > 1024,
+                "pip 26.2.2 is missing expected Windows launcher " + name)
+        shutil.copyfile(candidate, scripts / name)
     # pip was bootstrapped directly from the same officially hashed wheel.
     for label, output in (("base", stage / "Lib/site-packages"),
                           ("ssh", stage / "ssh-packages")):
