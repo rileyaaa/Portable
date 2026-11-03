@@ -319,11 +319,15 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     # Never replace pip's loaded code in its own running interpreter.
     pip_launch = temp / "pip-launchers-target"
     pip_launch.mkdir()
+    pip_launcher_lock = temp / "pip-launcher-lock.txt"
+    pip_launcher_lock.write_text("pip==" + resolved["pip"]["version"] +
+                                " --hash=sha256:" + resolved["pip"]["sha256"] + "\n",
+                                encoding="utf-8")
     run(python, "-E", "-s", "-B", "-m", "pip", "install", "--no-input",
         "--no-deps", "--no-compile", "--no-index", "--only-binary=:all:",
         "--require-hashes", "--no-warn-script-location",
         "--find-links", wheels, "--target", pip_launch,
-        "pip=="+resolved["pip"]["version"],
+        "-r", pip_launcher_lock,
         extra_env={"PIP_CACHE_DIR": temp / "pip-cache"})
     # pip's own invocation above is anchored to official pinned wheel bytes,
     # even though this synthetic pip launcher staging does not mutate the
