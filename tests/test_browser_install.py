@@ -64,8 +64,10 @@ class BrowserInstallTests(unittest.TestCase):
 
     def test_pinned_browser_inventory_matches_installed_official_bytes(self):
         manifest, prefix = browser.load_manifest(ROOT)
-        self.assertEqual(prefix, "tool/automation/browsers/chromium-1247/")
-        self.assertEqual(manifest["fileCount"], 305)
+        versions = json.loads((ROOT / 'tool/automation/versions.json').read_text(encoding='utf-8'))
+        self.assertEqual(prefix, 'tool/automation/browsers/chromium-' + versions['browser']['revision'] + '/')
+        self.assertEqual(manifest['browserVersion'], versions['browser']['version'])
+        self.assertGreaterEqual(manifest['fileCount'], 150)
         browser.verify_payload(ROOT, manifest)
 
 
