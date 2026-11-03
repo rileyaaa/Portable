@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-03：全量 Python 3.15 稳定兼容 PDF 方案（对前一条 ONNX 阻塞结论的后续解决）
+
+- **继续推进而非停等上游：** 当前 PyMuPDF 2.1 的 Layout 默认依赖 ONNX Runtime，而官方 ONNX Runtime 1.31.1 无 CPython 3.15 Windows x64 wheel。官方 `pymupdf4llm==0.3.4`（2026-02-14）把 Layout 作为**可选**扩展，保留完整 PDF→Markdown 功能；`pymupdf==1.28.2`（2026-08-06）是 1.x 最后稳定版本，发布兼容 Python 3.15 的 Windows x64 abi3 wheel。这一组合可保留已有项目的默认文本/PDF 功能，同时继续升级 Python 3.15.2、pip 26.3、npm/Corepack/Playwright/7zip，不借用旧 3.14 原生扩展，不采用 ONNX nightly。参考官方 PyPI https://pypi.org/project/pymupdf4llm/0.3.4/ 及 https://pypi.org/project/pymupdf/1.28.2/ 。**不是所有 PDF 组件都是最新主版本**，而是经过选择的官方最新兼容组合。
+- **条件式解析：** full 过程启动时读取 PyPI ONNX 最新 metadata。若存在官方完整 SHA-256 标识的 cp315/abi3 Windows AMD64 轮子，则允许新版 2.1+ Core/Layout/4LLM 并核对完整闭包；否则提前从官方 PyPI 校验最后独立的 `pymupdf==1.28.2` 和带可选 Layout 的 `pymupdf4llm==0.3.4` 的项目/版本/wheel URL/SHA-256，锁定这两个已审查候选，并让 pip 在受控 Windows 环境 `--only-binary=:all:` 解析、下载、再次核对同一字节哈希。对落入不兼容 ONNX、意外 Layout、版本错配或来自不受信域名的情况仍立即停止。完整候选依然需要 GitHub Windows 原生安装及全部门禁通过。
+- **真功能门禁与测试：** Windows native smoke 不再错误地强制存在 Layout，而是同时接受经核验的官方旧模式或完全同版的新版；实际创建 PDF 页面、提取 Markdown，并要求含有预定文本。合成测试覆盖官方 fallback wheel 识别、sha/url/ABI/yanked/重复来源异常、pip 解析身份及流程顺序。旧 19 项 PowerShell 5.1、十轮 release-audit、真实客户 ZIP、LFS/SHA-256 和独立只读验证/可信写入 job 均保留。本次只更改源码和测试，不发布 Release、不自动执行 Actions；**不能把离线模拟当作 Windows 通过**。
+
+
+
 ## 2026-11-03：第十七次失败后复审发现官方 PyMuPDF 2.1 / ONNX Runtime 无法在 CPython 3.15 全量安装
 
 - **现状与证据：** 先前 PR #19 改为要求最新 PyMuPDF Core / Layout / 4LLM **2.1**。官方 PyMuPDF 2.1 依赖 `onnxruntime` 运行 Layout；而截至 2026-11-03，官方 PyPI `onnxruntime` 最新稳定版 **1.31.1** 只有 `cp311` 至 `cp314` 的 Windows wheel，**没有** CPython 3.15 对应的 `cp315` 或 `abi3` Windows x64 wheel。见 https://pypi.org/project/onnxruntime/ 与 https://pymupdf.readthedocs.io/en/latest/rag.html 。独立用 Python packaging wheel tags 模拟确认 `cp314-cp314-win_amd64` 不兼容 `cp315`，PyMuPDF 自身的 `cp311-abi3-win_amd64` 兼容。按当前 Python 3.15.2 + `--only-binary=:all:` 规则，`pip --dry-run` 没有满足需求的官方稳定版，**不能再让用户手动执行 03/full**。
