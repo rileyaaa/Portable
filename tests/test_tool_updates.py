@@ -72,7 +72,7 @@ class ToolUpdateTests(unittest.TestCase):
                          'node-v24-win-x64/node.exe')
 
     def test_only_reviewed_candidates_are_installable(self):
-        self.assertEqual([item['tool'] for item in tools.plan()], ['node'])
+        self.assertEqual([item['tool'] for item in tools.plan()], ['ripgrep', 'fd', 'jq'])
         ssh_status = tools.load_json(tools.LEDGER)['tools']['paramiko']['status']
         self.assertIn(ssh_status, ('not-installed', 'bundled'))
         if ssh_status == 'bundled':
@@ -210,13 +210,19 @@ class ToolUpdateTests(unittest.TestCase):
 
     def test_group_selection_and_staged_scope(self):
         self.assertEqual(tools.selected_rows('ssh'), [])
-        self.assertEqual([r['tool'] for r in tools.selected_rows('all')], ['node'])
-        self.assertEqual([r['tool'] for r in tools.selected_rows('tools')], ['node'])
+        self.assertEqual([r['tool'] for r in tools.selected_rows('all')], ['ripgrep', 'fd', 'jq'])
+        self.assertEqual([r['tool'] for r in tools.selected_rows('tools')], ['ripgrep', 'fd', 'jq'])
         with self.assertRaises(ValueError):
             tools.selected_rows('bogus')
 
     def test_node_update_requires_matching_official_shasums(self):
-        row=tools.plan()[0]
+        # Node was delivered in the prior batch; retain its isolated trust
+        # regression without making it a new production candidate.
+        row = dict(tool='node', group='node', version='26.13.0',
+                   url='https://nodejs.org/dist/v26.13.0/node-v26.13.0-win-x64.zip',
+                   source_prefix='node-v26.13.0-win-x64/',
+                   destination='tool/node', kind='directory',
+                   sha256='dcc60d59a0746999f99064a01c020445d54d84228c691cdbf25b49ac3b59150a')
         shas=(row['sha256'] + '  node-v26.13.0-win-x64.zip\n').encode('ascii')
         # The official independent SHASUMS must match the reviewed ZIP pin
         # before downloading the actual release artifact.
@@ -488,6 +494,7 @@ class ToolUpdateTests(unittest.TestCase):
             (dest/'corepack.js').write_text('reviewed',encoding='utf-8')
             observed={'node':'26.13.0'}
             with patch.object(tools,'ROOT',root),\
+                 patch.object(tools,'selected_rows',return_value=[{'tool':'node','version':'26.13.0'}]),\
                  patch.object(tools,'probe_versions',return_value=observed),\
                  patch.object(tools.subprocess,'run',return_value=subprocess.CompletedProcess(
                      args=[],returncode=0,stdout=b'0.35.0\n',stderr=b'')) as runner:
@@ -495,6 +502,7 @@ class ToolUpdateTests(unittest.TestCase):
                 self.assertEqual(runner.call_count,1)
                 self.assertEqual(runner.call_args.args[0][0],str(node/'node.exe'))
             with patch.object(tools,'ROOT',root),\
+                 patch.object(tools,'selected_rows',return_value=[{'tool':'node','version':'26.13.0'}]),\
                  patch.object(tools,'probe_versions',return_value=observed),\
                  patch.object(tools.subprocess,'run',return_value=subprocess.CompletedProcess(
                      args=[],returncode=0,stdout=b'0.34.0\n',stderr=b'')):
