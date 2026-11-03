@@ -72,7 +72,7 @@ class ToolUpdateTests(unittest.TestCase):
                          'node-v24-win-x64/node.exe')
 
     def test_only_reviewed_candidates_are_installable(self):
-        self.assertEqual([item['tool'] for item in tools.plan()], ['node'])
+        self.assertEqual([item['tool'] for item in tools.plan()], ['ripgrep', 'fd', 'jq'])
         ssh_status = tools.load_json(tools.LEDGER)['tools']['paramiko']['status']
         self.assertIn(ssh_status, ('not-installed', 'bundled'))
         if ssh_status == 'bundled':
@@ -210,13 +210,19 @@ class ToolUpdateTests(unittest.TestCase):
 
     def test_group_selection_and_staged_scope(self):
         self.assertEqual(tools.selected_rows('ssh'), [])
-        self.assertEqual([r['tool'] for r in tools.selected_rows('all')], ['node'])
-        self.assertEqual([r['tool'] for r in tools.selected_rows('tools')], ['node'])
+        self.assertEqual([r['tool'] for r in tools.selected_rows('all')], ['ripgrep', 'fd', 'jq'])
+        self.assertEqual([r['tool'] for r in tools.selected_rows('tools')], ['ripgrep', 'fd', 'jq'])
         with self.assertRaises(ValueError):
             tools.selected_rows('bogus')
 
     def test_node_update_requires_matching_official_shasums(self):
-        row=tools.plan()[0]
+        # Node was delivered in the prior batch; retain its isolated trust
+        # regression without making it a new production candidate.
+        row = dict(tool='node', group='node', version='26.13.0',
+                   url='https://nodejs.org/dist/v26.13.0/node-v26.13.0-win-x64.zip',
+                   source_prefix='node-v26.13.0-win-x64/',
+                   destination='tool/node', kind='directory',
+                   sha256='dcc60d59a0746999f99064a01c020445d54d84228c691cdbf25b49ac3b59150a')
         shas=(row['sha256'] + '  node-v26.13.0-win-x64.zip\n').encode('ascii')
         # The official independent SHASUMS must match the reviewed ZIP pin
         # before downloading the actual release artifact.
@@ -225,6 +231,85 @@ class ToolUpdateTests(unittest.TestCase):
                     self.assertRaises(ValueError):
                 tools.prepare_row(row,Path(d))
         self.assertIn('node-v26.13.0-win-x64.zip',shas.decode())
+
+    def test_reviewed_cli_pins_are_official_x64_and_reject_wrong_arch(self):
+        rows = tools.plan()
+        self.assertEqual([r['tool'] for r in rows], ['ripgrep', 'fd', 'jq'])
+        expected = {
+            'ripgrep': ('15.2.0', '71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5'),
+            'fd': ('10.5.0', 'a227701b8551c35a9931d9f6da75503cf86d88e182d71fb849a70864c5d57cd7'),
+            'jq': ('1.8.2', 'a6fc67fedaf9128a3309a1e2ebb8b986aeccf70122ee46d2cb4849e423f0c627'),
+        }
+        for row in rows:
+            with self.subTest(tool=row['tool']):
+                self.assertEqual((row['version'], row['sha256']), expected[row['tool']])
+                self.assertEqual(row['group'], 'cli')
+                self.assertNotIn('node', row['destination'])
+                if row['tool'] != 'jq':
+                    self.assertEqual(row['kind'], 'single')
+                    self.assertEqual(row['source_prefix'], row['url'].split('/')[-1][:-4] + '/')
+                    self.assertEqual(row['source_file'], {'ripgrep': 'rg.exe', 'fd': 'fd.exe'}[row['tool']])
+                    bad = dict(row, url=row['url'].replace('x86_64', 'aarch64'))
+                    with patch.object(tools, 'load_json', return_value={
+                        'schema': 1, 'platform': 'win32-x64', 'candidates': [bad]
+                    }), self.assertRaisesRegex(ValueError, 'Windows x64 MSVC'):
+                        tools.plan()
+                else:
+                    self.assertEqual(row['kind'], 'executable')
+                    self.assertEqual(row['destination'], 'tool/bin/jq.exe')
+                    self.assertNotIn('source_prefix', row)
+                    self.assertNotIn('source_file', row)
+                    for change in ({'url': row['url'].replace('amd64', 'arm64')},
+                                   {'source_prefix': 'unreviewed/'},
+                                   {'destination': 'tool/bin/rg.exe'},
+                                   {'kind': 'pair'}):
+                        with self.subTest(change=change), patch.object(
+                            tools, 'load_json', return_value={
+                                'schema': 1, 'platform': 'win32-x64',
+                                'candidates': [dict(row, **change)]
+                        }), self.assertRaises(ValueError):
+                            tools.plan()
+
+    def test_direct_jq_official_pe_is_pinned_and_fails_closed(self):
+        pe = bytearray(256)
+        pe[:2] = b'MZ'
+        pe[0x3c:0x40] = (0x80).to_bytes(4, 'little')
+        pe[0x80:0x84] = b'PE\0\0'
+        pe[0x84:0x86] = (0x8664).to_bytes(2, 'little')
+        binary = bytes(pe)
+        row = dict(next(r for r in tools.plan() if r['tool'] == 'jq'),
+                   sha256=hashlib.sha256(binary).hexdigest())
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            dest = root / 'tool/bin/jq.exe'
+            dest.parent.mkdir(parents=True)
+            dest.write_bytes(b'old-binary')
+            for name, payload, pin, passes in (
+                ('good', binary, row['sha256'], True),
+                ('wrong-digest', binary, 'f' * 64, False),
+                ('wrong-architecture', binary, None, False),
+            ):
+                with self.subTest(name=name):
+                    scratch = root / ('tmp-' + name)
+                    scratch.mkdir()
+                    if name == 'wrong-architecture':
+                        # Modify just the COFF machine type while keeping a valid
+                        # DOS and PE signature. A matching SHA must still fail.
+                        broken = bytearray(binary)
+                        broken[0x84:0x86] = (0xaa64).to_bytes(2, 'little')
+                        payload = bytes(broken)
+                    test_row = dict(row, sha256=(hashlib.sha256(payload).hexdigest()
+                                                if pin is None else pin))
+                    before = dest.read_bytes()
+                    with patch.object(tools, 'ROOT', root), patch.object(
+                            tools, 'fetch_bytes', return_value=payload):
+                        if passes:
+                            tools.prepare_row(test_row, scratch)
+                            self.assertEqual(dest.read_bytes(), payload)
+                        else:
+                            with self.assertRaises(ValueError):
+                                tools.prepare_row(test_row, scratch)
+                            self.assertEqual(dest.read_bytes(), before)
 
     def test_node_upgrade_preserves_portable_npm_and_skips_system_installer(self):
         def fake_executable():
@@ -488,6 +573,7 @@ class ToolUpdateTests(unittest.TestCase):
             (dest/'corepack.js').write_text('reviewed',encoding='utf-8')
             observed={'node':'26.13.0'}
             with patch.object(tools,'ROOT',root),\
+                 patch.object(tools,'selected_rows',return_value=[{'tool':'node','version':'26.13.0'}]),\
                  patch.object(tools,'probe_versions',return_value=observed),\
                  patch.object(tools.subprocess,'run',return_value=subprocess.CompletedProcess(
                      args=[],returncode=0,stdout=b'0.35.0\n',stderr=b'')) as runner:
@@ -495,6 +581,7 @@ class ToolUpdateTests(unittest.TestCase):
                 self.assertEqual(runner.call_count,1)
                 self.assertEqual(runner.call_args.args[0][0],str(node/'node.exe'))
             with patch.object(tools,'ROOT',root),\
+                 patch.object(tools,'selected_rows',return_value=[{'tool':'node','version':'26.13.0'}]),\
                  patch.object(tools,'probe_versions',return_value=observed),\
                  patch.object(tools.subprocess,'run',return_value=subprocess.CompletedProcess(
                      args=[],returncode=0,stdout=b'0.34.0\n',stderr=b'')):
@@ -586,7 +673,9 @@ class ToolUpdateTests(unittest.TestCase):
                             f'"{sys.executable}" "{filter_script}"'], check=True)
             subprocess.run(['git', '-C', str(root), 'config', 'filter.lfs.required', 'true'],
                            check=True)
-            with patch.object(tools, 'ROOT', root):
+            with patch.object(tools, 'ROOT', root), patch.object(
+                    tools, 'selected_rows', side_effect=lambda group: (
+                        [] if group == 'ssh' else [{'tool':'node','version':'26.13.0'}])):
                 tools.enable_node_lfs()
                 self.assertEqual(attrs.read_bytes(), b'other.exe -text\n' + tools.NODE_LFS_ATTRIBUTE)
                 with self.assertRaisesRegex(ValueError, 'Unexpected attributes'):
@@ -678,6 +767,9 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertEqual(verify.count('git lfs install --local'), 1)
         self.assertEqual(writer.count('git lfs install --local'), 1)
         self.assertEqual(workflow.count('git add -A -- tool .gitattributes'), 2)
+        self.assertEqual(workflow.count("if ($env:TOOL_GROUP -ne 'ssh' -and $hasNodeCandidate)"), 3)
+        self.assertEqual(workflow.count("Where-Object { $_.tool -ceq 'node' }"), 3)
+        self.assertNotIn("if ($env:TOOL_GROUP -ne 'ssh') {", workflow)
         self.assertIn('git lfs push --object-id origin $newNodeOid', writer)
         self.assertLess(writer.index('git lfs push --object-id origin $newNodeOid'),
                         writer.index("git push origin ('HEAD:refs/heads/' + $name)"))
@@ -725,7 +817,8 @@ class ToolUpdateTests(unittest.TestCase):
             # Candidate changes are independently reproduced from the same
             # base version and source archive in the two simulated jobs.
             node.write_bytes(b'MZ' + b'1' * (3 * 1024 * 1024))
-            with patch.object(tools, 'ROOT', tmp):
+            with patch.object(tools, 'ROOT', tmp), patch.object(
+                    tools, 'selected_rows', return_value=[{'tool':'node','version':'26.13.0'}]):
                 tools.enable_node_lfs()
                 subprocess.run(['git', '-C', str(tmp), 'add', '-A', '--',
                                 'tool', '.gitattributes'], check=True)

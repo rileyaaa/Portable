@@ -135,6 +135,20 @@ def plan() -> list[dict]:
                 'Source is not an approved official HTTPS origin')
         require(re.fullmatch(r'[a-f0-9]{64}', str(row.get('sha256', ''))),
                 'A reviewed real SHA256 is mandatory')
+        # The official jq Windows AMD64 release is a standalone signed-by-hash
+        # executable, not a ZIP. Never reinterpret a source archive as a binary
+        # or accept arbitrary direct downloads under the CLI group.
+        if row.get('kind') == 'executable':
+            require(tool == 'jq' and group == 'cli' and
+                    source == (f'https://github.com/jqlang/jq/releases/download/'
+                               f'jq-{version}/jq-windows-amd64.exe') and
+                    row.get('destination') == 'tool/bin/jq.exe' and
+                    'source_prefix' not in row and 'source_file' not in row,
+                    'Only the exact official jq AMD64 executable is allowed')
+            require('tool/bin/jq.exe' not in destinations,
+                    'Duplicate destination')
+            destinations.add('tool/bin/jq.exe')
+            continue
         src_prefix = row.get('source_prefix')
         require(isinstance(src_prefix, str) and src_prefix.endswith('/') and
                 len(src_prefix) > 1, 'Source prefix must be one archive directory')
@@ -156,6 +170,15 @@ def plan() -> list[dict]:
             require(url.hostname == 'dl.google.com' and url.path.startswith('/android/repository/') and
                     url.path.endswith('-windows.zip') and src_prefix == 'platform-tools/',
                     'ADB candidate must use the official Android Windows ZIP')
+        elif tool in ('ripgrep', 'fd'):
+            filename = (f'ripgrep-{version}-x86_64-pc-windows-msvc.zip'
+                        if tool == 'ripgrep' else
+                        f'fd-v{version}-x86_64-pc-windows-msvc.zip')
+            tag = version if tool == 'ripgrep' else 'v' + version
+            require(source == (f'https://github.com/{REPO_BY_TOOL[tool]}/'
+                               f'releases/download/{tag}/{filename}') and
+                    src_prefix == filename[:-4] + '/',
+                    'CLI archive must match exact official Windows x64 MSVC artifact')
         elif tool in REPO_BY_TOOL:
             require(url.hostname == 'github.com' and
                     url.path.startswith('/' + REPO_BY_TOOL[tool] + '/releases/download/') and
@@ -340,6 +363,20 @@ def prepare_row(row: dict, temp: Path) -> None:
     binary = fetch_bytes(row['url'], ARCHIVE_MAX)
     require(hashlib.sha256(binary).hexdigest() == row['sha256'],
             'Downloaded SHA256 differs for ' + row['tool'])
+    if row['kind'] == 'executable':
+        # The complete bytes already passed the exact official SHA-256 pin.
+        # A native AMD64 PE check precedes any replacement in the checkout.
+        require(row['tool'] == 'jq' and row['destination'] == 'tool/bin/jq.exe',
+                'Unsupported direct executable installation')
+        dest = bounded(ROOT / row['destination'])
+        ordinary(dest)
+        staging = temp / ('candidate-' + row['tool'])
+        staging.mkdir()
+        staged = staging / dest.name
+        staged.write_bytes(binary)
+        validate_pe(staged)
+        os.replace(staged, dest)
+        return
     import io
     prefix = row['source_prefix']
     dest = bounded(ROOT / row['destination'])
@@ -563,6 +600,11 @@ def prepare(group: str, *, day: str, writer: bool = False) -> None:
             'Must use the bundled Windows Python')
     selected = selected_rows(group)
     ssh = group != 'tools'
+    state = ledger()['tools']
+    for row in selected:
+        require(row['tool'] in state and state[row['tool']].get('version') != row['version'],
+                'Candidate already matches installed version; do not waste a Windows run: ' +
+                row['tool'])
     require(selected or ssh, 'No reviewed pinned tool candidates')
     scratch = bounded(ROOT / 'tmp')
     scratch.mkdir(exist_ok=True)
