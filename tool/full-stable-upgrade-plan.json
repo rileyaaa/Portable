@@ -5,7 +5,7 @@
   "state": "PREPARATION_ONLY_NOT_INSTALLED",
   "sourceMainSha": "05fb585788200c98add075da1c4961717efc0f16",
   "policy": {
-    "target": "latest stable official releases across all major versions, not just latest patch of installed major",
+    "target": "latest stable official tools across supported major versions; one explicitly checked compatible PDF fallback while official ONNX Runtime lacks CPython 3.15 Win AMD64 wheels",
     "scope": "every installed component under tool/ and its lockfile-managed runtime dependencies",
     "omitted": "Uninstalled git/ and uv-tools/ placeholders are not new installs",
     "sideEffects": "never install globally, alter host PATH or registry, or use Windows installers to modify host",
@@ -179,5 +179,14 @@
       "sourceSha256": "d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f",
       "strategy": "From the exact official source tar.gz, repackage the 17 pure-Python lib/yaml/*.py modules and upstream license/PKG-INFO as a verified local py3-none-any wheel. Never run setup.py, compile the optional C extension, or fetch a third-party wheel. Lock generated wheel digest and test yaml.safe_load/safe_dump."
     }
-  ]
+  ],
+  "pythonPdfCompatibilityException": {
+    "reason": "PyMuPDF 2.1 enables ONNX Layout by default, but official stable ONNX Runtime has no CPython 3.15 Windows x64 wheel on 2026-11-03",
+    "when": "Only if current official onnxruntime stable PyPI release lacks verified cp315 or compatible abi3 win_amd64 wheel",
+    "pymupdf": "1.28.2",
+    "pymupdf4llm": "0.3.4",
+    "layout": "not installed; 4LLM 0.3.4 uses the same legacy PDF->Markdown mode already bundled in this project",
+    "constraints": "PyPI official stable release JSON and wheel URL/SHA256 must match pip downloaded bytes, wheel ABI must support CPython 3.15, 4LLM Layout remains optional, and Windows native PDF-to-Markdown must pass; never bypass requirements or install 3.14 extensions",
+    "automaticUpgrade": "When official ONNX Runtime latest stable publishes a matching cp315/abi3 Win AMD64 wheel, use PyMuPDF >=2.1 Core/Layout/4LLM matching release instead"
+  }
 }
