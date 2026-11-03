@@ -155,7 +155,7 @@ class FullStableUpgradeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             stage.select_official_pip_release_wheel(bad, "26.3", checksum)
         bad = copy.deepcopy(record)
-        bad["info"]["version"] = "26.2.2"
+        bad["info"]["version"] = "26.3"
         with self.assertRaises(ValueError):
             stage.select_official_pip_release_wheel(bad, "26.3", checksum)
 
@@ -295,11 +295,11 @@ class FullStableUpgradeTests(unittest.TestCase):
             bin_dir.mkdir(parents=True)
             info.mkdir()
             (info / "METADATA").write_text(
-                "Metadata-Version: 2.3\nName: pip\nVersion: 26.2.2\n",
+                "Metadata-Version: 2.3\nName: pip\nVersion: 26.3\n",
                 encoding="utf-8")
             record = info / "RECORD"
             record.write_text(
-                "pip/__init__.py,,\npip-26.2.2.dist-info/RECORD,,\n",
+                "pip/__init__.py,,\npip-26.3.dist-info/RECORD,,\n",
                 encoding="utf-8")
             for name in ("pip.exe", "pip3.exe", "pip3.15.exe"):
                 (bin_dir / name).write_bytes(b"MZ" + bytes(range(256)) * 5)
@@ -314,10 +314,10 @@ class FullStableUpgradeTests(unittest.TestCase):
                 path = site / name
                 self.assertTrue(digest.startswith("sha256="))
                 self.assertEqual(int(size), path.stat().st_size)
-            wheel_lock.validate_runtime(root, b"pip==26.2.2\n")
+            wheel_lock.validate_runtime(root, b"pip==26.3\n")
             record.write_text("pip/__init__.py,,\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Unowned Python bin"):
-                wheel_lock.validate_runtime(root, b"pip==26.2.2\n")
+                wheel_lock.validate_runtime(root, b"pip==26.3\n")
 
 
     def test_7zip_official_full_sfx_pe_amd64_and_paired_dll_policy(self):
