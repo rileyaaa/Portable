@@ -460,14 +460,15 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     # already verified bootstrapped pip import tree.
     vendor = pip_launch / "bin"
     require(vendor.is_dir(), "pip 3.15 vendor entry points not generated")
-    scripts = stage / "Lib/site-packages/bin"
-    scripts.mkdir(exist_ok=True)
     for name in ("pip.exe", "pip3.exe", "pip3.15.exe"):
         candidate = vendor / name
         require(candidate.is_file() and candidate.stat().st_size > 1024,
-                "pip 26.2.2 is missing expected Windows launcher " + name)
-        shutil.copyfile(candidate, scripts / name)
-    register_generated_pip_launchers(stage / "Lib/site-packages")
+                "pip 26.3 is missing expected Windows launcher " + name)
+    # Avoid creating Lib/site-packages/bin BEFORE installing other base wheels:
+    # pip --target refuses to merge a new bin/ tree into an existing bin/
+    # (it warned about this in the failed Windows run). That silently loses
+    # new CLI entrypoints. Merge the three pinned pip launchers only after
+    # all the base wheels' scripts have been installed.
     # pip was bootstrapped directly from the same officially hashed wheel.
     for label, output in (("base", stage / "Lib/site-packages"),
                           ("ssh", stage / "ssh-packages")):
@@ -484,13 +485,26 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
             "--require-hashes", "--no-warn-script-location",
             "--find-links", wheels, "--target", output, "-r", wheel_lock,
             extra_env={"PIP_CACHE_DIR": temp / "pip-cache"})
+    # Base wheel installation has now created its own bin/ launchers. Preserve
+    # them exactly, then add only the three official pip 26.3 launcher templates.
+    scripts = stage / "Lib/site-packages/bin"
+    require(scripts.is_dir(), "Base wheels did not create required CLI launchers")
+    before = {item.name.casefold() for item in scripts.iterdir() if item.is_file()}
+    # These come from the newly installed, pinned PyInstaller 6.22.3 wheel.
+    # Previously pip skipped the entire scripts/ tree when bin/ already existed.
+    require({"pyinstaller.exe", "pyi-makespec.exe"} <= before,
+            "Expected PyInstaller Windows launchers were dropped during pip --target")
+    require(not any(n in before for n in ("pip.exe", "pip3.exe", "pip3.15.exe")),
+            "Conflicting pip launcher in another installed distribution")
+    for name in ("pip.exe", "pip3.exe", "pip3.15.exe"):
+        shutil.copyfile(vendor / name, scripts / name)
+    register_generated_pip_launchers(stage / "Lib/site-packages")
+    require(before.issubset({p.name.casefold() for p in scripts.iterdir()}),
+            "Another base package console launcher was removed")
     (stage / "Lib/site-packages/codex_portable_ssh.pth").write_text(
         "../../ssh-packages\n", encoding="ascii")
     plain_tree(stage)
-    for native in stage.rglob("*"):
-        if native.is_file() and native.suffix.lower() in (".pyd", ".dll", ".exe"):
-            require(pe_amd64(native),
-                    "Staged Python/native package binary is not Windows x64: " + str(native))
+    evidence["python_native_architectures"] = check_python_native_architecture(stage)
     evidence["python_packages"] = resolved
     return stage, resolved
 
@@ -574,6 +588,80 @@ def pe_amd64(path: Path) -> bool:
             return False
         stream.seek(offset)
         return stream.read(4) == b"PE\x00\x00" and stream.read(2) == b"\x64\x86"
+
+
+# These are *inert vendor launcher templates* distributed as data in the
+# official hash-checked Windows wheels. They are not package entry points and
+# are never launched. Multi-architecture resources are required by setuptools
+# and pip to construct Windows entrypoints for other targets.
+INERT_WHEEL_LAUNCHERS = {
+    "setuptools/cli-32.exe": 0x014c,
+    "setuptools/gui-32.exe": 0x014c,
+    # setuptools 84.2.1 also ships un-suffixed aliases byte-identical to x86.
+    "setuptools/cli.exe": 0x014c,
+    "setuptools/gui.exe": 0x014c,
+    "setuptools/cli-arm64.exe": 0xaa64,
+    "setuptools/gui-arm64.exe": 0xaa64,
+    "pip/_vendor/distlib/t32.exe": 0x014c,
+    "pip/_vendor/distlib/w32.exe": 0x014c,
+    "pip/_vendor/distlib/t64-arm.exe": 0xaa64,
+    "pip/_vendor/distlib/w64-arm.exe": 0xaa64,
+}
+
+
+def pe_machine(path: Path) -> int | None:
+    """Read PE COFF Machine without loading or running an untrusted binary."""
+    with path.open("rb") as stream:
+        if stream.read(2) != b"MZ":
+            return None
+        stream.seek(0, 2)
+        length = stream.tell()
+        if length < 0x80:
+            return None
+        stream.seek(0x3c)
+        offset = int.from_bytes(stream.read(4), "little")
+        if not (64 <= offset <= length - 6):
+            return None
+        stream.seek(offset)
+        if stream.read(4) != b"PE\x00\x00":
+            return None
+        return int.from_bytes(stream.read(2), "little")
+
+
+def check_python_native_architecture(root: Path) -> dict:
+    """Verify ALL staged native payloads, with ten exact data-only exceptions.
+
+    Each exception remains backed by its own upstream SHA-256-pinned wheel
+    and must have precisely the named PE machine architecture. Unexpected x86,
+    ARM64, malformed PE, DLL or PYD payloads are always rejected.
+    """
+    require(root.is_dir(), "Missing staged Python directory")
+    counts = {"amd64": 0, "inert_x86": 0, "inert_arm64": 0}
+    allowed_base = root / "Lib/site-packages"
+    actual_inert: set[str] = set()
+    for native in root.rglob("*"):
+        if not native.is_file() or native.suffix.lower() not in (".pyd", ".dll", ".exe"):
+            continue
+        machine = pe_machine(native)
+        approved = None
+        if native.is_relative_to(allowed_base):
+            name = native.relative_to(allowed_base).as_posix().casefold()
+            approved = INERT_WHEEL_LAUNCHERS.get(name)
+        if approved is None:
+            require(machine == 0x8664,
+                    "Active/nonexception Python native file is not Windows AMD64 PE: " +
+                    str(native) + " (machine=" + hex(machine or 0) + ")")
+            counts["amd64"] += 1
+        else:
+            require(native.suffix.lower() == ".exe" and machine == approved,
+                    "Vendor data-only launcher PE machine mismatches reviewed identity: " +
+                    str(native) + " (machine=" + hex(machine or 0) + ")")
+            require(name not in actual_inert, "Duplicate inert upstream launcher")
+            actual_inert.add(name)
+            counts["inert_x86" if approved == 0x014c else "inert_arm64"] += 1
+    require(counts["amd64"] >= 5,
+            "Staged CPython 3.15 and Windows native wheel payloads are incomplete")
+    return counts
 
 
 def stage_7zip(plan: dict, temp: Path, evidence: dict) -> None:
