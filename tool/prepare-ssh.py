@@ -244,8 +244,11 @@ def stage_install(temp: Path, expected: dict[str, str], env: dict[str, str], *, 
 def install(*, new_lock: bool, runtime_test: bool) -> None:
     if os.name != 'nt' or sys.platform != 'win32' or sys.maxsize <= 2**32:
         fail('Installation requires Windows x64')
-    if Path(sys.executable).absolute() != PYTHON.absolute() or sys.version_info[:2] != (3, 14):
-        fail('Must run with the bundled CPython 3.14, not a host Python')
+    installed_python = json.loads((TOOL / 'installed-tools.json').read_text(encoding='utf-8'))['tools']['python']['version']
+    expected_minor = tuple(int(part) for part in installed_python.split('.')[:2])
+    if (Path(sys.executable).absolute() != PYTHON.absolute() or
+            sys.version_info[:2] != expected_minor):
+        fail('Must use the bundled CPython runtime matching the installed version ledger')
     expected = pins()
     for name in ('codex.exe', 'env.ps1'):
         ordinary(ROOT / name)
