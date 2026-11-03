@@ -635,6 +635,123 @@ class FullStableUpgradeTests(unittest.TestCase):
                     pure.build_pyyaml_pure_wheel(source, out, digest)
                 source.unlink()
 
+    def test_official_npm_json_fail_closed_retry_and_fast_preflight(self):
+        """AC18: malformed registry body is retried; forged valid JSON never is."""
+        endpoint = "https://registry.npmjs.org/npm/12.2.1"
+        tarball = "https://registry.npmjs.org/npm/-/npm-12.2.1.tgz"
+        valid = {"name": "npm", "version": "12.2.1",
+                 "dist": {"tarball": tarball, "integrity": "sha512-" + "a" * 88}}
+        with tempfile.TemporaryDirectory() as folder:
+            temp = Path(folder)
+            calls = []
+            bodies = [b"[object Object]", json.dumps(valid).encode("utf-8")]
+            def fake_download(url, dest, **kwargs):
+                self.assertEqual(url, endpoint)
+                self.assertEqual(kwargs["accept"], "application/json")
+                self.assertLessEqual(kwargs["timeout"], 20)
+                calls.append(Path(dest).name)
+                Path(dest).write_bytes(bodies.pop(0))
+                return {"sha256": "a" * 64}
+            with patch.object(stage, "download", side_effect=fake_download), \
+                 patch.object(stage.time, "sleep") as delay:
+                self.assertEqual(stage.npm_metadata("npm", "12.2.1", temp),
+                                 (tarball, valid["dist"]["integrity"]))
+                self.assertEqual(calls, ["npm-metadata-1.json",
+                                         "npm-metadata-2.json"])
+                delay.assert_called_once_with(1)
+            for payload in (b"[object Object]", b"<html>blocked</html>", b"not json"):
+                bodies = [payload] * 3
+                with patch.object(stage, "download", side_effect=fake_download), \
+                     patch.object(stage.time, "sleep") as delay:
+                    with self.assertRaisesRegex(ValueError,
+                                                "after 3 bounded attempts"):
+                        stage.npm_metadata("npm", "12.2.1", temp)
+                    self.assertEqual(delay.call_count, 2)
+                # New paths for every call; failures leave no side-effect on
+                # actual package-local installed npm or user files.
+            for invalid in (
+                    {"name": "not-npm", "version": "12.2.1", "dist": valid["dist"]},
+                    {"name": "npm", "version": "12.2.2", "dist": valid["dist"]},
+                    {"name": "npm", "version": "12.2.1",
+                     "dist": {"tarball": "https://evil.invalid/file.tgz",
+                              "integrity": valid["dist"]["integrity"]}},
+                    {"name": "npm", "version": "12.2.1",
+                     "dist": {"tarball": tarball, "integrity": "sha512-INVALID?"}}):
+                bodies = [json.dumps(invalid).encode("utf-8")]
+                with patch.object(stage, "download", side_effect=fake_download), \
+                     patch.object(stage.time, "sleep") as delay:
+                    with self.assertRaises(ValueError):
+                        stage.npm_metadata("npm", "12.2.1", temp)
+                    delay.assert_not_called()
+            bad = temp / "npm-bad.json"
+            bad.write_bytes(b"[object Object]")
+            with self.assertRaisesRegex(stage.InvalidJsonPayload,
+                                        "npm-bad.json.*sha256"):
+                stage.obj(bad)
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            plan = {"targets": [{"name": "npm", "latestStable": "12.2.1"}]}
+            with patch.object(stage, "ROOT", root), \
+                 patch.object(stage, "npm_metadata",
+                              return_value=(tarball, valid["dist"]["integrity"])) as lookup:
+                stage.preflight_npm_registry(plan)
+                self.assertEqual(lookup.call_count, 1)
+                self.assertEqual(lookup.call_args.args[:2], ("npm", "12.2.1"))
+                self.assertFalse(any((root / "tmp").iterdir()))
+        workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
+            encoding="utf-8")
+        verifier = workflow.split("\n  full_verify:", 1)[1].split(
+            "\n  full_propose:", 1)[0]
+        self.assertLess(verifier.index("full-stable-prepare.py npm-preflight"),
+                        verifier.index("Preflight real launcher and relocation"))
+        self.assertLess(verifier.index("full-stable-prepare.py npm-preflight"),
+                        verifier.index("full-stable-prepare.py prepare"))
+
+    def test_official_npm_metadata_http_accept_json_is_not_archive(self):
+        """Verify the real download adapter, not just a mocked metadata parser."""
+        url = "https://registry.npmjs.org/npm/12.2.1"
+        raw = b'{"name":"npm","version":"12.2.1"}'
+        recorded = []
+        def fake_urlopen(request, timeout):
+            recorded.append((request.full_url, request.get_header("Accept"),
+                             request.get_header("User-agent"), timeout))
+            response = io.BytesIO(raw)
+            response.url = url
+            return response
+        with tempfile.TemporaryDirectory() as folder:
+            dest = Path(folder) / "metadata.json"
+            with patch.object(stage.urllib.request, "urlopen",
+                              side_effect=fake_urlopen):
+                item = stage.download(url, dest, limit=4*1024*1024,
+                                      accept="application/json", timeout=20)
+                self.assertEqual(dest.read_bytes(), raw)
+                self.assertEqual(item["sha256"], hashlib.sha256(raw).hexdigest())
+                with self.assertRaisesRegex(ValueError, "Unapproved artifact URL"):
+                    stage.download("https://attacker.invalid/npm", Path(folder) / "bad",
+                                   accept="application/json", timeout=20)
+                with self.assertRaisesRegex(ValueError, "Unexpected official-download"):
+                    stage.download(url, Path(folder) / "bad-accept",
+                                   accept="text/html", timeout=20)
+            self.assertEqual(len(recorded), 1)
+            self.assertEqual(recorded[0][0], url)
+            self.assertEqual(recorded[0][1], "application/json")
+            self.assertEqual(recorded[0][3], 20)
+
+    def test_npm_preflight_cli_is_metadata_only_and_cannot_stage_tools(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plan = {"schema": 1, "platform": "win32-x64",
+                    "state": "PREPARATION_ONLY_NOT_INSTALLED",
+                    "policy": {"publish": "do not edit installed-tools.json before verification"}}
+            plan_file = Path(directory) / "plan.json"
+            plan_file.write_text(json.dumps(plan), encoding="utf-8")
+            with patch.object(stage, "PLAN", plan_file), \
+                 patch.object(stage.sys, "argv", ["full-stable-prepare.py", "npm-preflight"]), \
+                 patch.object(stage, "preflight_npm_registry") as preflight, \
+                 patch.object(stage, "prepare") as full_stage:
+                self.assertEqual(stage.main(), 0)
+                preflight.assert_called_once_with(plan)
+                full_stage.assert_not_called()
+
     def test_npm12_user_and_global_config_are_separate_and_empty(self):
         # npm 12 rejects two config scopes pointing at one file even if empty.
         # Reproduce isolation with old bundled npm (no registry/network) before

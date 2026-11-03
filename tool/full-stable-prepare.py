@@ -23,6 +23,8 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -53,8 +55,17 @@ def require(value: bool, why: str) -> None:
         raise ValueError(why)
 
 
+class InvalidJsonPayload(ValueError):
+    """A downloaded/configured JSON file could not be decoded safely."""
+
+
 def obj(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8-sig"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise InvalidJsonPayload(
+            "Invalid JSON in " + path.name + " (sha256=" + sha(path)[:16] +
+            "): " + str(error)) from error
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -92,7 +103,10 @@ def plain_tree(path: Path) -> None:
 
 
 def download(url: str, target: Path, *, expected: str | None = None,
-             limit: int = MAX_BYTES, integrity: str | None = None) -> dict:
+             limit: int = MAX_BYTES, integrity: str | None = None,
+             accept: str = "application/octet-stream", timeout: int = 90) -> dict:
+    require(accept in ("application/octet-stream", "application/json") and
+            1 <= timeout <= 90, "Unexpected official-download request policy")
     u = urllib.parse.urlsplit(url)
     require(u.scheme == "https" and u.hostname in ALLOWED_HOSTS and
             u.username is None and u.password is None and u.port in (None, 443) and
@@ -103,7 +117,7 @@ def download(url: str, target: Path, *, expected: str | None = None,
     total = 0
     with urllib.request.urlopen(urllib.request.Request(
             url, headers={"User-Agent": "Codex-Portable-full-stable/1",
-                          "Accept": "application/octet-stream"}), timeout=90) as response:
+                          "Accept": accept}), timeout=timeout) as response:
         final = urllib.parse.urlsplit(response.url)
         require(final.scheme == "https", "Download redirected to insecure HTTP")
         with target.open("xb") as out:
@@ -680,21 +694,64 @@ def replace_tree(source: Path, destination: Path, scratch: Path) -> None:
 
 
 def npm_metadata(name: str, version: str, temp: Path) -> tuple[str, str]:
+    """Read only official npm metadata; retry transient malformed edge responses.
+
+    The 2026-11-03 AC18 returned invalid JSON at the npm stage. Never retry a
+    well-formed but mismatched package identity, tarball origin or integrity.
+    """
     require(re.fullmatch(r"[a-z0-9._-]+", name) and
-            re.fullmatch(r"[0-9]+(?:\.[0-9]+){2}", version),
-            "Bad npm identity")
-    meta_path = temp / (name + "-metadata.json")
-    download("https://registry.npmjs.org/" + name + "/" + version,
-             meta_path, limit=4*1024*1024)
-    row = obj(meta_path)
-    require(row.get("name") == name and row.get("version") == version,
-            "Registry package/version mismatch")
-    dist = row["dist"]
+            re.fullmatch(r"[0-9]+(?:\.[0-9]+){2}", version) and
+            temp.is_dir(), "Bad npm metadata request")
+    metadata_url = "https://registry.npmjs.org/" + name + "/" + version
     url = f"https://registry.npmjs.org/{name}/-/{name}-{version}.tgz"
-    require(dist.get("tarball") == url and
-            re.fullmatch(r"sha512-[A-Za-z0-9+/]+={0,2}", dist.get("integrity", "")),
-            "Official npm tarball/integrity not present")
-    return url, dist["integrity"]
+    failures = []
+    for attempt in range(1, 4):
+        # A new file per attempt prevents a bad partial response from
+        # becoming a silently reused source of "official" provenance.
+        meta_path = temp / (name + "-metadata-" + str(attempt) + ".json")
+        try:
+            download(metadata_url, meta_path, limit=4*1024*1024,
+                     accept="application/json", timeout=20)
+            row = obj(meta_path)
+        except InvalidJsonPayload as error:
+            failures.append("attempt " + str(attempt) + ": " + str(error))
+        except urllib.error.URLError as error:
+            if isinstance(error, urllib.error.HTTPError) and error.code not in (
+                    429, 500, 502, 503, 504):
+                raise
+            failures.append("attempt " + str(attempt) + ": " + str(error))
+        except TimeoutError as error:
+            failures.append("attempt " + str(attempt) + ": " + str(error))
+        else:
+            require(isinstance(row, dict) and row.get("name") == name and
+                    row.get("version") == version,
+                    "Official npm registry package/version mismatch: " +
+                    name + "@" + version)
+            dist = row.get("dist")
+            require(isinstance(dist, dict) and dist.get("tarball") == url and
+                    isinstance(dist.get("integrity"), str) and
+                    re.fullmatch(r"sha512-[A-Za-z0-9+/]+={0,2}",
+                                 dist["integrity"]) is not None,
+                    "Official npm tarball URL/integrity invalid: " +
+                    name + "@" + version)
+            return url, dist["integrity"]
+        if attempt < 3:
+            time.sleep(attempt)
+    raise ValueError("Official npm registry JSON unavailable after 3 bounded "
+                     "attempts; no package downloaded: " + "; ".join(failures))
+
+
+def preflight_npm_registry(plan: dict) -> None:
+    """Small official JSON-only gate before the expensive native launcher tests."""
+    npm = target(plan, "npm")
+    require(npm["latestStable"] == "12.2.1",
+            "Unreviewed npm preflight target")
+    scratch = ROOT / "tmp"
+    require(not scratch.is_symlink(), "Refuse linked npm metadata scratch")
+    scratch.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="full-npm-metadata-", dir=scratch) as folder:
+        npm_metadata("npm", npm["latestStable"], Path(folder))
+    print("OFFICIAL_NPM_REGISTRY_PREFLIGHT=PASS", flush=True)
 
 
 def stage_npm(plan: dict, temp: Path, evidence: dict) -> None:
@@ -1315,8 +1372,8 @@ def prepare(plan: dict) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) != 2 or sys.argv[1] != "prepare":
-        print("Usage: host-python tool/full-stable-prepare.py prepare",
+    if len(sys.argv) != 2 or sys.argv[1] not in ("prepare", "npm-preflight"):
+        print("Usage: host-python tool/full-stable-prepare.py prepare|npm-preflight",
               file=sys.stderr)
         return 2
     plan = obj(PLAN)
@@ -1324,7 +1381,10 @@ def main() -> int:
             plan["state"] == "PREPARATION_ONLY_NOT_INSTALLED" and
             plan["policy"]["publish"].startswith("do not edit installed-tools.json"),
             "Unreviewed full upgrade plan")
-    prepare(plan)
+    if sys.argv[1] == "npm-preflight":
+        preflight_npm_registry(plan)
+    else:
+        prepare(plan)
     return 0
 
 

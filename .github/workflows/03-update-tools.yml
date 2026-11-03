@@ -437,6 +437,12 @@ jobs:
           "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" |
             Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Preflight official npm JSON before time-consuming Windows launcher checks
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & python -E -s -B .\tool\full-stable-prepare.py npm-preflight
+          if ($LASTEXITCODE -ne 0) { throw 'Official npm registry JSON gate failed before native launcher tests.' }
       - name: Preflight real launcher and relocation before downloading large candidates
         timeout-minutes: 8
         run: |

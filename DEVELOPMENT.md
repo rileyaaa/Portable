@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-03：第十八次 03/full Run #41640031417 - 官方 npm JSON 回应异常，提早校验与有界重试
+
+- **真实日志：** 用户手动 Run #41640031417（main ba017f294adb39718047fbf7922bc4a7fc35fe5a），Windows 只读 verifier 的动作 lint、下载前回归和实机 launcher/relocation 均通过。2026-11-03T13:02:20Z 选中最新兼容 PDF 旧版组合后，开始 `FULL_STABLE_PHASE_BEGIN=node_npm_corepack`，约 0.23 秒后报 `FULL_STABLE_PREPARE_FAILED: Expecting value: line 1 column 2 (char 1)`；本次没有进入 Python 3.15/Chromium，写入 Job 跳过，候选 Artifact=0。错误发生在 node/npm/Corepack 阶段，原日志缺少具体 JSON 文件名，不能声称已百分之百确认是哪一份 JSON。
+- **修复方向：** 针对第一段的官方 npm registry `npm@12.2.1` JSON 元信息查询，改用明确的 `Accept: application/json`；仅对解析失败、429/5xx 或网络短暂错误执行最多 3 次有限重试，逐次使用独立文件、防止污染，最长单次网络等待 20 秒，错误日志显示源文件名及 SHA-256 前缀。**若返回可解析但 npm 包名/版本、官方 tarball URL、sha512-integrity 不符，立即拒绝，绝不换成第三方镜像或跳过校验。** 原 tarball 下载仍校验官方 sha512，Corepack 仍校验固定 sha256。
+- **节省 AC 时间：** `full_verify` 在耗时约 3 分钟的 launcher/relocation 验证之前增加仅下载官方 npm **JSON 元信息**的小型 `npm-preflight`，失败时尽早停止；继续保留全流程原有 19 项 PS 5.1、10 轮 release-audit、真实 ZIP 和 SHA256、读写 Job/Artifact 清理边界。本次新增离线 malformed JSON、重试成功/耗尽、伪造元数据直接拒绝和工作流顺序回归。暂不能用这些模拟测试代替真实 Windows 全验收；不自动触发 AC、不发布 Release、不更改已安装版本台账。
+
+
 ## 2026-11-03：03/full 候选 Artifact 自动清理
 
 - 原有 full_verify 通过所有 Windows 验证后才上传 full-stable-candidate-<run_id>，上传保留期限已设为 retention-days: 1；但写入器用完后仍可能占空间至到期。
