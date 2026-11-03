@@ -38,8 +38,11 @@ class PythonRuntimeDependencyTests(unittest.TestCase):
         ):
             self.assertIn(name, packages)
         environment = default_environment()
+        active = json.loads((ROOT / 'tool/installed-tools.json').read_text(encoding='utf-8'))['tools']['python']['version']
+        parts = active.split('.')
+        python_minor = '.'.join(parts[:2])
         environment.update(
-            python_version="3.14", python_full_version="3.14.0",
+            python_version=python_minor, python_full_version=(active if len(parts) == 3 else active + '.0'),
             os_name="nt", sys_platform="win32", platform_system="Windows",
             platform_machine="AMD64", extra="",
         )
@@ -72,7 +75,8 @@ class PythonRuntimeDependencyTests(unittest.TestCase):
              '-m', 'PyInstaller', '--version'],
             cwd=ROOT, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), '6.21.0')
+        manifest = json.loads((ROOT / 'tool/python-build-manifest.json').read_text(encoding='utf-8'))
+        self.assertEqual(result.stdout.strip(), manifest['packages']['pyinstaller'])
 
 
 if __name__ == "__main__":

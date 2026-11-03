@@ -55,11 +55,14 @@ def explicit_utf8_text_io(call: ast.Call) -> bool:
 
 class ToolUpdateTests(unittest.TestCase):
     def test_separate_ssh_closure_and_pth_path(self):
-        self.assertEqual(ssh.pins(), {
-            'paramiko': '5.1.0', 'bcrypt': '5.0.0', 'cryptography': '50.0.2',
-            'invoke': '3.0.3', 'pynacl': '1.6.0', 'cffi': '2.1.1',
-            'pycparser': '3.12',
+        self.assertEqual(set(ssh.pins()), {
+            'paramiko', 'bcrypt', 'cryptography', 'invoke', 'pynacl', 'cffi', 'pycparser'
         })
+        expected_ssh = (ROOT / 'tool/python-ssh-packages.in.txt').read_text(encoding='utf-8')
+        for package, version in ssh.pins().items():
+            self.assertIn(package + '==' + version, expected_ssh.lower())
+        self.assertEqual(ssh.pins()['paramiko'],
+                         tools.load_json(tools.LEDGER)['tools']['paramiko']['version'])
         self.assertEqual((ROOT / 'tool/python/Lib/site-packages/codex_portable_ssh.pth')
                          .read_text(encoding='utf-8').strip(), '../../ssh-packages')
         self.assertNotIn('paramiko==', (ROOT / 'tool/python-packages.in.txt').read_text(encoding='utf-8'))
@@ -778,7 +781,7 @@ class ToolUpdateTests(unittest.TestCase):
 
     def test_ci_writer_lfs_upload_and_windows_gates_have_exact_parity(self):
         workflow = (ROOT / '.github/workflows/03-update-tools.yml').read_text(
-            encoding='utf-8')
+            encoding='utf-8').split('\n  full_verify:', 1)[0]
         verify, writer = workflow.split('\n  propose:', 1)
         self.assertEqual(verify.count('git lfs install --local'), 1)
         self.assertEqual(writer.count('git lfs install --local'), 1)
@@ -853,7 +856,8 @@ class ToolUpdateTests(unittest.TestCase):
     def test_03_windows_powershell_includes_all_release_gates_and_persistence(self):
         # Unlike the original 03, do not silently substitute persistence
         # for the official release's extension_migration regression.
-        source = (ROOT / '.github/workflows/03-update-tools.yml').read_text('utf-8')
+        source = (ROOT / '.github/workflows/03-update-tools.yml').read_text(
+            encoding='utf-8').split('\n  full_verify:', 1)[0]
         official = (ROOT / '.github/workflows/02-verify-and-publish-portable.yml').read_text('utf-8')
         release_names = set(re.findall(r'(?m)^      - name: Windows PowerShell 5\.1 - (test_[a-z_]+)$',
                                        official))

@@ -4,19 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "check=只读检查；prepare=Windows 构建并验证候选（默认不提交）"
+        description: "check=只读盘点；prepare=原工具批次；full=整个 tool/ 最新稳定版 Win11 验证"
         required: true
         type: choice
-        options: [check, prepare]
+        options: [check, prepare, full]
         default: check
       group:
-        description: "tools=仅本批已核准工具（默认）；ssh=Paramiko；all=两者（会重装 SSH）"
+        description: "旧 prepare 批次：tools/ssh/all；full 全目录模式忽略此选项；all=两者（会重装 SSH）"
         required: true
         type: choice
         options: [ssh, tools, all]
         default: tools
       create_pr:
-        description: "仅 prepare 且全量验证通过时，建立候选 PR；从不自动合并 main"
+        description: "prepare/full 全部验证成功后准备候选分支和 PR；不自动合并或发布"
         required: true
         type: boolean
         default: false
@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   verify:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.mode != 'full'
     permissions:
       contents: read
     runs-on: windows-latest
@@ -368,5 +368,322 @@ jobs:
             # PowerShell GitHub runner exits with the last native CLI status
             # even after successful Write-Warning/Out-File. Explicitly clear
             # the failed gh pr status only after the branch was pushed.
+            exit 0
+          }
+
+
+  full_verify:
+    name: Full tool stable refresh - Windows read-only verifier
+    if: github.ref == 'refs/heads/main' && inputs.mode == 'full'
+    permissions:
+      contents: read
+    runs-on: windows-latest
+    timeout-minutes: 240
+    outputs:
+      candidate_digest: ${{ steps.candidate.outputs.digest }}
+      artifact_sha256: ${{ steps.candidate.outputs.artifact_sha256 }}
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Checkout pinned trusted source with hydrated LFS and no persistent credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          lfs: true
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Select trusted host Python for cross-major embedded-runtime replacement
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - name: Pinned workflow lint and pre-download security regression gates
+        timeout-minutes: 9
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\check-actionlint.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'actionlint failed before full upgrade.' }
+          & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p 'test_tool_updates.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Old runtime maintenance tests failed.' }
+          & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p 'test_release_package.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Package preflight failed.' }
+          & python -E -s -B -m unittest discover -s tests -p 'test_full_stable_upgrade.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Full upgrade synthetic security checks failed.' }
+      - name: Prepare isolated package-local test state for Windows candidates
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state'
+          $state = @{
+            HOME = 'home'; USERPROFILE = 'home'; APPDATA = 'appdata'; LOCALAPPDATA = 'localappdata';
+            PROGRAMDATA = 'programdata'; ALLUSERSPROFILE = 'programdata';
+            TEMP = 'temp'; TMP = 'temp'; TMPDIR = 'temp';
+            XDG_CACHE_HOME = 'cache'; XDG_CONFIG_HOME = 'config'; XDG_DATA_HOME = 'data'; XDG_STATE_HOME = 'state';
+            CODEX_HOME = 'codex-home'; CODEX_SQLITE_HOME = 'sqlite'; GH_CONFIG_DIR = 'gh'
+          }
+          foreach ($name in $state.Keys) {
+            $path = Join-Path $base $state[$name]
+            New-Item -ItemType Directory -Force -Path $path | Out-Null
+            "$name=$path" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+          'PIP_CONFIG_FILE=nul' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'PYTHONDONTWRITEBYTECODE=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'POWERSHELL_TELEMETRY_OPTOUT=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          $modules = Join-Path $base 'cache/modules'
+          New-Item -ItemType Directory -Force -Path $modules | Out-Null
+          "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" |
+            Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run tool-maintenance tests before downloading any candidate
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p 'test_tool_updates.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Pre-download tool maintenance regression failure.' }
+          # Fail on the actual synthetic customer package tests before any
+          # expensive Node/SSH download, not only in the post-update full suite.
+          & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p 'test_release_package.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Pre-download customer package regression failure.' }
+
+
+      - name: Preflight real launcher and relocation before downloading large candidates
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The launcher/rename test must pass on the trusted current runtime
+          # before large Node/SSH downloads. Keep the post-update run as well.
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Pre-download native launcher / relocation regression failed.' }
+      - name: Stage full latest-stable Python npm Corepack 7-Zip and matched browser
+        timeout-minutes: 75
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & python -E -s -B .\tool\full-stable-prepare.py prepare
+          if ($LASTEXITCODE -ne 0) { throw 'Full staging failed; no write-token Job.' }
+          & .\tool\python\python.exe -E -s -B .\tool\python-lock.py validate-runtime --requirements .\tool\python-packages.in.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Python 3.15 fixed closure invalid.' }
+          & .\tool\python\python.exe -E -s -B -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Updated Python dependency conflict.' }
+          & .\tool\python\python.exe -E -s -B -c "import sys,pandas,numpy,paramiko,cryptography,fitz; assert sys.version_info[:3] == (3,15,2); print('PYTHON315_NATIVE_IMPORT=PASS',pandas.__version__,numpy.__version__,paramiko.__version__)"
+          if ($LASTEXITCODE -ne 0) { throw 'New Python native imports failed.' }
+          & .\tool\python\python.exe -E -s -B -m PyInstaller --version
+          if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed.' }
+          & .\tool\node\node.exe .\tool\node\node_modules\npm\bin\npm-cli.js --version
+          if ($LASTEXITCODE -ne 0) { throw 'New npm failed.' }
+          & .\tool\node\node.exe .\tool\node\node_modules\corepack\dist\corepack.js --version
+          if ($LASTEXITCODE -ne 0) { throw 'New Corepack failed.' }
+          & .\tool\python\python.exe -E -s -B .\tool\automation\install-browser.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Chromium inventory / SHA256 invalid.' }
+      - name: Build and execute a real package-local Python 3.15 PyInstaller EXE
+        timeout-minutes: 9
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/python315-pyinstaller-smoke'
+          $src = Join-Path $base 'source'
+          $dist = Join-Path $base 'dist'
+          $work = Join-Path $base 'build'
+          $spec = Join-Path $base 'spec'
+          New-Item -ItemType Directory -Force -Path $src,$dist,$work,$spec | Out-Null
+          $script = Join-Path $src 'hello.py'
+          [IO.File]::WriteAllText($script, "print('PYINSTALLER315_FREEZE=PASS')", [Text.Encoding]::ASCII)
+          & .\tool\python\python.exe -E -s -B -m PyInstaller --onefile --noconfirm --noupx --clean --name portable-py315-smoke --distpath $dist --workpath $work --specpath $spec $script
+          if ($LASTEXITCODE -ne 0) { throw 'Python 3.15 PyInstaller could not freeze a real executable.' }
+          $exe = Join-Path $dist 'portable-py315-smoke.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'PyInstaller Windows EXE not created.' }
+          $output = (& $exe) -join ''
+          if ($LASTEXITCODE -ne 0 -or $output.Trim() -cne 'PYINSTALLER315_FREEZE=PASS') {
+            throw 'PyInstaller Windows EXE did not execute successfully.'
+          }
+          'PYINSTALLER315_REAL_EXE=PASS' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+      - name: Full Python Node and converter regression suites
+        timeout-minutes: 22
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Updated Python regression failed.' }
+          foreach ($name in @('test_automation.js','test_portable_npm.js')) {
+            & .\tool\node\node.exe --test (Join-Path '.\tests' $name)
+            if ($LASTEXITCODE -ne 0) { throw "Node regression failed $name" }
+          }
+          foreach ($name in @('smoke.js','static-audit.js')) {
+            & .\tool\node\node.exe (Join-Path '.\Version_History\AI account format conversion\test' $name)
+            if ($LASTEXITCODE -ne 0) { throw "Converter failed $name" }
+          }
+      - name: Bound candidate paths and SHA-256 before read-only local trial commit
+        timeout-minutes: 16
+        id: candidate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & git lfs install --local
+          if ($LASTEXITCODE -ne 0) { throw 'Missing browser LFS filter.' }
+          & git add -A -- tool
+          if ($LASTEXITCODE -ne 0) { throw 'Could not stage all candidate files.' }
+          $archive = Join-Path $env:GITHUB_WORKSPACE 'tmp/full-stable-candidate.zip'
+          $lines = @(& python -E -s -B .\tool\full-stable-transfer.py pack --archive $archive --base $env:GITHUB_SHA)
+          if ($LASTEXITCODE -ne 0) { throw 'Staged payload scope/digest failed.' }
+          $dig = $lines | Where-Object { $_ -cmatch '^FULL_STABLE_DIFF_SHA256=[0-9a-f]{64}$' } | Select-Object -First 1
+          $art = $lines | Where-Object { $_ -cmatch '^FULL_STABLE_ARTIFACT_SHA256=[0-9a-f]{64}$' } | Select-Object -First 1
+          if (-not $dig -or -not $art) { throw 'Candidate digest outputs missing.' }
+          ('digest=' + $dig.Substring('FULL_STABLE_DIFF_SHA256='.Length)) | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          ('artifact_sha256=' + $art.Substring('FULL_STABLE_ARTIFACT_SHA256='.Length)) | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $lines | ForEach-Object { Write-Output $_ }
+          & git -c user.name='tool-verifier' -c user.email='tool-verifier@users.noreply.github.com' commit -m 'test: verified full-tool trial only'
+          if ($LASTEXITCODE -ne 0) { throw 'Local verification commit failed.' }
+      - name: Fail fast on real customer ZIP inputs before expensive 19 PowerShell regressions
+        timeout-minutes: 7
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $raw = (& .\tool\python\python.exe -E -s -B .\tool\package-release.py --check) -join [Environment]::NewLine
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate package preflight failed before PowerShell suite.' }
+          try { $pre = $raw | ConvertFrom-Json -ErrorAction Stop }
+          catch { throw 'Candidate package preflight JSON is malformed.' }
+          $trial = (& git rev-parse HEAD) -join ''
+          if ($LASTEXITCODE -ne 0 -or $pre.source_commit -cne $trial -or [int]$pre.file_count -le 0) {
+            throw 'New tool bytes cannot form a verified customer package.'
+          }
+          'FULL_STABLE_PACKAGE_INPUT_PREFLIGHT=PASS before slow Windows tests' |
+            Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+      - name: Check Windows PowerShell 5.1 regressions
+        # Previous successful 19-test suite took ~22 minutes; run #41555463345
+        # reached npm/npx tests at minute 25 and was killed before completion.
+        # Retain all 19 checks; allow bounded Windows runner timing variance.
+        timeout-minutes: 45
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tests = @(
+            'test_launcher_smoke.ps1', 'test_portable_config.ps1', 'test_portable_paths.ps1', 'test_instruction_paths.ps1',
+            'test_bootstrap_paths.ps1', 'test_extension_policy.ps1', 'test_runtime_preflight.ps1',
+            'test_python_setup.ps1', 'test_automation_paths.ps1', 'test_automation_process.ps1',
+            'test_browser_login_flow.ps1', 'test_system_policy.ps1', 'test_npm_entrypoints.ps1',
+            'test_browser_smoke.ps1', 'test_cli_model_options.ps1',
+            'test_login_input_errors.ps1', 'test_permission_display.ps1',
+            'test_extension_persistence.ps1', 'test_extension_migration.ps1'
+          )
+          foreach ($entry in $tests) {
+            # Print the last started test and its elapsed time to distinguish
+            # a real hang from a runner-wide timeout on slower Windows VMs.
+            Write-Host ("WINDOWS_PS_TEST_BEGIN=" + $entry)
+            $elapsed = [Diagnostics.Stopwatch]::StartNew()
+            $args = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path '.\tests' $entry))
+            if ($entry -eq 'test_portable_config.ps1') {
+              $args += @('-BundledModelsPath', '.\tmp\windows-release-state\bundled-models.json')
+            }
+            & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" @args
+            $exitCode = $LASTEXITCODE
+            $elapsed.Stop()
+            Write-Host ("WINDOWS_PS_TEST_END=" + $entry + ";seconds=" +
+                        [Math]::Round($elapsed.Elapsed.TotalSeconds, 1) + ";exit=" + $exitCode)
+            if ($exitCode -ne 0) { throw "Windows native regression failed: $entry" }
+          }
+      - name: Real package preflight ten release audit rounds and customer ZIP SHA256
+        timeout-minutes: 37
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $raw = (& .\tool\python\python.exe -E -s -B .\tool\package-release.py --check) -join [Environment]::NewLine
+          if ($LASTEXITCODE -ne 0) { throw 'Real ZIP input preflight failed.' }
+          $pre = $raw | ConvertFrom-Json
+          $head = (& git rev-parse HEAD) -join ''
+          if ($LASTEXITCODE -ne 0 -or $pre.source_commit -cne $head -or $pre.file_count -le 0) {
+            throw 'Committed source/ZIP input mismatch.'
+          }
+          & .\tool\python\python.exe -E -s -B .\.github\scripts\release-audit.py --release
+          if ($LASTEXITCODE -ne 0) { throw 'Ten Windows release audit rounds failed.' }
+          & .\tool\python\python.exe -E -s -B .\.github\scripts\release-audit.py --verify
+          if ($LASTEXITCODE -ne 0) { throw 'Audited source changed.' }
+          $version = (Get-Content .\tool\runtime-manifest.json -Raw | ConvertFrom-Json).version
+          $raw = (& .\tool\python\python.exe -E -s -B .\tool\package-release.py --version ('v' + $version + '-portable.1')) -join [Environment]::NewLine
+          if ($LASTEXITCODE -ne 0) { throw 'Real customer ZIP trial failed.' }
+          $result = $raw | ConvertFrom-Json
+          if ($result.archive_sha256 -cnotmatch '^[a-f0-9]{64}$' -or
+              (Get-FileHash -LiteralPath $result.archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $result.archive_sha256) {
+            throw 'Trial ZIP SHA256 differs.'
+          }
+          $tmpRoot = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE 'tmp'))
+          $trialDir = [IO.Path]::GetFullPath($result.output_dir)
+          if ([IO.Path]::GetDirectoryName($trialDir) -cne $tmpRoot -or [IO.Path]::GetFileName($trialDir) -notlike 'release-*') {
+            throw 'Unsafe trial ZIP cleanup.'
+          }
+          Remove-Item -LiteralPath $trialDir -Recurse -Force
+          'FULL_STABLE_WINDOWS_AUDIT=PASS; no Release published.' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+      - name: Upload exact verified candidate only after all Windows gates passed
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: full-stable-candidate-${{ github.run_id }}
+          path: tmp/full-stable-candidate.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  full_propose:
+    name: Full tool trusted writer - SHA-checked file copy only; no candidate EXE execution
+    needs: full_verify
+    if: ${{ needs.full_verify.result == 'success' && inputs.mode == 'full' && inputs.create_pr && github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    runs-on: windows-latest
+    timeout-minutes: 85
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Checkout unchanged source with hydrated LFS and no stored credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          lfs: true
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Trusted host Python for byte-only writer
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - name: Download same-run verified candidate
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: full-stable-candidate-${{ github.run_id }}
+          path: tmp/full-writer
+      - name: Confirm main sha and exact artifact/diff SHA256 without running vendor tools
+        timeout-minutes: 28
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_DIGEST: ${{ needs.full_verify.outputs.candidate_digest }}
+          EXPECTED_ARTIFACT: ${{ needs.full_verify.outputs.artifact_sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $remote = (& gh api "repos/$env:GITHUB_REPOSITORY/branches/main" --jq '.commit.sha') -join ''
+          if ($LASTEXITCODE -ne 0 -or $remote.Trim() -cne $env:GITHUB_SHA) { throw 'Main changed after verification.' }
+          & git lfs install --local
+          if ($LASTEXITCODE -ne 0) { throw 'LFS unavailable.' }
+          & python -E -s -B .\tool\full-stable-transfer.py apply --archive 'tmp/full-writer/full-stable-candidate.zip' --base $env:GITHUB_SHA --sha256 $env:EXPECTED_ARTIFACT --diff $env:EXPECTED_DIGEST
+          if ($LASTEXITCODE -ne 0) { throw 'Untrusted candidate data; refuse write.' }
+          'FULL_STABLE_WRITER_MATCH=PASS' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+      - name: Push candidate branch and uploaded Chromium LFS; no release
+        timeout-minutes: 45
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $name = 'maintenance/full-tools-' + $env:GITHUB_RUN_ID
+          & git config user.name 'github-actions[bot]'
+          & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          & git switch -c $name
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot make candidate branch.' }
+          & git commit -m ("chore(tools): verified latest stable Win11 full refresh " + $env:GITHUB_RUN_ID)
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot commit exact candidate.' }
+          & gh auth setup-git
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot authenticate Git write.' }
+          & git lfs push origin HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Chromium LFS upload failed.' }
+          & git push origin ('HEAD:refs/heads/' + $name)
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate branch push failed.' }
+          ('VERIFIED_FULL_TOOL_BRANCH=' + $name + '; do not rerun Actions') | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          & gh pr create --base main --head $name --title 'Verified full Win11 stable tool refresh' --body 'All full Windows and release gates passed; review candidate. No Release created.'
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'Actions denied PR creation; use the GitHub Connector to create the PR without another AC run.'
             exit 0
           }
