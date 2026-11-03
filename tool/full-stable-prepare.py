@@ -31,7 +31,7 @@ PLAN = TOOL / "full-stable-upgrade-plan.json"
 MAX_BYTES = 1100 * 1024 * 1024
 MAX_FILES = 25000
 WINDOWS_BAD = re.compile(r'[<>:"\\|?*\x00-\x1f]')
-ALLOWED_HOSTS = {"www.python.org", "files.pythonhosted.org", "registry.npmjs.org",
+ALLOWED_HOSTS = {"www.python.org", "files.pythonhosted.org", "pypi.org", "registry.npmjs.org",
                  "github.com", "storage.googleapis.com", "cdn.playwright.dev"}
 SSH = {"paramiko", "bcrypt", "cryptography", "invoke", "pynacl", "cffi", "pycparser"}
 
@@ -246,6 +246,7 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     require(set(x.lower().replace("_", "-") for x in ssh_names) == SSH,
             "Unexpected SSH closure")
     requested = sorted(set(base_names + ssh_names), key=str.casefold)
+    spellings = {x.lower().replace('_', '-'): x for x in base_names + ssh_names}
     (temp / "requirements.in").write_text("\n".join(requested) + "\n", encoding="utf-8")
     report_path = temp / "python-resolution.json"
     run(python, "-E", "-s", "-B", "-m", "pip", "install", "--dry-run",
@@ -283,7 +284,8 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
             url, local, expected=digest, limit=90*1024*1024)
         with zipfile.ZipFile(local) as wf:
             require(wf.testzip() is None, "Corrupt PyPI wheel")
-        resolved[name] = {"version": version, "sha256": digest, "wheel": wheelname}
+        resolved[name] = {"version": version, "sha256": digest, "wheel": wheelname,
+                          "display_name": spellings.get(name, str(info["name"]))}
     for name in requested:
         norm = name.lower().replace("_", "-")
         require(norm in resolved, "Resolver omitted requested package " + norm)
@@ -294,7 +296,8 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     def generate(source_name: str, names: set[str]) -> tuple[str, str]:
         ordered = sorted(names)
         inp = "# Win11 x64 Python 3.15.2 official stable wheel closure; auto-resolved.\n"
-        inp += "".join(n + "==" + resolved[n]["version"] + "\n" for n in ordered)
+        inp += "".join(resolved[n]["display_name"] + "==" + resolved[n]["version"] + "\n"
+                       for n in ordered)
         ihash = hashlib.sha256(inp.encode("utf-8")).hexdigest()
         lock = ("# Codex Portable wheel lock v1\n# requirements-sha256: " + ihash +
                 "\n# Exact selected wheel hashes; install with --require-hashes --only-binary=:all:.\n")
