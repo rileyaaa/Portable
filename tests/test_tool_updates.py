@@ -95,6 +95,8 @@ class ToolUpdateTests(unittest.TestCase):
                           '\n  workflow_run:'):
             self.assertNotIn(forbidden, workflow)
         self.assertIn('default: check', workflow)
+        self.assertIn('default: tools', workflow)
+        self.assertIn('all=两者（会重装 SSH）', workflow)
         self.assertIn('default: false', workflow)
         self.assertIn('needs: verify', workflow)
         self.assertIn('candidate_digest:', workflow)
