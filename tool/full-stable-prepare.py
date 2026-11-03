@@ -1226,6 +1226,13 @@ def prepare(plan: dict) -> None:
         # PyMuPDF 2.x requires ONNX Runtime: check CPython 3.15 official wheel
         # compatibility before downloading npm, browsers or Python archives.
         preflight_python315_onnxruntime(temp, evidence)
+        if evidence["pdf_compatibility"]["mode"] == "latest-compatible-legacy-pdf":
+            approved = plan.get("pythonPdfCompatibilityException", {})
+            require(isinstance(approved, dict) and
+                    approved.get("pymupdf") == evidence["pdf_compatibility"]["pymupdf"] and
+                    approved.get("pymupdf4llm") == evidence["pdf_compatibility"]["pymupdf4llm"] and
+                    approved.get("layout", "").startswith("not installed"),
+                    "Unreviewed CPython 3.15 PDF legacy compatibility exception")
         # Detect npm/Playwright configuration and lock errors before redoing
         # three minutes of already native-verified CPython 3.15 wheel work.
         # Defer the large Chromium ZIP until all smaller candidates pass.
