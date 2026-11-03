@@ -158,6 +158,8 @@ class FullStableUpgradeTests(unittest.TestCase):
         source = (ROOT / "tool/full-stable-native-diagnose.py").read_text(
             encoding="utf-8")
         ast.parse(source)
+        self.assertIn("test_tool_updates.py", source)
+        self.assertIn("record(records, \"windows_tool_contracts\", windows_tool_contracts)", source)
         self.assertNotIn("stage.prepare(", source)
         self.assertNotIn("stage.stage_browser(", source)
         self.assertNotIn("stage.update_version_inventory(", source)
@@ -184,6 +186,19 @@ class FullStableUpgradeTests(unittest.TestCase):
             self.assertEqual(native.write_report(records), 1)
             self.assertEqual(native.write_report([{"probe": "only", "status": "PASS",
                                                    "detail": "verified", "seconds": 0}]), 0)
+
+    def test_windows_native_contracts_are_real_bounded_unittests(self):
+        with patch.object(native.subprocess, "run", return_value=subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="", stderr="")) as executed:
+            self.assertIn("Windows tool-maintenance", native.windows_tool_contracts())
+            call = executed.call_args
+            self.assertIn("test_tool_updates.py", call.args[0])
+            self.assertEqual(call.kwargs["cwd"], ROOT)
+            self.assertEqual(call.kwargs["timeout"], 120)
+        with patch.object(native.subprocess, "run", return_value=subprocess.CompletedProcess(
+                args=[], returncode=1, stdout="", stderr="maintenance failed")):
+            with self.assertRaisesRegex(ValueError, "maintenance failed"):
+                native.windows_tool_contracts()
 
     def test_native_full_pdf_policy_is_the_same_reviewed_exception(self):
         plan = json.loads((ROOT / "tool/full-stable-upgrade-plan.json").read_text(
