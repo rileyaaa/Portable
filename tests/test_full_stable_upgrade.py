@@ -707,6 +707,36 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertLess(verifier.index("full-stable-prepare.py npm-preflight"),
                         verifier.index("full-stable-prepare.py prepare"))
 
+    def test_official_npm_metadata_http_accept_json_is_not_archive(self):
+        """Verify the real download adapter, not just a mocked metadata parser."""
+        url = "https://registry.npmjs.org/npm/12.2.1"
+        raw = b'{"name":"npm","version":"12.2.1"}'
+        recorded = []
+        def fake_urlopen(request, timeout):
+            recorded.append((request.full_url, request.get_header("Accept"),
+                             request.get_header("User-agent"), timeout))
+            response = io.BytesIO(raw)
+            response.url = url
+            return response
+        with tempfile.TemporaryDirectory() as folder:
+            dest = Path(folder) / "metadata.json"
+            with patch.object(stage.urllib.request, "urlopen",
+                              side_effect=fake_urlopen):
+                item = stage.download(url, dest, limit=4*1024*1024,
+                                      accept="application/json", timeout=20)
+                self.assertEqual(dest.read_bytes(), raw)
+                self.assertEqual(item["sha256"], hashlib.sha256(raw).hexdigest())
+                with self.assertRaisesRegex(ValueError, "Unapproved artifact URL"):
+                    stage.download("https://attacker.invalid/npm", Path(folder) / "bad",
+                                   accept="application/json", timeout=20)
+                with self.assertRaisesRegex(ValueError, "Unexpected official-download"):
+                    stage.download(url, Path(folder) / "bad-accept",
+                                   accept="text/html", timeout=20)
+            self.assertEqual(len(recorded), 1)
+            self.assertEqual(recorded[0][0], url)
+            self.assertEqual(recorded[0][1], "application/json")
+            self.assertEqual(recorded[0][3], 20)
+
     def test_npm12_user_and_global_config_are_separate_and_empty(self):
         # npm 12 rejects two config scopes pointing at one file even if empty.
         # Reproduce isolation with old bundled npm (no registry/network) before
