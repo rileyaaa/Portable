@@ -1085,6 +1085,39 @@ def optional_license_origin(name: str, version: str, files: dict,
     return "PyMuPDF"
 
 
+def smoke_staged_python(runtime: Path, pdf_policy: dict) -> None:
+    """Fail fast on real Windows package imports and PDF-to-Markdown BEFORE Chromium."""
+    require(runtime.name == "python-runtime" and runtime.is_dir() and
+            (runtime / "python.exe").is_file(),
+            "Missing isolated staged CPython native runtime for smoke")
+    mode = pdf_policy.get("mode")
+    require(mode in ("latest-compatible-legacy-pdf", "latest-with-layout"),
+            "Unapproved staged Python PDF mode")
+    python = runtime / "python.exe"
+    run(python, "-E", "-s", "-B", "-m", "pip", "check")
+    # This is a real CPython 3.15 interpreter and bundled native wheel smoke,
+    # not an AST-only check. Synthetic PDF input never touches user files.
+    code = (
+        "import sys,importlib.metadata as md,pandas,numpy,paramiko,"
+        "cryptography,pymupdf,pymupdf4llm\n"
+        "assert sys.version_info[:3] == (3,15,2)\n"
+        "p=md.version('pymupdf'); q=md.version('pymupdf4llm')\n"
+        "legacy=(p=='1.28.2' and q=='0.3.4')\n"
+        "modern=(p==q and p.startswith('2.') and md.version('pymupdf-layout')==p) "
+        "if not legacy else False\n"
+        "assert (legacy if "
+        + ("True" if mode == "latest-compatible-legacy-pdf" else "False")
+        + " else modern), 'Selected PDF distribution closure differs'\n"
+        "assert callable(pymupdf4llm.to_markdown)\n"
+        "doc=pymupdf.open(); page=doc.new_page()\n"
+        "page.insert_text((72,72),'Codex Portable staged PDF smoke')\n"
+        "assert 'Codex Portable staged PDF smoke' in pymupdf4llm.to_markdown(doc)\n"
+        "doc.close()\n"
+        "print('STAGED_PYTHON315_NATIVE_AND_PDF=PASS',p,q)\n"
+    )
+    run(python, "-E", "-s", "-B", "-c", code)
+
+
 def python_manifests(temp: Path, resolved: dict, evidence: dict,
                      *, staged_site: Path) -> None:
     """Audit staged installed wheel bytes BEFORE overwriting the trusted runtime.
@@ -1258,6 +1291,9 @@ def prepare(plan: dict) -> None:
         python_manifests(temp, resolved, evidence,
                          staged_site=staged_python / "Lib/site-packages")
         print("FULL_STABLE_PHASE_END=optional_python_manifests;status=PASS", flush=True)
+        print("FULL_STABLE_PHASE_BEGIN=staged_python_smoke", flush=True)
+        smoke_staged_python(staged_python, evidence["pdf_compatibility"])
+        print("FULL_STABLE_PHASE_END=staged_python_smoke;status=PASS", flush=True)
         print("FULL_STABLE_PHASE_BEGIN=7zip", flush=True)
         stage_7zip(plan, temp, evidence)
         print("FULL_STABLE_PHASE_END=7zip;status=PASS", flush=True)

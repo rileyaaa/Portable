@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-03：继续前移 CPython 3.15 原生冒烟，避免过早准备 Chromium
+
+- **顺序与根因预防：** 完整 Windows full 流程现将固定 SHA-256 的 PyPI wheel 安装、optional manifest/hash/license 检查之后立即执行**真实暂存版** `python.exe -E -s -B -m pip check`，然后在同一隔离解释器导入 pandas、numpy、Paramiko/cryptography、PyMuPDF/4LLM；直接生成一页合成 PDF，要求 `to_markdown()` 返回指定文字。对 PDF 版本的判断依据先前选中的、经官方 PyPI 元数据核查的 `latest-compatible-legacy-pdf` 或 `latest-with-layout`，不接受意外的三方版本错配。
+- **安全边界及测试：** 新增独立 `staged_python_smoke` 阶段，失败时停止在 7-Zip/Chromium 下载及原 `tool/python` 替换之前。离线正反向测试用模拟 Windows EXE 与 mock 子进程检查 pip check、实际 import/PDF 命令、两种模式、拒绝未知模式与缺失 runtime、强制门禁顺序；不把 mock 冒充 Windows 原生验收。原 19 项 PowerShell、十轮 release-audit、真实客户 ZIP、候选 SHA-256 与读写分离均保留；本次不自动运行 AC，不更新 Release 或已安装版本台账。
+
+
 ## 2026-11-03：第十七次失败后的进一步验证——可选 Python Manifest 在 Chromium 前完成
 
 - **问题复核：** Run #41617214862 的实际日志证明，npm/Corepack、Playwright、Python 3.15.2 + PyInstaller 6.22.3、7-Zip、Chromium 均准备成功，并且 18 个 Python CLI CMD 入口重建成功；但随后 `python_manifests()` 在官方源码溯源记录阶段中断。这类后置清单检查不能用“前五个阶段通过”代替通过，也没有必要等到浏览器下载完才执行。
