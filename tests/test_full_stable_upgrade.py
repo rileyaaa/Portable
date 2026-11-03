@@ -311,6 +311,79 @@ class FullStableUpgradeTests(unittest.TestCase):
                       body)
         self.assertEqual(body.count("python_manifests(temp, resolved, evidence,"), 1)
 
+    def test_staged_pdf_pair_preserves_official_licenses_and_native_payload(self):
+        """Verify actual 1.28.2 / 0.3.4 manifest policy before touching old Python."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tool, temp = root / "tool", root / "tmp"
+            site = temp / "python-runtime/Lib/site-packages"
+            site.mkdir(parents=True)
+            tool.mkdir()
+            (temp / "wheels").mkdir()
+            rows = (
+                ("PyMuPDF", "pymupdf", "1.28.2",
+                 "pymupdf-1.28.2-cp310-abi3-win_amd64.whl", {
+                    "pymupdf/__init__.py": b"official staged Python source",
+                    "pymupdf/_mupdf.pyd": b"MZ" + bytes(50),
+                    "pymupdf-1.28.2.dist-info/COPYING": b"upstream license",
+                 }),
+                ("pymupdf4llm", "pymupdf4llm", "0.3.4",
+                 "pymupdf4llm-0.3.4-py3-none-any.whl", {
+                    "pymupdf4llm/__init__.py": b"official staged Python source",
+                    "pymupdf4llm-0.3.4.dist-info/licenses/LICENSE": b"upstream license",
+                 }),
+            )
+            (tool / "optional-python-manifest.json").write_text(
+                json.dumps({"packages": [{"name": row[0]} for row in rows]}),
+                encoding="utf-8")
+            resolved, evidence, metadata = {}, {"wheels": {}}, {}
+            for label, name, version, wheelname, entries in rows:
+                url = "https://files.pythonhosted.org/packages/verified/" + wheelname
+                resolved[name] = {"version": version, "wheel": wheelname,
+                                  "sha256": "a" * 64}
+                evidence["wheels"][name] = {"url": url}
+                with zipfile.ZipFile(temp / "wheels" / wheelname, "w") as wheel:
+                    for item, body in entries.items():
+                        wheel.writestr(item, body)
+                        file = site.joinpath(*item.split("/"))
+                        file.parent.mkdir(parents=True, exist_ok=True)
+                        file.write_bytes(body)
+                sdist = name + "-" + version + ".tar.gz"
+                metadata[name] = {
+                    "info": {"name": name, "version": version},
+                    "urls": [
+                        {"filename": wheelname, "url": url,
+                         "packagetype": "bdist_wheel",
+                         "digests": {"sha256": "a" * 64}},
+                        {"filename": sdist, "packagetype": "sdist",
+                         "url": "https://files.pythonhosted.org/packages/verified/" + sdist,
+                         "digests": {"sha256": "b" * 64}},
+                    ],
+                }
+            for name in ("pyinstaller", "pyinstaller-hooks-contrib", "altgraph",
+                         "pefile", "pywin32-ctypes", "setuptools"):
+                resolved[name] = {"version": "1.0", "sha256": "c" * 64}
+            def mock_pypi(url, dest, **kwargs):
+                name = url.split("/")[4]
+                Path(dest).write_text(json.dumps(metadata[name]), encoding="utf-8")
+                return {"sha256": "c" * 64}
+            with patch.object(stage, "ROOT", root), \
+                 patch.object(stage, "TOOL", tool), \
+                 patch.object(stage, "download", side_effect=mock_pypi):
+                stage.python_manifests(temp, resolved, evidence, staged_site=site)
+                actual = json.loads((tool / "optional-python-manifest.json").read_text(
+                    encoding="utf-8"))
+                self.assertEqual([x["name"] for x in actual["packages"]],
+                                 ["PyMuPDF", "pymupdf4llm"])
+                self.assertTrue(all(x["source_distribution_status"] == "published"
+                                    for x in actual["packages"]))
+                self.assertEqual([len(x["files"]) for x in actual["packages"]], [3, 2])
+                self.assertFalse((tool / "python").exists())
+                (site / "pymupdf/_mupdf.pyd").unlink()
+                with self.assertRaisesRegex(ValueError, "Native PyMuPDF"):
+                    stage.python_manifests(temp, resolved, evidence,
+                                           staged_site=site)
+
     def test_optional_pypi_release_metadata_wheel_only_and_rejects_forgery(self):
         import copy
         digest = "a" * 64
