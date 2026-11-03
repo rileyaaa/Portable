@@ -185,6 +185,29 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertEqual(native.write_report([{"probe": "only", "status": "PASS",
                                                "detail": "verified", "seconds": 0}]), 0)
 
+    def test_native_full_pdf_policy_is_the_same_reviewed_exception(self):
+        plan = json.loads((ROOT / "tool/full-stable-upgrade-plan.json").read_text(
+            encoding="utf-8"))
+        policy = {"mode": "latest-compatible-legacy-pdf",
+                  "pymupdf": "1.28.2", "pymupdf4llm": "0.3.4"}
+        evidence = {"pdf_compatibility": policy}
+        stage.verify_pdf_compatibility_exception(plan, evidence)
+        self.assertEqual(native.verify_pdf_exception(stage, plan, evidence),
+                         "Official PDF policy: latest-compatible-legacy-pdf")
+        wrong = {"pdf_compatibility": dict(policy, pymupdf="1.28.1")}
+        with self.assertRaisesRegex(ValueError, "Unreviewed CPython"):
+            stage.verify_pdf_compatibility_exception(plan, wrong)
+        with self.assertRaisesRegex(ValueError, "Unreviewed PDF"):
+            stage.verify_pdf_compatibility_exception(plan, {"pdf_compatibility":
+                                                             {"mode": "bypass"}})
+        stage.verify_pdf_compatibility_exception(plan, {"pdf_compatibility":
+                                                         {"mode": "latest-with-layout"}})
+        source = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
+        self.assertIn("verify_pdf_compatibility_exception(plan, evidence)", source)
+        self.assertIn("stage.verify_pdf_compatibility_exception(plan, evidence)",
+                      (ROOT / "tool/full-stable-native-diagnose.py").read_text(
+                          encoding="utf-8"))
+
     def test_native_diagnostic_sandbox_uses_copied_sources_not_checkout(self):
         with tempfile.TemporaryDirectory() as directory:
             area = Path(directory)
