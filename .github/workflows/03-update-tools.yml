@@ -437,18 +437,6 @@ jobs:
           "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" |
             Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Run tool-maintenance tests before downloading any candidate
-        timeout-minutes: 5
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p 'test_tool_updates.py' -v
-          if ($LASTEXITCODE -ne 0) { throw 'Pre-download tool maintenance regression failure.' }
-          # Fail on the actual synthetic customer package tests before any
-          # expensive Node/SSH download, not only in the post-update full suite.
-          & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p 'test_release_package.py' -v
-          if ($LASTEXITCODE -ne 0) { throw 'Pre-download customer package regression failure.' }
-
-
       - name: Preflight real launcher and relocation before downloading large candidates
         timeout-minutes: 8
         run: |
