@@ -168,12 +168,19 @@ class ToolUpdateTests(unittest.TestCase):
         # after installation remains mandatory.
         workflow = (ROOT / '.github/workflows/03-update-tools.yml').read_text(
             encoding='utf-8')
+        legacy, full = workflow.split('\n  full_verify:', 1)
+        full_verify = full.split('\n  full_propose:', 1)[0]
         needle = "-m unittest discover -s tests -p 'test_tool_updates.py' -v"
-        self.assertEqual(workflow.count(needle), 1)
-        self.assertIn('Pre-download tool maintenance regression failure.', workflow)
-        self.assertLess(workflow.index(needle), workflow.index('Stage checked wheel'))
-        self.assertIn("if: ${{ inputs.mode == 'prepare' }}", workflow)
-        self.assertIn("-m unittest discover -s tests -p 'test_*.py' -v", workflow)
+        # The old prepare path and the new full path each need exactly one
+        # fail-fast maintenance pass; counting both Jobs as one is incorrect.
+        self.assertEqual(legacy.count(needle), 1)
+        self.assertEqual(full_verify.count(needle), 1)
+        self.assertIn('Pre-download tool maintenance regression failure.', legacy)
+        self.assertLess(legacy.index(needle), legacy.index('Stage checked wheel'))
+        self.assertLess(full_verify.index(needle), full_verify.index('Stage full latest-stable'))
+        self.assertIn("if: ${{ inputs.mode == 'prepare' }}", legacy)
+        self.assertIn("-m unittest discover -s tests -p 'test_*.py' -v", legacy)
+        self.assertIn("-m unittest discover -s tests -p 'test_*.py' -v", full_verify)
 
     def test_archive_rejects_link_and_zip_bomb(self):
         # No source download: verify the extraction-boundary predicate itself.
