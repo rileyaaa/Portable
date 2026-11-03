@@ -127,6 +127,38 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertIn('run(new_python, "-E", "-s", "-B", "-m", "pip", "--version")', code)
         self.assertNotIn("pyyaml-cp315", code)
 
+    def test_pip_pinned_json_never_accepts_wrong_hash_or_untrusted_wheel(self):
+        wheel = "pip-26.3-py3-none-any.whl"
+        checksum = "f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13"
+        url = "https://files.pythonhosted.org/packages/verified/" + wheel
+        record = {"info": {"name": "pip", "version": "26.3"}, "urls": [
+            {"filename": wheel, "packagetype": "bdist_wheel",
+             "digests": {"sha256": checksum}, "url": url, "yanked": False}]}
+        self.assertEqual(stage.select_official_pip_release_wheel(
+            record, "26.3", checksum), url)
+        import copy
+        bad = copy.deepcopy(record)
+        bad["urls"][0]["digests"]["sha256"] = "0" * 64
+        with self.assertRaises(ValueError):
+            stage.select_official_pip_release_wheel(bad, "26.3", checksum)
+        bad = copy.deepcopy(record)
+        bad["urls"][0]["url"] = "https://attacker.example/pip-26.3-py3-none-any.whl"
+        with self.assertRaises(ValueError):
+            stage.select_official_pip_release_wheel(bad, "26.3", checksum)
+        bad = copy.deepcopy(record)
+        bad["urls"][0]["yanked"] = True
+        with self.assertRaises(ValueError):
+            stage.select_official_pip_release_wheel(bad, "26.3", checksum)
+        bad = copy.deepcopy(record)
+        bad["urls"].append(copy.deepcopy(bad["urls"][0]))
+        bad["urls"][1]["yanked"] = False
+        with self.assertRaises(ValueError):
+            stage.select_official_pip_release_wheel(bad, "26.3", checksum)
+        bad = copy.deepcopy(record)
+        bad["info"]["version"] = "26.2.2"
+        with self.assertRaises(ValueError):
+            stage.select_official_pip_release_wheel(bad, "26.3", checksum)
+
     def test_offline_pyyaml_sdist_repackage_is_deterministic_and_never_runs_setup(self):
         import csv
         import base64
