@@ -1085,12 +1085,20 @@ def optional_license_origin(name: str, version: str, files: dict,
     return "PyMuPDF"
 
 
-def python_manifests(temp: Path, resolved: dict, evidence: dict) -> None:
-    """Rebuild manifests from installed bytes; never keep stale CPython 3.14 hashes."""
+def python_manifests(temp: Path, resolved: dict, evidence: dict,
+                     *, staged_site: Path) -> None:
+    """Audit staged installed wheel bytes BEFORE overwriting the trusted runtime.
+
+    Record final tool/python paths, but hash the freshly pip-installed CPython
+    3.15 files under the isolated Windows candidate instead of the old 3.14
+    checkout. Optional provenance/license failures now stop before Chromium.
+    """
+    require(staged_site == temp / "python-runtime/Lib/site-packages" and
+            staged_site.is_dir(), "Optional manifests require the staged CPython site")
     optional_file = TOOL / "optional-python-manifest.json"
     old = obj(optional_file)
     packages = []
-    site = TOOL / "python/Lib/site-packages"
+    final_site = TOOL / "python/Lib/site-packages"
     for record in old["packages"]:
         label = record["name"]
         name = label.lower().replace("_", "-")
@@ -1110,9 +1118,10 @@ def python_manifests(temp: Path, resolved: dict, evidence: dict) -> None:
                 if item.is_dir():
                     continue
                 safe_path(item.filename)
-                installed = site.joinpath(*item.filename.split("/"))
-                if installed.is_file():
-                    files[installed.relative_to(ROOT).as_posix()] = sha(installed)
+                staged = staged_site.joinpath(*item.filename.split("/"))
+                if staged.is_file():
+                    final = final_site.joinpath(*item.filename.split("/"))
+                    files[final.relative_to(ROOT).as_posix()] = sha(staged)
         license_origin = optional_license_origin(name, version, files, packages, resolved)
         if name == "pymupdf":
             require(any(p.endswith((".pyd", ".dll")) for p in files),
@@ -1245,6 +1254,10 @@ def prepare(plan: dict) -> None:
         print("FULL_STABLE_PHASE_BEGIN=python315_dependencies", flush=True)
         staged_python, resolved = stage_python(plan, temp, evidence)
         print("FULL_STABLE_PHASE_END=python315_dependencies;status=PASS", flush=True)
+        print("FULL_STABLE_PHASE_BEGIN=optional_python_manifests", flush=True)
+        python_manifests(temp, resolved, evidence,
+                         staged_site=staged_python / "Lib/site-packages")
+        print("FULL_STABLE_PHASE_END=optional_python_manifests;status=PASS", flush=True)
         print("FULL_STABLE_PHASE_BEGIN=7zip", flush=True)
         stage_7zip(plan, temp, evidence)
         print("FULL_STABLE_PHASE_END=7zip;status=PASS", flush=True)
@@ -1257,7 +1270,6 @@ def prepare(plan: dict) -> None:
         run(new_python, "-E", "-s", "-B", "-m", "pip", "--version")
         run(new_python, "-E", "-s", "-B", "-m", "PyInstaller", "--version")
         run(new_python, "-E", "-s", "-B", TOOL / "refresh-python-cli-shims.py")
-        python_manifests(temp, resolved, evidence)
     update_version_inventory(plan, evidence)
     write_json(TOOL / "full-stable-evidence.json", evidence)
     print("FULL_STABLE_CANDIDATE_STAGED=PASS")
