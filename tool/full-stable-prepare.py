@@ -994,11 +994,24 @@ def prepare(plan: dict) -> None:
     }
     with tempfile.TemporaryDirectory(prefix="full-stable-", dir=scratch) as name:
         temp = Path(name)
-        staged_python, resolved = stage_python(plan, temp, evidence)
+        # Detect npm/Playwright configuration and lock errors before redoing
+        # three minutes of already native-verified CPython 3.15 wheel work.
+        # Defer the large Chromium ZIP until all smaller candidates pass.
+        print("FULL_STABLE_PHASE_BEGIN=node_npm_corepack", flush=True)
         stage_npm(plan, temp, evidence)
-        stage_7zip(plan, temp, evidence)
+        print("FULL_STABLE_PHASE_END=node_npm_corepack;status=PASS", flush=True)
+        print("FULL_STABLE_PHASE_BEGIN=playwright_mcp", flush=True)
         version, revision = stage_playwright(plan, temp, evidence)
+        print("FULL_STABLE_PHASE_END=playwright_mcp;status=PASS", flush=True)
+        print("FULL_STABLE_PHASE_BEGIN=python315_dependencies", flush=True)
+        staged_python, resolved = stage_python(plan, temp, evidence)
+        print("FULL_STABLE_PHASE_END=python315_dependencies;status=PASS", flush=True)
+        print("FULL_STABLE_PHASE_BEGIN=7zip", flush=True)
+        stage_7zip(plan, temp, evidence)
+        print("FULL_STABLE_PHASE_END=7zip;status=PASS", flush=True)
+        print("FULL_STABLE_PHASE_BEGIN=chromium_payload", flush=True)
         stage_browser(temp, version, revision, evidence)
+        print("FULL_STABLE_PHASE_END=chromium_payload;status=PASS", flush=True)
         replace_tree(staged_python, TOOL / "python", temp)
         # Never load DLLs for the replaced Python from the trusted orchestrator.
         new_python = TOOL / "python/python.exe"
