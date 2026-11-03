@@ -457,8 +457,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Updated Python dependency conflict.' }
           & .\tool\python\python.exe -E -s -B -c "import sys,pandas,numpy,paramiko,cryptography,fitz; assert sys.version_info[:3] == (3,15,2); print('PYTHON315_NATIVE_IMPORT=PASS',pandas.__version__,numpy.__version__,paramiko.__version__)"
           if ($LASTEXITCODE -ne 0) { throw 'New Python native imports failed.' }
-          & .\tool\python\python.exe -E -s -B -c "import pymupdf4llm,importlib.metadata as md; assert callable(pymupdf4llm.to_markdown); assert md.version('pymupdf') == md.version('pymupdf4llm') == md.version('pymupdf-layout'); print('PYMUPDF4LLM_NATIVE=PASS')"
-          if ($LASTEXITCODE -ne 0) { throw 'PyMuPDF Core/Layout/4LLM native compatibility failed.' }
+          & .\tool\python\python.exe -E -s -B -c "import pymupdf4llm,pymupdf,importlib.metadata as md; p=md.version('pymupdf'); q=md.version('pymupdf4llm'); legacy=(p=='1.28.2' and q=='0.3.4'); modern=(p==q and p.startswith('2.') and md.version('pymupdf-layout')==p) if not legacy else False; assert callable(pymupdf4llm.to_markdown) and (legacy or modern); document=pymupdf.open(); page=document.new_page(); page.insert_text((72,72),'Portable PDF smoke'); result=pymupdf4llm.to_markdown(document); assert 'Portable PDF smoke' in result; print('PYMUPDF4LLM_NATIVE=PASS',p,q)"
+          if ($LASTEXITCODE -ne 0) { throw 'PyMuPDF Core/4LLM PDF-to-Markdown native compatibility failed.' }
           & .\tool\python\python.exe -E -s -B -c "import yaml; assert yaml.__version__ == '6.0.3'; assert not yaml.__with_libyaml__; assert yaml.safe_load('answer: 42') == {'answer': 42}; assert yaml.safe_load(yaml.safe_dump({'x': [1, 2]})) == {'x': [1, 2]}; print('PYYAML315_PURE_NATIVE=PASS')"
           if ($LASTEXITCODE -ne 0) { throw 'Official source-only PyYAML could not parse/emit YAML on CPython 3.15.' }
           & .\tool\python\python.exe -E -s -B -m PyInstaller --version
