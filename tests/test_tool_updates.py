@@ -32,6 +32,15 @@ def load(name: str, file: Path):
 ssh = load('portable_ssh_maintenance', ROOT / 'tool/prepare-ssh.py')
 tools = load('portable_tools_maintenance', ROOT / 'tool/update-tools.py')
 
+# A synthetic historical Node candidate MUST carry all fields consumed by
+# diff_digest(), even though production's current plan only contains CLI tools.
+NODE_LFS_FIXTURE = {
+    'tool': 'node',
+    'version': '26.13.0',
+    'destination': 'tool/node',
+    'kind': 'directory',
+}
+
 
 def explicit_utf8_text_io(call: ast.Call) -> bool:
     """Accept explicitly declared UTF-8 or UTF-8-SIG, never host defaults."""
@@ -211,6 +220,11 @@ class ToolUpdateTests(unittest.TestCase):
                         tools.plan()
 
     def test_group_selection_and_staged_scope(self):
+        # Keep the historical Node LFS fixture compatible with the actual
+        # staged-digest contract. Missing destination/kind caused run #41554504292.
+        self.assertEqual(set(NODE_LFS_FIXTURE), {'tool', 'version', 'destination', 'kind'})
+        self.assertEqual((NODE_LFS_FIXTURE['destination'], NODE_LFS_FIXTURE['kind']),
+                         ('tool/node', 'directory'))
         self.assertEqual(tools.selected_rows('ssh'), [])
         self.assertEqual([r['tool'] for r in tools.selected_rows('all')], ['ripgrep', 'fd', 'jq'])
         self.assertEqual([r['tool'] for r in tools.selected_rows('tools')], ['ripgrep', 'fd', 'jq'])
@@ -575,7 +589,7 @@ class ToolUpdateTests(unittest.TestCase):
             (dest/'corepack.js').write_text('reviewed',encoding='utf-8')
             observed={'node':'26.13.0'}
             with patch.object(tools,'ROOT',root),\
-                 patch.object(tools,'selected_rows',return_value=[{'tool':'node','version':'26.13.0'}]),\
+                 patch.object(tools,'selected_rows',return_value=[NODE_LFS_FIXTURE]),\
                  patch.object(tools,'probe_versions',return_value=observed),\
                  patch.object(tools.subprocess,'run',return_value=subprocess.CompletedProcess(
                      args=[],returncode=0,stdout=b'0.35.0\n',stderr=b'')) as runner:
@@ -583,7 +597,7 @@ class ToolUpdateTests(unittest.TestCase):
                 self.assertEqual(runner.call_count,1)
                 self.assertEqual(runner.call_args.args[0][0],str(node/'node.exe'))
             with patch.object(tools,'ROOT',root),\
-                 patch.object(tools,'selected_rows',return_value=[{'tool':'node','version':'26.13.0'}]),\
+                 patch.object(tools,'selected_rows',return_value=[NODE_LFS_FIXTURE]),\
                  patch.object(tools,'probe_versions',return_value=observed),\
                  patch.object(tools.subprocess,'run',return_value=subprocess.CompletedProcess(
                      args=[],returncode=0,stdout=b'0.34.0\n',stderr=b'')):
@@ -677,7 +691,7 @@ class ToolUpdateTests(unittest.TestCase):
                            check=True)
             with patch.object(tools, 'ROOT', root), patch.object(
                     tools, 'selected_rows', side_effect=lambda group: (
-                        [] if group == 'ssh' else [{'tool':'node','version':'26.13.0'}])):
+                        [] if group == 'ssh' else [NODE_LFS_FIXTURE])):
                 tools.enable_node_lfs()
                 self.assertEqual(attrs.read_bytes(), b'other.exe -text\n' + tools.NODE_LFS_ATTRIBUTE)
                 with self.assertRaisesRegex(ValueError, 'Unexpected attributes'):
@@ -820,7 +834,7 @@ class ToolUpdateTests(unittest.TestCase):
             # base version and source archive in the two simulated jobs.
             node.write_bytes(b'MZ' + b'1' * (3 * 1024 * 1024))
             with patch.object(tools, 'ROOT', tmp), patch.object(
-                    tools, 'selected_rows', return_value=[{'tool':'node','version':'26.13.0'}]):
+                    tools, 'selected_rows', return_value=[NODE_LFS_FIXTURE]):
                 tools.enable_node_lfs()
                 subprocess.run(['git', '-C', str(tmp), 'add', '-A', '--',
                                 'tool', '.gitattributes'], check=True)
