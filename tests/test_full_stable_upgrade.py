@@ -124,6 +124,9 @@ class FullStableUpgradeTests(unittest.TestCase):
             no_network = fast.diagnose(include_network=False, plan=plan, stage=stage)
             self.assertEqual([r["probe"] for r in no_network],
                              ["plan", "contracts", "workflows"])
+            with self.assertRaisesRegex(ValueError, "require --network"):
+                fast.diagnose(include_network=False, selected={"npm"},
+                              plan=plan, stage=stage)
 
     def test_full_candidate_artifact_short_retention_and_same_run_cleanup(self):
         workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
