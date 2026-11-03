@@ -65,7 +65,11 @@ class FullStableUpgradeTests(unittest.TestCase):
                         verifier.index("Full Python Node and converter"))
         self.assertLess(verifier.index("Full Python Node and converter"),
                         verifier.index("Bound candidate paths"))
-        self.assertLess(verifier.index("Real package preflight"), 
+        self.assertLess(verifier.index("Bound candidate paths"),
+                        verifier.index("Fail fast on real customer ZIP inputs"))
+        self.assertLess(verifier.index("Fail fast on real customer ZIP inputs"),
+                        verifier.index("Check Windows PowerShell 5.1 regressions"))
+        self.assertLess(verifier.index("Real package preflight"),
                         verifier.index("Upload exact verified candidate"))
         self.assertLess(writer.index("full-stable-transfer.py apply"),
                         writer.index("git push origin"))
