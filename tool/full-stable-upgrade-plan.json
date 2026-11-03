@@ -11,7 +11,7 @@
     "sideEffects": "never install globally, alter host PATH or registry, or use Windows installers to modify host",
     "compatibility": "require Windows 11 x64 native tests, launcher/relocation, package-local paths, Python wheels, npm shim, SSH and browser parity",
     "validation": "official source and SHA256 for each artifact; PE architecture, full Python/Node, 19 PowerShell, ten release audits, actual customer ZIP and SHA256; reader/writer identical staged digest",
-    "publish": "do not edit installed-tools.json or tool/工具更新说明.md until native tests pass; never create Release",
+    "publish": "do not edit installed-tools.json in main until all Windows native tests pass and verified bytes are merged; temporary isolated checkout ledger changes are candidate-only; never create Release",
     "actions": "manual user-triggered only; one prepared full refresh batch; no automatic runs"
   },
   "targets": [
