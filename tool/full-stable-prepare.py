@@ -340,6 +340,66 @@ def stage_pyyaml_pure_wheel(plan: dict, temp: Path, wheels: Path,
             "wheel": wheel.name, "display_name": "PyYAML"}
 
 
+
+def official_onnx_win315_wheel(record: dict, version: str) -> bool:
+    """Recognize only official SHA-256-identified CPython 3.15 Windows x64 wheels."""
+    if not isinstance(record, dict) or record.get("packagetype") != "bdist_wheel" or record.get("yanked") is True:
+        return False
+    digests = record.get("digests", {})
+    if not isinstance(digests, dict):
+        return False
+    filename, url, digest = record.get("filename"), record.get("url"), digests.get("sha256")
+    if not all(isinstance(x, str) for x in (filename, url, digest)):
+        return False
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        if not (parsed.scheme == "https" and parsed.hostname == "files.pythonhosted.org" and
+                parsed.username is None and parsed.password is None and parsed.port in (None, 443) and
+                parsed.path.startswith("/packages/") and not parsed.query and not parsed.fragment and
+                urllib.parse.unquote(parsed.path.rsplit("/", 1)[-1]) == filename and
+                re.fullmatch(r"[a-f0-9]{64}", digest)):
+            return False
+    except ValueError:
+        return False
+    if not filename.endswith(".whl"):
+        return False
+    try:
+        stem, python_tag, abi_tag, platform_tag = filename[:-4].rsplit("-", 3)
+    except ValueError:
+        return False
+    if stem != "onnxruntime-" + version or "win_amd64" not in platform_tag.split("."):
+        return False
+    abis = set(abi_tag.split("."))
+    for tag in python_tag.split("."):
+        if tag == "cp315" and ("cp315" in abis or "abi3" in abis):
+            return True
+        if re.fullmatch(r"cp3\d\d", tag) and 311 <= int(tag[2:]) <= 315 and "abi3" in abis:
+            return True
+    return False
+
+
+def preflight_python315_onnxruntime(temp: Path, evidence: dict) -> None:
+    """Fail before npm/Chromium downloads when PyMuPDF 2.x cannot run on 3.15."""
+    meta = temp / "pypi-onnxruntime-latest.json"
+    download("https://pypi.org/pypi/onnxruntime/json", meta, limit=4 * 1024 * 1024)
+    data = obj(meta)
+    info, rows = data.get("info", {}), data.get("urls", [])
+    require(isinstance(info, dict) and isinstance(rows, list) and
+            str(info.get("name", "")).lower().replace("_", "-") == "onnxruntime" and
+            isinstance(info.get("version"), str) and
+            re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", info["version"]) is not None,
+            "Untrusted ONNX Runtime official PyPI latest-stable metadata")
+    version = info["version"]
+    compatible = [x for x in rows if official_onnx_win315_wheel(x, version)]
+    require(bool(compatible),
+            "No official stable ONNX Runtime CPython 3.15 Windows x64 wheel "
+            "(latest=" + version + "); PyMuPDF >=2.1 requires it. "
+            "Do not run a full tool refresh until compatible upstream wheels exist.")
+    evidence["onnxruntime_preflight"] = {
+        "version": version, "wheel_sha256": compatible[0]["digests"]["sha256"],
+        "filename": compatible[0]["filename"]}
+
+
 def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     row, pip = target(plan, "python"), target(plan, "pip")
     require(row["latestStable"] == "3.15.2" and pip["latestStable"] == "26.3",
@@ -1068,6 +1128,9 @@ def prepare(plan: dict) -> None:
     }
     with tempfile.TemporaryDirectory(prefix="full-stable-", dir=scratch) as name:
         temp = Path(name)
+        # PyMuPDF 2.x requires ONNX Runtime: check CPython 3.15 official wheel
+        # compatibility before downloading npm, browsers or Python archives.
+        preflight_python315_onnxruntime(temp, evidence)
         # Detect npm/Playwright configuration and lock errors before redoing
         # three minutes of already native-verified CPython 3.15 wheel work.
         # Defer the large Chromium ZIP until all smaller candidates pass.

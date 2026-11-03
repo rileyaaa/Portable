@@ -127,6 +127,51 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertIn('run(new_python, "-E", "-s", "-B", "-m", "pip", "--version")', code)
         self.assertNotIn("pyyaml-cp315", code)
 
+    def test_pymupdf21_onnxruntime_cp315_gate_before_any_tool_download(self):
+        # Latest ONNX Runtime 1.31.1 (2026-11-03) has Win x64 through cp314, not cp315.
+        # Never waste a full Windows Actions run attempting this impossible closure.
+        from unittest.mock import patch
+        base = "https://files.pythonhosted.org/packages/verified/"
+        def wheel(filename):
+            return {"filename": filename, "url": base + filename,
+                    "packagetype": "bdist_wheel",
+                    "digests": {"sha256": "a" * 64}, "yanked": False}
+        cp314 = wheel("onnxruntime-1.31.1-cp314-cp314-win_amd64.whl")
+        cp315 = wheel("onnxruntime-1.31.1-cp315-cp315-win_amd64.whl")
+        abi3 = wheel("onnxruntime-1.31.1-cp311-abi3-win_amd64.whl")
+        self.assertFalse(stage.official_onnx_win315_wheel(cp314, "1.31.1"))
+        self.assertTrue(stage.official_onnx_win315_wheel(cp315, "1.31.1"))
+        self.assertTrue(stage.official_onnx_win315_wheel(abi3, "1.31.1"))
+        for key, value in (("url", "https://bad.example/wheel.whl"),
+                           ("filename", "onnxruntime-1.31.1-cp315-cp315-win_arm64.whl"),
+                           ("digests", {"sha256": "invalid"}),
+                           ("yanked", True)):
+            bad = dict(cp315)
+            bad[key] = value
+            with self.subTest(key=key):
+                self.assertFalse(stage.official_onnx_win315_wheel(bad, "1.31.1"))
+        with tempfile.TemporaryDirectory() as d:
+            temp = Path(d)
+            data = {"info": {"name": "onnxruntime", "version": "1.31.1"},
+                    "urls": [cp314]}
+            def fake_download(url, file, **kwargs):
+                self.assertEqual(url, "https://pypi.org/pypi/onnxruntime/json")
+                Path(file).write_text(json.dumps(data), encoding="utf-8")
+                return {"sha256": "a" * 64}
+            with patch.object(stage, "download", side_effect=fake_download):
+                with self.assertRaisesRegex(ValueError, "No official stable ONNX Runtime"):
+                    stage.preflight_python315_onnxruntime(temp, {})
+                data["urls"] = [cp314, cp315]
+                verified = {}
+                stage.preflight_python315_onnxruntime(temp, verified)
+                self.assertEqual(verified["onnxruntime_preflight"]["version"], "1.31.1")
+                self.assertEqual(verified["onnxruntime_preflight"]["filename"],
+                                 cp315["filename"])
+        source = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
+        prepare = source.split("def prepare(plan: dict) -> None:", 1)[1]
+        self.assertLess(prepare.index("preflight_python315_onnxruntime(temp, evidence)"),
+                        prepare.index("stage_npm(plan, temp, evidence)"))
+
     def test_optional_pypi_release_metadata_wheel_only_and_rejects_forgery(self):
         import copy
         digest = "a" * 64
