@@ -129,7 +129,9 @@ jobs:
           $day = [DateTime]::UtcNow.ToString('yyyy-MM-dd')
           & .\tool\python\python.exe -E -s -B .\tool\update-tools.py prepare --group $env:TOOL_GROUP --day $day
           if ($LASTEXITCODE -ne 0) { throw 'Windows tool staging failed; no branch will be written.' }
-          if ($env:TOOL_GROUP -ne 'ssh') {
+          $planned = Get-Content -LiteralPath '.\\tool\\tool-update-plan.json' -Raw | ConvertFrom-Json
+          $hasNodeCandidate = @($planned.candidates | Where-Object { $_.tool -ceq 'node' }).Count -eq 1
+          if ($env:TOOL_GROUP -ne 'ssh' -and $hasNodeCandidate) {
             & git lfs install --local
             if ($LASTEXITCODE -ne 0) { throw 'Git LFS filter is unavailable for the Node candidate.' }
           }
@@ -303,7 +305,9 @@ jobs:
           if ($env:EXPECTED_DIGEST -cnotmatch '^[a-f0-9]{64}$') { throw 'No validated candidate digest.' }
           & .\tool\python\python.exe -E -s -B .\tool\update-tools.py prepare --group $env:TOOL_GROUP --day $env:APPROVED_DAY --writer
           if ($LASTEXITCODE -ne 0) { throw 'Trusted writer could not reproduce official pinned archive.' }
-          if ($env:TOOL_GROUP -ne 'ssh') {
+          $planned = Get-Content -LiteralPath '.\\tool\\tool-update-plan.json' -Raw | ConvertFrom-Json
+          $hasNodeCandidate = @($planned.candidates | Where-Object { $_.tool -ceq 'node' }).Count -eq 1
+          if ($env:TOOL_GROUP -ne 'ssh' -and $hasNodeCandidate) {
             & git lfs install --local
             if ($LASTEXITCODE -ne 0) { throw 'Git LFS filter is unavailable for the Node candidate.' }
           }
@@ -324,9 +328,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Candidate commit failed.' }
           & gh auth setup-git
           if ($LASTEXITCODE -ne 0) { throw 'Cannot authenticate trusted Git push.' }
-          if ($env:TOOL_GROUP -ne 'ssh') {
-            # Upload only the newly reviewed Node OID, not old browser and
-            # Codex LFS objects. A pointer without payload is not a release.
+          $planned = Get-Content -LiteralPath '.\\tool\\tool-update-plan.json' -Raw | ConvertFrom-Json
+          $hasNodeCandidate = @($planned.candidates | Where-Object { $_.tool -ceq 'node' }).Count -eq 1
+          if ($env:TOOL_GROUP -ne 'ssh' -and $hasNodeCandidate) {
+            # Only an actual new Node candidate requires a new LFS object.
+            # CLI-only updates must not upload or require the unchanged Node OID.
+            # A pointer without its payload is never a verified release.
             $ptr = (& git show 'HEAD:tool/node/node.exe') -join "`n"
             $oidMatch = [regex]::Match($ptr, '(?m)^oid sha256:([0-9a-f]{64})$')
             if ($LASTEXITCODE -ne 0 -or -not $oidMatch.Success) {
