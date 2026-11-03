@@ -594,6 +594,9 @@ def pe_amd64(path: Path) -> bool:
 INERT_WHEEL_LAUNCHERS = {
     "setuptools/cli-32.exe": 0x014c,
     "setuptools/gui-32.exe": 0x014c,
+    # setuptools 84.2.1 also ships un-suffixed aliases byte-identical to x86.
+    "setuptools/cli.exe": 0x014c,
+    "setuptools/gui.exe": 0x014c,
     "setuptools/cli-arm64.exe": 0xaa64,
     "setuptools/gui-arm64.exe": 0xaa64,
     "pip/_vendor/distlib/t32.exe": 0x014c,
