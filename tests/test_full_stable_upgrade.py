@@ -386,6 +386,7 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertLess(merge, register)
         self.assertNotIn('scripts.mkdir(exist_ok=True)', func)
         self.assertIn("Conflicting pip launcher in another installed distribution", func)
+        self.assertIn('{"pyinstaller.exe", "pyi-makespec.exe"} <= before', func)
         self.assertIn("Another base package console launcher was removed", func)
 
     def test_7zip_official_full_sfx_pe_amd64_and_paired_dll_policy(self):
