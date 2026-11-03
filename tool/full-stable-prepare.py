@@ -396,7 +396,7 @@ def official_legacy_pdf_wheels(data: dict, name: str, version: str) -> dict:
         if name == "pymupdf":
             # PyMuPDF uses the stable ABI, so its official Windows x64
             # cp311-abi3 wheel is compatible with CPython 3.15.
-            match = re.fullmatch(r"pymupdf-1\.28\.2-cp3(11|12|13|14|15)-abi3-win_amd64\.whl",
+            match = re.fullmatch(r"pymupdf-1\.28\.2-cp3(10|11|12|13|14|15)-abi3-win_amd64\.whl",
                                  filename)
         else:
             match = filename == "pymupdf4llm-0.3.4-py3-none-any.whl"
