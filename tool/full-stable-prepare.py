@@ -361,6 +361,10 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     (stage / "Lib/site-packages/codex_portable_ssh.pth").write_text(
         "../../ssh-packages\n", encoding="ascii")
     plain_tree(stage)
+    for native in stage.rglob("*"):
+        if native.is_file() and native.suffix.lower() in (".pyd", ".dll", ".exe"):
+            require(pe_amd64(native),
+                    "Staged Python/native package binary is not Windows x64: " + str(native))
     evidence["python_packages"] = resolved
     return stage, resolved
 
