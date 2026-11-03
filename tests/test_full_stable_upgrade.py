@@ -155,7 +155,7 @@ class FullStableUpgradeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             stage.select_official_pip_release_wheel(bad, "26.3", checksum)
         bad = copy.deepcopy(record)
-        bad["info"]["version"] = "26.3"
+        bad["info"]["version"] = "0.0.1"
         with self.assertRaises(ValueError):
             stage.select_official_pip_release_wheel(bad, "26.3", checksum)
 
