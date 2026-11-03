@@ -16,7 +16,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import zipfile
 
 ROOT = Path(__file__).absolute().parents[1]
@@ -173,7 +173,7 @@ class FullStableUpgradeTests(unittest.TestCase):
         def rejected():
             raise ValueError("synthetic npm install failure")
         native.record(records, "npm_corepack", rejected)
-        probe = unittest.mock.Mock(return_value="should not execute")
+        probe = Mock(return_value="should not execute")
         native.record(records, "playwright_npm_ci", probe,
                       after=("npm_corepack",))
         native.record(records, "sevenzip_amd64", lambda: "real independent success")
@@ -203,14 +203,14 @@ class FullStableUpgradeTests(unittest.TestCase):
                 self.assertTrue((isolated_tool / "node/node.exe").is_file())
                 self.assertEqual((isolated_tool / "node/node.exe").read_bytes(),
                                  node.read_bytes())
-                self.assertFalse((isolated_tool / "automation/playwright").iterdir().__next__
-                                 if list((isolated_tool / "automation/playwright").iterdir()) else False)
+                self.assertEqual(list((isolated_tool / "automation/playwright").iterdir()), [])
                 for name in native.COPY_FILES:
                     self.assertEqual((destination / name).read_bytes(),
                                      (source / name).read_bytes())
                 self.assertFalse((destination / "tool/automation/browsers").exists())
-                self.assertEqual(len(list((source / "tool").rglob("*"))),
-                                 len(list((source / "tool").rglob("*"))))
+                self.assertEqual(
+                    (source / "tool/python-packages.in.txt").read_bytes(),
+                    b"source-sha-preserved-tool/python-packages.in.txt")
                 with self.assertRaisesRegex(ValueError, "must be new"):
                     native.sandbox_from_checkout(destination, node_executable=node)
                 invalid = area / "bad"
