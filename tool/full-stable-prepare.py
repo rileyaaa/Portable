@@ -262,6 +262,7 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     wheels.mkdir()
     for item in report["install"]:
         info, remote = item.get("metadata", {}), item.get("download_info", {})
+        require(item.get("is_yanked") is not True, "Yanked PyPI distribution refused")
         name = str(info.get("name", "")).lower().replace("_", "-")
         version = str(info.get("version", ""))
         url = remote.get("url", "")
