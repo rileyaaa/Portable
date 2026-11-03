@@ -67,9 +67,6 @@ def digest_file(path: Path) -> str:
 
 def checked_disk(path: Path, *, missing: bool = False) -> None:
     require(path.is_relative_to(ROOT), "Candidate escaped repository")
-    for p in (ROOT, *reversed(path.relative_to(ROOT).parents), path):
-        if not isinstance(p, Path):
-            continue
     cursor = ROOT
     for component in path.relative_to(ROOT).parts:
         cursor /= component
@@ -236,7 +233,7 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
                     match and match.group(1) == item["sha256"],
                     "Chromium LFS pointer missing or mismatched")
     print("FULL_STABLE_WRITER_MATCH=PASS")
-    print("FULL_STABLE_DIFF_SHA256=" + actual and expected_diff)
+    print("FULL_STABLE_DIFF_SHA256=" + expected_diff)
 
 
 def main() -> None:
