@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-03：下一批 CLI 工具升级准备（未执行 Windows AC，版本台账不提前修改）
+
+- **已核准官方来源：** 以 GitHub 官方 release 的 `assets[].digest` 为准，严格固定 ripgrep **15.2.0** `ripgrep-15.2.0-x86_64-pc-windows-msvc.zip` / SHA-256 `71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5`；fd **10.5.0** `fd-v10.5.0-x86_64-pc-windows-msvc.zip` / `a227701b8551c35a9931d9f6da75503cf86d88e182d71fb849a70864c5d57cd7`；jq **1.8.2** 官方 Windows AMD64 单独 `jq-windows-amd64.exe` / `a6fc67fedaf9128a3309a1e2ebb8b986aeccf70122ee46d2cb4849e423f0c627`。目标仅 `tool/bin/rg.exe`、`fd.exe`、`jq.exe`，不会更动其他工具或重跑 Node/SSH 安装。
+- **工作流修复：** 旧 03 以 `group != ssh` 判断所有工具更新都需要 Node LFS，此前若用新的 CLI-only 计划必在 `propose` 试图推送旧 Node 对象并失败。现由审查后的计划逐项判断 **Node 是否真的入选**，只有 Node 候选存在才安装新 LFS filter、核对新 pointer 并上传新对象；CLI-only 仍保留分离的只读 verify / 写入 propose Job、完全相同的 SHA-256 差异摘要、19 项 Windows PowerShell、十轮审计及真实 ZIP 校验。防止再把现有 Node 升级计划当作新升级使用。
+- **安全规则：** ripgrep 和 fd 的官方发行 URL、Windows x64 MSVC 文件名与 ZIP 根目录必须和精确版本一致，ZIP 内容需要安全路径和 PE x64 检验；jq 官方 Windows AMD64 **不是 ZIP**，只接受其精确直链 + 已核准 SHA-256 + PE AMD64 文件身份，不接受任意可执行文件 URL。拒绝与台账完全相同的候选版本，避免无效完整 Windows 运行。测试增加真实临时目录中 jq EXE 摘要错误、架构错误拒绝且旧文件不受修改的正反向案例；保留历史 Node LFS 回归但不把 Node 重新列为候选。
+- **未纳入本批：** 7-Zip 26.05 官方提供 `.7z Extra` 或安装器，当前 03 的受控 7-Zip 替换器仅支持严格 ZIP 的 EXE/DLL 双件，不能伪造 ZIP 来源、运行系统安装器或未验就替换；pip 26.2.2 是 Python 42 项固定依赖之一，需同步 Python wheel hash lock；Corepack 0.36.0、Playwright MCP、Chromium、Python 补丁同样要单独设计依赖或清单校验，不能因此假称版本已更新。
+- **下一次操作：** 只在当前源码修复复核并合入 `main` 后，由用户手动一次运行 **03 / mode=prepare / group=tools / create_pr=true**。不能复用旧 SHA 的历史 Actions；若完整原生验证通过，再用 GitHub Connector 审核候选 PR、LFS/差异和版本台账后合并。本文记录的是**已准备、尚未执行 AC 的批次**，不是新工具已验收。原 Codex 0.166.0 及旧 Release 不变。
+
 ## 2026-11-03：Node 26 / Paramiko 5.1 合并后的便携环境变量复核（不重跑 AC）
 
 - **核查基线与边界：** 已合并的 `main` 为 `088718ae1f8f575469956f0000598f1cc3ee028c`，工具记录含 Node.js 26.13.0、npm 11.20.0、Paramiko 5.1.0、Corepack 0.35.0，Codex 仍为 0.166.0。此次只核查仓库已跟踪配置、启动器、工具脚本及前次 Windows 结果；用户本机不入库的 `env.local.ps1`、真实 API/SSH 凭据、真实 Android 设备及用户自装可选工具不在验证范围。
