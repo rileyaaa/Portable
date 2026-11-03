@@ -128,7 +128,7 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertNotIn("pyyaml-cp315", code)
 
     def test_pymupdf21_onnxruntime_cp315_gate_before_any_tool_download(self):
-        # Latest ONNX Runtime 1.31.1 (2026-11-03) only has cp314 Win x64.
+        # Latest ONNX Runtime 1.31.1 (2026-11-03) has Win x64 through cp314, not cp315.
         # Never waste a full Windows Actions run attempting this impossible closure.
         from unittest.mock import patch
         base = "https://files.pythonhosted.org/packages/verified/"
