@@ -289,6 +289,21 @@ class FullStableUpgradeTests(unittest.TestCase):
             npm.index('run(node, npm, "install", "--package-lock-only"'))
         self.assertNotIn('temp / "empty.npmrc"', npm)
 
+    def test_full_mode_attempts_small_npm_before_python_and_large_chromium(self):
+        source = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
+        body = source.split("\ndef prepare(plan: dict) -> None:", 1)[1].split(
+            "\ndef main() -> int:", 1)[0]
+        self.assertLess(body.index("stage_npm(plan, temp, evidence)"),
+                        body.index("stage_playwright(plan, temp, evidence)"))
+        self.assertLess(body.index("stage_playwright(plan, temp, evidence)"),
+                        body.index("stage_python(plan, temp, evidence)"))
+        self.assertLess(body.index("stage_python(plan, temp, evidence)"),
+                        body.index("stage_browser(temp, version, revision, evidence)"))
+        for phase in ("node_npm_corepack", "playwright_mcp",
+                      "python315_dependencies", "7zip", "chromium_payload"):
+            self.assertIn("FULL_STABLE_PHASE_BEGIN=" + phase, body)
+            self.assertIn("FULL_STABLE_PHASE_END=" + phase + ";status=PASS", body)
+
     def test_archive_paths_fail_closed(self):
         for text in ("", "..", "../evil", "a/../evil", "C:/thing",
                      "/absolute", "C:evil", "dir\\evil", "a//b", "foo.",
