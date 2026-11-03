@@ -237,6 +237,80 @@ class FullStableUpgradeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Layout/ONNX"):
             stage.verify_pdf_resolver(policy, wrong, preflight)
 
+    def test_optional_manifest_hashes_staged_installed_wheels_before_replace(self):
+        """Old 3.14 tool/python must not be used to hash the new manifest."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            temp = root / "tmp"
+            tool = root / "tool"
+            staged_site = temp / "python-runtime/Lib/site-packages"
+            staged_site.mkdir(parents=True)
+            tool.mkdir()
+            initial = {"target": "old", "packages": [{"name": "defusedxml"}]}
+            manifest = tool / "optional-python-manifest.json"
+            manifest.write_text(json.dumps(initial), encoding="utf-8")
+            wheelname = "defusedxml-0.7.1-py2.py3-none-any.whl"
+            wheelurl = "https://files.pythonhosted.org/packages/verified/" + wheelname
+            wheels = temp / "wheels"
+            wheels.mkdir()
+            entries = {
+                "defusedxml/__init__.py": b"STAGED_NEW_PYTHON_WHEEL_BYTES\n",
+                "defusedxml-0.7.1.dist-info/LICENSE": b"Upstream license\n",
+            }
+            with zipfile.ZipFile(wheels / wheelname, "w") as package:
+                for name, data in entries.items():
+                    package.writestr(name, data)
+                    path = staged_site.joinpath(*name.split("/"))
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(data)
+            checksum = "a" * 64
+            resolved = {"defusedxml": {
+                "version": "0.7.1", "wheel": wheelname, "sha256": checksum}}
+            for name in ("pyinstaller", "pyinstaller-hooks-contrib",
+                         "altgraph", "pefile", "pywin32-ctypes", "setuptools"):
+                resolved[name] = {"version": "1.0", "sha256": checksum}
+            evidence = {"wheels": {"defusedxml": {"url": wheelurl}}}
+            metadata = {"info": {"name": "defusedxml", "version": "0.7.1"},
+                        "urls": [{"packagetype": "bdist_wheel",
+                                  "filename": wheelname, "url": wheelurl,
+                                  "digests": {"sha256": checksum},
+                                  "yanked": False}]}
+            def official_json(url, output, **kwargs):
+                self.assertEqual(url, "https://pypi.org/pypi/defusedxml/0.7.1/json")
+                Path(output).write_text(json.dumps(metadata), encoding="utf-8")
+                return {"sha256": checksum}
+            with patch.object(stage, "ROOT", root), \
+                 patch.object(stage, "TOOL", tool), \
+                 patch.object(stage, "download", side_effect=official_json):
+                stage.python_manifests(temp, resolved, evidence, staged_site=staged_site)
+                after = json.loads(manifest.read_text(encoding="utf-8"))
+                self.assertEqual(after["target"], "Windows x64 CPython 3.15.2")
+                self.assertEqual(after["packages"][0]["source_distribution"], None)
+                expected = {
+                    "tool/python/Lib/site-packages/" + name: hashlib.sha256(data).hexdigest()
+                    for name, data in entries.items()
+                }
+                self.assertEqual(after["packages"][0]["files"], expected)
+                self.assertFalse((tool / "python/Lib/site-packages").exists())
+                staged_site.joinpath("defusedxml-0.7.1.dist-info/LICENSE").unlink()
+                with self.assertRaisesRegex(ValueError, "license"):
+                    stage.python_manifests(temp, resolved, evidence,
+                                           staged_site=staged_site)
+                with self.assertRaisesRegex(ValueError, "staged CPython site"):
+                    stage.python_manifests(temp, resolved, evidence,
+                                           staged_site=root / "unrelated")
+        code = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
+        body = code.split("def prepare(plan: dict) -> None:", 1)[1]
+        self.assertLess(body.index("stage_python(plan, temp, evidence)"),
+                        body.index("python_manifests(temp, resolved, evidence,"))
+        self.assertLess(body.index("python_manifests(temp, resolved, evidence,"),
+                        body.index("stage_7zip(plan, temp, evidence)"))
+        self.assertLess(body.index("python_manifests(temp, resolved, evidence,"),
+                        body.index("stage_browser(temp, version, revision, evidence)"))
+        self.assertIn("FULL_STABLE_PHASE_END=optional_python_manifests;status=PASS",
+                      body)
+        self.assertEqual(body.count("python_manifests(temp, resolved, evidence,"), 1)
+
     def test_optional_pypi_release_metadata_wheel_only_and_rejects_forgery(self):
         import copy
         digest = "a" * 64
