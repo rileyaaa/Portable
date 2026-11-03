@@ -460,14 +460,15 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     # already verified bootstrapped pip import tree.
     vendor = pip_launch / "bin"
     require(vendor.is_dir(), "pip 3.15 vendor entry points not generated")
-    scripts = stage / "Lib/site-packages/bin"
-    scripts.mkdir(exist_ok=True)
     for name in ("pip.exe", "pip3.exe", "pip3.15.exe"):
         candidate = vendor / name
         require(candidate.is_file() and candidate.stat().st_size > 1024,
-                "pip 26.2.2 is missing expected Windows launcher " + name)
-        shutil.copyfile(candidate, scripts / name)
-    register_generated_pip_launchers(stage / "Lib/site-packages")
+                "pip 26.3 is missing expected Windows launcher " + name)
+    # Avoid creating Lib/site-packages/bin BEFORE installing other base wheels:
+    # pip --target refuses to merge a new bin/ tree into an existing bin/
+    # (it warned about this in the failed Windows run). That silently loses
+    # new CLI entrypoints. Merge the three pinned pip launchers only after
+    # all the base wheels' scripts have been installed.
     # pip was bootstrapped directly from the same officially hashed wheel.
     for label, output in (("base", stage / "Lib/site-packages"),
                           ("ssh", stage / "ssh-packages")):
@@ -484,6 +485,19 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
             "--require-hashes", "--no-warn-script-location",
             "--find-links", wheels, "--target", output, "-r", wheel_lock,
             extra_env={"PIP_CACHE_DIR": temp / "pip-cache"})
+    # Base wheel installation has now created its own bin/ launchers. Preserve
+    # them exactly, then add only the three official pip 26.3 launcher templates.
+    scripts = stage / "Lib/site-packages/bin"
+    require(scripts.is_dir(), "Base wheels did not create required CLI launchers")
+    before = {item.name.casefold() for item in scripts.iterdir() if item.is_file()}
+    require(before and not any(n in before for n in
+                             ("pip.exe", "pip3.exe", "pip3.15.exe")),
+            "Conflicting pip launcher in another installed distribution")
+    for name in ("pip.exe", "pip3.exe", "pip3.15.exe"):
+        shutil.copyfile(vendor / name, scripts / name)
+    register_generated_pip_launchers(stage / "Lib/site-packages")
+    require(before.issubset({p.name.casefold() for p in scripts.iterdir()}),
+            "Another base package console launcher was removed")
     (stage / "Lib/site-packages/codex_portable_ssh.pth").write_text(
         "../../ssh-packages\n", encoding="ascii")
     plain_tree(stage)
