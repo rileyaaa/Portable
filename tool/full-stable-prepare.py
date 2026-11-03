@@ -26,6 +26,8 @@ import urllib.parse
 import urllib.request
 import zipfile
 
+from full_stable_pure_wheels import build_pyyaml_pure_wheel
+
 ROOT = Path(__file__).resolve().parent.parent
 TOOL = ROOT / "tool"
 PLAN = TOOL / "full-stable-upgrade-plan.json"
@@ -250,9 +252,79 @@ def register_generated_pip_launchers(site: Path) -> None:
         csv.writer(stream, lineterminator="\n").writerows(rows)
 
 
+def download_pinned_pip_wheel(plan: dict, temp: Path) -> tuple[Path, dict]:
+    """Select pip's official stable py3 wheel using versioned PyPI JSON + fixed SHA."""
+    row = target(plan, "pip")
+    version = row["latestStable"]
+    url = row["artifact"]["url"]
+    require(version == "26.3" and row["artifact"].get("kind") ==
+            "official-PyPI-metadata-pinned-wheel" and
+            url == "https://pypi.org/pypi/pip/26.3/json",
+            "Review official pip versioned release metadata")
+    metadata_file = temp / "official-pip-release.json"
+    download(url, metadata_file, limit=4*1024*1024)
+    data = obj(metadata_file)
+    require(data["info"]["name"].lower() == "pip" and
+            data["info"]["version"] == version,
+            "Official PyPI metadata does not match pip release")
+    filename = f"pip-{version}-py3-none-any.whl"
+    candidates = [
+        file for file in data["urls"]
+        if file.get("filename") == filename and
+           file.get("packagetype") == "bdist_wheel" and
+           file.get("yanked") is not True and
+           file.get("digests", {}).get("sha256") ==
+           row["artifact"]["sha256"]
+    ]
+    require(len(candidates) == 1, "Official pip wheel SHA-256 or identity changed")
+    remote = candidates[0]["url"]
+    parsed = urllib.parse.urlsplit(remote)
+    require(parsed.scheme == "https" and
+            parsed.hostname == "files.pythonhosted.org" and
+            parsed.path.endswith("/" + filename) and
+            not parsed.query and not parsed.fragment,
+            "Unexpected pip wheel upstream download URL")
+    wheel = temp / filename
+    evidence = download(remote, wheel, expected=row["artifact"]["sha256"],
+                        limit=30*1024*1024)
+    evidence["metadataUrl"] = url
+    return wheel, evidence
+
+
+def stage_pyyaml_pure_wheel(plan: dict, temp: Path, wheels: Path,
+                            evidence: dict) -> dict:
+    """Audit and repackage upstream PyYAML source; never use third-party cp315."""
+    entries = plan["pythonPureSourceExceptions"]
+    require(len(entries) == 1 and entries[0]["name"] == "PyYAML" and
+            entries[0]["version"] == "6.0.3",
+            "Unreviewed CPython 3.15 source-build exception")
+    item = entries[0]
+    source = temp / "pyyaml-official.tar.gz"
+    provenance = download(item["sourceUrl"], source,
+                          expected=item["sourceSha256"], limit=2*1024*1024)
+    wheel = build_pyyaml_pure_wheel(source, wheels, item["sourceSha256"])
+    digest = sha(wheel)
+    with zipfile.ZipFile(wheel) as pkg:
+        require(pkg.testzip() is None, "Generated PyYAML wheel corrupted")
+    evidence["pure_python_pyyaml"] = {
+        "upstream": provenance,
+        "wheel_sha256": digest,
+        "wheel": wheel.name,
+        "compiledExtension": False,
+        "sourceBuild": "Pinned original source repackage; no setup.py invocation",
+    }
+    evidence.setdefault("wheels", {})["pyyaml"] = {
+        "url": item["sourceUrl"], "sha256": digest,
+        "source_sha256": item["sourceSha256"],
+        "size": wheel.stat().st_size, "derived": True
+    }
+    return {"version": item["version"], "sha256": digest,
+            "wheel": wheel.name, "display_name": "PyYAML"}
+
+
 def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     row, pip = target(plan, "python"), target(plan, "pip")
-    require(row["latestStable"] == "3.15.2" and pip["latestStable"] == "26.2.2",
+    require(row["latestStable"] == "3.15.2" and pip["latestStable"] == "26.3",
             "Review latest Python and pip before preparing")
     archive = temp / "python.zip"
     evidence["python_archive"] = download(row["artifact"]["url"], archive,
@@ -267,9 +339,7 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     (stage / "Scripts").mkdir()
     (stage / "python315._pth").write_bytes(
         b"python315.zip\r\n.\r\nLib\\site-packages\r\nimport site\r\n")
-    pipwheel = temp / "pip.whl"
-    evidence["pip_wheel"] = download(pip["artifact"]["url"], pipwheel,
-                                     expected=pip["artifact"]["sha256"], limit=30*1024*1024)
+    pipwheel, evidence["pip_wheel"] = download_pinned_pip_wheel(plan, temp)
     unzip_checked(pipwheel, stage / "Lib/site-packages", max_total=40*1024*1024)
     python = stage / "python.exe"
     run(python, "-E", "-s", "-B", "-m", "pip", "--version")
@@ -278,8 +348,11 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     require(set(x.lower().replace("_", "-") for x in ssh_names) == SSH,
             "Unexpected SSH closure")
     requested = sorted(set(base_names + ssh_names), key=str.casefold)
+    require(sum(x.lower().replace("_", "-") == "pyyaml" for x in requested) == 1,
+            "Expected exactly one bundled PyYAML distribution")
+    binary_requests = [x for x in requested if x.lower().replace("_", "-") != "pyyaml"]
     spellings = {x.lower().replace('_', '-'): x for x in base_names + ssh_names}
-    (temp / "requirements.in").write_text("\n".join(requested) + "\n", encoding="utf-8")
+    (temp / "requirements.in").write_text("\n".join(binary_requests) + "\n", encoding="utf-8")
     report_path = temp / "python-resolution.json"
     run(python, "-E", "-s", "-B", "-m", "pip", "install", "--dry-run",
         "--ignore-installed", "--no-input", "--disable-pip-version-check",
@@ -319,6 +392,8 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
             require(wf.testzip() is None, "Corrupt PyPI wheel")
         resolved[name] = {"version": version, "sha256": digest, "wheel": wheelname,
                           "display_name": spellings.get(name, str(info["name"]))}
+    require("pyyaml" not in resolved, "Wheel-only resolver unexpectedly selected PyYAML")
+    resolved["pyyaml"] = stage_pyyaml_pure_wheel(plan, temp, wheels, evidence)
     for name in requested:
         norm = name.lower().replace("_", "-")
         require(norm in resolved, "Resolver omitted requested package " + norm)
