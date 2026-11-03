@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-03：第十一次 03 Windows CLI 工具更新验证完成，PR #12 合入 main（不发布 Release）
+
+- **验证运行：** 用户手动启动 [03 Actions #41561816105](https://github.com/rileyaaa/Codex-Portable/actions/runs/41561816105)，`workflow_dispatch` 在原 `main=e6d65b4623df85e318683ec7bdcf414b7caa3fc1` 执行 `mode=prepare / group=tools / create_pr=true`。整体 `success`，只读 `verify` 与隔离可信写入 `propose` 均为 `success`；无需再次运行 03。前一次 25 分钟 PowerShell 超时已经由 PR #11 的 45 分钟上限解决，此次 19 个 PowerShell 5.1 测试都有 `WINDOWS_PS_TEST_END` 且 `exit=0`，约 18 分 54 秒完成。
+- **Windows 原生及发行门禁：** 下载前 35 项工具维护测试和 8 项合成发行包测试通过；官方 Windows x64 工件摘要、PE 架构、ripgrep/fd/jq 原生版本、基础 Python/Paramiko、Node/转换器、完整 Python（352 项）与 Node 回归、19 项 PowerShell 均通过。十轮 `release-audit.py --release` 每轮 110 项共 **1,100 项**，日志 `TEN_CONSECUTIVE_ROUNDS=PASS`；随后 `AUDITED_SOURCE_REVERIFIED=PASS`，真实客户 ZIP 和摘要检查所在第 13 步亦为成功。这是 GitHub Windows Runner 上的动态验收，并非本机真实使用或正式发布。
+- **写入 Job 和差异身份：** 验证侧候选差异 SHA-256 `740c631b54bfefb1996a9826f0361446a0a6b5297eb68b1d6222070c066424ab`，隔离写入 Job 用同一固定官方来源重建并通过完全一致的摘要门禁，推送分支 `maintenance/tools-41561816105`，候选提交 `2989eda0768c2df2f79a05ad750c3a41c17de62b`。Actions 账号的 `gh pr create` 被仓库策略拒绝，仅 PR 创建失败，不影响已成功验证和推送的候选；由 GitHub Connector 创建 [PR #12](https://github.com/rileyaaa/Codex-Portable/pull/12) 并审核后合并，无须重跑 Windows Actions。
+- **合并与逐文件核对：** PR #12 仅修改 **5** 个路径：`tool/bin/rg.exe`、`tool/bin/fd.exe`、`tool/bin/jq.exe`、`tool/installed-tools.json`、`tool/工具更新说明.md`。版本分别更新为 ripgrep **15.1.0 → 15.2.0**、fd **10.4.2 → 10.5.0**、jq **1.8.1 → 1.8.2**；台账 `lastSuccessfulToolUpdate=2026-11-03`。合并提交 `04041278990c4b8184a3c5ca4a199a6a7da397f3` 的树 `1963ac9a544f36b0fe8d0adbbf0a2da1e3343269` 与已验证候选分支树**完全一致**，确保合并未改变候选文件。Node 26.13.0、npm 11.20.0、Paramiko 5.1.0、Corepack 0.35.0、基础 Python、Chromium、Codex 0.166.0 与原 Git LFS 规则均保持不变；本批无 Node 新 LFS 对象。
+- **交付边界：** 本次仅更新 GitHub `main` 中的工具文件及台账，不启动额外 Actions，也**没有发布 Release**。正式 Release 保持 [`v0.166.0-portable.1`](https://github.com/rileyaaa/Codex-Portable/releases/tag/v0.166.0-portable.1)；既有用户下载的 ZIP/解压目录不会自动拥有本次更新。用户 Win11 实际日常使用、真实账号与联网场景不冒称已测试。后续 7-Zip、pip、Corepack、Playwright MCP、Python 补丁须按各自工件/锁/浏览器清单分批计划，不属于此轮。
+
 ## 2026-11-03：CLI 第十次 03 Windows 验证超时——19 项 PowerShell 步骤时限及诊断修复
 
 - **实际失败：** [Actions #41555463345](https://github.com/rileyaaa/Codex-Portable/actions/runs/41555463345) 在 `main=7f912dbcfa9ce3ed67a46ef3acb44a022a7e3bde` 运行约 32 分钟，`verify` 前 11 步全部成功：维护测试、下载前真实 BAT 搬迁、ripgrep/fd/jq 官方摘要及原生版本验证、完整 Python/Node 回归。第 12 步 `Check Windows PowerShell 5.1 regressions` 从 UTC 00:54:56 跑到 01:20:01，恰逢 `timeout-minutes: 25` 被 GitHub 强制终止。最后有日志的通过项为 `PASS npx.ps1 --version`（01:19:37）；是**仍在进行的测试被时限截断**，并非 jq/fd/rg 版本检查失败。第 13 步十轮审计/真实 ZIP、隔离写入 `propose` 皆未执行，版本台账与 Release 未修改。
