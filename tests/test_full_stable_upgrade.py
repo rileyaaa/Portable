@@ -384,6 +384,44 @@ class FullStableUpgradeTests(unittest.TestCase):
                     stage.python_manifests(temp, resolved, evidence,
                                            staged_site=site)
 
+    def test_staged_python_native_and_pdf_smoke_precedes_7zip_chromium(self):
+        """Run real native probes on Windows; prove their order offline."""
+        with tempfile.TemporaryDirectory() as folder:
+            runtime = Path(folder) / "python-runtime"
+            runtime.mkdir()
+            (runtime / "python.exe").write_bytes(b"MZ" + bytes(512))
+            with patch.object(stage, "run") as execute:
+                stage.smoke_staged_python(runtime, {
+                    "mode": "latest-compatible-legacy-pdf"})
+                self.assertEqual(execute.call_count, 2)
+                first = execute.call_args_list[0].args
+                second = execute.call_args_list[1].args
+                self.assertEqual(first[1:], ("-E", "-s", "-B", "-m", "pip", "check"))
+                self.assertEqual(second[1:5], ("-E", "-s", "-B", "-c"))
+                self.assertIn("pymupdf4llm.to_markdown(doc)", second[5])
+                self.assertIn("STAGED_PYTHON315_NATIVE_AND_PDF=PASS", second[5])
+                self.assertIn("pandas,numpy,paramiko", second[5])
+                self.assertIn("if True else modern", second[5])
+                execute.reset_mock()
+                stage.smoke_staged_python(runtime, {"mode": "latest-with-layout"})
+                self.assertIn("if False else modern", execute.call_args_list[1].args[5])
+                execute.reset_mock()
+                with self.assertRaisesRegex(ValueError, "Unapproved staged Python PDF mode"):
+                    stage.smoke_staged_python(runtime, {"mode": "unsafe"})
+                self.assertEqual(execute.call_count, 0)
+            (runtime / "python.exe").unlink()
+            with self.assertRaisesRegex(ValueError, "Missing isolated staged CPython"):
+                stage.smoke_staged_python(runtime, {"mode": "latest-with-layout"})
+        script = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
+        body = script.split("def prepare(plan: dict) -> None:", 1)[1]
+        self.assertLess(body.index("python_manifests(temp, resolved, evidence,"),
+                        body.index("smoke_staged_python(staged_python,"))
+        self.assertLess(body.index("smoke_staged_python(staged_python,"),
+                        body.index("stage_7zip(plan, temp, evidence)"))
+        self.assertLess(body.index("smoke_staged_python(staged_python,"),
+                        body.index("stage_browser(temp, version, revision, evidence)"))
+        self.assertIn("FULL_STABLE_PHASE_END=staged_python_smoke;status=PASS", body)
+
     def test_optional_pypi_release_metadata_wheel_only_and_rejects_forgery(self):
         import copy
         digest = "a" * 64
