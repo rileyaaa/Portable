@@ -182,8 +182,8 @@ class FullStableUpgradeTests(unittest.TestCase):
         probe.assert_not_called()
         with patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": ""}):
             self.assertEqual(native.write_report(records), 1)
-        self.assertEqual(native.write_report([{"probe": "only", "status": "PASS",
-                                               "detail": "verified", "seconds": 0}]), 0)
+            self.assertEqual(native.write_report([{"probe": "only", "status": "PASS",
+                                                   "detail": "verified", "seconds": 0}]), 0)
 
     def test_native_full_pdf_policy_is_the_same_reviewed_exception(self):
         plan = json.loads((ROOT / "tool/full-stable-upgrade-plan.json").read_text(
