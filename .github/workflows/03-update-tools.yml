@@ -477,6 +477,27 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'New Corepack failed.' }
           & .\tool\python\python.exe -E -s -B .\tool\automation\install-browser.py --check
           if ($LASTEXITCODE -ne 0) { throw 'Chromium inventory / SHA256 invalid.' }
+      - name: Build and execute a real package-local Python 3.15 PyInstaller EXE
+        timeout-minutes: 9
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/python315-pyinstaller-smoke'
+          $src = Join-Path $base 'source'
+          $dist = Join-Path $base 'dist'
+          $work = Join-Path $base 'build'
+          $spec = Join-Path $base 'spec'
+          New-Item -ItemType Directory -Force -Path $src,$dist,$work,$spec | Out-Null
+          $script = Join-Path $src 'hello.py'
+          [IO.File]::WriteAllText($script, "print('PYINSTALLER315_FREEZE=PASS')", [Text.Encoding]::ASCII)
+          & .\tool\python\python.exe -E -s -B -m PyInstaller --onefile --noconfirm --noupx --clean --name portable-py315-smoke --distpath $dist --workpath $work --specpath $spec $script
+          if ($LASTEXITCODE -ne 0) { throw 'Python 3.15 PyInstaller could not freeze a real executable.' }
+          $exe = Join-Path $dist 'portable-py315-smoke.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'PyInstaller Windows EXE not created.' }
+          $output = (& $exe) -join ''
+          if ($LASTEXITCODE -ne 0 -or $output.Trim() -cne 'PYINSTALLER315_FREEZE=PASS') {
+            throw 'PyInstaller Windows EXE did not execute successfully.'
+          }
+          'PYINSTALLER315_REAL_EXE=PASS' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
       - name: Full Python Node and converter regression suites
         timeout-minutes: 22
         run: |
