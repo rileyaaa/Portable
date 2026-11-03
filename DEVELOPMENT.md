@@ -1,5 +1,16 @@
 # 开发与维护记录
 
+## 2026-11-03：加强 03/diagnose——真实 Windows 小规模集成验证，不再将 20 秒元数据 PASS 当作完整放行
+
+- **额外复审：** 将 `test_release_package.py` 整套**真实合成 Git 仓库/发行 ZIP 回归**纳入最低成本元数据门禁，避免发布文件筛选出错只在正式 full 末尾暴露；Windows 集成层再执行 `test_tool_updates.py` 的维护合同测试。npm/Corepack 安装完成后，不仅验证其 JS CLI，也执行隔离包中的 `npm.cmd`、`npx.cmd`、`corepack.cmd`；Python 生成的新 `pip.cmd`、`pyinstaller.cmd` 同样实际运行。以上执行失败会作为独立阶段记录，不视作通过。此增量严格保留 Token 只读、无正式 Artifact、无 Release 的边界。
+
+
+- **背景：** 用户手动执行 Run #41661582386 的 `diagnose` 在约 24 秒内取得 8/8 PASS。但这些检查只验证升级计划、离线合约与 npm/PyPI 官方 JSON，既没有真实安装 npm/Corepack/Playwright，也没有执行 CPython 3.15 的 wheel 安装与原生 PDF。这种 PASS 不代表下一次 `full` 能过。复查还发现已有 `test_release_package.py` 对 `tool/` 维护文件排除名单仍仅允许 `package-release.py`，但 PR #26 已将 `full-stable-diagnose.py` 排除；完整发行回归将有不一致风险，现同步修正为显式审查两种诊断文件的排除范围。
+- **新两层诊断：** 保留约二十秒的 Ubuntu 官方元数据检查 `fast_diagnose` 作最低成本拦截。只有这层通过，才执行 `native_diagnose`：独立 `windows-latest` 只读 Job、最长 15 分钟，固定 host Python 3.14 和 Node 26.13.0；使用真正的 `full-stable-prepare.py` 函式，不重复写简化版解析器。直接从官方带哈希的 npm 和 Corepack 归档验证、解包并运行其 JS CLI；执行 Playwright MCP `npm install --package-lock-only` 与 `npm ci`，核对完整依赖锁、SHA-512 和浏览器版本；下载正式 CPython 3.15.2 嵌入版与官方 PyPI wheel、执行 resolver、sha256/--require-hashes 安装、PyYAML 原始码校验、optional manifest/license、实际 Windows native imports、`pip check`、生成合成 PDF→Markdown；测试隔离目录内的 pip/PyInstaller CLI 及 CMD wrapper；用原有 7-Zip 从官方 SFX 当资料解包，校验 x64 和版本。
+- **批量定位：** 依赖链遇错会显示 `BLOCKED`（不能假装 PASS），但 npm 与 Python/7-Zip 等独立模块继续执行。统一输出 `NATIVE_DIAGNOSE_PASS/FAIL/BLOCKED` 与 GitHub Step Summary，一次发现多处错误。全部文件在 Runner 临时隔离目录中，使用完清除，不修改源码 checkout、原工具台账、正式 Release 或客户 ZIP；无 LFS hydrate、无上传 Artifact、无写入 Token、无 PR、无自动触发。Windows 使用官方 `setup-node` 的同版本 Node 而非 LFS 中原本的 node.exe，因此仍不是完整发行测试。
+- **边界及额度：** 新 `diagnose` 实际会运行两段 Job，较 20 秒元数据检查耗费更多（Windows Job 最长 15 分钟），但故意跳过巨大 Chromium 下载、完整 LFS 复原、19 项 PowerShell、十轮发行审计、客户 ZIP。它显著提升预检可信度，却无法百分之百消除正式全验收的失败风险。首次执行新版 `diagnose` 仍须用户手动决定；禁止 AI 自行触发 AC、自动合入候选或发布 Release。源码修复后应先按本地离线测试与静态审查处理，不把单一合成测试通过当作「可跑 full」。
+ 
+
 ## 2026-11-03：先批量诊断、再允许昂贵的 03/full
 
 - **历史问题：** 核对 15 次最新失败的 03 Run Job：涉及 npm/Node/Corepack 或 Python staging 的 full 失败、多次 pre-download lint / regression 失败，以及原 prepare 的 native PowerShell 和源码打包失败。之前遇到第一个失败就停，部分小错误需要用户重新付费运行才能暴露；不能将单个修复的模拟通过视为整个 Windows full 就绪。

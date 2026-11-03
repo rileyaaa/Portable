@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "diagnose=轻量批量排错；check=只读盘点；prepare=原工具批次；full=整个 tool/ 最新稳定版 Win11 验证"
+        description: "diagnose=元数据+Windows隔离安装冒烟（较原诊断更耗时）；check=只读盘点；prepare=原工具批次；full=整目录验证"
         required: true
         type: choice
         options: [check, diagnose, prepare, full]
@@ -744,4 +744,40 @@ jobs:
       - name: Collect independent small checks before deciding PASS or FAIL
         timeout-minutes: 7
         run: python -E -s -B tool/full-stable-diagnose.py --network
+
+  native_diagnose:
+    name: Windows integration diagnostics - staged npm Python PDF Playwright and 7-Zip
+    needs: fast_diagnose
+    if: ${{ github.ref == 'refs/heads/main' && inputs.mode == 'diagnose' && inputs.create_pr == false && needs.fast_diagnose.result == 'success' }}
+    permissions:
+      contents: read
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Checkout source only without LFS payloads or write credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          lfs: false
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up trusted Windows host Python 3.14
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+          architecture: x64
+      - name: Set up exact official Windows Node 26 matching bundled major/version
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26.13.0'
+          architecture: x64
+      - name: Probe real isolated tool staging and aggregate independent failures
+        timeout-minutes: 13
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & python -E -s -B .\tool\full-stable-native-diagnose.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows native integration diagnostics failed; inspect all NATIVE_DIAGNOSE_* records.' }
 

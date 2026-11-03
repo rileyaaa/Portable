@@ -494,6 +494,21 @@ def verify_pdf_resolver(policy: dict, resolved: dict, evidence: dict) -> None:
                 "Latest ONNX Runtime CPython 3.15 wheel provenance mismatch")
 
 
+def verify_pdf_compatibility_exception(plan: dict, evidence: dict) -> None:
+    """Shared full/diagnostic contract: never silently downgrade the PDF stack."""
+    policy = evidence.get("pdf_compatibility", {})
+    require(policy.get("mode") in ("latest-with-layout", "latest-compatible-legacy-pdf"),
+            "Unreviewed PDF compatibility policy")
+    if policy["mode"] != "latest-compatible-legacy-pdf":
+        return
+    approved = plan.get("pythonPdfCompatibilityException", {})
+    require(isinstance(approved, dict) and
+            approved.get("pymupdf") == policy.get("pymupdf") and
+            approved.get("pymupdf4llm") == policy.get("pymupdf4llm") and
+            approved.get("layout", "").startswith("not installed"),
+            "Unreviewed CPython 3.15 PDF legacy compatibility exception")
+
+
 def preflight_python315_onnxruntime(temp: Path, evidence: dict) -> None:
     """Before downloads, choose verified modern Layout or official legacy PDF."""
     meta = temp / "pypi-onnxruntime-latest.json"
@@ -1325,13 +1340,7 @@ def prepare(plan: dict) -> None:
         # PyMuPDF 2.x requires ONNX Runtime: check CPython 3.15 official wheel
         # compatibility before downloading npm, browsers or Python archives.
         preflight_python315_onnxruntime(temp, evidence)
-        if evidence["pdf_compatibility"]["mode"] == "latest-compatible-legacy-pdf":
-            approved = plan.get("pythonPdfCompatibilityException", {})
-            require(isinstance(approved, dict) and
-                    approved.get("pymupdf") == evidence["pdf_compatibility"]["pymupdf"] and
-                    approved.get("pymupdf4llm") == evidence["pdf_compatibility"]["pymupdf4llm"] and
-                    approved.get("layout", "").startswith("not installed"),
-                    "Unreviewed CPython 3.15 PDF legacy compatibility exception")
+        verify_pdf_compatibility_exception(plan, evidence)
         # Detect npm/Playwright configuration and lock errors before redoing
         # three minutes of already native-verified CPython 3.15 wheel work.
         # Defer the large Chromium ZIP until all smaller candidates pass.

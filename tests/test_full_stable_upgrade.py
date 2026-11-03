@@ -16,7 +16,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import zipfile
 
 ROOT = Path(__file__).absolute().parents[1]
@@ -33,6 +33,7 @@ def load(path: str, alias: str):
 stage = load("tool/full-stable-prepare.py", "portable_full_stage")
 transfer = load("tool/full-stable-transfer.py", "portable_full_transfer")
 fast = load("tool/full-stable-diagnose.py", "portable_fast_diagnose")
+native = load("tool/full-stable-native-diagnose.py", "portable_native_diagnose")
 pure = load("tool/full_stable_pure_wheels.py", "portable_pinned_pyyaml")
 
 
@@ -105,6 +106,8 @@ class FullStableUpgradeTests(unittest.TestCase):
                                                     "tool/installed-tools.json"])
         self.assertEqual(included, ["tool/installed-tools.json"])
         self.assertIn("tool/full-stable-diagnose.py", excluded)
+        _, native_excluded = release.customer_files(["tool/full-stable-native-diagnose.py"])
+        self.assertIn("tool/full-stable-native-diagnose.py", native_excluded)
         plan = json.loads((ROOT / "tool/full-stable-upgrade-plan.json").read_text(
             encoding="utf-8"))
         def fake_probe(name, *_):
@@ -117,21 +120,161 @@ class FullStableUpgradeTests(unittest.TestCase):
              patch.object(fast, "network_probe", side_effect=fake_probe):
             records = fast.diagnose(include_network=True, plan=plan, stage=stage)
             self.assertEqual([r["probe"] for r in records],
-                             ["plan", "contracts", "workflows", "npm",
+                             ["plan", "contracts", "workflows", "release", "npm",
                               "corepack", "playwright", "pip", "pdf"])
             self.assertEqual([r["probe"] for r in records if r["status"] == "FAIL"],
                              ["corepack"])
-            self.assertEqual(sum(r["status"] == "PASS" for r in records), 7)
+            self.assertEqual(sum(r["status"] == "PASS" for r in records), 8)
             self.assertFalse(any((Path(directory) / "tmp").iterdir()))
         with patch.object(fast, "network_probe",
                           side_effect=AssertionError("network attempted")), \
              patch.object(fast, "offline_suite", return_value="PASS"):
             no_network = fast.diagnose(include_network=False, plan=plan, stage=stage)
             self.assertEqual([r["probe"] for r in no_network],
-                             ["plan", "contracts", "workflows"])
+                             ["plan", "contracts", "workflows", "release"])
             with self.assertRaisesRegex(ValueError, "require --network"):
                 fast.diagnose(include_network=False, selected={"npm"},
                               plan=plan, stage=stage)
+
+    def test_native_diagnose_reuses_real_stagers_not_weak_registry_mocks(self):
+        workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
+            encoding="utf-8")
+        nativejob = workflow.split("\n  native_diagnose:", 1)[1]
+        self.assertIn("needs: fast_diagnose", nativejob)
+        self.assertIn("needs.fast_diagnose.result == 'success'", nativejob)
+        self.assertIn("inputs.mode == 'diagnose'", nativejob)
+        self.assertIn("inputs.create_pr == false", nativejob)
+        self.assertIn("runs-on: windows-latest", nativejob)
+        self.assertIn("permissions:\n      contents: read", nativejob)
+        self.assertIn("node-version: '26.13.0'", nativejob)
+        self.assertIn("python-version: '3.14'", nativejob)
+        self.assertIn("lfs: false", nativejob)
+        self.assertIn("persist-credentials: false", nativejob)
+        self.assertIn("full-stable-native-diagnose.py", nativejob)
+        for forbidden in ("upload-artifact", "download-artifact", "git push",
+                          "contents: write", "actions: write", "gh release create"):
+            self.assertNotIn(forbidden, nativejob)
+        self.assertIn("timeout-minutes: 15", nativejob)
+        source = (ROOT / "tool/full-stable-native-diagnose.py").read_text(
+            encoding="utf-8")
+        ast.parse(source)
+        self.assertIn("test_tool_updates.py", source)
+        self.assertIn("native_node_shims(stage, root)", source)
+        self.assertIn("record(records, \"portable_node_shims\"", source)
+        self.assertIn("record(records, \"windows_tool_contracts\", windows_tool_contracts)", source)
+        self.assertNotIn("stage.prepare(", source)
+        self.assertNotIn("stage.stage_browser(", source)
+        self.assertNotIn("stage.update_version_inventory(", source)
+        for real_step in ("stage.stage_npm(", "stage.stage_playwright(",
+                          "stage.stage_python(", "stage.python_manifests(",
+                          "stage.smoke_staged_python(", "stage.stage_7zip(",
+                          "stage.replace_tree(", "refresh-python-cli-shims.py"):
+            self.assertIn(real_step, source)
+
+        # A failing independent probe must not prevent all other errors from
+        # being collected, but dependent probes must be visibly BLOCKED.
+        records = []
+        def rejected():
+            raise ValueError("synthetic npm install failure")
+        native.record(records, "npm_corepack", rejected)
+        probe = Mock(return_value="should not execute")
+        native.record(records, "playwright_npm_ci", probe,
+                      after=("npm_corepack",))
+        native.record(records, "sevenzip_amd64", lambda: "real independent success")
+        self.assertEqual([r["status"] for r in records],
+                         ["FAIL", "BLOCKED", "PASS"])
+        probe.assert_not_called()
+        with patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": ""}):
+            self.assertEqual(native.write_report(records), 1)
+            self.assertEqual(native.write_report([{"probe": "only", "status": "PASS",
+                                                   "detail": "verified", "seconds": 0}]), 0)
+
+    def test_native_node_launcher_probe_runs_real_package_cmd_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            node = root / "tool/node"
+            node.mkdir(parents=True)
+            for label in ("npm.cmd", "npx.cmd", "corepack.cmd"):
+                (node / label).write_text("@echo off\n", encoding="ascii")
+            fake_stage = Mock()
+            self.assertIn("Portable npm.cmd", native.native_node_shims(fake_stage, root))
+            self.assertEqual(fake_stage.run.call_count, 3)
+            for call, label in zip(fake_stage.run.call_args_list,
+                                   ("npm.cmd", "npx.cmd", "corepack.cmd")):
+                self.assertEqual(call.args, (node / label, "--version"))
+                self.assertEqual(call.kwargs["cwd"], root)
+            (node / "npx.cmd").unlink()
+            with self.assertRaisesRegex(ValueError, "Missing portable Windows Node"):
+                native.native_node_shims(fake_stage, root)
+
+    def test_windows_native_contracts_are_real_bounded_unittests(self):
+        with patch.object(native.subprocess, "run", return_value=subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="", stderr="")) as executed:
+            self.assertIn("Windows tool-maintenance", native.windows_tool_contracts())
+            call = executed.call_args
+            self.assertIn("test_tool_updates.py", call.args[0])
+            self.assertEqual(call.kwargs["cwd"], ROOT)
+            self.assertEqual(call.kwargs["timeout"], 120)
+        with patch.object(native.subprocess, "run", return_value=subprocess.CompletedProcess(
+                args=[], returncode=1, stdout="", stderr="maintenance failed")):
+            with self.assertRaisesRegex(ValueError, "maintenance failed"):
+                native.windows_tool_contracts()
+
+    def test_native_full_pdf_policy_is_the_same_reviewed_exception(self):
+        plan = json.loads((ROOT / "tool/full-stable-upgrade-plan.json").read_text(
+            encoding="utf-8"))
+        policy = {"mode": "latest-compatible-legacy-pdf",
+                  "pymupdf": "1.28.2", "pymupdf4llm": "0.3.4"}
+        evidence = {"pdf_compatibility": policy}
+        stage.verify_pdf_compatibility_exception(plan, evidence)
+        self.assertEqual(native.verify_pdf_exception(stage, plan, evidence),
+                         "Official PDF policy: latest-compatible-legacy-pdf")
+        wrong = {"pdf_compatibility": dict(policy, pymupdf="1.28.1")}
+        with self.assertRaisesRegex(ValueError, "Unreviewed CPython"):
+            stage.verify_pdf_compatibility_exception(plan, wrong)
+        with self.assertRaisesRegex(ValueError, "Unreviewed PDF"):
+            stage.verify_pdf_compatibility_exception(plan, {"pdf_compatibility":
+                                                             {"mode": "bypass"}})
+        stage.verify_pdf_compatibility_exception(plan, {"pdf_compatibility":
+                                                         {"mode": "latest-with-layout"}})
+        source = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
+        self.assertIn("verify_pdf_compatibility_exception(plan, evidence)", source)
+        self.assertIn("stage.verify_pdf_compatibility_exception(plan, evidence)",
+                      (ROOT / "tool/full-stable-native-diagnose.py").read_text(
+                          encoding="utf-8"))
+
+    def test_native_diagnostic_sandbox_uses_copied_sources_not_checkout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            area = Path(directory)
+            source = area / "source"
+            node = area / "toolcache/node.exe"
+            node.parent.mkdir()
+            node.write_bytes(b"MZ" + bytes(64))
+            for name in native.COPY_FILES:
+                file = source / name
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_bytes(b"source-sha-preserved-" + name.encode("utf-8"))
+            destination = area / "scratch"
+            with patch.object(native, "SOURCE", source):
+                isolated_tool = native.sandbox_from_checkout(
+                    destination, node_executable=node)
+                self.assertTrue((isolated_tool / "node/node.exe").is_file())
+                self.assertEqual((isolated_tool / "node/node.exe").read_bytes(),
+                                 node.read_bytes())
+                self.assertEqual(list((isolated_tool / "automation/playwright").iterdir()), [])
+                for name in native.COPY_FILES:
+                    self.assertEqual((destination / name).read_bytes(),
+                                     (source / name).read_bytes())
+                self.assertFalse((destination / "tool/automation/browsers").exists())
+                self.assertEqual(
+                    (source / "tool/python-packages.in.txt").read_bytes(),
+                    b"source-sha-preserved-tool/python-packages.in.txt")
+                with self.assertRaisesRegex(ValueError, "must be new"):
+                    native.sandbox_from_checkout(destination, node_executable=node)
+                invalid = area / "bad"
+                invalid.write_bytes(b"cannot be root")
+                with self.assertRaisesRegex(ValueError, "must be new"):
+                    native.sandbox_from_checkout(invalid, node_executable=node)
 
     def test_full_candidate_artifact_short_retention_and_same_run_cleanup(self):
         workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
