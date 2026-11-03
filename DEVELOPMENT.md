@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-03：CLI 批次第九次 03 AC 提前失败及离线复核（未重跑）
+
+- **运行与确认故障：** [Windows Actions #41554504292](https://github.com/rileyaaa/Codex-Portable/actions/runs/41554504292)，基于 `main=2a6fd0d08f9e1a92a191f2ad9babd8a138467df1`，在第 5 步下载前 `test_tool_updates.py` 回归失败：35 项里 33 项通过、2 项 `ERROR`。分别是 `test_node_lfs_attribute_and_index_pointer_checked_end_to_end` 和 `test_two_independent_checkouts_generate_same_node_lfs_diff`，均为 `tool/update-tools.py:diff_digest()` 读取模拟候选 `r['destination']` 时抛出 `KeyError`；从 Job 顺序证实没有开始下载、安装、打包或上传工具，写入 Job 也未执行。
+- **原因与修复：** 上一次把当前更新计划从 Node 切换为 CLI 后，历史 Node LFS 回归需要独立模拟 `selected_rows`；修改时只提供了 `tool/version`，漏了生产 `diff_digest()` 必需的 `destination/kind`。现在使用唯一的 `NODE_LFS_FIXTURE` 包含 `tool=node`、`version=26.13.0`、`destination=tool/node`、`kind=directory`，四处测试 mock 全部引用同一完整对象。历史负向 `group=ssh` 仍返回空集合，避免错误放行 Node 属性。
+- **不消耗 AC 的复核：** 在本地 Linux/Python/Git 临时仓库中，用与仓库 `diff_digest` 对应的路径/索引/作用域逻辑模拟实际 Git index、规范 Node LFS 指针、两次独立检出 SHA-256 一致、SSH-only 拒绝 Node、CLI-only 只允许 `rg.exe/fd.exe/jq.exe` 且拒绝篡改 `.gitattributes`，均通过。复查修复后 GitHub 源文件与当前候选计划，确认只有历史测试模拟字段变化；这是**离线针对性验证**，不是整套 Windows 35 项通过或 CLI 工件已升级。
+- **后续边界：** 本轮只处理测试与这份事故记录；不触发或重复执行任何 Actions，不合并 CLI 二进制、不更新已安装版本台账、不改变 Codex Release。当前正常工具保持 Node 26.13.0、Paramiko 5.1.0、ripgrep 15.1.0、fd 10.4.2、jq 1.8.1；只有在可靠验证后才允许进行下一次 Windows 原生验收。
+
 ## 2026-11-03：下一批 CLI 工具升级准备（未执行 Windows AC，版本台账不提前修改）
 
 - **已核准官方来源：** 以 GitHub 官方 release 的 `assets[].digest` 为准，严格固定 ripgrep **15.2.0** `ripgrep-15.2.0-x86_64-pc-windows-msvc.zip` / SHA-256 `71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5`；fd **10.5.0** `fd-v10.5.0-x86_64-pc-windows-msvc.zip` / `a227701b8551c35a9931d9f6da75503cf86d88e182d71fb849a70864c5d57cd7`；jq **1.8.2** 官方 Windows AMD64 单独 `jq-windows-amd64.exe` / `a6fc67fedaf9128a3309a1e2ebb8b986aeccf70122ee46d2cb4849e423f0c627`。目标仅 `tool/bin/rg.exe`、`fd.exe`、`jq.exe`，不会更动其他工具或重跑 Node/SSH 安装。
