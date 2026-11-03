@@ -159,6 +159,8 @@ class FullStableUpgradeTests(unittest.TestCase):
             encoding="utf-8")
         ast.parse(source)
         self.assertIn("test_tool_updates.py", source)
+        self.assertIn("native_node_shims(stage, root)", source)
+        self.assertIn("record(records, \"portable_node_shims\"", source)
         self.assertIn("record(records, \"windows_tool_contracts\", windows_tool_contracts)", source)
         self.assertNotIn("stage.prepare(", source)
         self.assertNotIn("stage.stage_browser(", source)
@@ -186,6 +188,24 @@ class FullStableUpgradeTests(unittest.TestCase):
             self.assertEqual(native.write_report(records), 1)
             self.assertEqual(native.write_report([{"probe": "only", "status": "PASS",
                                                    "detail": "verified", "seconds": 0}]), 0)
+
+    def test_native_node_launcher_probe_runs_real_package_cmd_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            node = root / "tool/node"
+            node.mkdir(parents=True)
+            for label in ("npm.cmd", "npx.cmd", "corepack.cmd"):
+                (node / label).write_text("@echo off\n", encoding="ascii")
+            fake_stage = Mock()
+            self.assertIn("Portable npm.cmd", native.native_node_shims(fake_stage, root))
+            self.assertEqual(fake_stage.run.call_count, 3)
+            for call, label in zip(fake_stage.run.call_args_list,
+                                   ("npm.cmd", "npx.cmd", "corepack.cmd")):
+                self.assertEqual(call.args, (node / label, "--version"))
+                self.assertEqual(call.kwargs["cwd"], root)
+            (node / "npx.cmd").unlink()
+            with self.assertRaisesRegex(ValueError, "Missing portable Windows Node"):
+                native.native_node_shims(fake_stage, root)
 
     def test_windows_native_contracts_are_real_bounded_unittests(self):
         with patch.object(native.subprocess, "run", return_value=subprocess.CompletedProcess(
