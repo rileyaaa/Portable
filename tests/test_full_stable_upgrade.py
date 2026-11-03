@@ -320,6 +320,74 @@ class FullStableUpgradeTests(unittest.TestCase):
                 wheel_lock.validate_runtime(root, b"pip==26.3\n")
 
 
+    def test_pinned_vendor_multiarch_helpers_never_lose_active_amd64_guard(self):
+        # setuptools 84.2.1 ships cli/gui.exe as byte-identical aliases
+        # of cli/gui-32.exe; pip 26.3 vendored distlib ships x86 + ARM64
+        # launcher templates. These are *not* the active program binaries.
+        approved = stage.INERT_WHEEL_LAUNCHERS
+        self.assertEqual(len(approved), 10)
+        self.assertEqual(approved["setuptools/cli.exe"], 0x014c)
+        self.assertEqual(approved["setuptools/gui.exe"], 0x014c)
+        self.assertEqual(approved["pip/_vendor/distlib/t64-arm.exe"], 0xaa64)
+        self.assertTrue(all(v in (0x014c, 0xaa64) for v in approved.values()))
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "python"
+            site = root / "Lib/site-packages"
+            site.mkdir(parents=True)
+            def write_pe(name, machine):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                binary = bytearray(320)
+                binary[0:2] = b"MZ"
+                binary[0x3c:0x40] = (0x90).to_bytes(4, "little")
+                binary[0x90:0x94] = b"PE\x00\x00"
+                binary[0x94:0x96] = machine.to_bytes(2, "little")
+                path.write_bytes(binary)
+                return path
+            # Synthetic six active AMD64 PE files.
+            for name in ("python.exe", "python315.dll", "python3.dll",
+                         "Lib/site-packages/fast.pyd",
+                         "Lib/site-packages/active.exe", "Lib/site-packages/more.dll"):
+                write_pe(name, 0x8664)
+            for name, machine in approved.items():
+                self.assertEqual(stage.pe_machine(
+                    write_pe("Lib/site-packages/" + name, machine)), machine)
+            counts = stage.check_python_native_architecture(root)
+            self.assertEqual(counts, {
+                "amd64": 6,
+                "inert_x86": 6,
+                "inert_arm64": 4
+            })
+            malicious = write_pe("Lib/site-packages/other-package/cli-32.exe", 0x014c)
+            with self.assertRaisesRegex(ValueError, "not Windows AMD64"):
+                stage.check_python_native_architecture(root)
+            malicious.unlink()
+            wrong = write_pe("Lib/site-packages/setuptools/cli-32.exe", 0x8664)
+            with self.assertRaisesRegex(ValueError, "PE machine mismatches"):
+                stage.check_python_native_architecture(root)
+            wrong.write_bytes(b"not a PE")
+            with self.assertRaisesRegex(ValueError, "PE machine mismatches"):
+                stage.check_python_native_architecture(root)
+            write_pe("Lib/site-packages/setuptools/cli-32.exe", 0x014c)
+            unexpected = write_pe("tooling/extra.exe", 0xaa64)
+            with self.assertRaisesRegex(ValueError, "not Windows AMD64"):
+                stage.check_python_native_architecture(root)
+            unexpected.unlink()
+            self.assertEqual(stage.check_python_native_architecture(root)["amd64"], 6)
+
+    def test_pip_script_merge_occurs_only_after_all_other_base_wheel_install(self):
+        script = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
+        func = script.split("def stage_python(", 1)[1].split("\ndef replace_tree(", 1)[0]
+        self.assertIn("pip 26.3 is missing expected Windows launcher", func)
+        install = func.index('for label, output in (("base", stage / "Lib/site-packages"),')
+        merge = func.index('scripts = stage / "Lib/site-packages/bin"')
+        register = func.index('register_generated_pip_launchers(stage / "Lib/site-packages")')
+        self.assertLess(install, merge)
+        self.assertLess(merge, register)
+        self.assertNotIn('scripts.mkdir(exist_ok=True)', func)
+        self.assertIn("Conflicting pip launcher in another installed distribution", func)
+        self.assertIn("Another base package console launcher was removed", func)
+
     def test_7zip_official_full_sfx_pe_amd64_and_paired_dll_policy(self):
         plan = json.loads((ROOT / "tool/full-stable-upgrade-plan.json").read_text(
             encoding="utf-8"))
