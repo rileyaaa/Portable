@@ -674,7 +674,8 @@ class ToolUpdateTests(unittest.TestCase):
                             f'"{sys.executable}" "{filter_script}"'], check=True)
             subprocess.run(['git', '-C', str(root), 'config', 'filter.lfs.required', 'true'],
                            check=True)
-            with patch.object(tools, 'ROOT', root):
+            with patch.object(tools, 'ROOT', root), patch.object(
+                    tools, 'selected_rows', return_value=[{'tool':'node','version':'26.13.0'}]):
                 tools.enable_node_lfs()
                 self.assertEqual(attrs.read_bytes(), b'other.exe -text\n' + tools.NODE_LFS_ATTRIBUTE)
                 with self.assertRaisesRegex(ValueError, 'Unexpected attributes'):
@@ -766,6 +767,9 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertEqual(verify.count('git lfs install --local'), 1)
         self.assertEqual(writer.count('git lfs install --local'), 1)
         self.assertEqual(workflow.count('git add -A -- tool .gitattributes'), 2)
+        self.assertEqual(workflow.count("if ($env:TOOL_GROUP -ne 'ssh' -and $hasNodeCandidate)"), 3)
+        self.assertEqual(workflow.count("Where-Object { $_.tool -ceq 'node' }"), 3)
+        self.assertNotIn("if ($env:TOOL_GROUP -ne 'ssh') {", workflow)
         self.assertIn('git lfs push --object-id origin $newNodeOid', writer)
         self.assertLess(writer.index('git lfs push --object-id origin $newNodeOid'),
                         writer.index("git push origin ('HEAD:refs/heads/' + $name)"))
@@ -813,7 +817,8 @@ class ToolUpdateTests(unittest.TestCase):
             # Candidate changes are independently reproduced from the same
             # base version and source archive in the two simulated jobs.
             node.write_bytes(b'MZ' + b'1' * (3 * 1024 * 1024))
-            with patch.object(tools, 'ROOT', tmp):
+            with patch.object(tools, 'ROOT', tmp), patch.object(
+                    tools, 'selected_rows', return_value=[{'tool':'node','version':'26.13.0'}]):
                 tools.enable_node_lfs()
                 subprocess.run(['git', '-C', str(tmp), 'add', '-A', '--',
                                 'tool', '.gitattributes'], check=True)
