@@ -1,5 +1,14 @@
 # 开发与维护记录
 
+## 2026-11-03：03/full 候选 Artifact 自动清理
+
+- 原有 full_verify 通过所有 Windows 验证后才上传 full-stable-candidate-<run_id>，上传保留期限已设为 retention-days: 1；但写入器用完后仍可能占空间至到期。
+- 新增独立 full_artifact_cleanup Job：等待 full_verify 和 full_propose 完成，仅当验证成功且写入器成功，或明确 create_pr=false 使写入器正常跳过时，自动释放该 Run 精确名称的候选 Artifact；如写入器失败，则保留最多 1 天供故障诊断，之后自动到期。
+- 仅清理 Job 持有 actions: write，原本验证器 contents: read 与写入器 actions: read 等权限不扩大。通过 GitHub 官方 API 列出当前 Run 的 Artifact，核对名称、Run ID 和唯一正整数 Artifact ID 后删除，不触碰其它 Run、正式 Release、Git LFS、候选分支及日志。当前 Runner 的临时工作区在 Job 结束后由平台回收。
+- 新增离线工作流回归检查，验证一天保留期、执行顺序、清理条件、最小权限和只能删除当前 Run。未自行执行 AC，未改变正式工具版本。
+
+
+
 ## 2026-11-03：继续前移 CPython 3.15 原生冒烟，避免过早准备 Chromium
 
 - **顺序与根因预防：** 完整 Windows full 流程现将固定 SHA-256 的 PyPI wheel 安装、optional manifest/hash/license 检查之后立即执行**真实暂存版** `python.exe -E -s -B -m pip check`，然后在同一隔离解释器导入 pandas、numpy、Paramiko/cryptography、PyMuPDF/4LLM；直接生成一页合成 PDF，要求 `to_markdown()` 返回指定文字。对 PDF 版本的判断依据先前选中的、经官方 PyPI 元数据核查的 `latest-compatible-legacy-pdf` 或 `latest-with-layout`，不接受意外的三方版本错配。

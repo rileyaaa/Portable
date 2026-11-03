@@ -77,6 +77,37 @@ class FullStableUpgradeTests(unittest.TestCase):
                         writer.index("git push origin"))
         self.assertNotIn("full-stable-prepare.py prepare", writer)
 
+    def test_full_candidate_artifact_short_retention_and_same_run_cleanup(self):
+        workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
+            encoding="utf-8")
+        self.assertEqual(workflow.count("retention-days: 1"), 1)
+        verifier = workflow.split("\n  full_verify:", 1)[1].split(
+            "\n  full_propose:", 1)[0]
+        writer = workflow.split("\n  full_propose:", 1)[1].split(
+            "\n  full_artifact_cleanup:", 1)[0]
+        cleanup = workflow.split("\n  full_artifact_cleanup:", 1)[1]
+        self.assertIn("full-stable-candidate-${{ github.run_id }}", verifier)
+        self.assertIn("full-stable-candidate-${{ github.run_id }}", writer)
+        self.assertIn("full-stable-candidate-${{ github.run_id }}", cleanup)
+        self.assertIn("needs: [full_verify, full_propose]", cleanup)
+        self.assertIn("always()", cleanup)
+        self.assertIn("needs.full_verify.result == 'success'", cleanup)
+        self.assertIn("needs.full_propose.result == 'success'", cleanup)
+        self.assertIn("needs.full_propose.result == 'skipped'", cleanup)
+        self.assertIn("!inputs.create_pr", cleanup)
+        self.assertIn("permissions:\n      actions: write", cleanup)
+        self.assertNotIn("contents: write", cleanup)
+        self.assertNotIn("pull-requests: write", cleanup)
+        self.assertNotIn("actions: write", verifier)
+        self.assertNotIn("actions: write", writer)
+        self.assertIn("actions: read", writer)
+        self.assertIn("actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100", cleanup)
+        self.assertIn('r.get("name") == name', cleanup)
+        self.assertIn('get("id") == run_id', cleanup)
+        self.assertIn("len(found) > 1", cleanup)
+        self.assertIn("gh api --method DELETE", cleanup)
+        self.assertNotIn("gh run delete", cleanup)
+
     def test_full_major_targets_are_stable_versions_not_new_install_placeholders(self):
         plan = json.loads((ROOT / "tool/full-stable-upgrade-plan.json").read_text(
             encoding="utf-8"))
