@@ -117,7 +117,8 @@ def network_probe(name: str, stage, plan: dict, folder: Path) -> str:
         info = onnx.get("info", {})
         rows = onnx.get("urls", [])
         version = info.get("version") if isinstance(info, dict) else None
-        if info.get("name", "").lower().replace("_", "-") != "onnxruntime" or \
+        if not isinstance(info, dict) or not isinstance(info.get("name"), str) or \
+                info["name"].lower().replace("_", "-") != "onnxruntime" or \
                 not isinstance(version, str) or not isinstance(rows, list):
             raise ValueError("Official ONNX Runtime PyPI metadata identity invalid")
         modern = any(stage.official_onnx_win315_wheel(r, version) for r in rows)
@@ -168,8 +169,10 @@ def diagnose(*, include_network: bool, selected: set[str] | None = None,
             raise ValueError("Refuse symlinked diagnostic scratch")
         scratch.mkdir(exist_ok=True)
         def execute(name):
-            with tempfile.TemporaryDirectory(prefix="full-diagnose-" + name + "-", dir=scratch) as folder:
-                return run_probe(name, lambda: network_probe(name, stage, plan, Path(folder)))
+            def scoped():
+                with tempfile.TemporaryDirectory(prefix="full-diagnose-" + name + "-", dir=scratch) as folder:
+                    return network_probe(name, stage, plan, Path(folder))
+            return run_probe(name, scoped)
         with ThreadPoolExecutor(max_workers=min(5, len(names))) as workers:
             future = {name: workers.submit(execute, name) for name in names}
             result.extend(future[name].result() for name in names)
