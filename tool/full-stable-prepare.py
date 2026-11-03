@@ -626,7 +626,7 @@ def pe_machine(path: Path) -> int | None:
 
 
 def check_python_native_architecture(root: Path) -> dict:
-    """Verify ALL staged native payloads, with eight exact data-only exceptions.
+    """Verify ALL staged native payloads, with ten exact data-only exceptions.
 
     Each exception remains backed by its own upstream SHA-256-pinned wheel
     and must have precisely the named PE machine architecture. Unexpected x86,
