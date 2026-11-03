@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-03：第十七次失败后复审发现官方 PyMuPDF 2.1 / ONNX Runtime 无法在 CPython 3.15 全量安装
+
+- **现状与证据：** 先前 PR #19 改为要求最新 PyMuPDF Core / Layout / 4LLM **2.1**。官方 PyMuPDF 2.1 依赖 `onnxruntime` 运行 Layout；而截至 2026-11-03，官方 PyPI `onnxruntime` 最新稳定版 **1.31.1** 只有 `cp311` 至 `cp314` 的 Windows wheel，**没有** CPython 3.15 对应的 `cp315` 或 `abi3` Windows x64 wheel。见 https://pypi.org/project/onnxruntime/ 与 https://pymupdf.readthedocs.io/en/latest/rag.html 。独立用 Python packaging wheel tags 模拟确认 `cp314-cp314-win_amd64` 不兼容 `cp315`，PyMuPDF 自身的 `cp311-abi3-win_amd64` 兼容。按当前 Python 3.15.2 + `--only-binary=:all:` 规则，`pip --dry-run` 没有满足需求的官方稳定版，**不能再让用户手动执行 03/full**。
+- **提前阻断：** 全量候选构建前，从 PyPI 官方最新 ONNX Runtime JSON 检查包名、稳定版、wheel 身份、精确 HTTPS 来源、SHA-256、Windows AMD64 和 CPython 3.15 相容标签；无匹配则在 npm/Playwright/Python/7-Zip/Chromium 下载前以明确错误停止，杜绝重复浪费长时间 AC。未来官方稳定版本如补齐 cp315 或适用 abi3 wheel，会自动通过此门禁，不需盲目删除安全校验。离线合成回归覆盖 cp314 拒绝、cp315/abi3 接受以及恶意 URL/错误 Hash/错误平台/yanked 拒绝。本门禁**只能提前发现**问题，不能当作已解决缺失的官方 wheel。
+- **维持约束：** 不降级 Python、不改装 Python 3.14 的二进制、不采用 ONNX nightly 或不可信第三方 wheel、不强行跳过 PyMuPDF Layout、不提前更新实际工具台账、不触发 Actions 或创建 Release。19 项 PowerShell 5.1、十轮审计、客户 ZIP 与读写 Job 隔离均保留。仍须等官方稳定版满足完整版本和原生门禁后，才适合安排用户手动 Run。
+
+
+
 ## 2026-11-03：第十七次 03 / full Windows 失败——wheel-only 来源记录与 PyMuPDF 2.x 配对
 
 - **失败证据：** 用户手动 Run [#41617214862](https://github.com/rileyaaa/Codex-Portable/actions/runs/41617214862)，源 main 64214e5b96336d0d8fbf8519b0908919ed3280db。下载前门禁、npm/Corepack、Playwright MCP、Python 3.15.2 与 pip 26.3、7-Zip、Chromium 五个阶段成功；随后 `python_manifests()` 报 `Official optional package source provenance missing`，写入 Job 被跳过，没有生成或合并候选。日志没有具体失败包名，不能假定当时已经确认身份。
