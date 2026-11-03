@@ -261,6 +261,32 @@ def register_generated_pip_launchers(site: Path) -> None:
         csv.writer(stream, lineterminator="\n").writerows(rows)
 
 
+def select_official_pip_release_wheel(data: dict, version: str,
+                                      expected_sha256: str) -> str:
+    """Fail closed on PyPI's wheel identity before fetching executable package."""
+    require(data["info"]["name"].lower() == "pip" and
+            data["info"]["version"] == version and
+            re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is not None,
+            "Official PyPI metadata does not match fixed pip release")
+    filename = f"pip-{version}-py3-none-any.whl"
+    candidates = [
+        file for file in data["urls"]
+        if file.get("filename") == filename and
+           file.get("packagetype") == "bdist_wheel" and
+           file.get("yanked") is not True and
+           file.get("digests", {}).get("sha256") == expected_sha256
+    ]
+    require(len(candidates) == 1, "Official pip wheel SHA-256 or identity changed")
+    remote = candidates[0]["url"]
+    parsed = urllib.parse.urlsplit(remote)
+    require(parsed.scheme == "https" and
+            parsed.hostname == "files.pythonhosted.org" and
+            parsed.path.endswith("/" + filename) and
+            not parsed.query and not parsed.fragment,
+            "Unexpected pip wheel upstream download URL")
+    return remote
+
+
 def download_pinned_pip_wheel(plan: dict, temp: Path) -> tuple[Path, dict]:
     """Select pip's official stable py3 wheel using versioned PyPI JSON + fixed SHA."""
     row = target(plan, "pip")
@@ -273,26 +299,9 @@ def download_pinned_pip_wheel(plan: dict, temp: Path) -> tuple[Path, dict]:
     metadata_file = temp / "official-pip-release.json"
     download(url, metadata_file, limit=4*1024*1024)
     data = obj(metadata_file)
-    require(data["info"]["name"].lower() == "pip" and
-            data["info"]["version"] == version,
-            "Official PyPI metadata does not match pip release")
     filename = f"pip-{version}-py3-none-any.whl"
-    candidates = [
-        file for file in data["urls"]
-        if file.get("filename") == filename and
-           file.get("packagetype") == "bdist_wheel" and
-           file.get("yanked") is not True and
-           file.get("digests", {}).get("sha256") ==
-           row["artifact"]["sha256"]
-    ]
-    require(len(candidates) == 1, "Official pip wheel SHA-256 or identity changed")
-    remote = candidates[0]["url"]
-    parsed = urllib.parse.urlsplit(remote)
-    require(parsed.scheme == "https" and
-            parsed.hostname == "files.pythonhosted.org" and
-            parsed.path.endswith("/" + filename) and
-            not parsed.query and not parsed.fragment,
-            "Unexpected pip wheel upstream download URL")
+    remote = select_official_pip_release_wheel(
+        data, version, row["artifact"]["sha256"])
     wheel = temp / filename
     evidence = download(remote, wheel, expected=row["artifact"]["sha256"],
                         limit=30*1024*1024)
