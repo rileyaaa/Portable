@@ -362,7 +362,7 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
             bytes.fromhex(sha(payload))).rstrip(b"=").decode("ascii")
         records.append([rel, "sha256=" + encoded, str(payload.stat().st_size)])
     with record_file.open("w", encoding="utf-8", newline="") as output:
-        csv.writer(output, lineterminator="\\n").writerows(records)
+        csv.writer(output, lineterminator="\n").writerows(records)
     # pip was bootstrapped directly from the same officially hashed wheel.
     for label, output in (("base", stage / "Lib/site-packages"),
                           ("ssh", stage / "ssh-packages")):
