@@ -679,3 +679,40 @@ jobs:
             Write-Warning 'Actions denied PR creation; use the GitHub Connector to create the PR without another AC run.'
             exit 0
           }
+
+  full_artifact_cleanup:
+    name: Remove consumed full-tool candidate artifact - own run only
+    needs: [full_verify, full_propose]
+    if: ${{ always() && github.ref == 'refs/heads/main' && inputs.mode == 'full' && needs.full_verify.result == 'success' && (needs.full_propose.result == 'success' || (needs.full_propose.result == 'skipped' && !inputs.create_pr)) }}
+    permissions:
+      actions: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete this run's candidate only after the writer has finished
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: full-stable-candidate-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          records="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100")"
+          artifact_id="$(printf '%s' "$records" | python3 -c '
+          import json, os, sys
+          run_id = int(os.environ["GITHUB_RUN_ID"])
+          name = os.environ["ARTIFACT_NAME"]
+          items = json.load(sys.stdin)["artifacts"]
+          found = [r for r in items if r.get("name") == name
+                   and (r.get("workflow_run") or {}).get("id") == run_id]
+          if len(found) > 1:
+              raise SystemExit("Ambiguous same-run candidate artifact; refusing deletion")
+          if found and (type(found[0].get("id")) is not int or found[0]["id"] <= 0):
+              raise SystemExit("Invalid same-run candidate artifact ID")
+          print(found[0]["id"] if found else "")
+          ')"
+          if [[ -z "$artifact_id" ]]; then
+            echo "No same-run candidate artifact remains; nothing to release."
+            exit 0
+          fi
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id" >/dev/null
+          echo "FULL_STABLE_ARTIFACT_CLEANUP=PASS; $ARTIFACT_NAME deleted after use" >> "$GITHUB_STEP_SUMMARY"
+
