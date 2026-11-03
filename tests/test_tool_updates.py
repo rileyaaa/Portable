@@ -674,7 +674,8 @@ class ToolUpdateTests(unittest.TestCase):
             subprocess.run(['git', '-C', str(root), 'config', 'filter.lfs.required', 'true'],
                            check=True)
             with patch.object(tools, 'ROOT', root), patch.object(
-                    tools, 'selected_rows', return_value=[{'tool':'node','version':'26.13.0'}]):
+                    tools, 'selected_rows', side_effect=lambda group: (
+                        [] if group == 'ssh' else [{'tool':'node','version':'26.13.0'}])):
                 tools.enable_node_lfs()
                 self.assertEqual(attrs.read_bytes(), b'other.exe -text\n' + tools.NODE_LFS_ATTRIBUTE)
                 with self.assertRaisesRegex(ValueError, 'Unexpected attributes'):
