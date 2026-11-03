@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-03：CLI 第十次 03 Windows 验证超时——19 项 PowerShell 步骤时限及诊断修复
+
+- **实际失败：** [Actions #41555463345](https://github.com/rileyaaa/Codex-Portable/actions/runs/41555463345) 在 `main=7f912dbcfa9ce3ed67a46ef3acb44a022a7e3bde` 运行约 32 分钟，`verify` 前 11 步全部成功：维护测试、下载前真实 BAT 搬迁、ripgrep/fd/jq 官方摘要及原生版本验证、完整 Python/Node 回归。第 12 步 `Check Windows PowerShell 5.1 regressions` 从 UTC 00:54:56 跑到 01:20:01，恰逢 `timeout-minutes: 25` 被 GitHub 强制终止。最后有日志的通过项为 `PASS npx.ps1 --version`（01:19:37）；是**仍在进行的测试被时限截断**，并非 jq/fd/rg 版本检查失败。第 13 步十轮审计/真实 ZIP、隔离写入 `propose` 皆未执行，版本台账与 Release 未修改。
+- **真实时间参照：** 上次 [Actions #41481792646](https://github.com/rileyaaa/Codex-Portable/actions/runs/41481792646) 同一套 19 项顺序在 UTC 16:34:05 到 16:56:57 之间完成，约 **22 分 52 秒**，距 25 分钟上限仅有约 2 分钟余量；Windows Runner 速度波动使旧时限不可靠。超时不能当作测试断言失败，更不能删掉慢测试假装验收通过。
+- **处理：** 将第 12 步 `timeout-minutes` 从 25 提升为 **45**，这只是最大上限，正常完成会立即结束。**全部 19 项 Windows PowerShell 5.1 测试**仍原顺序执行、启动和搬迁的前置检查仍保留，失败仍立即中断。每个测试增加 `WINDOWS_PS_TEST_BEGIN=<file>`、`WINDOWS_PS_TEST_END=<file>;seconds=<time>;exit=<code>` 日志，借助 `[Diagnostics.Stopwatch]` 记录单项耗时；捕获原始退出码后再打印和判断，不丢失错误。十轮审计、ZIP SHA-256、Git LFS/差异摘要、只读 verify 与隔离 propose Job 均保留。
+- **回归约束与事实边界：** 原有 `test_03_windows_powershell_includes_all_release_gates_and_persistence` 增加 45–60 分钟预算、逐项计时、捕获退出码及 fail closed 静态合同断言，不新增或删除测试方法。GitHub 提交的是源码层修复，**尚未经过新一轮 Windows Runner 动态验收**；还不能宣称审计和 ZIP 已通过。本轮未再启动 Actions、未合并 CLI 新二进制或新 Release。
+
 ## 2026-11-03：CLI 批次第九次 03 AC 提前失败及离线复核（未重跑）
 
 - **运行与确认故障：** [Windows Actions #41554504292](https://github.com/rileyaaa/Codex-Portable/actions/runs/41554504292)，基于 `main=2a6fd0d08f9e1a92a191f2ad9babd8a138467df1`，在第 5 步下载前 `test_tool_updates.py` 回归失败：35 项里 33 项通过、2 项 `ERROR`。分别是 `test_node_lfs_attribute_and_index_pointer_checked_end_to_end` 和 `test_two_independent_checkouts_generate_same_node_lfs_diff`，均为 `tool/update-tools.py:diff_digest()` 读取模拟候选 `r['destination']` 时抛出 `KeyError`；从 Job 顺序证实没有开始下载、安装、打包或上传工具，写入 Job 也未执行。
