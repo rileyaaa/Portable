@@ -400,27 +400,50 @@ def stage_npm(plan: dict, temp: Path, evidence: dict) -> None:
     run(node, TOOL / "node/node_modules/corepack/dist/corepack.js", "--version")
 
 
+def pe_amd64(path: Path) -> bool:
+    with path.open("rb") as stream:
+        if stream.read(2) != b"MZ":
+            return False
+        stream.seek(0, 2)
+        length = stream.tell()
+        if length < 0x80:
+            return False
+        stream.seek(0x3c)
+        offset = int.from_bytes(stream.read(4), "little")
+        if not (64 <= offset <= length - 6):
+            return False
+        stream.seek(offset)
+        return stream.read(4) == b"PE\x00\x00" and stream.read(2) == b"\x64\x86"
+
+
 def stage_7zip(plan: dict, temp: Path, evidence: dict) -> None:
     row = target(plan, "7zip")
-    require(row["latestStable"] == "26.05", "Review newer 7-Zip release")
-    archive = temp / "seven-extra.7z"
+    require(row["latestStable"] == "26.05" and
+            row["artifact"]["url"].endswith("/7z2605-x64.exe"),
+            "Require approved x64 7-Zip SFX artifact, not standalone reduced Extra")
+    archive = temp / "7zip-installer-as-data.exe"
     evidence["7zip_archive"] = download(row["artifact"]["url"], archive,
                                         expected=row["artifact"]["sha256"],
                                         limit=20*1024*1024)
     old_exe = TOOL / "bin/7z.exe"
+    require(pe_amd64(old_exe), "Existing trusted 7z.exe must be Windows AMD64")
     stage = temp / "seven-extracted"
     stage.mkdir()
-    # This runs the OLD trusted bundled 7-Zip executable only in the read-only job.
+    # Crucially, execute only the OLD bundled 7z.exe, NEVER the SFX installer.
+    # Official Win64 SFX is treated as a read-only archive inside package tmp.
     run(old_exe, "x", "-y", "-bd", "-o" + str(stage), archive)
     plain_tree(stage)
+    chosen = {}
     for name in ("7z.exe", "7z.dll"):
-        candidates = [p for p in stage.rglob(name) if p.is_file()]
-        require(len(candidates) == 1, "Official 7-Zip Extra lacks an unambiguous " + name)
-        with candidates[0].open("rb") as f:
-            require(f.read(2) == b"MZ", "7-Zip update is not PE")
-        shutil.copyfile(candidates[0], TOOL / "bin" / name)
+        candidates = [p for p in stage.rglob(name) if p.is_file() and pe_amd64(p)]
+        require(len(candidates) == 1,
+                "Official x64 7-Zip SFX lacks one unique AMD64 " + name)
+        chosen[name] = candidates[0]
+    require(chosen["7z.exe"].parent == chosen["7z.dll"].parent,
+            "7z.exe and 7z.dll must come from the same official x64 package root")
+    for name in ("7z.exe", "7z.dll"):
+        shutil.copyfile(chosen[name], TOOL / "bin" / name)
     run(TOOL / "bin/7z.exe", "i")
-
 
 def npm_env(temp: Path) -> dict:
     empty = temp / "empty.npmrc"
