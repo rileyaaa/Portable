@@ -1,17 +1,38 @@
 {
   "schema": 1,
   "platform": "win32-x64",
-  "note": "Reviewed Windows x64 candidate only. The Node ZIP SHA-256 is checked again against the official nodejs.org release SHASUMS256.txt during staging. Other tools remain in inventory until their exact official artifact and compatibility can be reviewed.",
+  "note": "Approved GitHub Releases SHA256-pinned Windows x64 CLI maintenance batch. Node 26.13.0 and Paramiko 5.1.0 are already installed; do not reinstall. jq is the official directly downloadable Windows AMD64 EXE, not a source ZIP. 7-Zip/Python/pip/Corepack/Playwright use separate packaging or lock maintenance and are NOT part of this batch.",
   "candidates": [
     {
-      "tool": "node",
-      "group": "node",
-      "version": "26.13.0",
-      "url": "https://nodejs.org/dist/v26.13.0/node-v26.13.0-win-x64.zip",
-      "sha256": "dcc60d59a0746999f99064a01c020445d54d84228c691cdbf25b49ac3b59150a",
-      "source_prefix": "node-v26.13.0-win-x64/",
-      "destination": "tool/node",
-      "kind": "directory"
+      "tool": "ripgrep",
+      "group": "cli",
+      "version": "15.2.0",
+      "url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-pc-windows-msvc.zip",
+      "sha256": "71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5",
+      "source_prefix": "ripgrep-15.2.0-x86_64-pc-windows-msvc/",
+      "source_file": "rg.exe",
+      "destination": "tool/bin/rg.exe",
+      "kind": "single"
+    },
+    {
+      "tool": "fd",
+      "group": "cli",
+      "version": "10.5.0",
+      "url": "https://github.com/sharkdp/fd/releases/download/v10.5.0/fd-v10.5.0-x86_64-pc-windows-msvc.zip",
+      "sha256": "a227701b8551c35a9931d9f6da75503cf86d88e182d71fb849a70864c5d57cd7",
+      "source_prefix": "fd-v10.5.0-x86_64-pc-windows-msvc/",
+      "source_file": "fd.exe",
+      "destination": "tool/bin/fd.exe",
+      "kind": "single"
+    },
+    {
+      "tool": "jq",
+      "group": "cli",
+      "version": "1.8.2",
+      "url": "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-windows-amd64.exe",
+      "sha256": "a6fc67fedaf9128a3309a1e2ebb8b986aeccf70122ee46d2cb4849e423f0c627",
+      "destination": "tool/bin/jq.exe",
+      "kind": "executable"
     }
   ]
 }
