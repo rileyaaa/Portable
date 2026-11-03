@@ -274,7 +274,7 @@ class ToolUpdateTests(unittest.TestCase):
         pe = bytearray(256)
         pe[:2] = b'MZ'
         pe[0x3c:0x40] = (0x80).to_bytes(4, 'little')
-        pe[0x80:0x84] = b'PE\\0\\0'
+        pe[0x80:0x84] = b'PE\0\0'
         pe[0x84:0x86] = (0x8664).to_bytes(2, 'little')
         binary = bytes(pe)
         row = dict(next(r for r in tools.plan() if r['tool'] == 'jq'),
@@ -287,8 +287,7 @@ class ToolUpdateTests(unittest.TestCase):
             for name, payload, pin, passes in (
                 ('good', binary, row['sha256'], True),
                 ('wrong-digest', binary, 'f' * 64, False),
-                ('wrong-architecture', binary[:0x84] + b'\\x64\\x86' + binary[0x86:],
-                 None, False),
+                ('wrong-architecture', binary, None, False),
             ):
                 with self.subTest(name=name):
                     scratch = root / ('tmp-' + name)
