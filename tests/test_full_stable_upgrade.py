@@ -237,6 +237,73 @@ class FullStableUpgradeTests(unittest.TestCase):
                     pure.build_pyyaml_pure_wheel(source, out, digest)
                 source.unlink()
 
+    def test_npm12_user_and_global_config_are_separate_and_empty(self):
+        # npm 12 rejects two config scopes pointing at one file even if empty.
+        # Reproduce isolation with old bundled npm (no registry/network) before
+        # spending AC minutes replacing npm or downloading Chromium.
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory)
+            project = temp / "browser-project"
+            project.mkdir()
+            env = stage.npm_env(temp)
+            user = Path(env["NPM_CONFIG_USERCONFIG"])
+            global_ = Path(env["NPM_CONFIG_GLOBALCONFIG"])
+            self.assertNotEqual(user.resolve(), global_.resolve())
+            self.assertTrue(user.is_relative_to(temp))
+            self.assertTrue(global_.is_relative_to(temp))
+            self.assertEqual(user.read_bytes(), b"")
+            self.assertEqual(global_.read_bytes(), b"")
+            self.assertEqual(env["NPM_CONFIG_REGISTRY"],
+                             "https://registry.npmjs.org")
+            self.assertEqual(env["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"], "1")
+            # An unexpected nonempty file must fail before npm or network.
+            global_.write_text("registry=https://example.invalid\n",
+                               encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "must remain empty"):
+                stage.npm_env(temp)
+            global_.write_bytes(b"")
+            self.assertNotEqual(
+                stage.npm_env(temp)["NPM_CONFIG_USERCONFIG"],
+                stage.npm_env(temp)["NPM_CONFIG_GLOBALCONFIG"])
+            node = ROOT / "tool/node/node.exe"
+            npm = ROOT / "tool/node/node_modules/npm/bin/npm-cli.js"
+            if os.name != "nt" or not (node.is_file() and npm.is_file()):
+                return
+            # Existing trusted bundled npm also rejects duplicate npmrc and
+            # proves the corrected paths work without contacting a registry.
+            stage.verify_npm_config_isolation(node, npm, project, env)
+            bad = dict(env)
+            bad["NPM_CONFIG_GLOBALCONFIG"] = bad["NPM_CONFIG_USERCONFIG"]
+            with self.assertRaisesRegex(ValueError, "Command failed"):
+                stage.verify_npm_config_isolation(node, npm, project, bad)
+
+    def test_npm_config_guard_happens_before_registry_package_install(self):
+        source = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
+        npm = source.split("def npm_env(", 1)[1].split(
+            "\ndef stage_browser(", 1)[0]
+        self.assertIn('user = temp / "user.npmrc"', npm)
+        self.assertIn('global_ = temp / "global.npmrc"', npm)
+        self.assertIn('verify_npm_config_isolation(node, npm, project, env)', npm)
+        self.assertLess(
+            npm.index('verify_npm_config_isolation(node, npm, project, env)'),
+            npm.index('run(node, npm, "install", "--package-lock-only"'))
+        self.assertNotIn('temp / "empty.npmrc"', npm)
+
+    def test_full_mode_attempts_small_npm_before_python_and_large_chromium(self):
+        source = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
+        body = source.split("\ndef prepare(plan: dict) -> None:", 1)[1].split(
+            "\ndef main() -> int:", 1)[0]
+        self.assertLess(body.index("stage_npm(plan, temp, evidence)"),
+                        body.index("stage_playwright(plan, temp, evidence)"))
+        self.assertLess(body.index("stage_playwright(plan, temp, evidence)"),
+                        body.index("stage_python(plan, temp, evidence)"))
+        self.assertLess(body.index("stage_python(plan, temp, evidence)"),
+                        body.index("stage_browser(temp, version, revision, evidence)"))
+        for phase in ("node_npm_corepack", "playwright_mcp",
+                      "python315_dependencies", "7zip", "chromium_payload"):
+            self.assertIn("FULL_STABLE_PHASE_BEGIN=" + phase, body)
+            self.assertIn("FULL_STABLE_PHASE_END=" + phase + ";status=PASS", body)
+
     def test_archive_paths_fail_closed(self):
         for text in ("", "..", "../evil", "a/../evil", "C:/thing",
                      "/absolute", "C:evil", "dir\\evil", "a//b", "foo.",
