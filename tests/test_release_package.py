@@ -312,8 +312,14 @@ class ReleasePackageTests(unittest.TestCase):
         # Preserve all pinned tool payloads, functional skills and their licenses.
         self.assertEqual({name for name in names if name.startswith(("home/skills/", "home/plugins/"))},
                          {name for name in included if name.startswith(("home/skills/", "home/plugins/"))})
+        # Maintainer diagnostics are not customer features. Keep the precise
+        # set explicit: future exclusions must be reviewed, not silently accepted.
+        maintainer_tools = {"tool/package-release.py",
+                            "tool/full-stable-diagnose.py",
+                            "tool/full-stable-native-diagnose.py"}
+        self.assertTrue(maintainer_tools.issubset(excluded))
         self.assertEqual({name for name in names if name.startswith("tool/")}
-                         - {"tool/package-release.py"},
+                         - maintainer_tools,
                          {name for name in included if name.startswith("tool/")})
         for name in ("env.local.ps1", "home/auth.json", "tests/../home/auth.json"):
             with self.subTest(name=name), self.assertRaises(ValueError):
