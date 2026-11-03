@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-03：第十七次 03 / full Windows 失败——wheel-only 来源记录与 PyMuPDF 2.x 配对
+
+- **失败证据：** 用户手动 Run [#41617214862](https://github.com/rileyaaa/Codex-Portable/actions/runs/41617214862)，源 main 64214e5b96336d0d8fbf8519b0908919ed3280db。下载前门禁、npm/Corepack、Playwright MCP、Python 3.15.2 与 pip 26.3、7-Zip、Chromium 五个阶段成功；随后 `python_manifests()` 报 `Official optional package source provenance missing`，写入 Job 被跳过，没有生成或合并候选。日志没有具体失败包名，不能假定当时已经确认身份。
+- **核心修复：** 旧代码把每项可选包的 sdist 强制设为恰好一份；PyPI 的 `pymupdf4llm` 2.x 实际是仅发布 wheel 的兼容套件。现在先比对 PyPI 官方版本 JSON 的包名、版本、精确 wheel 文件名、官方 HTTPS URL、SHA-256 和 yanked 状态。确实无 sdist 时保留 `source_distribution: null` 与 `source_distribution_status: not_published_on_pypi`；存在 sdist 时验证来源文件名/URL/哈希并拒绝异常或重复记录。不能伪造源码包或删去真实 wheel 来源验收。
+- **预防下阶段失败：** 官方 `pymupdf4llm` 2.x 是 metadata-only shim，4LLM 实际代码由 PyMuPDF Core 提供。旧测试要求每个 wheel 自带 LICENSE，会拒绝该套件。新逻辑只对完整配对的 PyMuPDF 2.x Core/Layout/4LLM 空壳开放受限例外，要求 Core 已记录真正 4LLM 代码和 LICENSE/COPYING；其它可选包仍自带许可证。按官方 2026-11-02 更新说明，要求 PyMuPDF 相关最低 2.1 稳定版，避免已知 2.0 依赖错配；Windows 加入 4LLM 导入/API 与 Core/Layout/4LLM 同版冒烟。
+- **测试与边界：** 增加不联网合成 PyPI JSON 正反例、错误 wheel/sdist 身份与 hash、重复来源、无许可证和错配核心等检查。当前仅源码及离线模拟，**不等于 Windows 原生全量验收**。保留原 19 项 PowerShell 5.1、十轮发行审计、真实 ZIP、LFS SHA-256 及只读/可信写入隔离。源码合并后仍由用户仅在最新 main 手动 Run `03 / mode=full / group=tools / create_pr=true`，绝不自动触发或创建正式 Release。
+
+
 ## 2026-11-03：第十六次 03 / full Windows 失败——npm 12 user/global 配置文件重复加载
 
 - **实际运行：** 用户手动执行 [Run #41605992170](https://github.com/rileyaaa/Codex-Portable/actions/runs/41605992170)，验证来源 `main=201f15492d95767dd72f780a461fddf8ceae02cf`；`full_verify` 的 actionlint、维护及安全预检、原启动器搬迁均通过。Python **3.15.2** / pip **26.3** / PyYAML **6.0.3** / PyInstaller **6.22.3**、41 项基础依赖与七项 Paramiko/SSH 依赖成功安装；新版 npm **12.2.1** 与 Corepack **0.36.0** 原生 `--version` 成功，受固定 SHA-256 保护的官方 7-Zip **26.05** SFX 由旧受信任 7-Zip 成功解压并通过原生版本检查。随后在 `stage_playwright()` 的第一条 `npm install --package-lock-only` 失败，真实日志 `Exit prior to config file resolving / double-loading config ".../empty.npmrc" as "global", previously loaded as "user"`。**这不是 Playwright MCP 安装解析或 Chromium 文件失败**，而是 `npm_env()` 为 USERCONFIG、GLOBALCONFIG 传入了同一空文件。该次运行没有生成 verified candidate、没有执行独立写入 Job，也没有修改 `main` 已安装版本或 Release。
