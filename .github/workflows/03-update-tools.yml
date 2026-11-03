@@ -378,7 +378,7 @@ jobs:
     permissions:
       contents: read
     runs-on: windows-latest
-    timeout-minutes: 200
+    timeout-minutes: 240
     outputs:
       candidate_digest: ${{ steps.candidate.outputs.digest }}
       artifact_sha256: ${{ steps.candidate.outputs.artifact_sha256 }}
