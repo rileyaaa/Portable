@@ -490,8 +490,11 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
     scripts = stage / "Lib/site-packages/bin"
     require(scripts.is_dir(), "Base wheels did not create required CLI launchers")
     before = {item.name.casefold() for item in scripts.iterdir() if item.is_file()}
-    require(before and not any(n in before for n in
-                             ("pip.exe", "pip3.exe", "pip3.15.exe")),
+    # These come from the newly installed, pinned PyInstaller 6.22.3 wheel.
+    # Previously pip skipped the entire scripts/ tree when bin/ already existed.
+    require({"pyinstaller.exe", "pyi-makespec.exe"} <= before,
+            "Expected PyInstaller Windows launchers were dropped during pip --target")
+    require(not any(n in before for n in ("pip.exe", "pip3.exe", "pip3.15.exe")),
             "Conflicting pip launcher in another installed distribution")
     for name in ("pip.exe", "pip3.exe", "pip3.15.exe"):
         shutil.copyfile(vendor / name, scripts / name)
