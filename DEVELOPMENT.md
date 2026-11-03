@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-03：先批量诊断、再允许昂贵的 03/full
+
+- **历史问题：** 核对 15 次最新失败的 03 Run Job：涉及 npm/Node/Corepack 或 Python staging 的 full 失败、多次 pre-download lint / regression 失败，以及原 prepare 的 native PowerShell 和源码打包失败。之前遇到第一个失败就停，部分小错误需要用户重新付费运行才能暴露；不能将单个修复的模拟通过视为整个 Windows full 就绪。
+- **第一层（零 AC）：** `python tool/full-stable-diagnose.py` 可在本地带 Python 3.14+ 的源码仓库执行，批量收集升级计划/14 个目标和官方 SHA-256 pin、full security contract、maintenance workflow 两组离线 unittest。各检查独立，发生失败也继续收集，不启动 Action、不下载任何官方依赖。
+- **第二层（短时、仍计费的 AC）：** 03 手动工作流增加 `mode=diagnose`，必须 branch=main、create_pr=false，专用 Ubuntu `fast_diagnose` Job 只读 checkout、LFS 不 hydrate、无 tool/ 版本写入、无 artifact 或 Release；调用 `python -E -s -B tool/full-stable-diagnose.py --network`。在第一层基础上并发验证官方 npm 12.2.1、Corepack 0.36.0、Playwright MCP 0.0.84、pip 26.3、ONNX/PyMuPDF 的少量 JSON 元数据、包名/版本/来源/完整性哈希或兼容标签，最终统一列出所有 PASS/FAIL。网络检查只获取官方 JSON（每份上限 4 MiB），不下载 wheel、npm tarball、7-Zip、Chromium，不运行新候选二进制。Job 超时 9 分钟，仅表示上限而非预期耗时。
+- **边界：** 诊断不覆盖 Windows CPython 3.15 ABI 实际导入、真实 npm ci、PyInstaller 冻结 EXE、19 项 PowerShell 5.1、10 轮审计、客户 ZIP 或 Chromium 大文件，这些只有 full 才能证明。离线全过才能考虑用户手动诊断；诊断全过也不能承诺 full 必然成功。禁止 AI 自行 dispatch、rerun；除非用户明确决定有需要，否则不再推荐昂贵的 full。原 check/prepare/full、安全隔离写入 Job、1 天 Artifact 保留与使用后清理规则均保留。
+
+
 ## 2026-11-03：第十八次 03/full Run #41640031417 - 官方 npm JSON 回应异常，提早校验与有界重试
 
 - **真实日志：** 用户手动 Run #41640031417（main ba017f294adb39718047fbf7922bc4a7fc35fe5a），Windows 只读 verifier 的动作 lint、下载前回归和实机 launcher/relocation 均通过。2026-11-03T13:02:20Z 选中最新兼容 PDF 旧版组合后，开始 `FULL_STABLE_PHASE_BEGIN=node_npm_corepack`，约 0.23 秒后报 `FULL_STABLE_PREPARE_FAILED: Expecting value: line 1 column 2 (char 1)`；本次没有进入 Python 3.15/Chromium，写入 Job 跳过，候选 Artifact=0。错误发生在 node/npm/Corepack 阶段，原日志缺少具体 JSON 文件名，不能声称已百分之百确认是哪一份 JSON。
