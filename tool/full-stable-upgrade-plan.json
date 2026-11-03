@@ -91,11 +91,12 @@
       "name": "7zip",
       "installed": "26.01",
       "latestStable": "26.05",
-      "status": "needs_nonexecuting_7z_extra_extraction_and_exe_dll_verification",
+      "status": "needs_nonexecuting_pinned_x64_sfx_extraction",
       "artifact": {
-        "url": "https://github.com/ip7z/7zip/releases/download/26.05/7z2605-extra.7z",
-        "sha256": "f27a8f103c84785026edcba1f67faf1357225df9d19ddb0b7760d55947141bc7"
-      }
+        "url": "https://github.com/ip7z/7zip/releases/download/26.05/7z2605-x64.exe",
+        "sha256": "fd99e86f57d8f429ef5ed045bf98315af962e2309b0f1ba87a147a44c71647d0"
+      },
+      "note": "Treat official Windows x64 self-extracting installer ONLY as a data archive, extract with old bundled 7z.exe, never execute downloaded installer. Verify both full 7z.exe and 7z.dll are AMD64 PE."
     },
     {
       "name": "ripgrep",
