@@ -696,19 +696,54 @@ def stage_7zip(plan: dict, temp: Path, evidence: dict) -> None:
             "Extracted full 7-Zip native version differs from official 26.05")
 
 def npm_env(temp: Path) -> dict:
-    empty = temp / "empty.npmrc"
-    if not empty.exists():
-        empty.write_text("", encoding="utf-8")
+    """Provide distinct, empty user/global npmrc files inside owned scratch.
+
+    npm 12 (and npm 10/11) refuses loading the *same* npmrc twice: 'double-
+    loading config as global, previously loaded as user'. Never point both
+    configuration scopes at one path even if the file contains zero bytes.
+    """
+    require(temp.is_dir() and not temp.is_symlink(),
+            "Npm scratch must be an owned ordinary directory")
+    user = temp / "user.npmrc"
+    global_ = temp / "global.npmrc"
+    require(user != global_ and user.resolve() != global_.resolve(),
+            "npm userconfig and globalconfig must be independent paths")
+    for item in (user, global_):
+        require(not item.is_symlink(), "Refuse linked npmrc")
+        if item.exists():
+            require(item.is_file() and item.stat().st_size == 0,
+                    "Isolated npmrc must remain empty: " + str(item))
+        else:
+            item.write_text("", encoding="utf-8")
     home = temp / "npm-home"
     home.mkdir(exist_ok=True)
     return {"NPM_CONFIG_CACHE": temp / "npm-cache",
-            "NPM_CONFIG_USERCONFIG": empty,
-            "NPM_CONFIG_GLOBALCONFIG": empty,
+            "NPM_CONFIG_USERCONFIG": user,
+            "NPM_CONFIG_GLOBALCONFIG": global_,
             "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org",
             "NPM_CONFIG_UPDATE_NOTIFIER": "false",
             "NPM_CONFIG_AUDIT": "false",
             "NPM_CONFIG_FUND": "false", "HOME": home, "USERPROFILE": home,
             "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1"}
+
+
+def verify_npm_config_isolation(node: Path, npm: Path,
+                                project: Path, env: dict) -> None:
+    """Read-only npm config probe, before any dependency registry request."""
+    require(project.is_dir(), "Missing isolated npm workspace")
+    files = {}
+    for key in ("USERCONFIG", "GLOBALCONFIG"):
+        expected = Path(env["NPM_CONFIG_" + key])
+        require(expected.is_file() and expected.stat().st_size == 0,
+                "Npm config file is missing or not blank")
+        result = run(node, npm, "config", "get", key.lower(),
+                     cwd=project, extra_env=env, capture=True)
+        actual = Path(result.stdout.strip())
+        require(actual.resolve() == expected.resolve(),
+                "npm config scope escaped isolated workspace: " + key)
+        files[key] = actual.resolve()
+    require(files["USERCONFIG"] != files["GLOBALCONFIG"],
+            "npm user and global configs unexpectedly alias")
 
 
 def stage_playwright(plan: dict, temp: Path, evidence: dict) -> tuple[str, str]:
@@ -723,6 +758,7 @@ def stage_playwright(plan: dict, temp: Path, evidence: dict) -> tuple[str, str]:
     node = TOOL / "node/node.exe"
     npm = TOOL / "node/node_modules/npm/bin/npm-cli.js"
     env = npm_env(temp)
+    verify_npm_config_isolation(node, npm, project, env)
     run(node, npm, "install", "--package-lock-only", "--ignore-scripts",
         "--no-audit", "--no-fund", "--no-update-notifier", cwd=project, extra_env=env)
     run(node, npm, "ci", "--ignore-scripts", "--bin-links=false",
