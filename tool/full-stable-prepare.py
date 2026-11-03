@@ -8,6 +8,7 @@ replace its own loaded DLLs. All downloads are confined to package tmp/.
 from __future__ import annotations
 
 import base64
+import csv
 from email.parser import BytesParser
 import hashlib
 import io
@@ -342,6 +343,26 @@ def stage_python(plan: dict, temp: Path, evidence: dict) -> tuple[Path, dict]:
         require(candidate.is_file() and candidate.stat().st_size > 1024,
                 "pip 26.2.2 is missing expected Windows launcher " + name)
         shutil.copyfile(candidate, scripts / name)
+    # The wheel was bootstrapped by unpacking it; the additional generated
+    # Windows launchers are not in its original RECORD. Register exactly the
+    # new files with their SHA-256 digests, otherwise python-lock.py
+    # validate-runtime rightly refuses them as unowned bin entries.
+    pip_records = list((stage / "Lib/site-packages").glob("pip-*.dist-info/RECORD"))
+    require(len(pip_records) == 1, "Expected exactly one official pip dist-info RECORD")
+    record_file = pip_records[0]
+    with record_file.open("r", encoding="utf-8", newline="") as source:
+        records = list(csv.reader(source))
+    paths = [row[0].casefold() for row in records if row]
+    require(len(paths) == len(set(paths)), "Duplicate path in bootstrap pip RECORD")
+    for name in ("pip.exe", "pip3.exe", "pip3.15.exe"):
+        rel = "bin/" + name
+        require(rel.casefold() not in paths, "pip RECORD unexpectedly owns launcher " + rel)
+        payload = scripts / name
+        encoded = base64.urlsafe_b64encode(
+            bytes.fromhex(sha(payload))).rstrip(b"=").decode("ascii")
+        records.append([rel, "sha256=" + encoded, str(payload.stat().st_size)])
+    with record_file.open("w", encoding="utf-8", newline="") as output:
+        csv.writer(output, lineterminator="\\n").writerows(records)
     # pip was bootstrapped directly from the same officially hashed wheel.
     for label, output in (("base", stage / "Lib/site-packages"),
                           ("ssh", stage / "ssh-packages")):
