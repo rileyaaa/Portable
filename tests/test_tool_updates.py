@@ -232,6 +232,86 @@ class ToolUpdateTests(unittest.TestCase):
                 tools.prepare_row(row,Path(d))
         self.assertIn('node-v26.13.0-win-x64.zip',shas.decode())
 
+    def test_reviewed_cli_pins_are_official_x64_and_reject_wrong_arch(self):
+        rows = tools.plan()
+        self.assertEqual([r['tool'] for r in rows], ['ripgrep', 'fd', 'jq'])
+        expected = {
+            'ripgrep': ('15.2.0', '71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5'),
+            'fd': ('10.5.0', 'a227701b8551c35a9931d9f6da75503cf86d88e182d71fb849a70864c5d57cd7'),
+            'jq': ('1.8.2', 'a6fc67fedaf9128a3309a1e2ebb8b986aeccf70122ee46d2cb4849e423f0c627'),
+        }
+        for row in rows:
+            with self.subTest(tool=row['tool']):
+                self.assertEqual((row['version'], row['sha256']), expected[row['tool']])
+                self.assertEqual(row['group'], 'cli')
+                self.assertNotIn('node', row['destination'])
+                if row['tool'] != 'jq':
+                    self.assertEqual(row['kind'], 'single')
+                    self.assertEqual(row['source_prefix'], row['url'].split('/')[-1][:-4] + '/')
+                    self.assertEqual(row['source_file'], {'ripgrep': 'rg.exe', 'fd': 'fd.exe'}[row['tool']])
+                    bad = dict(row, url=row['url'].replace('x86_64', 'aarch64'))
+                    with patch.object(tools, 'load_json', return_value={
+                        'schema': 1, 'platform': 'win32-x64', 'candidates': [bad]
+                    }), self.assertRaisesRegex(ValueError, 'Windows x64 MSVC'):
+                        tools.plan()
+                else:
+                    self.assertEqual(row['kind'], 'executable')
+                    self.assertEqual(row['destination'], 'tool/bin/jq.exe')
+                    self.assertNotIn('source_prefix', row)
+                    self.assertNotIn('source_file', row)
+                    for change in ({'url': row['url'].replace('amd64', 'arm64')},
+                                   {'source_prefix': 'unreviewed/'},
+                                   {'destination': 'tool/bin/rg.exe'},
+                                   {'kind': 'pair'}):
+                        with self.subTest(change=change), patch.object(
+                            tools, 'load_json', return_value={
+                                'schema': 1, 'platform': 'win32-x64',
+                                'candidates': [dict(row, **change)]
+                        }), self.assertRaises(ValueError):
+                            tools.plan()
+
+    def test_direct_jq_official_pe_is_pinned_and_fails_closed(self):
+        pe = bytearray(256)
+        pe[:2] = b'MZ'
+        pe[0x3c:0x40] = (0x80).to_bytes(4, 'little')
+        pe[0x80:0x84] = b'PE\\0\\0'
+        pe[0x84:0x86] = (0x8664).to_bytes(2, 'little')
+        binary = bytes(pe)
+        row = dict(next(r for r in tools.plan() if r['tool'] == 'jq'),
+                   sha256=hashlib.sha256(binary).hexdigest())
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            dest = root / 'tool/bin/jq.exe'
+            dest.parent.mkdir(parents=True)
+            dest.write_bytes(b'old-binary')
+            for name, payload, pin, passes in (
+                ('good', binary, row['sha256'], True),
+                ('wrong-digest', binary, 'f' * 64, False),
+                ('wrong-architecture', binary[:0x84] + b'\\x64\\x86' + binary[0x86:],
+                 None, False),
+            ):
+                with self.subTest(name=name):
+                    scratch = root / ('tmp-' + name)
+                    scratch.mkdir()
+                    if name == 'wrong-architecture':
+                        # Modify just the COFF machine type while keeping a valid
+                        # DOS and PE signature. A matching SHA must still fail.
+                        broken = bytearray(binary)
+                        broken[0x84:0x86] = (0xaa64).to_bytes(2, 'little')
+                        payload = bytes(broken)
+                    test_row = dict(row, sha256=(hashlib.sha256(payload).hexdigest()
+                                                if pin is None else pin))
+                    before = dest.read_bytes()
+                    with patch.object(tools, 'ROOT', root), patch.object(
+                            tools, 'fetch_bytes', return_value=payload):
+                        if passes:
+                            tools.prepare_row(test_row, scratch)
+                            self.assertEqual(dest.read_bytes(), payload)
+                        else:
+                            with self.assertRaises(ValueError):
+                                tools.prepare_row(test_row, scratch)
+                            self.assertEqual(dest.read_bytes(), before)
+
     def test_node_upgrade_preserves_portable_npm_and_skips_system_installer(self):
         def fake_executable():
             blob = bytearray(256)
