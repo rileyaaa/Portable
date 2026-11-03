@@ -26,6 +26,9 @@ PLAN = ROOT / "tool/full-stable-upgrade-plan.json"
 SUITES = {
     "contracts": "test_full_stable_upgrade.py",
     "workflows": "test_maintenance_workflows.py",
+    # PR #26's maintainer-only file exclusion exposed a source ZIP regression
+    # not covered by the old 8-item metadata gate. Run real synthetic ZIP tests.
+    "release": "test_release_package.py",
 }
 NETWORK_PROBES = ("npm", "corepack", "playwright", "pip", "pdf")
 
