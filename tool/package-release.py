@@ -46,6 +46,7 @@ DEVELOPMENT_FILES = {
     ".gitignore": "Git checkout configuration.",
     ".gitattributes": "Git checkout and LFS configuration.",
     "tool/package-release.py": "Release builder; run from the source checkout.",
+    "tool/full-stable-diagnose.py": "Maintainer-only fast diagnostics; not part of the customer package.",
 }
 
 
