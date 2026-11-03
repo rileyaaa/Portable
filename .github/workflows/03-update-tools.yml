@@ -197,7 +197,10 @@ jobs:
 
       - name: Check Windows PowerShell 5.1 regressions
         if: ${{ inputs.mode == 'prepare' }}
-        timeout-minutes: 25
+        # Previous successful 19-test suite took ~22 minutes; run #41555463345
+        # reached npm/npx tests at minute 25 and was killed before completion.
+        # Retain all 19 checks; allow bounded Windows runner timing variance.
+        timeout-minutes: 45
         run: |
           $ErrorActionPreference = 'Stop'
           $tests = @(
@@ -210,12 +213,20 @@ jobs:
             'test_extension_persistence.ps1', 'test_extension_migration.ps1'
           )
           foreach ($entry in $tests) {
+            # Print the last started test and its elapsed time to distinguish
+            # a real hang from a runner-wide timeout on slower Windows VMs.
+            Write-Host ("WINDOWS_PS_TEST_BEGIN=" + $entry)
+            $elapsed = [Diagnostics.Stopwatch]::StartNew()
             $args = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path '.\tests' $entry))
             if ($entry -eq 'test_portable_config.ps1') {
               $args += @('-BundledModelsPath', '.\tmp\windows-release-state\bundled-models.json')
             }
             & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" @args
-            if ($LASTEXITCODE -ne 0) { throw "Windows native regression failed: $entry" }
+            $exitCode = $LASTEXITCODE
+            $elapsed.Stop()
+            Write-Host ("WINDOWS_PS_TEST_END=" + $entry + ";seconds=" +
+                        [Math]::Round($elapsed.Elapsed.TotalSeconds, 1) + ";exit=" + $exitCode)
+            if ($exitCode -ne 0) { throw "Windows native regression failed: $entry" }
           }
 
       - name: Verify unchanged staged digest, ten Windows audit rounds and real customer ZIP
