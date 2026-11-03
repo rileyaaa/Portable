@@ -875,6 +875,21 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertLess(preflight, download)
         self.assertEqual(tool_names[0], 'test_launcher_smoke')
         self.assertEqual(source.count('test_launcher_smoke.ps1'), 2)
+        # Run #41555463345 timed out a still-progressing Windows PS 5.1 suite
+        # at 25 minutes. The old success took about 22 minutes on a faster VM.
+        # Keep margin for runner variance, with each test individually timed.
+        ps_gate = source.split('      - name: Check Windows PowerShell 5.1 regressions', 1)[1].split(
+            '\n      - name:', 1)[0]
+        cap = re.search(r'(?m)^        timeout-minutes: (\d+)$', ps_gate)
+        self.assertIsNotNone(cap)
+        self.assertGreaterEqual(int(cap.group(1)), 45)
+        self.assertLessEqual(int(cap.group(1)), 60)
+        self.assertIn('WINDOWS_PS_TEST_BEGIN=', ps_gate)
+        self.assertIn('WINDOWS_PS_TEST_END=', ps_gate)
+        self.assertIn('$elapsed = [Diagnostics.Stopwatch]::StartNew()', ps_gate)
+        self.assertIn('$exitCode = $LASTEXITCODE', ps_gate)
+        self.assertIn('if ($exitCode -ne 0) { throw "Windows native regression failed: $entry" }',
+                      ps_gate)
         launcher = (ROOT / 'tests/test_launcher_smoke.ps1').read_text(encoding='utf-8-sig')
         self.assertIn('Move-OwnedFixtureAfterChildExit -Source $fixture -Destination $newRoot',
                       launcher)
