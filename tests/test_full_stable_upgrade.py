@@ -737,6 +737,21 @@ class FullStableUpgradeTests(unittest.TestCase):
             self.assertEqual(recorded[0][1], "application/json")
             self.assertEqual(recorded[0][3], 20)
 
+    def test_npm_preflight_cli_is_metadata_only_and_cannot_stage_tools(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plan = {"schema": 1, "platform": "win32-x64",
+                    "state": "PREPARATION_ONLY_NOT_INSTALLED",
+                    "policy": {"publish": "do not edit installed-tools.json before verification"}}
+            plan_file = Path(directory) / "plan.json"
+            plan_file.write_text(json.dumps(plan), encoding="utf-8")
+            with patch.object(stage, "PLAN", plan_file), \
+                 patch.object(stage.sys, "argv", ["full-stable-prepare.py", "npm-preflight"]), \
+                 patch.object(stage, "preflight_npm_registry") as preflight, \
+                 patch.object(stage, "prepare") as full_stage:
+                self.assertEqual(stage.main(), 0)
+                preflight.assert_called_once_with(plan)
+                full_stage.assert_not_called()
+
     def test_npm12_user_and_global_config_are_separate_and_empty(self):
         # npm 12 rejects two config scopes pointing at one file even if empty.
         # Reproduce isolation with old bundled npm (no registry/network) before
