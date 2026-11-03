@@ -120,18 +120,18 @@ class FullStableUpgradeTests(unittest.TestCase):
              patch.object(fast, "network_probe", side_effect=fake_probe):
             records = fast.diagnose(include_network=True, plan=plan, stage=stage)
             self.assertEqual([r["probe"] for r in records],
-                             ["plan", "contracts", "workflows", "npm",
+                             ["plan", "contracts", "workflows", "release", "npm",
                               "corepack", "playwright", "pip", "pdf"])
             self.assertEqual([r["probe"] for r in records if r["status"] == "FAIL"],
                              ["corepack"])
-            self.assertEqual(sum(r["status"] == "PASS" for r in records), 7)
+            self.assertEqual(sum(r["status"] == "PASS" for r in records), 8)
             self.assertFalse(any((Path(directory) / "tmp").iterdir()))
         with patch.object(fast, "network_probe",
                           side_effect=AssertionError("network attempted")), \
              patch.object(fast, "offline_suite", return_value="PASS"):
             no_network = fast.diagnose(include_network=False, plan=plan, stage=stage)
             self.assertEqual([r["probe"] for r in no_network],
-                             ["plan", "contracts", "workflows"])
+                             ["plan", "contracts", "workflows", "release"])
             with self.assertRaisesRegex(ValueError, "require --network"):
                 fast.diagnose(include_network=False, selected={"npm"},
                               plan=plan, stage=stage)
