@@ -127,9 +127,8 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertIn('run(new_python, "-E", "-s", "-B", "-m", "pip", "--version")', code)
         self.assertNotIn("pyyaml-cp315", code)
 
-    def test_pymupdf21_onnxruntime_cp315_gate_before_any_tool_download(self):
-        # Latest ONNX Runtime 1.31.1 (2026-11-03) has Win x64 through cp314, not cp315.
-        # Never waste a full Windows Actions run attempting this impossible closure.
+    def test_pdf_policy_chooses_official_legacy_wheels_without_cp315_onnx(self):
+        # Do not spend AC minutes installing other tools before checking PDF ABI.
         from unittest.mock import patch
         base = "https://files.pythonhosted.org/packages/verified/"
         def wheel(filename):
@@ -142,35 +141,101 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertFalse(stage.official_onnx_win315_wheel(cp314, "1.31.1"))
         self.assertTrue(stage.official_onnx_win315_wheel(cp315, "1.31.1"))
         self.assertTrue(stage.official_onnx_win315_wheel(abi3, "1.31.1"))
-        for key, value in (("url", "https://bad.example/wheel.whl"),
-                           ("filename", "onnxruntime-1.31.1-cp315-cp315-win_arm64.whl"),
-                           ("digests", {"sha256": "invalid"}),
-                           ("yanked", True)):
-            bad = dict(cp315)
-            bad[key] = value
-            with self.subTest(key=key):
-                self.assertFalse(stage.official_onnx_win315_wheel(bad, "1.31.1"))
-        with tempfile.TemporaryDirectory() as d:
-            temp = Path(d)
-            data = {"info": {"name": "onnxruntime", "version": "1.31.1"},
-                    "urls": [cp314]}
-            def fake_download(url, file, **kwargs):
-                self.assertEqual(url, "https://pypi.org/pypi/onnxruntime/json")
-                Path(file).write_text(json.dumps(data), encoding="utf-8")
-                return {"sha256": "a" * 64}
+        modern = {"info": {"name": "onnxruntime", "version": "1.31.1"},
+                  "urls": [cp314]}
+        legacy = {
+            "pymupdf": ("1.28.2", wheel("pymupdf-1.28.2-cp311-abi3-win_amd64.whl")),
+            "pymupdf4llm": ("0.3.4", wheel("pymupdf4llm-0.3.4-py3-none-any.whl"))}
+        calls = []
+        def fake_download(url, file, **kwargs):
+            calls.append(url)
+            if url.endswith("/pypi/onnxruntime/json"):
+                data = modern
+            else:
+                package = url.split("/")[4]
+                version, record = legacy[package]
+                self.assertTrue(url.endswith("/" + version + "/json"))
+                data = {"info": {"name": package, "version": version}, "urls": [record]}
+            Path(file).write_text(json.dumps(data), encoding="utf-8")
+            return {"sha256": "a" * 64}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
             with patch.object(stage, "download", side_effect=fake_download):
-                with self.assertRaisesRegex(ValueError, "No official stable ONNX Runtime"):
-                    stage.preflight_python315_onnxruntime(temp, {})
-                data["urls"] = [cp314, cp315]
-                verified = {}
-                stage.preflight_python315_onnxruntime(temp, verified)
-                self.assertEqual(verified["onnxruntime_preflight"]["version"], "1.31.1")
-                self.assertEqual(verified["onnxruntime_preflight"]["filename"],
-                                 cp315["filename"])
+                fallback = {}
+                stage.preflight_python315_onnxruntime(root, fallback)
+                self.assertEqual(fallback["pdf_compatibility"]["mode"],
+                                 "latest-compatible-legacy-pdf")
+                self.assertEqual(fallback["pdf_compatibility"]["pymupdf"], "1.28.2")
+                self.assertEqual(fallback["pdf_compatibility"]["pymupdf4llm"], "0.3.4")
+                self.assertEqual(len(calls), 3)
+                modern["urls"] = [cp314, cp315]
+                latest = {}
+                stage.select_pdf_compatibility(modern, root, latest)
+                self.assertEqual(latest["pdf_compatibility"]["mode"], "latest-with-layout")
+                self.assertIn(cp315["filename"],
+                              latest["onnxruntime_preflight"]["wheels"])
         source = (ROOT / "tool/full-stable-prepare.py").read_text(encoding="utf-8")
-        prepare = source.split("def prepare(plan: dict) -> None:", 1)[1]
-        self.assertLess(prepare.index("preflight_python315_onnxruntime(temp, evidence)"),
-                        prepare.index("stage_npm(plan, temp, evidence)"))
+        body = source.split("def prepare(plan: dict) -> None:", 1)[1]
+        self.assertLess(body.index("preflight_python315_onnxruntime(temp, evidence)"),
+                        body.index("stage_npm(plan, temp, evidence)"))
+        self.assertIn("verify_pdf_resolver(pdf, resolved, evidence)", source)
+        self.assertIn('x + (">=2.1"', source)
+
+    def test_pdf_official_fallback_rejects_forged_wheels_and_downgraded_resolution(self):
+        import copy
+        base = "https://files.pythonhosted.org/packages/verified/"
+        def wheel(filename):
+            return {"filename": filename, "url": base + filename,
+                    "packagetype": "bdist_wheel",
+                    "digests": {"sha256": "a" * 64}, "yanked": False}
+        file = "pymupdf-1.28.2-cp311-abi3-win_amd64.whl"
+        record = wheel(file)
+        release = {"info": {"name": "pymupdf", "version": "1.28.2"},
+                   "urls": [record]}
+        valid = stage.official_legacy_pdf_wheels(release, "pymupdf", "1.28.2")
+        self.assertEqual(valid[file]["sha256"], "a" * 64)
+        for item in (("wrong version", {"name": "pymupdf", "version": "1.28.0"}),
+                     ("wrong name", {"name": "badpdf", "version": "1.28.2"})):
+            bad = copy.deepcopy(release)
+            bad["info"] = item[1]
+            with self.subTest(case=item[0]), self.assertRaises(ValueError):
+                stage.official_legacy_pdf_wheels(bad, "pymupdf", "1.28.2")
+        for key, value in (("url", "https://bad.example/malware.whl"),
+                           ("filename", "pymupdf-1.28.2-cp314-cp314-win_amd64.whl"),
+                           ("digests", {"sha256": "0"}),
+                           ("yanked", True)):
+            bad = copy.deepcopy(release)
+            bad["urls"][0][key] = value
+            if key == "filename":
+                with self.subTest(key=key), self.assertRaisesRegex(ValueError, "Missing"):
+                    stage.official_legacy_pdf_wheels(bad, "pymupdf", "1.28.2")
+            else:
+                with self.subTest(key=key), self.assertRaises(ValueError):
+                    stage.official_legacy_pdf_wheels(bad, "pymupdf", "1.28.2")
+        with self.assertRaises(ValueError):
+            stage.official_legacy_pdf_wheels({"info": release["info"],
+                                             "urls": [record, record]},
+                                            "pymupdf", "1.28.2")
+        policy = {"mode": "latest-compatible-legacy-pdf",
+                  "pymupdf": "1.28.2", "pymupdf4llm": "0.3.4"}
+        name4 = "pymupdf4llm-0.3.4-py3-none-any.whl"
+        selected = {"pymupdf": {"version": "1.28.2", "wheel": file, "sha256": "a" * 64},
+                    "pymupdf4llm": {"version": "0.3.4", "wheel": name4,
+                                   "sha256": "a" * 64}}
+        preflight = {"pdf_fallback_wheels": {
+            "pymupdf": {file: {"url": base + file, "sha256": "a" * 64}},
+            "pymupdf4llm": {name4: {"url": base + name4, "sha256": "a" * 64}}},
+            "wheels": {"pymupdf": {"url": base + file},
+                       "pymupdf4llm": {"url": base + name4}}}
+        stage.verify_pdf_resolver(policy, selected, preflight)
+        wrong = copy.deepcopy(selected)
+        wrong["pymupdf4llm"]["sha256"] = "b" * 64
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            stage.verify_pdf_resolver(policy, wrong, preflight)
+        wrong = copy.deepcopy(selected)
+        wrong["onnxruntime"] = {"version": "1.31.1"}
+        with self.assertRaisesRegex(ValueError, "Layout/ONNX"):
+            stage.verify_pdf_resolver(policy, wrong, preflight)
 
     def test_optional_pypi_release_metadata_wheel_only_and_rejects_forgery(self):
         import copy
