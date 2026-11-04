@@ -30,11 +30,12 @@ import os, sys
 from unittest.mock import patch
 sys.path.insert(0, sys.argv[1])
 from pip._internal import configuration as c
-# pip 26.3 exposes Kind; older bundled pip exposed kinds.
-# Use the genuine configuration source identifiers, never relax the assertions.
-kinds = getattr(c, "Kind", None)
+# pip 26.3 uses the Kind enumeration; older pip exposed the
+# kinds namespace even when Kind was a NewType without GLOBAL/USER/SITE.
+# Resolve the real identifiers without changing configuration assertions.
+kinds = getattr(c, "kinds", None)
 if kinds is None:
-    kinds = c.kinds
+    kinds = c.Kind
 locations = {kinds.GLOBAL: [sys.argv[2]], kinds.USER: [], kinds.SITE: []}
 # Replace discovery, so no real host/user configuration path is read or probed.
 with patch.object(c, "get_configuration_files", return_value=locations):
