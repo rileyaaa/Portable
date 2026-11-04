@@ -97,11 +97,11 @@ class FullStableUpgradeTests(unittest.TestCase):
         # Run #25 lost both root causes because the old formatter sliced
         # unittest output twice and the Actions line displayed only 450 chars.
         report = (
-            "FAIL: test_first (test_case.Sample.test_first)\\n"
-            "AssertionError: a bad tuple membership check\\n"
-            "ERROR: test_second (test_case.Sample.test_second)\\n"
-            "ModuleNotFoundError: missing audited helper\\n"
-            + ("unrelated output\\n" * 180)
+            "FAIL: test_first (test_case.Sample.test_first)\n"
+            "AssertionError: a bad tuple membership check\n"
+            "ERROR: test_second (test_case.Sample.test_second)\n"
+            "ModuleNotFoundError: missing audited helper\n"
+            + ("unrelated output\n" * 180)
         )
         process = subprocess.CompletedProcess(
             args=["python", "-m", "unittest"], returncode=1,
