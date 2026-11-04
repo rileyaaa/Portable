@@ -164,7 +164,10 @@ jobs:
           $day = [DateTime]::UtcNow.ToString('yyyy-MM-dd')
           & .\tool\python\python.exe -E -s -B .\tool\update-tools.py prepare --group $env:TOOL_GROUP --day $day
           if ($LASTEXITCODE -ne 0) { throw 'Windows tool staging failed; no branch will be written.' }
-          $planned = Get-Content -LiteralPath '.\\tool\\tool-update-plan.json' -Raw | ConvertFrom-Json
+          $planPath = if ($env:TOOL_AUTO_UPDATE_PLAN -eq '1') {
+            '.\\tmp\\auto-tool-update-plan.json'
+          } else { '.\\tool\\tool-update-plan.json' }
+          $planned = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
           $hasNodeCandidate = @($planned.candidates | Where-Object { $_.tool -ceq 'node' }).Count -eq 1
           if ($env:TOOL_GROUP -ne 'ssh' -and $hasNodeCandidate) {
             & git lfs install --local
@@ -358,7 +361,10 @@ jobs:
           }
           & .\tool\python\python.exe -E -s -B .\tool\update-tools.py prepare --group $env:TOOL_GROUP --day $env:APPROVED_DAY --writer
           if ($LASTEXITCODE -ne 0) { throw 'Trusted writer could not reproduce official pinned archive.' }
-          $planned = Get-Content -LiteralPath '.\\tool\\tool-update-plan.json' -Raw | ConvertFrom-Json
+          $planPath = if ($env:TOOL_AUTO_UPDATE_PLAN -eq '1') {
+            '.\\tmp\\auto-tool-update-plan.json'
+          } else { '.\\tool\\tool-update-plan.json' }
+          $planned = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
           $hasNodeCandidate = @($planned.candidates | Where-Object { $_.tool -ceq 'node' }).Count -eq 1
           if ($env:TOOL_GROUP -ne 'ssh' -and $hasNodeCandidate) {
             & git lfs install --local
@@ -381,7 +387,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Candidate commit failed.' }
           & gh auth setup-git
           if ($LASTEXITCODE -ne 0) { throw 'Cannot authenticate trusted Git push.' }
-          $planned = Get-Content -LiteralPath '.\\tool\\tool-update-plan.json' -Raw | ConvertFrom-Json
+          $planPath = if ($env:TOOL_AUTO_UPDATE_PLAN -eq '1') {
+            '.\\tmp\\auto-tool-update-plan.json'
+          } else { '.\\tool\\tool-update-plan.json' }
+          $planned = Get-Content -LiteralPath $planPath -Raw | ConvertFrom-Json
           $hasNodeCandidate = @($planned.candidates | Where-Object { $_.tool -ceq 'node' }).Count -eq 1
           if ($env:TOOL_GROUP -ne 'ssh' -and $hasNodeCandidate) {
             # Only an actual new Node candidate requires a new LFS object.
