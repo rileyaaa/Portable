@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import stat
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -243,7 +244,7 @@ def main(argv: list[str] | None = None) -> int:
     print("AUTO_TOOL_UPSTREAM=" + json.dumps(status, sort_keys=True), flush=True)
     print("AUTO_TOOL_UPDATES=" + ",".join(changed) if changed else
           "AUTO_TOOL_UPDATES=NONE", flush=True)
-    print("AUTO_TOOL_SCOPE=node,ripgrep,fd,jq; "
+    print("AUTO_TOOL_SCOPE=node(same-verified-major),ripgrep,fd,jq; "
           "other tool runtimes retain separate pinned full-mode verification", flush=True)
     if args.command == "plan":
         write_plan(candidates)
