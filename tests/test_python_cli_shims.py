@@ -85,6 +85,20 @@ class PythonCliShimTests(unittest.TestCase):
                              name.upper() == "PIP_CACHE_DIR" for name in clean))
         self.assertIn("pip_environment(dict(os.environ))", script.read_text(encoding="utf-8"))
 
+    def test_generated_shims_disable_host_powershell_bootstrap_cache(self):
+        generated = self.module.render_cmd("synthetic").decode("ascii")
+        expected = (
+            '@echo off\\r\\nsetlocal DisableDelayedExpansion\\r\\n'
+            'set "POWERSHELL_TELEMETRY_OPTOUT=1"\\r\\n'
+            'set "PSModuleAnalysisCachePath=NUL"\\r\\n'
+        )
+        self.assertTrue(generated.startswith(expected))
+        for path in (ROOT / "tool/bin").glob("*.cmd"):
+            with self.subTest(path=path.name):
+                source = path.read_bytes()
+                self.assertTrue(source.startswith(expected.encode("ascii")))
+                self.assertNotIn(b"\\n", source.replace(b"\\r\\n", b""))
+
     def test_user_command_mentioning_helper_is_preserved(self):
         command = self.output / "my-user-command.cmd"
         original = b"@echo off\r\nrem See portable-python-cli.py for conventions.\r\necho User command\r\n"

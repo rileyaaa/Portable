@@ -1,5 +1,7 @@
 @echo off
 setlocal DisableDelayedExpansion
+set "POWERSHELL_TELEMETRY_OPTOUT=1"
+set "PSModuleAnalysisCachePath=NUL"
 rem R19 preflight: executable and code file are independently checked.
 set "_CODEX_BOOTSTRAP_ROOT=%~dp0..\.."
 set "_CODEX_BOOTSTRAP_ENTRYDIR=%~dp0."

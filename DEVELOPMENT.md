@@ -7,6 +7,7 @@
 - 复核新增 npm Windows 根路径正则时，发现它误要求盘符后两个连续反斜杠；真实值如 `C:\Windows` 只有一个。已改为独立 `windowsSystemRoot()`，增加正常路径与 UNC、ADS、遍历、重复分隔符的正反向测试。另发现 `setup-tools.ps1` 仍在 PATH 中放入旧供应商 EXE 目录 `tool/python/Lib/site-packages/bin` 和空 `python/Scripts`；已清理，并补回归要求安装器只暴露包内审核过的 `tool/bin` 与 `tool/python`。
 - 进一步对照 npm 12 上游配置，发现 `shell`（`npm explore`）、`editor`、`git`、`browser`、`viewer` 也可通过非路径型字符串选择外部可执行程序；直接 npm 现清理宿主 `SHELL` / `EDITOR` / `VISUAL`、`GIT_*`、`SSH_*` 及对应 `NPM_CONFIG_*`，并在各层显式 npm 配置中要求程序路径位于包内（保留 Windows `cmd.exe`、受控 PATH 内 `git` 及内建名称），新增负向测试。此约束不代表用户自定义 `package.json` 脚本无法主动读写包外；它仍需要 Codex 沙箱或 OS 权限边界。
 - Windows npm 单元测试原先传入空的模拟环境，与现在要求明确 `SystemRoot` 的生产门禁冲突；测试夹具已仅在 Windows 注入当前运行器的系统根，另加缺失根路径应拒绝的负向用例。生产代码继续要求显式有效的 `SystemRoot`，不为满足合成测试而放开校验。
+- 审计 19 个 Python CMD 入口：这些入口在路径预检前调用系统 PowerShell 5.1，却未像 npm CMD 入口一样禁用宿主模块缓存。现同步命令生成器与全部 19 个已审查的第一方 `.cmd`，在调用 PowerShell 前设置 `POWERSHELL_TELEMETRY_OPTOUT=1` 与 `PSModuleAnalysisCachePath=NUL`，维持 ASCII/CRLF；添加生成器与全部交付 CMD 的一致性回归。不修改第三方 EXE。
 - 本批变更仍是代码和离线合同检查，尚未做 Windows 原生测试。多数 `CODEX_*` 为启动器自定义设置，工具变量中存在未安装组件的预留路径，Python `._pth` 会忽略部分解释器启动变量。YOLO、系统 Known Folders、未经包装的用户程序、显式包外路径不受环境变量本身的硬性约束，不能据此宣布所有变量在 Windows 上已真实生效。
 
 
