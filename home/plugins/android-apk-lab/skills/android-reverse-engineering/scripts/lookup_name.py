@@ -7,7 +7,9 @@ import json
 import os
 from pathlib import Path
 import re
-import sre_parse
+# Python 3.15 removed the deprecated sre_parse shim; retain the same parser
+# tokens and nested-repeat/lookaround/backreference safety checks.
+from re import _parser as sre_parse
 import sys
 
 from portable_guard import PortablePathError, ensure_tree_has_no_reparse, find_portable_root, resolve_inside
