@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：浏览器安装及桌面自动化的宿主环境回退
+
+- 发现 standalone New-AutomationStartInfo 虽主动清空 ProcessStartInfo 环境，但随后又转发未经审核的外层 SystemRoot、ComSpec 和全套 HTTP(S)/ALL/NO_PROXY 环境。Windows 命令定位可能依赖伪造环境，Chromium/Node/浏览器下载器也可能使用用户未明确选中的宿主代理。
+- 已从 Windows GetFolderPath('Windows') 获取真实系统目录（要求普通本地盘符），重新生成 SystemRoot、WINDIR、SystemDrive、ComSpec、PATHEXT 以及 CPU 必要字段；会话 HOME/APPDATA/TMP、包内 Node PATH 与 Playwright 状态仍保持原状。仅当 CODEX_INSTALL_DIR/CODEX_HOME 为当前包且显式启用代理、转发及命令联网时才传递代理变量，避免误伤用户正常的明确代理选择。该配置门控不等于 OS 级防伪令牌。
+- 增加离线维护测试合同，核对受控 OS 路径、代理门控、浏览器安装和桌面进程入口。保留 PowerShell 原有 UTF-8 BOM 和 CRLF；真实 Windows PowerShell 5.1、Chromium 文件/网络 I/O、GitHub Actions 仍待授权验收。本轮没有启动浏览器或操作设备，YOLO 保持例外，main/Release 未修改。
+
 ## 2026-11-05：Corepack 交叉审查修正 Yarn/pnpm 包内状态与参数兼容性
 
 - 对前次 Corepack 修复再次检查上游 v0.36.0 README：COREPACK_HOME、COREPACK_ENV_FILE、COREPACK_ENABLE_PROJECT_SPEC 为受支持选项；但我们的 Corepack 二次过滤错误删除了 portableEnvironment() 已按当前包根重建的 YARN_CACHE_FOLDER、PNPM_HOME、PNPM_STORE_DIR。此行为既取消了明确的缓存定向，也可能使正常 Yarn/pnpm 流程退回默认目录，已修正为保留生成的包内变量；所有从宿主继承的 YARN_/PNPM_/COREPACK_ 仍在首次正向白名单阶段丢弃。

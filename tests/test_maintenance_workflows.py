@@ -307,6 +307,26 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertIn("needs.verify.result == 'success' && inputs.publish_release", publisher)
         self.assertNotIn("Invoke-WebRequest", script)
 
+    def test_automation_children_rebuild_os_paths_and_only_forward_authorized_proxy(self):
+        source = read(ROOT / 'tool/automation/portable-automation.ps1')
+        child = source.split('function New-AutomationStartInfo {', 1)[1].split(
+            'function Initialize-AutomationSupervisor {', 1)[0]
+        self.assertIn("[Environment]::GetFolderPath('Windows')", child)
+        self.assertIn("$start.EnvironmentVariables.Clear()", child)
+        self.assertIn("$start.EnvironmentVariables['SystemRoot'] = $windowsFolder", child)
+        self.assertIn("$start.EnvironmentVariables['COMSPEC'] = $systemCmd", child)
+        self.assertIn("$start.EnvironmentVariables['PATHEXT'] = '.COM;.EXE;.BAT;.CMD'", child)
+        self.assertIn("Join-Path $Root 'tool\\node'", child)
+        self.assertIn("if ($proxyEnabled)", child)
+        for name in ("CODEX_INSTALL_DIR", "CODEX_HOME", "CODEX_PROXY_ENABLED",
+                     "CODEX_PROXY_FOR_SUBPROCESS", "CODEX_SANDBOX_NETWORK_ACCESS"):
+            self.assertIn(name, child)
+        self.assertLess(child.index("if ($proxyEnabled)"), child.index("'HTTP_PROXY'"))
+        self.assertNotIn("foreach ($name in @('SystemRoot', 'WINDIR'", child)
+        self.assertNotIn("GetEnvironmentVariable('COMSPEC')", child)
+        self.assertIn("New-AutomationStartInfo", read(ROOT / 'tool/automation/install-browser.ps1'))
+        self.assertIn("New-AutomationStartInfo", read(ROOT / 'tool/automation/desktop.ps1'))
+
     def test_windows_native_gate_executes_direct_python_shims_with_host_injection(self):
         script = read(ROOT / '.github/maintenance/02-tool-compatibility.ps1')
         for required in (
