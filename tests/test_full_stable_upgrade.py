@@ -11,6 +11,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tarfile
@@ -166,9 +167,10 @@ class FullStableUpgradeTests(unittest.TestCase):
         # existence contract. It may not silently skip one of the markers.
         portable = (ROOT / "tool/node/portable-npm.js").read_text(
             encoding="utf-8")
-        self.assertIn("for (const marker of ['codex.exe', 'env.ps1',", portable)
-        for file in native.BOOTSTRAP_FILES:
-            self.assertIn(file, portable)
+        marker_match = re.search(r"for \(const marker of \[([^\]]+)\]\)", portable)
+        self.assertIsNotNone(marker_match)
+        self.assertEqual(tuple(re.findall(r"'([^']+)'", marker_match.group(1))),
+                         native.BOOTSTRAP_FILES)
         self.assertIn("record(records, \"portable_node_shims\"", source)
         self.assertIn("record(records, \"windows_tool_contracts\", windows_tool_contracts)", source)
         self.assertNotIn("stage.prepare(", source)
