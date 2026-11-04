@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-04：03/full #27 Windows 配置测试缺少真实模型目录
+
+- [Run #27](https://github.com/rileyaaa/Codex-Portable/actions/runs/41763058048) 已通过工具暂存、PyInstaller 实际 EXE、396 项 Python 测试、Node 回归、候选校验和 ZIP 输入预检；Windows PowerShell 第一项启动器测试通过，第二项 `test_portable_config.ps1` 因 `tmp/windows-release-state/bundled-models.json` 不存在而失败。后续 PowerShell 测试、10 轮发行审计和客户 ZIP 未执行；没有产生 PR 或 Artifact。
+- 根因：03/full 传入了 `-BundledModelsPath`，却没有像 01/02 工作流那样先用真实 `codex.exe debug models --bundled` 导出 JSON。
+- 修复：在大文件下载前，从已校验版本的 Codex EXE 导出实际模型目录并核验必要模型身份，保存到隔离的 Windows 测试目录；提前执行完整 `test_portable_config.ps1`。更新工具后的 19 项 PowerShell 回归保持不变。
+- 在 `tests/test_full_stable_upgrade.py` 增加调用顺序与文件生成合同检查。静态复核 23 项通过，尚未进行修复后的真实 Windows full 验收。未自行触发 Actions。
+
 ## 2026-11-04：03/diagnose #25 离线合同失败修复（未进入 Windows）
 
 - 用户手动运行 [03 #25 / 41758935900](https://github.com/rileyaaa/Codex-Portable/actions/runs/41758935900)，当时源提交 `55f4d44ff445f10f9799862cabe2b76c3298b0e4`；Ubuntu 快速诊断 9 项中 `contracts`、`workflows` 两项失败，其余 7 项通过，Windows `native_diagnose` 未执行，也没有工具更新候选或 Artifact。
