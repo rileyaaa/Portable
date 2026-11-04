@@ -1,11 +1,13 @@
 """Synthetic browser archives exercise the production installer without networking."""
 import hashlib
+import io
 import importlib.util
 import json
 import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 
@@ -61,6 +63,46 @@ class BrowserInstallTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "links"):
             browser.extract_archive(self.root, self.archive, self.stage, manifest, self.prefix)
         self.assertEqual(list(outside.iterdir()), [])
+
+    def test_browser_downloader_rejects_redirect_before_network_followup(self):
+        official = "https://storage.googleapis.com/chrome-for-testing-public/test/win64/chrome-win64.zip"
+        for redirected in (
+            "https://evil.invalid/collect", "https://storage.googleapis.com/elsewhere",
+            "http://storage.googleapis.com/unsafe", "https://127.0.0.1/private",
+        ):
+            with self.subTest(redirected=redirected):
+                with self.assertRaisesRegex(ValueError, "must not redirect"):
+                    browser._RejectBrowserDownloadRedirect().redirect_request(
+                        browser.urllib.request.Request(official), None,
+                        302, "Found", {}, redirected)
+
+    def test_browser_downloader_locks_url_before_creating_package_file(self):
+        official = "https://storage.googleapis.com/chrome-for-testing-public/test/win64/chrome-win64.zip"
+        manifest = {"archive": {"resolvedUrl": official, "size": 20}}
+        payload = b"synthetic-archive"
+        def response(url):
+            result = io.BytesIO(payload)
+            result.url = url
+            return result
+        with patch.dict(os.environ, {"HTTP_PROXY": "http://127.0.0.1:10808"}, clear=True), \
+             patch.object(browser.urllib.request, "build_opener") as factory:
+            factory.return_value.open.side_effect = lambda url, timeout: response(official)
+            target = browser.download_archive(self.root, self.root, manifest)
+            self.assertEqual(target.read_bytes(), payload)
+            self.assertEqual(factory.call_args.args[0].proxies,
+                             {"http": "http://127.0.0.1:10808"})
+            self.assertIsInstance(factory.call_args.args[1],
+                                  browser._RejectBrowserDownloadRedirect)
+            self.assertEqual(factory.return_value.open.call_args.kwargs["timeout"], 60)
+        # Even a deliberately misbehaving mocked opener must not create an
+        # output file for a foreign URL; a real opener rejects earlier.
+        separate = self.root / "bad-response"
+        separate.mkdir()
+        with patch.object(browser.urllib.request, "build_opener") as factory:
+            factory.return_value.open.side_effect = lambda url, timeout: response("https://evil.invalid/asset")
+            with self.assertRaisesRegex(ValueError, "Unexpected browser download redirect"):
+                browser.download_archive(self.root, separate, manifest)
+        self.assertFalse((separate / "chrome-win64.zip").exists())
 
     def test_pinned_browser_inventory_matches_installed_official_bytes(self):
         manifest, prefix = browser.load_manifest(ROOT)

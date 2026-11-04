@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：浏览器缺件补装拒绝任何 HTTP 重定向
+
+- 独立 tool/automation/install-browser.py 此前在 urllib opener 自动处理 3xx **之后**才比较 response.url 与浏览器清单的固定 Google Storage 下载地址；如果源端异常跳转，额外的网络请求可能已发给未批准的域名。旧代码还在检查最终 URL 之前创建 chrome-win64.zip。
+- 新增 _RejectBrowserDownloadRedirect，在 urllib 准备重定向请求前直接拒绝所有跳转；Chrome for Testing 的 resolvedUrl 已经明确锁定为 https://storage.googleapis.com/...，这里无需像 GitHub Release 那样授权 CDN 跳转。调整文件打开顺序，先验证响应 URL，再创建受控下载文件。保留清单固定版本、SHA-256/文件列表验证及包内临时目录边界。
+- 补充不联网的 unittest：含跨域、同域、HTTP 降级、本机 IP 重定向拒绝，以及正常下载、明确传入代理的兼容性、假冒最终 URL 不落盘等情况。未实际安装/打开 Chromium，Windows 原生测试与网络 I/O 仍待验收；YOLO、main、Release 不变。
+
 ## 2026-11-05：03 工具更新器官方资源逐跳验证
 
 - tool/update-tools.py fetch_bytes() 原先使用 urllib.request.urlopen()，虽然审核计划限制初始资源网址并对候选二进制校验 SHA-256，但自动重定向仍可能在检查哈希前连接未审核主机，且 urllib 默认从宿主环境或 Windows 注册表读取 HTTP(S) 代理。
