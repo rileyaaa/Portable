@@ -1,4 +1,4 @@
-name: "04 - PR closed branch cleanup (automatic)"
+name: "04 - PR 关闭后自动清理来源分支"
 
 on:
   pull_request:
