@@ -259,7 +259,7 @@ try {
             }
         }
         $Paths = @($Child.EnvironmentVariables['PATH'] -split ';')
-        foreach ($Required in @((Join-Path $PortableTool 'python'), (Join-Path $PortableTool 'node'), (Join-Path $PortableTool 'android\platform-tools'))) {
+        foreach ($Required in @((Join-Path $PortableTool 'bin'), (Join-Path $PortableTool 'python'), (Join-Path $PortableTool 'node'), (Join-Path $PortableTool 'android\platform-tools'))) {
             if ($Required -notin $Paths) { throw 'Required runtime PATH disappeared.' }
         }
         if ((Join-Path $PortableTool 'go\bin') -in $Paths) { throw 'Removed compiler remains on runtime PATH.' }
