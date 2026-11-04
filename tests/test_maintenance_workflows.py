@@ -203,11 +203,32 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertEqual(
             sorted(path.name for path in (ROOT / ".github/workflows").glob("*.yml")),
             ["01-upgrade-codex-runtime.yml", "02-verify-and-publish-portable.yml",
-             "03-update-tools.yml"])
+             "03-update-tools.yml", "04-cleanup-branches.yml"])
         for retired in ("request-release-r2.yml", "02-check-compatibility.yml",
                         "download-browser.yml"):
             self.assertFalse((ROOT / ".github/workflows" / retired).exists())
         self.assertFalse((ROOT / ".github/scripts/prepare-release-r2.py").exists())
+
+    def test_branch_cleanup_requires_explicit_purge_and_does_not_create_refs(self):
+        cleanup = read(ROOT / ".github/workflows/04-cleanup-branches.yml")
+        self.assertIn("workflow_dispatch:", cleanup)
+        self.assertIn("pull_request:", cleanup)
+        self.assertIn("types: [closed]", cleanup)
+        self.assertIn("DELETE_ALL_EXCEPT_MAIN", cleanup)
+        self.assertIn("github.ref == 'refs/heads/main'", cleanup)
+        self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", cleanup)
+        self.assertIn('default_branch" != "main"', cleanup)
+        self.assertIn('open_prs" != "0"', cleanup)
+        self.assertIn("EXPECTED_HEAD_SHA", cleanup)
+        self.assertIn("BRANCH_CLEANUP_RESULT=PASS", cleanup)
+        self.assertIn("gh api --method DELETE", cleanup)
+        self.assertIn("gh api --paginate", cleanup)
+        for unsafe in ("git push", "git switch -c", "gh pr create",
+                       "gh release", "upload-artifact", "\\n  push:",
+                       "\\n  schedule:", "\\n  workflow_run:"):
+            self.assertNotIn(unsafe, cleanup)
+        self.assertIn("'.github/workflows/04-cleanup-branches.yml'",
+                      read(ROOT / ".github/maintenance/check-actionlint.ps1"))
 
     def test_upgrade_script_guards_official_versions_and_archive_paths(self):
         script = import_script(
