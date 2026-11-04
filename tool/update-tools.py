@@ -585,16 +585,24 @@ def record_updates(rows: list[dict], *, ssh: bool, day: str) -> None:
         state['tools'][row['tool']]['version'] = row['version']
         state['tools'][row['tool']]['status'] = 'bundled'
         if row['tool'] == 'node':
-            npm = json.loads((ROOT / 'tool/node/node_modules/npm/package.json').read_text(encoding='utf-8'))
-            state['tools']['npm'].update(version=npm['version'], status='bundled')
+            # Node-only upgrades must never silently downgrade or replace the
+            # separately reviewed npm/Corepack tool versions in this ledger.
+            npm = json.loads((ROOT / 'tool/node/node_modules/npm/package.json')
+                             .read_text(encoding='utf-8'))
+            require('npm' in state['tools'] and npm.get('name') == 'npm' and
+                    re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',
+                                 str(npm.get('version', ''))) and
+                    npm['version'] == state['tools']['npm']['version'],
+                    'Node-only upgrade changed the pinned npm version')
             corepack = json.loads((ROOT / 'tool/node/node_modules/corepack/package.json')
                                   .read_text(encoding='utf-8'))
-            require(corepack.get('name') == 'corepack' and
+            require('corepack' in state['tools'] and corepack.get('name') == 'corepack' and
                     re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',
-                                 str(corepack.get('version', ''))),
-                    'Retained Corepack metadata is invalid')
-            require('corepack' in state['tools'], 'Corepack must remain in the tool ledger')
-            state['tools']['corepack'].update(version=corepack['version'], status='bundled')
+                                 str(corepack.get('version', ''))) and
+                    corepack['version'] == state['tools']['corepack']['version'],
+                    'Node-only upgrade changed the pinned Corepack version')
+            state['tools']['npm']['status'] = 'bundled'
+            state['tools']['corepack']['status'] = 'bundled'
         if row['tool'] == 'adb':
             doc = re.sub(r'Platform Tools \d+(?:\.\d+)+', 'Platform Tools ' + row['version'], doc)
     if ssh:
