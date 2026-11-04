@@ -11,6 +11,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tarfile
@@ -160,6 +161,16 @@ class FullStableUpgradeTests(unittest.TestCase):
         ast.parse(source)
         self.assertIn("test_tool_updates.py", source)
         self.assertIn("native_node_shims(stage, root)", source)
+        self.assertIn('record(records, "npm_bootstrap_layout"', source)
+        self.assertIn('after=("npm_corepack", "npm_bootstrap_layout")', source)
+        # A diagnostic bootstrap must match the real portable-npm.js root
+        # existence contract. It may not silently skip one of the markers.
+        portable = (ROOT / "tool/node/portable-npm.js").read_text(
+            encoding="utf-8")
+        marker_match = re.search(r"for \(const marker of \[([^\]]+)\]\)", portable)
+        self.assertIsNotNone(marker_match)
+        self.assertEqual(tuple(re.findall(r"'([^']+)'", marker_match.group(1))),
+                         native.BOOTSTRAP_FILES)
         self.assertIn("record(records, \"portable_node_shims\"", source)
         self.assertIn("record(records, \"windows_tool_contracts\", windows_tool_contracts)", source)
         self.assertNotIn("stage.prepare(", source)
@@ -262,10 +273,37 @@ class FullStableUpgradeTests(unittest.TestCase):
                 self.assertEqual((isolated_tool / "node/node.exe").read_bytes(),
                                  node.read_bytes())
                 self.assertEqual(list((isolated_tool / "automation/playwright").iterdir()), [])
+                self.assertIn("Package-local npm root markers",
+                              native.verify_portable_bootstrap(destination))
+                self.assertEqual((destination / "codex.exe").read_bytes(),
+                                 native.DIAGNOSTIC_CODEX_MARKER)
+                self.assertFalse(native.DIAGNOSTIC_CODEX_MARKER.startswith(b"MZ"))
+                self.assertFalse((source / "codex.exe").exists())
+                self.assertEqual((destination / "env.ps1").read_bytes(),
+                                 (source / "env.ps1").read_bytes())
+                for config in ("home-runtime/.npmrc", "cache/npm/global.npmrc"):
+                    self.assertEqual((destination / config).read_bytes(), b"")
                 for name in native.COPY_FILES:
                     self.assertEqual((destination / name).read_bytes(),
                                      (source / name).read_bytes())
                 self.assertFalse((destination / "tool/automation/browsers").exists())
+                with self.assertRaisesRegex(ValueError, "codex.exe"):
+                    (destination / "codex.exe").unlink()
+                    native.verify_portable_bootstrap(destination)
+                (destination / "codex.exe").write_bytes(native.DIAGNOSTIC_CODEX_MARKER)
+                with self.assertRaisesRegex(ValueError, "env.ps1"):
+                    (destination / "env.ps1").unlink()
+                    native.verify_portable_bootstrap(destination)
+                (destination / "env.ps1").write_bytes((source / "env.ps1").read_bytes())
+                with self.assertRaisesRegex(ValueError, "non-empty"):
+                    (destination / "home-runtime/.npmrc").write_bytes(b"poisoned=1")
+                    native.verify_portable_bootstrap(destination)
+                (destination / "home-runtime/.npmrc").write_bytes(b"")
+                with self.assertRaisesRegex(ValueError, "Unexpected diagnostic Codex marker"):
+                    (destination / "codex.exe").write_bytes(b"MZ" + bytes(40))
+                    native.verify_portable_bootstrap(destination)
+                (destination / "codex.exe").write_bytes(native.DIAGNOSTIC_CODEX_MARKER)
+                native.verify_portable_bootstrap(destination)
                 self.assertEqual(
                     (source / "tool/python-packages.in.txt").read_bytes(),
                     b"source-sha-preserved-tool/python-packages.in.txt")

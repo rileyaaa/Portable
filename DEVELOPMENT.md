@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-04：新版真实 Windows diagnose Run #41746956733 的 npm 便携入口假失败与沙箱修复
+
+- **直接日志证据：** 手动 `diagnose` Run #41746956733（main 26c8a213319c4daec085766643e42ee45d33fb41），Ubuntu 元数据预检全部通过，Windows `native_diagnose` 在约三分钟内进行了 11 个独立检查，10 PASS / 1 FAIL，唯一失败是 `portable_node_shims`：`npm.cmd --version` 返回退出码 2，stderr 为 `Portable npm refused unsafe or unreadable configuration (ENOENT).`。npm/Corepack 官方来源验证与真实安装、Playwright `npm ci`、Python 3.15.2/41+7 依赖、PyPI optional manifest/license、pip check、PDF→Markdown、CLI wrapper、7-Zip 均实测 PASS。0 个 Artifact，无写入 Job 或 Release。
+- **根因：** 实际 `tool/node/portable-npm.js` 在启动前检查 root 的 `codex.exe`、`env.ps1`、`tool/node/node.exe`、`tool/node/portable-npm.js` 四个必需文件。旧 `full-stable-native-diagnose.py` 只复制 Node 相关文件及 npm 依赖，没有构造 root 的 `codex.exe` 和 `env.ps1`，因此在还没真正加载 npm 配置之前就以 `ENOENT` 退出。这是诊断隔离目录拓扑错误，不能据此判断正式 npm 12.2.1 不可用；不会为了让检测变绿而修改或削弱正式安全启动器。
+- **修复及证据边界：** 从版本库复制真实 `env.ps1` 到隔离目录，仅为 `portable-npm.js` 的 **文件存在性守卫**在隔离目录生成一个明确标注、非 MZ/PE 的 `codex.exe` *不可执行占位文件*；不下载 LFS Codex、不调用占位文件、不在正式代码目录创建或替换可执行文件。预建独立空白的 package-local npm user/global `.npmrc` 与缓存路径。新增 `npm_bootstrap_layout` 先验检查，若标记丢失或配置被写脏，立即给出具体文件名，避免又让 `npm.cmd` 运行 30 秒才报泛化 ENOENT；`portable_node_shims` 依赖此检查通过。扩展离线测试核对实际 JS 的四项守卫、暂存与源码文件一致、占位文件绝不可执行、缺失/污染的正反例。
+- **保留界限：** 诊断项目真实调用 Node/Python/Playwright/7-Zip 原阶段，但仍不代表正式 Codex LFS 程序、Chromium、19 项 Windows PowerShell、十轮发行审计和客户 ZIP 已通过。仅更新诊断/测试与维护说明，不自行 rerun、dispatch、创建 Release 或更改原安装台账。用户可先继续停止付费 AC，由维护方审查全部已知错误后再判断必要性。
+
+
 ## 2026-11-03：加强 03/diagnose——真实 Windows 小规模集成验证，不再将 20 秒元数据 PASS 当作完整放行
 
 - **额外复审：** 将 `test_release_package.py` 整套**真实合成 Git 仓库/发行 ZIP 回归**纳入最低成本元数据门禁，避免发布文件筛选出错只在正式 full 末尾暴露；Windows 集成层再执行 `test_tool_updates.py` 的维护合同测试。npm/Corepack 安装完成后，不仅验证其 JS CLI，也执行隔离包中的 `npm.cmd`、`npx.cmd`、`corepack.cmd`；Python 生成的新 `pip.cmd`、`pyinstaller.cmd` 同样实际运行。以上执行失败会作为独立阶段记录，不视作通过。此增量严格保留 Token 只读、无正式 Artifact、无 Release 的边界。
