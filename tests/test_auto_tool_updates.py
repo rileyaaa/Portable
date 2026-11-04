@@ -226,7 +226,13 @@ class AutoToolTests(unittest.TestCase):
             encoding="utf-8")
         self.assertIn("options: [check, diagnose, prepare, full, auto]", workflow)
         self.assertIn("tool/auto-tool-updates.py check", workflow)
-        self.assertIn("tool/auto-tool-updates.py plan", workflow)
+        # Ubuntu uses POSIX paths; the Windows verifier and writer use native
+        # PowerShell paths. Check each job, not just a global string occurrence.
+        windows_plan = r".\tool\auto-tool-updates.py plan"
+        verify = workflow.split("\n  verify:", 1)[1].split("\n  propose:", 1)[0]
+        writer = workflow.split("\n  propose:", 1)[1].split("\n  full_verify:", 1)[0]
+        self.assertEqual(verify.count(windows_plan), 1)
+        self.assertEqual(writer.count(windows_plan), 1)
         self.assertIn("!cancelled()", workflow)
         self.assertEqual(workflow.count("-p 'test_auto_tool_updates.py' -v"), 2)
         self.assertLess(workflow.index("-p 'test_auto_tool_updates.py' -v"),
