@@ -1,5 +1,15 @@
 # 开发与维护记录
 
+## 2026-11-04：原生环境变量有效性与「只能写当前包」的技术边界
+
+- 对 `env.ps1` 59 个不同默认赋值逐项分类：45 个 `CODEX_*`（大多数是项目启动器界面，不能冒称官方 Codex 环境变量）、13 个 Android/Tool 路径变量、1 个 `OPENAI_API_KEY`。逐项找到启动器或账号脚本的读取/传递位置，**这只证明配置链接，不等于上游消费者或 Windows 系统实际遵守，也不等于所有变量都直接承担目录隔离**。
+- 已核对上游文档的变量：`ANDROID_HOME`、`ANDROID_USER_HOME` 有明确 SDK 含义；`ANDROID_SDK_ROOT` 已弃用但暂留一致性别名，`ANDROID_SDK_HOME` 主要兼容旧工具；`ADB_VENDOR_KEYS` 是 ADB 正式支持的密钥位置变量。本包已安装独立 ADB，但完整 SDK/JDK 与 Appium 尚未安装；`JAVA_HOME`、`APPIUM_HOME` 目前只指向预留包内目录，**不能按可运行工具验收**。
+- 尚无充分上游消费证据的路径：`APKTOOL_FRAMEWORK_DIR` 不能代替 Apktool 官方 `--frame-path`；`FRIDA_CACHE_DIR` 不是已核实的 Frida 官方 CLI 配置开关，官方 frida-tools 在 Windows 主要使用 `LOCALAPPDATA`；`MITMPROXY_HOME` 不作为已经证实的 mitmproxy 原生配置，需在真正安装后以 `--set confdir=<包内路径>` 等官方选项验证。这三类工具当前均未预装。三个 `APK_LAB_*` 属于项目自有任务目录约定而非上游通用环境变量；即使传给子进程也不能当成操作系统写入禁令。
+- 上游 Python 嵌入式 `python315._pth` 的模块路径隔离会忽略部分 Python 环境变量，因此 `PYTHONUSERBASE`、`PYTHONPYCACHEPREFIX` 有值不保证原生解释器按它们使用，`-B`、`-E` / `-s` 和显式包内临时目录才是相关补充。pip 官方 `PIP_CONFIG_FILE=nul` 可以阻止默认配置文件读取；Node/npm 的脚本路径、用户配置及内建 PATH 则需要对应封装器验证。
+- **明确不能做到的事：** 单靠改 `HOME` / `USERPROFILE` / `APPDATA` 等环境变量，无法限制任意程序的绝对路径、Windows Known Folder API、注册表或所有系统 I/O。Codex 普通模式的工作区沙箱是另一层保护；YOLO 的 `danger-full-access` 明确不提供目录封闭。若要求真正不可读写包外，需要 OS 级权限/沙箱配合进程级 I/O 观察，不能由 59 个变量静态存在作出保证。
+- 此轮复核了 19/19 个 Python CLI CMD 的实际 GitHub 文件：新增的预启动 PowerShell 缓存关闭行存在、保持 ASCII/CRLF，生成器及回归断言已同步。单独模拟测试 Windows 系统根格式正常与拒绝输入共 10 组；没有执行 PowerShell 5.1、实际浏览器、Windows 文件访问监控、外部 SSH/ADB 或 GitHub Actions，均保留为实测待验。
+
+
 ## 2026-11-04：宿主配置继承的独立工具入口防护（维护 PR #31，待 Windows 验证）
 
 - 按官方 pip 配置规则确认：直接使用 `tool/bin/pip*.cmd` 调用 pip 时，原 Python CLI 转接器没有主动禁用 Windows 宿主/用户 `pip.ini`。现对 pip console_script 清理继承的 `PIP_*`，设置 `PIP_CONFIG_FILE=nul`（Windows `os.devnull`）、关闭外部 pip 缓存与版本检查。根启动器原有禁用配置继续保留；第三方显式路径参数及直接执行 `python.exe -m pip` 不由此转接器保护。
