@@ -1,14 +1,14 @@
-name: "01 - 升级 Codex 官方组件（手动）"
+name: "01 - 更新 Codex（默认只验证）"
 
 on:
   workflow_dispatch:
     inputs:
       release_url:
-        description: "官方完整 Release 链接，例如 https://github.com/openai/codex/releases/tag/rust-v0.167.0-alpha.3"
+        description: "粘贴官方 Codex Release 完整链接（允许 Alpha/RC 测试）"
         required: true
         type: string
       commit_changes:
-        description: "默认只检查；仅稳定版允许提交到 main，Alpha/Beta/RC 只能测试"
+        description: "默认只验证；勾选后仅稳定版且全部通过才提交 main"
         required: true
         type: boolean
         default: false
