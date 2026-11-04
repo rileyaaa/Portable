@@ -47,9 +47,17 @@ def request_bytes(url: str, *, limit: int = MAX_METADATA) -> bytes:
             not parsed.username and not parsed.password and
             parsed.port in (None, 443) and not parsed.query and not parsed.fragment,
             "Unapproved official metadata endpoint")
-    request = urllib.request.Request(
-        url, headers={"User-Agent": "Codex-Portable-auto-check/1",
-                      "Accept": "application/vnd.github+json, application/json, text/plain"})
+    headers = {"User-Agent": "Codex-Portable-auto-check/1",
+               "Accept": "application/vnd.github+json, application/json, text/plain"}
+    if parsed.hostname == "api.github.com":
+        # Only the official GitHub metadata API receives the Actions token.
+        # Never forward it to nodejs.org, release asset URLs or redirect hosts.
+        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+        if token:
+            require("\r" not in token and "\n" not in token and len(token) < 8192,
+                    "Invalid GitHub metadata token")
+            headers["Authorization"] = "Bearer " + token
+    request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=20) as response:
         final = urllib.parse.urlsplit(response.url)
         require(final.scheme == "https" and final.hostname in HOSTS and
