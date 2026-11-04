@@ -531,7 +531,7 @@ def verify_node_lfs_index(group: str) -> str | None:
             'Existing Node LFS rule is noncanonical or duplicated')
     expected = baseline if existing else baseline + NODE_LFS_ATTRIBUTE
     require(staged == expected,
-            'Staged Node LFS rule must retain the reviewed baseline or one-line addition')
+            'Staged Node LFS rule must match reviewed one-line addition or reviewed baseline')
     pointer = subprocess.check_output(['git', 'show', ':' + NODE_LFS_PATH], cwd=ROOT)
     match = re.fullmatch(
         rb'version https://git-lfs.github.com/spec/v1\n'
