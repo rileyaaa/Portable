@@ -120,7 +120,7 @@ def verified_asset(tool: str, stable: str, release: dict,
     return url, digest[7:]
 
 
-def official_node_latest() -> str:
+def official_node_latest(*, supported_major: int | None = None) -> str:
     rows = request_json("https://nodejs.org/dist/index.json")
     require(isinstance(rows, list) and 1 <= len(rows) <= 5000,
             "Unexpected official Node distribution index")
@@ -135,6 +135,12 @@ def official_node_latest() -> str:
         if isinstance(files, list) and "win-x64-zip" in files:
             versions.append(tag[1:])
     require(versions, "No official stable Node Windows x64 ZIP release")
+    if supported_major is not None:
+        require(type(supported_major) is int and 1 <= supported_major <= 99,
+                "Unexpected pinned Node major")
+        versions = [candidate for candidate in versions
+                    if version(candidate)[0] == supported_major]
+        require(versions, "No stable official Node ZIP for the verified current major")
     return max(versions, key=version)
 
 
@@ -179,10 +185,13 @@ def discover() -> tuple[list[dict], dict[str, dict]]:
     installed = ledger_versions()
     candidates = []
     status = {}
-    latest_node = official_node_latest()
+    # A new Node major changes npm/ABI/launcher contracts; it is intentionally
+    # not silently treated as a compatible patch/minor update.
+    latest_node = official_node_latest(supported_major=version(installed["node"])[0])
     require(version(latest_node) >= version(installed["node"]),
             "Official Node latest release is older than installed version")
-    status["node"] = {"installed": installed["node"], "latest": latest_node}
+    status["node"] = {"installed": installed["node"], "latest": latest_node,
+                      "policy": "same_verified_major_only"}
     if version(latest_node) > version(installed["node"]):
         candidates.append(node_candidate(latest_node))
     for tool in OFFICIAL:
