@@ -170,14 +170,22 @@ def check_python_shims(stage, root: Path, runtime: Path, folder: Path) -> str:
     return "Pinned pip/PyInstaller native imports and real Windows CMD wrappers passed"
 
 
-def native_node_shims(stage, root: Path) -> str:
-    """Execute package-local npm/npx/Corepack CMD, not just npm-cli.js."""
-    for label in ("npm.cmd", "npx.cmd", "corepack.cmd"):
-        launcher = root / "tool/node" / label
-        if not launcher.is_file():
-            raise ValueError("Missing portable Windows Node launcher: " + label)
-        stage.run(launcher, "--version", cwd=root)
-    return "Portable npm.cmd, npx.cmd and corepack.cmd native launchers passed"
+NATIVE_NODE_CMD_LABELS = (
+    ("npm_cmd", "npm.cmd"),
+    ("npx_cmd", "npx.cmd"),
+    ("corepack_cmd", "corepack.cmd"),
+)
+
+
+def native_node_shim(stage, root: Path, label: str) -> str:
+    """Execute one real portable CMD so failures in others are still collected."""
+    if label not in {filename for _, filename in NATIVE_NODE_CMD_LABELS}:
+        raise ValueError("Unapproved portable Windows Node launcher: " + label)
+    launcher = root / "tool/node" / label
+    if not launcher.is_file() or launcher.is_symlink():
+        raise ValueError("Missing ordinary portable Windows Node launcher: " + label)
+    stage.run(launcher, "--version", cwd=root)
+    return label + " real Windows CMD launcher passed"
 
 
 def windows_tool_contracts() -> str:
@@ -203,8 +211,11 @@ def execute(root: Path, stage, plan: dict, node: Path) -> list[dict]:
     record(records, "node26", lambda: check_node_version(node))
     record(records, "npm_corepack", lambda: stage.stage_npm(plan, work / "npm", evidence),
            after=("node26",))
-    record(records, "portable_node_shims", lambda: native_node_shims(stage, root),
-           after=("npm_corepack", "npm_bootstrap_layout"))
+    # Probe these independently: if npm.cmd fails, npx.cmd and Corepack can
+    # still reveal unrelated problems in the same paid Windows diagnostic.
+    for probe, label in NATIVE_NODE_CMD_LABELS:
+        record(records, probe, lambda label=label: native_node_shim(stage, root, label),
+               after=("npm_corepack", "npm_bootstrap_layout"))
     record(records, "playwright_npm_ci",
            lambda: stage.stage_playwright(plan, work / "npm", evidence),
            after=("npm_corepack",))

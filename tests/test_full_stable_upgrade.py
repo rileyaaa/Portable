@@ -160,7 +160,7 @@ class FullStableUpgradeTests(unittest.TestCase):
             encoding="utf-8")
         ast.parse(source)
         self.assertIn("test_tool_updates.py", source)
-        self.assertIn("native_node_shims(stage, root)", source)
+        self.assertIn("native_node_shim(stage, root, label)", source)
         self.assertIn('record(records, "npm_bootstrap_layout"', source)
         self.assertIn('after=("npm_corepack", "npm_bootstrap_layout")', source)
         # A diagnostic bootstrap must match the real portable-npm.js root
@@ -171,7 +171,7 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertIsNotNone(marker_match)
         self.assertEqual(tuple(re.findall(r"'([^']+)'", marker_match.group(1))),
                          native.BOOTSTRAP_FILES)
-        self.assertIn("record(records, \"portable_node_shims\"", source)
+        self.assertIn("for probe, label in NATIVE_NODE_CMD_LABELS:", source)
         self.assertIn("record(records, \"windows_tool_contracts\", windows_tool_contracts)", source)
         self.assertNotIn("stage.prepare(", source)
         self.assertNotIn("stage.stage_browser(", source)
@@ -201,22 +201,54 @@ class FullStableUpgradeTests(unittest.TestCase):
                                                    "detail": "verified", "seconds": 0}]), 0)
 
     def test_native_node_launcher_probe_runs_real_package_cmd_paths(self):
+        labels = (("npm_cmd", "npm.cmd"), ("npx_cmd", "npx.cmd"),
+                  ("corepack_cmd", "corepack.cmd"))
+        self.assertEqual(native.NATIVE_NODE_CMD_LABELS, labels)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             node = root / "tool/node"
             node.mkdir(parents=True)
-            for label in ("npm.cmd", "npx.cmd", "corepack.cmd"):
+            for _, label in labels:
                 (node / label).write_text("@echo off\n", encoding="ascii")
             fake_stage = Mock()
-            self.assertIn("Portable npm.cmd", native.native_node_shims(fake_stage, root))
-            self.assertEqual(fake_stage.run.call_count, 3)
-            for call, label in zip(fake_stage.run.call_args_list,
-                                   ("npm.cmd", "npx.cmd", "corepack.cmd")):
+            for probe, label in labels:
+                self.assertIn(label, native.native_node_shim(fake_stage, root, label))
+            self.assertEqual(fake_stage.run.call_count, len(labels))
+            for call, (_, label) in zip(fake_stage.run.call_args_list, labels):
                 self.assertEqual(call.args, (node / label, "--version"))
                 self.assertEqual(call.kwargs["cwd"], root)
+
+            fake_stage.run.reset_mock()
+            with self.assertRaisesRegex(ValueError, "Unapproved portable Windows"):
+                native.native_node_shim(fake_stage, root, "../outside.cmd")
+            fake_stage.run.assert_not_called()
             (node / "npx.cmd").unlink()
-            with self.assertRaisesRegex(ValueError, "Missing portable Windows Node"):
-                native.native_node_shims(fake_stage, root)
+            with self.assertRaisesRegex(ValueError, "Missing ordinary portable Windows"):
+                native.native_node_shim(fake_stage, root, "npx.cmd")
+            fake_stage.run.assert_not_called()
+
+            # When one real CMD fails, the other two are still checked.
+            (node / "npx.cmd").write_text("@echo off\n", encoding="ascii")
+            failing_stage = Mock()
+            def runner(cmd, version, **kwargs):
+                if cmd.name == "npx.cmd":
+                    raise ValueError("synthetic native npx failure")
+                return None
+            failing_stage.run.side_effect = runner
+            results = []
+            native.record(results, "npm_corepack", lambda: "installed")
+            native.record(results, "npm_bootstrap_layout", lambda: "layout checked")
+            for probe, label in labels:
+                native.record(
+                    results, probe,
+                    lambda label=label: native.native_node_shim(failing_stage, root, label),
+                    after=("npm_corepack", "npm_bootstrap_layout"))
+            self.assertEqual(
+                [(item["probe"], item["status"]) for item in results[-3:]],
+                [("npm_cmd", "PASS"), ("npx_cmd", "FAIL"),
+                 ("corepack_cmd", "PASS")])
+            self.assertEqual(failing_stage.run.call_count, 3)
+
 
     def test_windows_native_contracts_are_real_bounded_unittests(self):
         with patch.object(native.subprocess, "run", return_value=subprocess.CompletedProcess(
