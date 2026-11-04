@@ -209,24 +209,29 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
             self.assertFalse((ROOT / ".github/workflows" / retired).exists())
         self.assertFalse((ROOT / ".github/scripts/prepare-release-r2.py").exists())
 
-    def test_branch_cleanup_requires_explicit_purge_and_does_not_create_refs(self):
+    def test_closed_pr_cleanup_never_exposes_bulk_deletion(self):
         cleanup = read(ROOT / ".github/workflows/04-cleanup-branches.yml")
-        self.assertIn("workflow_dispatch:", cleanup)
-        self.assertIn("pull_request:", cleanup)
-        self.assertIn("types: [closed]", cleanup)
-        self.assertIn("DELETE_ALL_EXCEPT_MAIN", cleanup)
-        self.assertIn("github.ref == 'refs/heads/main'", cleanup)
+        self.assertIn("\non:\n  pull_request:\n    types: [closed]", cleanup)
+        self.assertIn("jobs:\n  cleanup_closed_pr:", cleanup)
+        self.assertIn("github.event.pull_request.base.ref == 'main'", cleanup)
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", cleanup)
-        self.assertIn('default_branch" != "main"', cleanup)
-        self.assertIn('open_prs" != "0"', cleanup)
+        self.assertIn("github.event.pull_request.head.ref != 'main'", cleanup)
+        self.assertIn("BRANCH: ${{ github.event.pull_request.head.ref }}", cleanup)
         self.assertIn("EXPECTED_HEAD_SHA", cleanup)
-        self.assertIn("BRANCH_CLEANUP_RESULT=PASS", cleanup)
+        self.assertIn('if [[ "$current" != "$EXPECTED_HEAD_SHA" ]]', cleanup)
+        self.assertIn('if [[ "$state" != "closed" ]]', cleanup)
+        self.assertIn('if [[ "$open_uses" != "0" ]]', cleanup)
         self.assertIn("gh api --method DELETE", cleanup)
-        self.assertIn("gh api --paginate", cleanup)
-        for unsafe in ("git push", "git switch -c", "gh pr create",
-                       "gh release", "upload-artifact", "\n  push:",
-                       "\n  schedule:", "\n  workflow_run:"):
-            self.assertNotIn(unsafe, cleanup)
+        self.assertEqual(cleanup.count("gh api --method DELETE"), 1)
+        self.assertIn("BRANCH_CLEANUP_RESULT=PASS", cleanup)
+        self.assertIn("contents: write", cleanup)
+        self.assertIn("pull-requests: read", cleanup)
+        for forbidden in ("workflow_dispatch:", "purge_non_main:",
+                          "DELETE_ALL_EXCEPT_MAIN", "gh api --paginate",
+                          "git push", "git switch -c", "gh pr create",
+                          "gh release", "upload-artifact", "\n  push:",
+                          "\n  schedule:", "\n  workflow_run:"):
+            self.assertNotIn(forbidden, cleanup)
         self.assertIn("'.github/workflows/04-cleanup-branches.yml'",
                       read(ROOT / ".github/maintenance/check-actionlint.ps1"))
 
