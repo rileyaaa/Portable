@@ -79,9 +79,9 @@ class AndroidGuardTests(unittest.TestCase):
         # the deprecated sre_parse shim must not be needed to load the script.
         lookup = self.load_script("lookup_name.py")
         self.assertEqual(lookup.sre_parse.__name__, "re._parser")
-        self.assertTrue(lookup._safe_regex(r"Activity\\s+[A-Za-z]+").search("Activity Main"))
+        self.assertTrue(lookup._safe_regex(r"Activity\s+[A-Za-z]+").search("Activity Main"))
         for dangerous in (r"(a+)+", r"(a*+)+", r"(?=a)b", r"(?<=a)b",
-                          r"(a)\\1", r"(a|b){1,3}+{1,3}"):
+                          r"(a)\1", r"(a|b){1,3}+{1,3}"):
             with self.subTest(pattern=dangerous):
                 with self.assertRaises((ValueError, lookup.re.error)):
                     lookup._safe_regex(dangerous)
