@@ -207,7 +207,7 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         env = read(ROOT / "env.ps1")
         launcher = read(ROOT / "run-codex.ps1")
         login = read(ROOT / "login-json.ps1")
-        names = set(re.findall(r"(?m)^\\s*\\$env:([A-Z][A-Z0-9_]+)\\s*=", env))
+        names = set(re.findall(r"(?m)^\s*\$env:([A-Z][A-Z0-9_]+)\s*=", env))
         codex = {name for name in names if name.startswith("CODEX_")}
         tools = names - codex - {"OPENAI_API_KEY"}
         self.assertGreaterEqual(len(codex), 45)
