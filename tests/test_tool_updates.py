@@ -54,6 +54,37 @@ def explicit_utf8_text_io(call: ast.Call) -> bool:
 
 
 class ToolUpdateTests(unittest.TestCase):
+    def setUp(self):
+        # These tests deliberately audit the fixed, reviewed legacy plan.
+        # 03/auto sets TOOL_AUTO_UPDATE_PLAN=1 for candidate staging; if this
+        # leaks into the legacy fixture assertions after installation, a real
+        # update fails the full Windows suite despite valid candidate bytes.
+        # Independently test the dynamic selector in the dedicated test below.
+        pinned = patch.dict(os.environ, {'TOOL_AUTO_UPDATE_PLAN': ''})
+        pinned.start()
+        self.addCleanup(pinned.stop)
+
+    def test_auto_selector_does_not_change_reviewed_legacy_plan_contract(self):
+        legacy = [row['tool'] for row in tools.plan()]
+        self.assertEqual(legacy, ['ripgrep', 'fd', 'jq'])
+        auto_row = dict(
+            tool='jq', group='cli', version='1.9.0',
+            url='https://github.com/jqlang/jq/releases/download/'
+                'jq-1.9.0/jq-windows-amd64.exe',
+            sha256='a' * 64, destination='tool/bin/jq.exe',
+            kind='executable',
+        )
+        with patch.dict(os.environ, {'TOOL_AUTO_UPDATE_PLAN': '1'}), \
+             patch.object(tools, 'load_json', return_value={
+                 'schema': 1, 'platform': 'win32-x64',
+                 'candidates': [auto_row],
+             }) as load:
+            self.assertEqual([r['tool'] for r in tools.selected_rows('tools')],
+                             ['jq'])
+            load.assert_called_once_with(
+                tools.ROOT / 'tmp/auto-tool-update-plan.json')
+        self.assertEqual([row['tool'] for row in tools.plan()], legacy)
+
     def test_separate_ssh_closure_and_pth_path(self):
         self.assertEqual(set(ssh.pins()), {
             'paramiko', 'bcrypt', 'cryptography', 'invoke', 'pynacl', 'cffi', 'pycparser'
