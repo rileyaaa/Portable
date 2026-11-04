@@ -50,13 +50,17 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14'
+      - name: Run official auto-version security contracts offline before any network call
+        run: python -E -s -B -m unittest discover -s tests -p 'test_auto_tool_updates.py' -v
       - name: Refuse unverified upstream assets and skip unchanged versions
         id: discovery
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python -E -s -B tool/auto-tool-updates.py check
 
   verify:
     needs: auto_check
-    if: ${{ always() && github.ref == 'refs/heads/main' && inputs.mode != 'full' && inputs.mode != 'diagnose' && (inputs.mode != 'auto' || (needs.auto_check.result == 'success' && needs.auto_check.outputs.updates == 'true')) }}
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && inputs.mode != 'full' && inputs.mode != 'diagnose' && (inputs.mode != 'auto' || (needs.auto_check.result == 'success' && needs.auto_check.outputs.updates == 'true')) }}
     permissions:
       contents: read
     runs-on: windows-latest
@@ -119,6 +123,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p 'test_tool_updates.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Pre-download tool maintenance regression failure.' }
+          & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p 'test_auto_tool_updates.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Pre-download auto-version security regression failure.' }
           # Fail on the actual synthetic customer package tests before any
           # expensive Node/SSH download, not only in the post-update full suite.
           & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p 'test_release_package.py' -v
@@ -147,6 +153,8 @@ jobs:
       - name: Regenerate exact official Windows auto candidates in the read-only verifier
         if: ${{ inputs.mode == 'auto' }}
         timeout-minutes: 5
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
           & .\tool\python\python.exe -E -s -B .\tool\auto-tool-updates.py plan
