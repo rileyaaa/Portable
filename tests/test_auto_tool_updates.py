@@ -295,23 +295,37 @@ class AutoToolTests(unittest.TestCase):
         self.assertIsNotNone(loader.loader)
         router = importlib.util.module_from_spec(loader)
         loader.loader.exec_module(router)
-        plan = json.loads(router.PLAN.read_text(encoding="utf-8"))
+        original = json.loads(router.PLAN.read_text(encoding="utf-8"))
         ledger = json.loads(router.LEDGER.read_text(encoding="utf-8"))
         build = json.loads(router.BUILD.read_text(encoding="utf-8"))
         dependencies = json.loads(router.DEPENDENCIES.read_text(encoding="utf-8"))
+        # A reviewed plan may legitimately contain newer versions in future.
+        # Build a synthetic exactly-installed baseline rather than asserting
+        # that the live upgrade plan must forever remain unchanged.
+        plan = json.loads(json.dumps(original))
+        for row in plan["targets"]:
+            if row["name"] in router.REVIEWED_TOOLS:
+                row["latestStable"] = ledger["tools"][row["name"]]["version"]
+            elif row["name"] == "pyinstaller":
+                row["latestStable"] = build["packages"]["pyinstaller"]
         needed, changed = router.route(plan, ledger, build, dependencies)
         self.assertFalse(needed)
         self.assertEqual(changed, [])
         self.assertIn("paramiko", router.REVIEWED_TOOLS)
         upgraded = json.loads(json.dumps(plan))
+        ssh_installed = ledger["tools"]["paramiko"]["version"]
+        part = list(router.stable(ssh_installed))
+        part[1] += 1
+        higher = ".".join(map(str, part))
         next(row for row in upgraded["targets"] if row["name"] == "paramiko")[
-            "latestStable"] = "5.2.0"
+            "latestStable"] = higher
         needed, changed = router.route(upgraded, ledger, build, dependencies)
         self.assertTrue(needed)
-        self.assertEqual(changed, ["paramiko:5.1.0->5.2.0"])
+        self.assertEqual(changed, [f"paramiko:{ssh_installed}->{higher}"])
         downgraded = json.loads(json.dumps(plan))
+        node_major = router.stable(ledger["tools"]["node"]["version"])[0]
         next(row for row in downgraded["targets"] if row["name"] == "node")[
-            "latestStable"] = "25.9.0"
+            "latestStable"] = str(node_major - 1) + ".0.0"
         with self.assertRaisesRegex(ValueError, "downgrade node"):
             router.route(downgraded, ledger, build, dependencies)
 
