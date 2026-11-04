@@ -250,6 +250,43 @@ class FullStableUpgradeTests(unittest.TestCase):
             self.assertEqual(failing_stage.run.call_count, 3)
 
 
+    def test_native_staged_python_315_android_and_pip_gates(self):
+        # Regression for full Run #41750556896: fast/native diagnosis must
+        # discover both incompatibilities before another costly full attempt.
+        targets = (("python315_android_guard", "test_android_guard.py"),
+                   ("python315_pip_config", "test_pip_config_isolation.py"))
+        self.assertEqual(native.STAGED_PYTHON_REGRESSIONS, targets)
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory) / "python-runtime"
+            runtime.mkdir()
+            python = runtime / "python.exe"
+            python.write_bytes(b"not executable; mocked test only")
+            mocked = Mock()
+            for _, pattern in targets:
+                self.assertIn(pattern, native.staged_python_regression(
+                    mocked, runtime, pattern))
+            self.assertEqual(mocked.run.call_count, 2)
+            for call, (_, pattern) in zip(mocked.run.call_args_list, targets):
+                self.assertEqual(call.args,
+                                 (python, "-E", "-s", "-B", "-m", "unittest",
+                                  "discover", "-s", "tests", "-p", pattern, "-q"))
+                self.assertEqual(call.kwargs["cwd"], ROOT)
+            with self.assertRaisesRegex(ValueError, "Unapproved staged"):
+                native.staged_python_regression(mocked, runtime, "test_untrusted.py")
+            python.unlink()
+            with self.assertRaisesRegex(ValueError, "Missing isolated"):
+                native.staged_python_regression(mocked, runtime, targets[0][1])
+            self.assertEqual(mocked.run.call_count, 2)
+        source = (ROOT / "tool/full-stable-native-diagnose.py").read_text(
+            encoding="utf-8")
+        self.assertLess(source.index("for probe, pattern in STAGED_PYTHON_REGRESSIONS:"),
+                        source.index('record(records, "python_cli_shims"'))
+        self.assertIn('after=("python315_install",)', source)
+        pip_test = (ROOT / "tests/test_pip_config_isolation.py").read_text(
+            encoding="utf-8")
+        self.assertIn('getattr(c, "Kind", None)', pip_test)
+        self.assertIn('runtime / "python315._pth"', pip_test)
+
     def test_windows_native_contracts_are_real_bounded_unittests(self):
         with patch.object(native.subprocess, "run", return_value=subprocess.CompletedProcess(
                 args=[], returncode=0, stdout="", stderr="")) as executed:
