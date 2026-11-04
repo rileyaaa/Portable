@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -224,7 +225,7 @@ class AutoToolTests(unittest.TestCase):
     def test_workflow_auto_is_manual_and_preserves_release_gates(self):
         workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
-        self.assertIn("options: [check, diagnose, prepare, full, auto]", workflow)
+        self.assertIn("options: [auto, auto-pr, diagnose, check, prepare-tools, prepare-tools-pr, prepare-ssh, prepare-ssh-pr, prepare-all, prepare-all-pr, full, full-pr]", workflow)
         self.assertIn("tool/auto-tool-updates.py check", workflow)
         # Ubuntu uses POSIX paths; the Windows verifier and writer use native
         # PowerShell paths. Check each job, not just a global string occurrence.
@@ -244,11 +245,48 @@ class AutoToolTests(unittest.TestCase):
         self.assertIn("needs.auto_check.outputs.updates == 'true'", workflow)
         self.assertIn("TOOL_AUTO_UPDATE_PLAN=1", workflow)
         self.assertIn("TOOL_AUTO_UPDATE_PLAN = '1'", workflow)
-        self.assertIn("inputs.mode == 'prepare' || inputs.mode == 'auto'", workflow)
+        self.assertIn("startsWith(inputs.operation, 'prepare-') || startsWith(inputs.operation, 'auto')", workflow)
         self.assertIn("WINDOWS_PS_TEST_END=", workflow)
         self.assertIn("release-audit.py --release", workflow)
         self.assertIn("release-audit.py --verify", workflow)
         self.assertNotIn("gh release create", workflow)
+
+
+    def test_one_operation_input_has_explicit_verified_pr_routes(self):
+        workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
+            encoding="utf-8")
+        dispatch = workflow.split("\npermissions:", 1)[0]
+        choices = re.search(r"(?m)^        options: \[(.+)\]$", dispatch)
+        self.assertIsNotNone(choices)
+        self.assertEqual(choices.group(1).split(", "), [
+            "auto", "auto-pr", "diagnose", "check",
+            "prepare-tools", "prepare-tools-pr",
+            "prepare-ssh", "prepare-ssh-pr",
+            "prepare-all", "prepare-all-pr", "full", "full-pr",
+        ])
+        self.assertEqual(dispatch.count("      operation:"), 1)
+        self.assertIn("default: auto", dispatch)
+        for removed in ("      mode:", "      group:", "      create_pr:"):
+            self.assertNotIn(removed, dispatch)
+        self.assertNotIn("inputs.mode", workflow)
+        self.assertNotIn("inputs.group", workflow)
+        self.assertNotIn("inputs.create_pr", workflow)
+        auto = workflow.split("\n  auto_check:", 1)[1].split("\n  verify:", 1)[0]
+        verify = workflow.split("\n  verify:", 1)[1].split("\n  propose:", 1)[0]
+        propose = workflow.split("\n  propose:", 1)[1].split("\n  full_verify:", 1)[0]
+        full_write = workflow.split("\n  full_propose:", 1)[1].split(
+            "\n  full_artifact_cleanup:", 1)[0]
+        cleanup = workflow.split("\n  full_artifact_cleanup:", 1)[1].split(
+            "\n  fast_diagnose:", 1)[0]
+        self.assertIn("startsWith(inputs.operation, 'auto')", auto)
+        self.assertIn("needs.auto_check.outputs.updates == 'true'", verify)
+        self.assertIn("endsWith(inputs.operation, '-pr')", propose)
+        self.assertNotIn("endsWith(inputs.operation, '-pr')", verify)
+        self.assertIn("inputs.operation == 'full-pr'", full_write)
+        self.assertIn("inputs.operation == 'full'", cleanup)
+        self.assertEqual(workflow.count("TOOL_GROUP: ${{"), 4)
+        self.assertIn("startsWith(inputs.operation, 'prepare-ssh')", workflow)
+        self.assertIn("startsWith(inputs.operation, 'prepare-all')", workflow)
 
 
 if __name__ == "__main__":
