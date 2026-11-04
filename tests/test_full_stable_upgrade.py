@@ -263,6 +263,47 @@ class FullStableUpgradeTests(unittest.TestCase):
             self.assertEqual(failing_stage.run.call_count, 3)
 
 
+    def test_staged_npm12_portable_regressions_gate_before_large_downloads(self):
+        # Run #41755069778: npm 12 rejects --prefi itself; the 10-test suite
+        # should run against the *updated* npm before Python or Chromium.
+        source = (ROOT / "tool/full-stable-prepare.py").read_text(
+            encoding="utf-8")
+        self.assertLess(source.index("verify_staged_portable_npm(ROOT)"),
+                        source.index("version, revision = stage_playwright(plan"))
+        self.assertLess(source.index("verify_staged_portable_npm(ROOT)"),
+                        source.index("stage_browser(temp, version, revision"))
+        diagnostic = (ROOT / "tool/full-stable-native-diagnose.py").read_text(
+            encoding="utf-8")
+        self.assertIn('"tests/test_portable_npm.js"', native.COPY_FILES)
+        self.assertIn('record(records, "npm12_portable_regressions"', diagnostic)
+        self.assertIn('lambda: stage.verify_staged_portable_npm(root)', diagnostic)
+        self.assertIn('after=("npm_corepack", "npm_bootstrap_layout")', diagnostic)
+        js = (ROOT / "tests/test_portable_npm.js").read_text(encoding="utf-8")
+        self.assertIn("Invalid abbreviated flag", js)
+        self.assertIn("inside the current portable package", js)
+        self.assertIn("project npmrc links are rejected", js)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            node = root / "tool/node/node.exe"
+            test = root / "tests/test_portable_npm.js"
+            metadata = root / "tool/node/node_modules/npm/package.json"
+            for file in (node, test, metadata):
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_text("synthetic test only", encoding="utf-8")
+            metadata.write_text('{"name":"npm","version":"12.2.1"}', encoding="utf-8")
+            with patch.object(stage, "ROOT", root), patch.object(stage, "run") as invoked:
+                stage.verify_staged_portable_npm(root)
+                invoked.assert_called_once_with(node, "--test", test, cwd=root)
+                metadata.write_text('{"name":"npm","version":"11.20.0"}',
+                                    encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "pinned npm"):
+                    stage.verify_staged_portable_npm(root)
+                invoked.assert_called_once()
+                metadata.unlink()
+                with self.assertRaisesRegex(ValueError, "Missing or linked"):
+                    stage.verify_staged_portable_npm(root)
+                invoked.assert_called_once()
+
     def test_native_staged_python_315_android_and_pip_gates(self):
         # Regression for full Run #41750556896: fast/native diagnosis must
         # discover both incompatibilities before another costly full attempt.
