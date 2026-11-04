@@ -156,10 +156,19 @@ test('direct npm shims discard inherited host shell and lifecycle Node options',
     ...f.env,
     NPM_CONFIG_SCRIPT_SHELL: path.join(f.base, 'host-shell.exe'),
     npm_config_node_options: '--require=host.js',
+    NPM_CONFIG_SHELL: path.join(f.base, 'host-shell.exe'),
+    NPM_CONFIG_EDITOR: path.join(f.base, 'host-editor.exe'),
+    NPM_CONFIG_GIT: path.join(f.base, 'host-git.exe'),
+    SHELL: path.join(f.base, 'host-shell.exe'),
+    EDITOR: path.join(f.base, 'host-editor.exe'),
+    VISUAL: path.join(f.base, 'host-editor.exe'),
+    GIT_CONFIG_SYSTEM: path.join(f.base, 'host-gitconfig'),
+    SSH_ASKPASS: path.join(f.base, 'host-ssh.exe'),
     NODE_OPTIONS: '--require=host.js',
   });
   assert.equal(Object.keys(env).filter(key =>
-    /^(NPM_CONFIG_(SCRIPT_SHELL|NODE_OPTIONS)|NODE_OPTIONS)$/i.test(key)).length, 0);
+    /^(NPM_CONFIG_(SCRIPT_SHELL|NODE_OPTIONS|SHELL|EDITOR|GIT)|NODE_OPTIONS|SHELL|EDITOR|VISUAL|SSH_.*|GIT_CONFIG_SYSTEM)$/i.test(key)).length, 0);
+  assert.equal(env.GIT_CONFIG_NOSYSTEM, '1');
 });
 
 test('local npmrc cannot load external script-shell or inject lifecycle Node options', async t => {
@@ -168,12 +177,17 @@ test('local npmrc cannot load external script-shell or inject lifecycle Node opt
   const outside = path.join(path.dirname(repository), 'must-not-be-probed-shell.exe');
   for (const declaration of [
     `script-shell=${outside}\n`,
+    `shell=${outside}\n`,
+    `editor=${outside}\n`,
+    `git=${outside}\n`,
+    `browser=${outside}\n`,
+    `viewer=${outside}\n`,
     `node-options=--require=${outside}\n`,
   ]) {
     fs.writeFileSync(path.join(f.cwd, '.npmrc'), declaration);
     const selected = planArguments({...context, mode: 'npm', args: ['prefix']});
     await assert.rejects(preflightConfigFiles(context, selected.config),
-      /inside the current portable package|lifecycle node-options|package-local and absolute/);
+      /inside the current portable package|lifecycle node-options|package-local absolute path/);
   }
 });
 

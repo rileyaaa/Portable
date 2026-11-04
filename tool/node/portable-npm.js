@@ -74,8 +74,10 @@ function portableEnvironment(root, inherited) {
   // Direct npm/npx CMD entry points must not inherit host lifecycle injection:
   // npm v12 does not type script-shell or node-options as filesystem paths.
   for (const key of Object.keys(env)) {
-    if (/^(NPM_CONFIG_(?:SCRIPT_SHELL|NODE_OPTIONS)|NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_COMPILE_CACHE|NODE_V8_COVERAGE|NODE_REDIRECT_WARNINGS|OPENSSL_CONF|SSL_CERT_FILE|SSL_CERT_DIR)$/i.test(key)) delete env[key];
+    if (/^(NPM_CONFIG_(?:SCRIPT_SHELL|NODE_OPTIONS|SHELL|EDITOR|GIT|BROWSER|VIEWER)|NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_COMPILE_CACHE|NODE_V8_COVERAGE|NODE_REDIRECT_WARNINGS|OPENSSL_CONF|SSL_CERT_FILE|SSL_CERT_DIR|SHELL|EDITOR|VISUAL|GIT_.*|SSH_.*)$/i.test(key)) delete env[key];
   }
+  // Git packages must not load a host SSH helper or machine-level git config.
+  env.GIT_CONFIG_NOSYSTEM = '1';
   if (process.platform === 'win32') {
     // Preserve only package-local PATH items (including the main launcher's
     // optional tools) plus Windows' required system executables.
@@ -174,12 +176,22 @@ function validateConfigPaths(root, config, cwd, definitions, includeDefaults = t
       // Node preload. npm v12 defines these as String rather than path.
       if (name === 'node-options' && data[name])
         throw new Error('Portable npm refuses injected lifecycle node-options');
-      if (name === 'script-shell' && data[name]) {
-        const shell = data[name];
-        if (typeof shell !== 'string') throw new Error('Invalid npm script shell');
-        if (!(process.platform === 'win32' && shell.toLowerCase() === 'cmd.exe')) {
-          if (!path.isAbsolute(shell)) throw new Error('npm script-shell must be package-local and absolute');
-          inside(root, shell, {required: true});
+      if (['script-shell', 'shell', 'editor', 'git', 'browser', 'viewer'].includes(name) &&
+          data[name] !== undefined && data[name] !== null && data[name] !== false && data[name] !== '') {
+        const executable = data[name];
+        if (typeof executable !== 'string' || /[\r\n\0]/.test(executable))
+          throw new Error('Invalid npm executable option');
+        // Windows cmd.exe is required by npm lifecycle scripts. These short
+        // command names resolve only via the already sanitized portable PATH.
+        const builtin = process.platform === 'win32' && (
+          (['script-shell', 'shell'].includes(name) && executable.toLowerCase() === 'cmd.exe') ||
+          (name === 'browser' && executable === 'start'));
+        const portableName = (name === 'git' && executable === 'git') ||
+          (name === 'viewer' && executable === 'browser');
+        if (!builtin && !portableName) {
+          if (!path.isAbsolute(executable))
+            throw new Error('npm executable option must use a package-local absolute path');
+          inside(root, executable, {required: true});
         }
       }
       if (names.has(name) || /:(?:certfile|keyfile)$/.test(name)) check(name, data[name]);
