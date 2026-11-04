@@ -1,3 +1,0 @@
-Temporary GitHub Connector read/write/delete verification.
-Target: Codex-Portable PR #31 maintenance branch only.
-This file will be removed in the next commit.
