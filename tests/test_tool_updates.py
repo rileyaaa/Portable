@@ -800,6 +800,8 @@ class ToolUpdateTests(unittest.TestCase):
                 attrs.write_bytes(original + tools.NODE_LFS_ATTRIBUTE)
                 with self.assertRaisesRegex(ValueError, 'Unexpected attributes'):
                     tools.enable_node_lfs()
+                subprocess.run(['git', '-C', str(root), 'add', '.gitattributes'],
+                               check=True)
                 with self.assertRaisesRegex(ValueError, 'reviewed baseline'):
                     tools.verify_node_lfs_index('all')
 
