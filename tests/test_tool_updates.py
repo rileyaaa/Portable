@@ -388,6 +388,12 @@ class ToolUpdateTests(unittest.TestCase):
             (corepack / 'package.json').write_text(
                 '{"name":"corepack","version":"0.35.0","engines":{"node":">=26.0.0"}}',
                 encoding='utf-8')
+            npm = node / 'node_modules/npm'
+            (npm / 'bin').mkdir(parents=True)
+            (npm / 'package.json').write_text(
+                '{"name":"npm","version":"12.2.1"}', encoding='utf-8')
+            (npm / 'bin/npm-cli.js').write_text(
+                'pinned portable npm', encoding='utf-8')
             (node / 'node.exe').write_bytes(fake_executable())
             archive_data = io.BytesIO()
             with zipfile.ZipFile(archive_data, 'w') as z:
@@ -412,7 +418,9 @@ class ToolUpdateTests(unittest.TestCase):
                                         .read_text(encoding='utf-8'))['version'], '0.35.0')
             self.assertFalse((node/'install_tools.bat').exists())
             self.assertTrue((node/'node.exe').is_file())
-            self.assertEqual(json.loads((node/'node_modules/npm/package.json').read_text(encoding='utf-8'))['version'], '9.8.7')
+            self.assertEqual(json.loads((node/'node_modules/npm/package.json').read_text(encoding='utf-8'))['version'], '12.2.1')
+            self.assertEqual((node/'node_modules/npm/bin/npm-cli.js').read_text(encoding='utf-8'),
+                             'pinned portable npm')
 
     def test_staged_diff_scope_rejects_unrelated_tool_code(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -460,6 +468,8 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertIn('corepack', tools.NODE_PORTABLE_FILES)
         self.assertIn('corepack.cmd', tools.NODE_PORTABLE_FILES)
         self.assertIn('node_modules/corepack', tools.NODE_PORTABLE_DIRS)
+        self.assertIn('node_modules/npm', tools.NODE_PORTABLE_DIRS)
+        self.assertIn('NPM_RETAIN_MAX_BYTES', (ROOT / 'tool/update-tools.py').read_text(encoding='utf-8'))
         source = (ROOT / '.github/workflows/03-update-tools.yml').read_text(encoding='utf-8')
         original = (ROOT / '.github/workflows/02-verify-and-publish-portable.yml').read_text(encoding='utf-8')
         for marker in ('smoke.js', 'static-audit.js'):
@@ -586,7 +596,7 @@ class ToolUpdateTests(unittest.TestCase):
                 self.assertEqual(ledger.read_bytes(),before)
 
 
-    def test_node_inventory_records_upgraded_npm_and_retained_corepack(self):
+    def test_node_inventory_preserves_pinned_npm_and_corepack(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory); tool=root/'tool'
             pkg=tool/'node/node_modules'
@@ -598,7 +608,7 @@ class ToolUpdateTests(unittest.TestCase):
                 '{"name":"corepack","version":"0.35.0"}',encoding='utf-8')
             inventory={'schema':1,'platform':'win32-x64','lastSuccessfulToolUpdate':None,
                        'tools':{k:{'version':version,'status':'bundled','path':'tool/node'}
-                                for k,version in [('node','24.16.0'),('npm','11.13.0'),
+                                for k,version in [('node','24.16.0'),('npm','11.20.0'),
                                                   ('corepack','0.35.0')]}}
             ledger=tool/'installed-tools.json'
             ledger.write_text(json.dumps(inventory),encoding='utf-8')
@@ -607,6 +617,20 @@ class ToolUpdateTests(unittest.TestCase):
                            encoding='utf-8')
             with patch.object(tools,'ROOT',root),patch.object(tools,'TOOL',tool),\
                  patch.object(tools,'LEDGER',ledger),patch.object(tools,'DOC',doc):
+                (pkg/'npm/package.json').write_text(
+                    '{"name":"npm","version":"11.19.0"}', encoding='utf-8')
+                with self.assertRaisesRegex(ValueError, 'changed the pinned npm'):
+                    tools.record_updates([{'tool':'node','version':'26.13.0'}],
+                                         ssh=False, day='2026-11-02')
+                (pkg/'npm/package.json').write_text(
+                    '{"name":"npm","version":"11.20.0"}', encoding='utf-8')
+                (pkg/'corepack/package.json').write_text(
+                    '{"name":"corepack","version":"0.34.0"}', encoding='utf-8')
+                with self.assertRaisesRegex(ValueError, 'changed the pinned Corepack'):
+                    tools.record_updates([{'tool':'node','version':'26.13.0'}],
+                                         ssh=False, day='2026-11-02')
+                (pkg/'corepack/package.json').write_text(
+                    '{"name":"corepack","version":"0.35.0"}', encoding='utf-8')
                 tools.record_updates([{'tool':'node','version':'26.13.0'}],ssh=False,
                                      day='2026-11-02')
             result=json.loads(ledger.read_text(encoding='utf-8'))
