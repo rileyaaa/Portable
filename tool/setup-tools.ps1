@@ -93,7 +93,6 @@ $Bin     = Join-Path $ToolDir 'bin'
 $PyDir   = Join-Path $ToolDir 'python'
 $PyExe   = Join-Path $PyDir 'python.exe'
 $Site    = Join-Path $PyDir 'Lib\site-packages'
-$PyCliBin = Join-Path $Site 'bin'
 $CacheDir = Join-Path $Root 'cache'
 $PortableHome = Join-Path $Root 'home-runtime'
 $PortableAppData = Join-Path $Root 'appdata'
@@ -186,9 +185,7 @@ $systemPaths = @(
 )
 $portablePaths = @(
     (Resolve-PortableSetupPath $Bin),
-    (Resolve-PortableSetupPath $PyDir),
-    (Resolve-PortableSetupPath (Join-Path $PyDir 'Scripts')),
-    (Resolve-PortableSetupPath $PyCliBin)
+    (Resolve-PortableSetupPath $PyDir)
 )
 # 安装器必须可重复且不依赖宿主 PATH；只使用包内 python/pip + Windows 基础系统目录。
 $env:PATH = (($portablePaths + $systemPaths) |

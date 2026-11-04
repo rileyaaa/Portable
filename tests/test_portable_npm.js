@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const {test} = require('node:test');
-const {inside, portableEnvironment, planArguments, preflightConfigFiles} = require('../tool/node/portable-npm');
+const {inside, windowsSystemRoot, portableEnvironment, planArguments, preflightConfigFiles} = require('../tool/node/portable-npm');
 
 const repository = path.resolve(__dirname, '..');
 const npmPath = path.join(repository, 'tool/node/node_modules/npm');
@@ -137,6 +137,18 @@ test('stale state paths rebase while safe session paths are retained', t => {
   assert.equal(env.NODE_OPTIONS, undefined);
 });
 
+
+test('normal single-backslash Windows roots work; malformed host roots fail', t => {
+  assert.equal(windowsSystemRoot({SystemRoot: 'C:\\Windows'}), 'C:\\Windows');
+  assert.equal(windowsSystemRoot({WINDIR: 'D:\\WinNT'}), 'D:\\WinNT');
+  for (const invalid of [
+    '', 'C:Windows', 'C:/Windows', '\\\\server\\share',
+    'C:\\\\Windows', 'C:\\Windows\\..\\outside',
+    'C:\\Windows:stream', 'C:\\Windows\0x',
+  ]) {
+    assert.throws(() => windowsSystemRoot({SystemRoot: invalid}), /ordinary Windows system root/);
+  }
+});
 
 test('direct npm shims discard inherited host shell and lifecycle Node options', t => {
   const f = fixture(t);

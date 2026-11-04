@@ -4,6 +4,7 @@
 
 - 按官方 pip 配置规则确认：直接使用 `tool/bin/pip*.cmd` 调用 pip 时，原 Python CLI 转接器没有主动禁用 Windows 宿主/用户 `pip.ini`。现对 pip console_script 清理继承的 `PIP_*`，设置 `PIP_CONFIG_FILE=nul`（Windows `os.devnull`）、关闭外部 pip 缓存与版本检查。根启动器原有禁用配置继续保留；第三方显式路径参数及直接执行 `python.exe -m pip` 不由此转接器保护。
 - 核对包内 npm 12 的真实 definitions：`script-shell`、`node-options` 是字符串而非路径类型，旧 `portable-npm.js` 的路径型验证不能拦住它们。现移除直接启动 npm/npx 时继承的这两项 npm 环境变量；在每层 `.npmrc` 读取后拒绝生命周期 Node 注入选项，`script-shell` 除 Windows 内建 `cmd.exe` 外必须是包内绝对路径的普通文件。Windows npm PATH 仅保留包内工具和必要系统目录，并固定系统 `ComSpec`。增加相关对抗回归。
+- 复核新增 npm Windows 根路径正则时，发现它误要求盘符后两个连续反斜杠；真实值如 `C:\Windows` 只有一个。已改为独立 `windowsSystemRoot()`，增加正常路径与 UNC、ADS、遍历、重复分隔符的正反向测试。另发现 `setup-tools.ps1` 仍在 PATH 中放入旧供应商 EXE 目录 `tool/python/Lib/site-packages/bin` 和空 `python/Scripts`；已清理，并补回归要求安装器只暴露包内审核过的 `tool/bin` 与 `tool/python`。
 - 本批变更仍是代码和离线合同检查，尚未做 Windows 原生测试。多数 `CODEX_*` 为启动器自定义设置，工具变量中存在未安装组件的预留路径，Python `._pth` 会忽略部分解释器启动变量。YOLO、系统 Known Folders、未经包装的用户程序、显式包外路径不受环境变量本身的硬性约束，不能据此宣布所有变量在 Windows 上已真实生效。
 
 

@@ -34,6 +34,14 @@ class PythonRuntimeDependencyTests(unittest.TestCase):
         for bat in ROOT.glob('*.bat'):
             self.assertNotIn('%~dp0tool\\python\\Lib\\site-packages\\bin', bat.read_text(encoding='ascii'))
 
+    def test_setup_tool_never_exposes_vendor_exe_launchers(self):
+        setup = (ROOT / "tool/setup-tools.ps1").read_text(encoding="utf-8-sig")
+        self.assertNotIn("$PyCliBin", setup)
+        self.assertNotIn("Resolve-PortableSetupPath (Join-Path $PyDir 'Scripts')", setup)
+        self.assertIn("(Resolve-PortableSetupPath $Bin)", setup)
+        self.assertIn("(Resolve-PortableSetupPath $PyDir)", setup)
+        self.assertIn("Set-SetupChildPortableEnvironment", setup)
+
     def test_default_windows_dependencies_and_restored_packager(self):
         packages = {}
         for path in SITE.glob("*.dist-info/METADATA"):

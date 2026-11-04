@@ -37,6 +37,16 @@ function inside(root, candidate, {directory = false, required = false} = {}) {
   return absolute;
 }
 
+function windowsSystemRoot(inherited) {
+  const systemRoot = String(inherited.SystemRoot || inherited.SYSTEMROOT || inherited.WINDIR || '');
+  // The ordinary Windows drive root has one backslash after the colon.
+  if (!/^[A-Za-z]:\\/.test(systemRoot) || systemRoot.slice(2).includes(':') ||
+      systemRoot.charAt(3) === '\\' || systemRoot.includes('\0') ||
+      systemRoot.split('\\').some(part => part === '.' || part === '..'))
+    throw new Error('Portable npm requires an ordinary Windows system root');
+  return path.win32.normalize(systemRoot);
+}
+
 function portableEnvironment(root, inherited) {
   const env = {...inherited};
   const values = {
@@ -69,11 +79,7 @@ function portableEnvironment(root, inherited) {
   if (process.platform === 'win32') {
     // Preserve only package-local PATH items (including the main launcher's
     // optional tools) plus Windows' required system executables.
-    const systemRoot = String(inherited.SystemRoot || inherited.SYSTEMROOT ||
-      inherited.WINDIR || process.env.SystemRoot || process.env.WINDIR || '');
-    if (!/^[A-Za-z]:\\\\/.test(systemRoot) || systemRoot.slice(2).includes(':'))
-      throw new Error('Portable npm requires an ordinary Windows system root');
-    const windows = path.win32.normalize(systemRoot);
+    const windows = windowsSystemRoot(inherited);
     const localDirs = ['tool\\\\bin', 'tool\\\\python', 'tool\\\\node', 'tool\\\\android\\\\platform-tools']
       .map(relative => inside(root, path.win32.join(root, relative), {directory: true}));
     const retained = [];
@@ -233,4 +239,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = {inside, portableEnvironment, planArguments, npxOptionCount, preflightConfigFiles};
+module.exports = {inside, windowsSystemRoot, portableEnvironment, planArguments, npxOptionCount, preflightConfigFiles};
