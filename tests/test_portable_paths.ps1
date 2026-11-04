@@ -217,6 +217,30 @@ try {
         Reset-PortableInvariantEnvironment
         $Child = New-Object Diagnostics.ProcessStartInfo
         Set-CodexChildPortableEnvironment $Child
+        # Every tool path declared in env.ps1 must reach the real Codex child,
+        # and then its shell_environment_policy.set (not merely this process).
+        foreach ($Name in $ExpectedPaths.Keys) {
+            $Expected = [Environment]::GetEnvironmentVariable($Name, 'Process')
+            if ($Child.EnvironmentVariables[$Name] -cne $Expected) {
+                throw "Tool variable $Name did not reach the Codex child."
+            }
+            $PolicyAssignment = 'Append-TomlSet $Builder "' + $Name + '" $env:' + $Name
+            if (-not $Ast.Extent.Text.Contains($PolicyAssignment)) {
+                throw "Tool variable $Name is absent from Codex shell policy."
+            }
+        }
+        foreach ($Name in @('CODEX_HOME','CODEX_SQLITE_HOME','HOME','USERPROFILE',
+                            'APPDATA','LOCALAPPDATA','TEMP','TMP','TMPDIR','XDG_CACHE_HOME',
+                            'PIP_CACHE_DIR','PYTHONUSERBASE','NPM_CONFIG_CACHE',
+                            'NPM_CONFIG_PREFIX','NPM_CONFIG_GLOBALCONFIG',
+                            'NPM_CONFIG_USERCONFIG','NODE_REPL_HISTORY','YARN_CACHE_FOLDER',
+                            'PNPM_HOME','PNPM_STORE_DIR','GRADLE_USER_HOME','PYTHONPYCACHEPREFIX',
+                            'PSModulePath','GIT_CONFIG_NOSYSTEM')) {
+            $Expected = [Environment]::GetEnvironmentVariable($Name, 'Process')
+            if ($Child.EnvironmentVariables[$Name] -cne $Expected) {
+                throw "Portable process variable $Name was lost by the child environment."
+            }
+        }
         if ($env:PIP_CONFIG_FILE -cne 'nul' -or $Child.EnvironmentVariables['PIP_CONFIG_FILE'] -cne 'nul') {
             throw 'Pip config suppression did not survive launcher reset and child environment mapping.'
         }
