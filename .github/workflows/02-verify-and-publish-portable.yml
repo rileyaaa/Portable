@@ -1,14 +1,14 @@
-name: "02 - 验证并发布 Windows 便携包（手动）"
+name: "02 - 验证和发布便携包（默认不发布）"
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release tag, e.g. v0.167.0-portable.1'
+        description: '完整发布标签，例如 v0.167.0-portable.1'
         required: true
         type: string
       publish_release:
-        description: 'Default is validation only; publish the verified stable ZIP only when selected'
+        description: '默认仅验证；勾选后在 Windows 全部验收通过才发布 Release'
         required: true
         default: false
         type: boolean
