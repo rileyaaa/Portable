@@ -316,7 +316,8 @@ class ReleasePackageTests(unittest.TestCase):
         # set explicit: future exclusions must be reviewed, not silently accepted.
         maintainer_tools = {"tool/package-release.py",
                             "tool/full-stable-diagnose.py",
-                            "tool/full-stable-native-diagnose.py"}
+                            "tool/full-stable-native-diagnose.py",
+                            "tool/auto-tool-updates.py"}
         self.assertTrue(maintainer_tools.issubset(excluded))
         self.assertEqual({name for name in names if name.startswith("tool/")}
                          - maintainer_tools,
