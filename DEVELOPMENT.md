@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-04：四个 GitHub Actions 入口精简（维护分支，待合并）
+
+- **使用入口：** 01 仍需粘贴官方 Release URL，并以默认关闭的 `commit_changes` 显式决定是否提交已验收稳定版；02 仍需填写严格发行标签，并以默认关闭的 `publish_release` 显式授权发布。两项有写入/发布后果的确认不合并进不透明的文字参数。04 本来是 PR 关闭后的自动安全清理，不提供任何手动开关；四个工作流只优化名称与入口交互，不新增自动触发。
+- **03 由三项输入变为一项：** 移除 `mode / group / create_pr`，以唯一 `operation` 下拉框表达完整操作，默认 `auto`。常用 `auto` / `auto-pr` 分别代表只验证与通过后提出候选 PR；诊断和旧 Windows 盘点使用 `diagnose`、`check`；固定候选使用 `prepare-tools`、`prepare-ssh`、`prepare-all`（相应 `-pr` 才提交候选），整目录仍为 `full` / `full-pr`。所有 12 种旧有效组合均保留；自动模式无候选时继续低成本跳过 Windows，任何模式都不自动合并主线或发布正式 Release。
+- **安全和验证范围：** 03 只变更 workflow dispatch 映射/Job 条件与英文参数名，不改实际下载与 SHA-256、Windows 19 项 PowerShell、十轮发行审计、客户 ZIP、可信写入器隔离、Git LFS 或正式 Release 门禁。同步 `tests/test_auto_tool_updates.py`、`test_tool_updates.py`、`test_full_stable_upgrade.py`、`test_maintenance_workflows.py` 的源码合同，并补唯一输入/明确 PR 条件回归；更新 README 与工具说明。维护分支中的静态检查不等于 GitHub Actionlint 或真实 Windows 验收，未启动任何 AC、未改动正式发布，必须在合并后由最新 `main` 另行人工测试。
+
 ## 2026-11-04：03/auto 深度核对：动态计划串扰与 Node 引发 npm 12 降级
 
 - **确定性回归：** 03/auto 在 Windows 更新候选生成后，持久设置 `TOOL_AUTO_UPDATE_PLAN=1`。这会被后续 `test_tool_updates.py` 的完整 Python 回归及十轮审计继承，旧测试却硬性要求固定 `tool/tool-update-plan.json` 的 `ripgrep 15.2.0 / fd 10.5.0 / jq 1.8.2` 三个候选。只要 `auto` 真正找到仅一个工具或新 Node 版本，旧测试就会读取动态计划并误报失败。为 `ToolUpdateTests` 每个用例独立隔离固定计划环境，补专门的动态计划选择正向测试；生产更新器保留显式 `TOOL_AUTO_UPDATE_PLAN=1` 的受控路径，Windows 下载前和更新后测试不再互相污染。
