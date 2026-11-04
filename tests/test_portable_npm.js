@@ -24,7 +24,11 @@ function fixture(t) {
   fs.mkdirSync(cwd, {recursive: true});
   fs.writeFileSync(path.join(base, 'package.json'), JSON.stringify({name: 'synthetic-parent', version: '1.0.0'}));
   fs.writeFileSync(path.join(base, '.npmrc'), 'tag=outside-parent-value\n');
-  const env = portableEnvironment(root, {});
+  // Windows tests must model the indispensable OS-provided SystemRoot.
+  // Do not weaken the direct portable entrypoint's fail-closed root check.
+  const systemEnv = process.platform === 'win32'
+    ? {SystemRoot: process.env.SystemRoot || process.env.WINDIR} : {};
+  const env = portableEnvironment(root, systemEnv);
   return {base, root, cwd, env};
 }
 
@@ -137,6 +141,13 @@ test('stale state paths rebase while safe session paths are retained', t => {
   assert.equal(env.NODE_OPTIONS, undefined);
 });
 
+
+test('Windows native npm refuses a missing system root even in a synthetic package', t => {
+  if (process.platform !== 'win32') return;
+  const f = fixture(t);
+  assert.equal(typeof f.env.ComSpec, 'string');
+  assert.throws(() => portableEnvironment(f.root, {}), /ordinary Windows system root/);
+});
 
 test('normal single-backslash Windows roots work; malformed host roots fail', t => {
   assert.equal(windowsSystemRoot({SystemRoot: 'C:\\Windows'}), 'C:\\Windows');
