@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-04：03/auto 深度核对：动态计划串扰与 Node 引发 npm 12 降级
+
+- **确定性回归：** 03/auto 在 Windows 更新候选生成后，持久设置 `TOOL_AUTO_UPDATE_PLAN=1`。这会被后续 `test_tool_updates.py` 的完整 Python 回归及十轮审计继承，旧测试却硬性要求固定 `tool/tool-update-plan.json` 的 `ripgrep 15.2.0 / fd 10.5.0 / jq 1.8.2` 三个候选。只要 `auto` 真正找到仅一个工具或新 Node 版本，旧测试就会读取动态计划并误报失败。为 `ToolUpdateTests` 每个用例独立隔离固定计划环境，补专门的动态计划选择正向测试；生产更新器保留显式 `TOOL_AUTO_UPDATE_PLAN=1` 的受控路径，Windows 下载前和更新后测试不再互相污染。
+- **跨工具降级：** Node.js 26.13.0 官方发行档自带 npm **11.20.0**（Node 官网版本档案明确列出），而成功合入的 `main/tool/` 采用独立升级后的 npm **12.2.1**、Corepack **0.36.0**。原 `update-tools.py` 用官方 Node ZIP 完整替换 `tool/node`，仅保留 npm/npx 可携启动脚本和 Corepack 软件目录，**未保留 npm 12 的 `node_modules/npm`**；下一次 Node 版本更新可能无意降级 npm 并破坏旧安全守卫。
+- **已改修复：** Node-only 版更严格：保留原已验证的 `node_modules/npm` 与 `node_modules/corepack` 两棵完整树，以及原有 npm/npx/portable-npm/COREPACK 启动脚本；对保留目录逐文件拒绝符号链接、重解析点、硬链接及异常超大树。若新版 Node 官方 ZIP 包含旧 npm，会只在隔离 staging 中移除官方旧 npm 目录并用独立 pin 的 npm 12 目录替换，保留新 Node.exe。对候选更新台账新增严格守卫，Node-only 更新不得改变已安装 npm/Corepack 的版本；如实需要新 npm，必须走独立审核更新链。
+- **回归与边界：** 更新 `test_node_upgrade_preserves_portable_npm_and_skips_system_installer`，模拟 Node 官方 ZIP 包含 npm 9.8.7，但验证升级后仍保留原 npm 12.2.1 文件树、Corepack 与防宿主环境入口，`install_tools.bat` 不得进入客户包；更新 Node 版本台账模拟，分别验证 npm 降级、Corepack 变化时拒绝、版本保留时通过。新增 `test_auto_tool_updates.py` 源码合同覆盖。**本轮没有触发真实 Windows AC，也没有声称自动 Node 更新已经验收成功**；原已通过的 03/full、原生诊断和正式 Release 均不改动。不创建其它分支或 PR。
+
 ## 2026-11-04：复查 03/auto 的前置测试、API 限流与令牌转发风险
 
 - **复核范围：** 对比已通过 full #28 的源码提交 `c74e48764da67997e40d4488e432b12014b4854e` 与当前 main，确认 `03` 中 `full_verify`、`full_propose`、`full_artifact_cleanup`、`fast_diagnose`、`native_diagnose` 五个工作流 Job 的代码逐字节未改变；原 19 项 Windows PowerShell、10 轮发行审计、客户 ZIP 校验、只读验证与写入分离继续保留。此次 auto 本身尚未实际在 GitHub Actions 运行，不把源码复核视为 Windows 验收。
