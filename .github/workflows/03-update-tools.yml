@@ -44,6 +44,8 @@ jobs:
           python-version: '3.14'
       - name: Run official auto-version security contracts offline before version queries
         run: python -E -s -B -m unittest discover -s tests -p 'test_auto_tool_updates.py' -v
+      - name: Verify Codex and Tool environment contracts before official version discovery
+        run: python -E -s -B -m unittest discover -s tests -p 'test_maintenance_workflows.py' -v
       - name: Refuse unverified upstream assets and skip unchanged versions
         id: discovery
         env:
