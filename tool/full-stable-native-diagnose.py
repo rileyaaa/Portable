@@ -30,6 +30,9 @@ BOOTSTRAP_FILES = ("codex.exe", "env.ps1", "tool/node/node.exe",
                    "tool/node/portable-npm.js")
 COPY_FILES = (
     "env.ps1",
+    # A *real* npm 12 regression must run against staged npm, not checkout's
+    # still-bundled npm 11. Copy only the first-party JS test into scratch.
+    "tests/test_portable_npm.js",
     "tool/python-packages.in.txt",
     "tool/python-ssh-packages.in.txt",
     "tool/optional-python-manifest.json",
@@ -231,6 +234,9 @@ def execute(root: Path, stage, plan: dict, node: Path) -> list[dict]:
     record(records, "node26", lambda: check_node_version(node))
     record(records, "npm_corepack", lambda: stage.stage_npm(plan, work / "npm", evidence),
            after=("node26",))
+    record(records, "npm12_portable_regressions",
+           lambda: stage.verify_staged_portable_npm(root),
+           after=("npm_corepack", "npm_bootstrap_layout"))
     # Probe these independently: if npm.cmd fails, npx.cmd and Corepack can
     # still reveal unrelated problems in the same paid Windows diagnostic.
     for probe, label in NATIVE_NODE_CMD_LABELS:
