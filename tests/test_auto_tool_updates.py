@@ -277,6 +277,8 @@ class AutoToolTests(unittest.TestCase):
         self.assertIn("03-update-route.py", checker)
         self.assertIn("full_plan_changes:", checker)
         self.assertIn("inputs.operation == 'check'", verifier)
+        self.assertIn("02-tool-compatibility.ps1", verifier)
+        self.assertIn("Bundled Tool installation or environment mapping failed.", verifier)
         self.assertIn("needs.auto_check.outputs.updates == 'true'", verifier)
         self.assertIn("needs.verify.result == 'success'", writer)
         self.assertIn("inputs.operation == 'update'", writer)
