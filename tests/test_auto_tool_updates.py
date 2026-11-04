@@ -156,6 +156,14 @@ class AutoToolTests(unittest.TestCase):
         self.assertIn("options: [check, diagnose, prepare, full, auto]", workflow)
         self.assertIn("tool/auto-tool-updates.py check", workflow)
         self.assertIn("tool/auto-tool-updates.py plan", workflow)
+        self.assertIn("!cancelled()", workflow)
+        self.assertEqual(workflow.count("-p 'test_auto_tool_updates.py' -v"), 2)
+        self.assertLess(workflow.index("-p 'test_auto_tool_updates.py' -v"),
+                        workflow.index("tool/auto-tool-updates.py check"))
+        windows = workflow.split("\n  verify:", 1)[1].split("\n  propose:", 1)[0]
+        self.assertLess(windows.index("-p 'test_auto_tool_updates.py' -v"),
+                        windows.index("Stage checked wheel or SHA256-pinned"))
+        self.assertIn("GITHUB_TOKEN: ${{ github.token }}", workflow)
         self.assertIn("needs.auto_check.outputs.updates == 'true'", workflow)
         self.assertIn("TOOL_AUTO_UPDATE_PLAN=1", workflow)
         self.assertIn("TOOL_AUTO_UPDATE_PLAN = '1'", workflow)
