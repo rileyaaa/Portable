@@ -255,6 +255,14 @@ jobs:
           & .\tool\python\python.exe -E -s -B .\.github\maintenance\02-compatibility.py --repo . --native
           if ($LASTEXITCODE -ne 0) { throw 'Portable compatibility audit failed.' }
 
+      - name: Verify effective Tool PATH and native versions after staging, before expensive Windows regressions
+        if: ${{ inputs.operation == 'update' }}
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\02-tool-compatibility.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Updated Tool PATH, inventory or native version check failed.' }
+
       - name: Check Windows PowerShell 5.1 regressions
         if: ${{ inputs.operation == 'update' }}
         # Previous successful 19-test suite took ~22 minutes; run #41555463345
@@ -634,6 +642,13 @@ jobs:
             & .\tool\node\node.exe (Join-Path '.\Version_History\AI account format conversion\test' $name)
             if ($LASTEXITCODE -ne 0) { throw "Converter failed $name" }
           }
+      - name: Verify staged full-tool PATH and native versions before committing candidate
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\02-tool-compatibility.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Updated full-tool PATH, inventory or native version check failed.' }
+
       - name: Bound candidate paths and SHA-256 before read-only local trial commit
         timeout-minutes: 16
         id: candidate

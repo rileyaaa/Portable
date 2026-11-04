@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-04：03/update 补齐候选 Tool PATH 与原生版本的强制验收（维护 PR #31）
+
+- 审查确认新增的 `.github/maintenance/02-tool-compatibility.ps1` 只在 02 全面发布验收及 03/check 执行；此前 03/update 的 Node/CLI 自动更新与完整工具更新两条 Windows 路线虽有原生回归，却没有要求候选完成同一套 11 项便携命令解析和工具台账版本检查。若 PATH 配错而绝对路径仍能调用工具，候选可能被错误提议。
+- 已把验证器加入两条只读 Windows 更新路线：Node/CLI 更新在完成候选 Python/Node 测试后、19 项 PowerShell 回归前检查；整套工具更新在完整 Python/Node 测试后、暂存候选提交前检查。失败直接阻止候选 PR；不影响只读 check、故障诊断、02 发布许可或 01 Codex 更新。
+- 补 `tests/test_maintenance_workflows.py` 路由与检查执行顺序契约，区分 03/check、Node/CLI 与 full 三处调用。尚未运行新的 Windows/PowerShell 或 GitHub Actions 验收，不能将源码合同视作 Windows 结果。
+
+
 ## 2026-11-04：环境变量第二轮交叉复核（维护 PR #31）
 
 - 复核时发现此前 02/03/check 的工具测试虽然能用绝对路径执行版本命令，却不能证明最终 Codex shell 的 `PATH` 能找到命令。补强 `.github/maintenance/02-tool-compatibility.ps1`：验证主启动器四项必要 PATH（bin、Python、Node、独立 ADB）、三个 BAT 入口、以及在隔离的四段 PATH 下解析出的 Python/pip、Node/npm/npx/Corepack、ADB、7-Zip、rg/fd/jq 共 11 项命令，禁止宿主 PATH 兜底；用 `try/finally` 恢复环境。正则支持 Windows CRLF，避免因换行格式误报。

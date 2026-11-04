@@ -291,6 +291,35 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertIn("needs.verify.result == 'success' && inputs.publish_release", publisher)
         self.assertNotIn("Invoke-WebRequest", script)
 
+    def test_all_03_windows_paths_audit_updated_native_tool_commands(self):
+        workflow = read(ROOT / ".github/workflows/03-update-tools.yml")
+        auto = workflow.split("\n  verify:\n", 1)[1].split("\n  propose:\n", 1)[0]
+        full = workflow.split("\n  full_verify:\n", 1)[1].split("\n  full_propose:\n", 1)[0]
+        self.assertEqual(auto.count("02-tool-compatibility.ps1"), 2)
+        self.assertEqual(full.count("02-tool-compatibility.ps1"), 1)
+        installed = auto.split("      - name: Check real installed Tool and SSH runtimes", 1)[1].split("      - name:", 1)[0]
+        self.assertIn("if: ${{ inputs.operation == 'check' }}", installed)
+        self.assertIn("02-tool-compatibility.ps1", installed)
+        candidates = (
+            (auto, "Verify effective Tool PATH and native versions after staging",
+             "Run complete Python and Node regression suites",
+             "Check Windows PowerShell 5.1 regressions",
+             "if: ${{ inputs.operation == 'update' }}"),
+            (full, "Verify staged full-tool PATH and native versions before committing",
+             "Full Python Node and converter regression suites",
+             "Bound candidate paths and SHA-256", None),
+        )
+        for source, name, earlier, later, update_condition in candidates:
+            with self.subTest(gate=name):
+                self.assertLess(source.index(earlier), source.index(name))
+                self.assertLess(source.index(name), source.index(later))
+                step = source.split("      - name: " + name, 1)[1].split("      - name:", 1)[0]
+                self.assertEqual(step.count("02-tool-compatibility.ps1"), 1)
+                self.assertIn("$LASTEXITCODE -ne 0", step)
+                self.assertIn("PowerShell\\v1.0\\powershell.exe", step)
+                if update_condition:
+                    self.assertIn(update_condition, step)
+
     def test_removed_workflow_entries_cannot_reappear(self):
         self.assertEqual(
             sorted(path.name for path in (ROOT / ".github/workflows").glob("*.yml")),
