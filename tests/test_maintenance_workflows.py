@@ -202,6 +202,30 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertIn("needs: verify", workflow)
         self.assertNotIn("gh release create", workflow)
 
+    def test_release_gate_checks_effective_tool_paths_and_native_versions(self):
+        publisher = self.files["release"]
+        script = read(ROOT / ".github/maintenance/02-tool-compatibility.ps1")
+        self.assertIn("02-tool-compatibility.ps1", publisher)
+        self.assertLess(publisher.index("02-tool-compatibility.ps1"),
+                        publisher.index("Ten consecutive seeded release regression rounds"))
+        for required in (
+            ". $Config", "Assert-Var 'CODEX_INSTALL_DIR'",
+            "Assert-Var 'CODEX_PYTHON'", "Assert-Var 'ANDROID_HOME'",
+            "Assert-Var 'ADB_VENDOR_KEYS'", "Assert-Var 'APPIUM_HOME'",
+            "Assert-Var 'APK_LAB_TMP_DIR'", "Assert-NativeVersion 'python'",
+            "Assert-NativeVersion 'paramiko'", "Assert-NativeVersion 'node'",
+            "Assert-NativeVersion 'npm'", "Assert-NativeVersion 'corepack'",
+            "Assert-NativeVersion 'adb'", "Assert-NativeVersion '7zip'",
+            "Assert-NativeVersion 'ripgrep'", "Assert-NativeVersion 'fd'",
+            "Assert-NativeVersion 'jq'", "install-browser.py",
+        ):
+            self.assertIn(required, script)
+        self.assertIn("02_TOOL_ENV_EFFECTIVE=PASS", script)
+        self.assertIn("02_TOOL_NATIVE_AND_BROWSER_COMPATIBILITY=PASS", script)
+        self.assertIn("if ($LASTEXITCODE -ne 0)", publisher)
+        self.assertIn("needs.verify.result == 'success' && inputs.publish_release", publisher)
+        self.assertNotIn("Invoke-WebRequest", script)
+
     def test_removed_workflow_entries_cannot_reappear(self):
         self.assertEqual(
             sorted(path.name for path in (ROOT / ".github/workflows").glob("*.yml")),
