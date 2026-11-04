@@ -780,7 +780,7 @@ class ToolUpdateTests(unittest.TestCase):
                            check=True)
             node = root / tools.NODE_LFS_PATH
             node.parent.mkdir(parents=True)
-            node.write_bytes(b'MZ' + b'\x19' * 512)
+            node.write_bytes(b'MZ' + b'\x19' * (2 * 1024 * 1024))
             digest = hashlib.sha256(node.read_bytes()).hexdigest()
             pointer = (
                 b'version https://git-lfs.github.com/spec/v1\n' +
