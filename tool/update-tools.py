@@ -19,7 +19,8 @@ import subprocess
 import sys
 import tempfile
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+import urllib.request
+from urllib.request import Request
 import zipfile
 
 ROOT = Path(__file__).absolute().parent.parent
@@ -41,6 +42,16 @@ ALLOWED = {
             'tool/bin/fd.exe', 'tool/bin/jq.exe'),
 }
 HOSTS = {'github.com', 'nodejs.org', 'dl.google.com', '7-zip.org', 'www.7-zip.org'}
+# api.github.com is a hard-coded metadata origin, never an archive source.
+METADATA_HOSTS = HOSTS | {'api.github.com'}
+RELEASE_REDIRECT_HOSTS = {'release-assets.githubusercontent.com',
+                          'objects.githubusercontent.com',
+                          'github-releases.githubusercontent.com'}
+REVIEWED_DOWNLOAD_REDIRECTS = {
+    'github.com': RELEASE_REDIRECT_HOSTS,
+    '7-zip.org': {'www.7-zip.org'},
+    'www.7-zip.org': {'7-zip.org'},
+}
 ARCHIVE_MAX = 150 * 1024 * 1024
 TOOL_GROUP = {'node': 'node', 'adb': 'adb', 'ripgrep': 'cli',
               'fd': 'cli', 'jq': 'cli', '7zip': 'cli'}
@@ -230,9 +241,41 @@ def safe_member(name: str) -> PurePosixPath:
     return path
 
 
+def validate_download_redirect(source: str, target: str) -> None:
+    """Verify every intermediate redirect before connecting to another host."""
+    current = urlsplit(source)
+    following = urlsplit(target)
+    hosts = {current.hostname} | REVIEWED_DOWNLOAD_REDIRECTS.get(current.hostname, set())
+    require(following.scheme == 'https' and following.hostname in hosts and
+            following.username is None and following.password is None and
+            following.port in (None, 443) and not following.fragment,
+            'Unapproved official download redirect')
+
+
+class _ApprovedToolRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        validate_download_redirect(req.full_url, newurl)
+        next_request = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if next_request is not None:
+            for field in ('Authorization', 'Proxy-Authorization', 'Cookie'):
+                next_request.remove_header(field)
+        return next_request
+
+
 def fetch_bytes(url: str, limit: int) -> bytes:
-    with urlopen(Request(url, headers={'User-Agent': 'Codex-Portable-Maintenance/1'}), timeout=25) as response:
-        # A pinned digest is still mandatory for binary downloads, even if redirected.
+    source = urlsplit(url)
+    require(source.scheme == 'https' and source.hostname in METADATA_HOSTS and
+            source.username is None and source.password is None and
+            source.port in (None, 443) and not source.fragment,
+            'Only reviewed official download hosts are allowed')
+    # urllib's default downloader follows arbitrary redirects before the
+    # caller can check a final URL, and inherits Windows/host proxy settings.
+    # Disable both behaviors, apart from reviewed GitHub release CDN hops.
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}), _ApprovedToolRedirect())
+    with opener.open(Request(url, headers={
+            'User-Agent': 'Codex-Portable-Maintenance/1'}), timeout=25) as response:
+        validate_download_redirect(url, response.url)
         data = response.read(limit + 1)
     require(len(data) <= limit, 'Remote data exceeds the download limit')
     return data

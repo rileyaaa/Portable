@@ -64,6 +64,64 @@ class ToolUpdateTests(unittest.TestCase):
         pinned.start()
         self.addCleanup(pinned.stop)
 
+    def test_update_download_redirects_are_checked_before_any_request(self):
+        good = (
+            ('https://github.com/owner/repo/releases/download/v1/release.zip',
+             'https://release-assets.githubusercontent.com/download?token=opaque'),
+            ('https://github.com/owner/repo/releases/download/v1/release.zip',
+             'https://objects.githubusercontent.com/download?token=opaque'),
+            ('https://nodejs.org/dist/v1/archive.zip',
+             'https://nodejs.org/dist/v1/archive-2.zip'),
+            ('https://7-zip.org/file.7z', 'https://www.7-zip.org/file.7z'),
+        )
+        for source, dest in good:
+            with self.subTest(source=source, dest=dest):
+                tools.validate_download_redirect(source, dest)
+                original = tools.urllib.request.Request(source,
+                    headers={'Authorization': 'synthetic-secret', 'Cookie': 'session'})
+                forwarded = tools._ApprovedToolRedirect().redirect_request(
+                    original, None, 302, 'Found', {}, dest)
+                self.assertEqual(forwarded.full_url, dest)
+                self.assertFalse(forwarded.has_header('Authorization'))
+                self.assertFalse(forwarded.has_header('Cookie'))
+        start = 'https://github.com/owner/repo/releases/download/v1/file.zip'
+        for forbidden in (
+            'https://evil.invalid/steal', 'http://github.com/file',
+            'https://release-assets.githubusercontent.com.evil.invalid/file',
+            'https://user:pass@release-assets.githubusercontent.com/file',
+            'https://github.com:9443/other',
+            'https://release-assets.githubusercontent.com/file#x',
+            'https://127.0.0.1/host-secret',
+        ):
+            with self.subTest(forbidden=forbidden):
+                with self.assertRaisesRegex(ValueError, 'Unapproved official download redirect'):
+                    tools._ApprovedToolRedirect().redirect_request(
+                        tools.urllib.request.Request(start), None,
+                        302, 'Found', {}, forbidden)
+        with self.assertRaisesRegex(ValueError, 'Unapproved official download redirect'):
+            tools.validate_download_redirect(
+                'https://api.github.com/repos/owner/repo/releases/latest',
+                'https://release-assets.githubusercontent.com/file')
+
+    def test_updater_download_uses_empty_proxy_and_audited_redirects(self):
+        official = 'https://api.github.com/repos/owner/repo/releases/latest'
+        payload = b'{"tag_name":"v1.2.3"}'
+        calls = []
+        def respond(request, timeout):
+            calls.append((request.full_url, timeout))
+            response = io.BytesIO(payload)
+            response.url = official
+            return response
+        with patch.object(tools.urllib.request, 'build_opener') as factory:
+            factory.return_value.open.side_effect = respond
+            self.assertEqual(tools.fetch_bytes(official, 64), payload)
+            factory.assert_called_once()
+            self.assertEqual(factory.call_args.args[0].proxies, {})
+            self.assertIsInstance(factory.call_args.args[1], tools._ApprovedToolRedirect)
+            with self.assertRaisesRegex(ValueError, 'Only reviewed official download hosts'):
+                tools.fetch_bytes('https://evil.invalid/file', 64)
+        self.assertEqual(calls, [(official, 25)])
+
     def test_native_probe_child_environment_is_not_host_configuration(self):
         # The verifier runs a candidate executable, not merely reading it;
         # arbitrary host variables and a poisoned SystemRoot must not survive.

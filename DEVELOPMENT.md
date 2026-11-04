@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：03 工具更新器官方资源逐跳验证
+
+- tool/update-tools.py fetch_bytes() 原先使用 urllib.request.urlopen()，虽然审核计划限制初始资源网址并对候选二进制校验 SHA-256，但自动重定向仍可能在检查哈希前连接未审核主机，且 urllib 默认从宿主环境或 Windows 注册表读取 HTTP(S) 代理。
+- 为更新元数据（包括 api.github.com）与经过 SHA-256 固定的 Tool 资源统一增加：只允许 HTTPS/审核来源主机，显式空 ProxyHandler 禁止隐式宿主代理，以及在每次跳转前校验的 _ApprovedToolRedirect。保留 github.com -> release-assets.githubusercontent.com、objects.githubusercontent.com、github-releases.githubusercontent.com 和 7-zip.org/www.7-zip.org 正常官方 CDN 路径；拒绝 HTTP 降级、任意域名、IP、非标准端口、用户凭据及伪造后缀。重定向请求不转发 Authorization/Cookie。
+- 补充离线正反向 HTTPRedirectHandler 测试及无真实网络的 opener 注入测试，仍不替代 Windows 原生候选验证。没有运行 AC/下载/安装/发布，YOLO、main 和正式 Release 均未改动。
+
 ## 2026-11-05：全量工具官方下载逐跳重定向审查（PR #31）
 
 - 修复 full-stable-prepare.py 只核验**初始官方 URL**、且下载后的 final 检查仅限制 HTTPS 的问题：原先 urllib 在自动重定向时可能先连接任意 HTTPS 主机，再完成最终检查，不能把初始 URL 来源校验误认成全链路校验。
