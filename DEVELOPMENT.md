@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-04：复查 03/auto 的前置测试、API 限流与令牌转发风险
+
+- **复核范围：** 对比已通过 full #28 的源码提交 `c74e48764da67997e40d4488e432b12014b4854e` 与当前 main，确认 `03` 中 `full_verify`、`full_propose`、`full_artifact_cleanup`、`fast_diagnose`、`native_diagnose` 五个工作流 Job 的代码逐字节未改变；原 19 项 Windows PowerShell、10 轮发行审计、客户 ZIP 校验、只读验证与写入分离继续保留。此次 auto 本身尚未实际在 GitHub Actions 运行，不把源码复核视为 Windows 验收。
+- **前置门禁缺口：** 新增 `test_auto_tool_updates.py` 之前只在升级后的完整 `test_*.py` 套件中执行；如果有测试断言或版本生成缺陷，会浪费 Windows 大下载与运行时间。现将离线安全回归分别移到只读 Ubuntu `auto_check` 访问官方 API 之前、以及原 Windows `verify` 的下载前置测试阶段；增加执行顺序合同测试。无需在没有候选时启动 Windows runner。
+- **官方 GitHub API 速率限制：** 元数据查询原先匿名访问官方 Github Releases，公共 runner 容易碰到 60 次/小时的共享匿名配额。现在只读 `auto_check` 和 Windows `verify` 将各自的 `github.token` 只用于 `api.github.com` 的元数据请求；隔离写入器可使用现有 `GH_TOKEN`。Node 官网请求不附认证信息；任何官方元数据 HTTP 重定向一律拒绝，防止 Python 默认跟随跳转时把 Authorization 头传给第三方。新增 fake opener/token 恶意重定向、错误报头与无凭据 Node 源的正反向回归；另在本地 HTTP 重定向服务实测了 urllib 跳转拦截（未访问外网）。
+- **取消和权限：** `verify` 仍能在 `auto_check` 因其他手动模式被跳过时正常启动，但已将 `always()` 改为 `!cancelled()`，避免用户取消流程后继续启动昂贵 Windows Job。没有增加自动执行、向 main 写入、PR 合并或 Release 发布权限。
+- **目前验证边界：** 已重新比对 GitHub 当前源码、Job 数量、元数据授权域、版本哈希、LFS canonical pointer、客户 ZIP 排除范围与原版 full/diagnose；没有在 GitHub Actions 上实际触发或完成新 auto 的 Windows 验证。自动升级范围仍仅限当前 Node 主版本内及 ripgrep/fd/jq，所有其他工具需要单独升级计划。之前 #29 的失败对应工作流中间编辑提交，并非修复后的真实执行结果。
+
 ## 2026-11-04：03/auto 官方稳定版 Node/CLI 自动候选与完整 Windows PR 门禁（未实际运行）
 
 - **动机与明确边界：** 03/full #28 已全量成功并将经验证的工具升级合入 main，但 full 升级器和依赖锁中同时有 Python、pip、npm、Corepack、Playwright MCP、PDF 兼容策略、7-Zip 的固定目标/ABI/哈希断言；不能将 `latest` 字符串直接塞给完整更新器而称自动最新版。新增独立手动模式 `auto`，当前仅支持已有验证链的 **Node.js（限当前已验证主版本内）、ripgrep、fd、jq**；Python/pip/npm/SSH/Playwright/Chromium/7-Zip/ADB 的上游新版本**不会**被本模式偷偷安装，原 `full` 不变。绝不把支持范围内“无更新”误称为整个 tool 最新。
