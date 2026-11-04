@@ -68,8 +68,12 @@ class AutoToolTests(unittest.TestCase):
         index = [{"version": "v26.14.0", "files": ["win-x64-zip"]},
                  {"version": "v26.15.0-rc.1", "files": ["win-x64-zip"]},
                  {"version": "v27.0.0", "files": ["linux-x64"]}]
+        # A newer major may exist but is not yet approved by our
+        # Windows launcher/npm/ABI regression policy.
+        index.insert(1, {"version": "v27.1.0", "files": ["win-x64-zip"]})
         with patch.object(auto, "request_json", return_value=index):
-            self.assertEqual(auto.official_node_latest(), "26.14.0")
+            self.assertEqual(auto.official_node_latest(), "27.1.0")
+            self.assertEqual(auto.official_node_latest(supported_major=26), "26.14.0")
         entry = ("b" * 64 + "  node-v26.14.0-win-x64.zip\n").encode("ascii")
         with patch.object(auto, "request_bytes", return_value=entry):
             node = auto.node_candidate("26.14.0")
