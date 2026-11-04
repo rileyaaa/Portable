@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-04：清理 30 个历史分支；03/full #22 的 CPython 3.15 回归兼容修复
+
+- **分支清理实测：** 用户手动执行 [04 #41751757199](https://github.com/rileyaaa/Codex-Portable/actions/runs/41751757199)，工作流最终 SUCCESS，日志包含 `BRANCH_CLEANUP_RESULT=PASS;deleted=30;remaining=main`；再次查询 GitHub 远端分支仅有 `main`，没有未关闭 PR。历史 30 个开发/维护分支已经删除，未删除 Release、标签及现有 Git LFS。一次性 `workflow_dispatch` 批量删除任务执行完即从 `.github/workflows/04-cleanup-branches.yml` 移除，保留且仅保留 `pull_request: [closed]` 自动清理：限制本仓库、基准分支 main、当前 PR 已关闭、没有其它打开的同头分支 PR、远端当前 SHA 仍与关闭事件 head SHA 相同才删除；不会对所有分支进行批量清理，不自动运行全工具升级。
+- **正式 full 实际失败：** 用户手动运行 [03 #22 / 41750556896](https://github.com/rileyaaa/Codex-Portable/actions/runs/41750556896)（源 main `6e99d45f6f8a89d4e5261097528e8186d0d11c5e`），动作 lint、安全门禁、npm/Corepack/Playwright/Python 3.15.2/pip 26.3/7-Zip/Chromium 分阶段真实准备，以及 Python 3.15 的 PyInstaller 真 EXE 冻结执行均通过；`Full Python Node and converter regression suites` 的 Python 390 项结果为 386 PASS、3 ERROR、1 FAIL，后续 19 项 Windows PowerShell、十轮发行审计、正式 ZIP、可信候选写入均未运行，不能称 full 成功。没有候选 Artifact、PR 或 Release 发布。
+- **四个失败的两个根因：** `home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/lookup_name.py` 的 `import sre_parse` 在 CPython 3.15 已不可用，导致 `test_android_guard.py` 的三个 fixture 导入测试 ERROR；改为 CPython `re._parser` 原始 token 接口，不放松嵌套正则量词、环视与反向引用拒绝条件，并加正反向正则测试。另 `test_pip_config_isolation.py` 仍取 `pip._internal.configuration.kinds`；pip 26.3 改为 `Kind` 枚举，但旧 pip 的 `Kind` 可能只是 `NewType`，因此先选择旧 `kinds`，不存在时选择新版 `Kind`，继续对普通与隔离模式断言：`PIP_CONFIG_FILE=os.devnull` 时绝不读取配置文件。测试在真正的 Python 3.15 暂存解释器执行时必须使用该暂存目录内的 pip，不能偷测旧的 `tool/python`。
+- **防止重演：** Windows `native_diagnose` 在实际 CPython 3.15 与 wheel 安装成功后、运行时目录搬移前，新增彼此独立的 `python315_android_guard`、`python315_pip_config` 两项真实 unittest 检查并汇总 PASS/FAIL/BLOCKED。离线单元合同校验固定运行路径、参数、阶段顺序和禁用任意测试名；保留原工具安全校验、正式 19 项 PowerShell、完整发行与 SHA-256/可信写入门禁，不削减任何失败断言。
+- **验证边界：** Python 3.11 下用实际 `re._parser` 复测允许/拒绝表达式通过；旧 pip 25.1.1 的真实 `Configuration` 在普通/隔离模式及 `os.devnull` 下隔离行为通过。尚未实际使用 Windows CPython 3.15.2 + pip 26.3 重新执行修复后的两套测试或完整 full。遵守用户对 AC 的控制，未自行 dispatch、重新运行已失败 Job 或发布 Release，正式工具版本台账保持原状。
+
 ## 2026-11-04：CMD 原生诊断改为按独立启动器汇总，不再首错停止
 
 - 已检查实际 Windows Run #41746956733：`native_diagnose` 的 `portable_node_shims` 在 `npm.cmd` 返回 `ENOENT` 后就整体退出，未执行同组的 `npx.cmd`、`corepack.cmd`。PR #28 已补齐诊断沙箱标记；本次进一步修复 **诊断粒度过粗** 的问题，避免下一次 AC 为第二个启动器错误重复付费。
