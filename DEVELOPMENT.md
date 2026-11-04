@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-04：03/diagnose #25 离线合同失败修复（未进入 Windows）
+
+- 用户手动运行 [03 #25 / 41758935900](https://github.com/rileyaaa/Codex-Portable/actions/runs/41758935900)，当时源提交 `55f4d44ff445f10f9799862cabe2b76c3298b0e4`；Ubuntu 快速诊断 9 项中 `contracts`、`workflows` 两项失败，其余 7 项通过，Windows `native_diagnose` 未执行，也没有工具更新候选或 Artifact。
+- `contracts` 的确定性错误：刚加入的 `test_staged_npm12_portable_regressions_gate_before_large_downloads` 将带引号的 `'"tests/test_portable_npm.js"'` 与 Python `native.COPY_FILES` 元组成员比较；真实成员不含引号。修为实际路径字符串，不放宽 npm 12 的越界路径、npmrc 和 npx 守卫。
+- `workflows` 因一次性 `99-临时清理Actions历史.yml` 暂时存在，触发 `test_removed_workflow_entries_cannot_reappear` 的固定四工作流断言；此工作流已在后续 `main` 提交 `b3c302ed` 删除。再次检查目录只剩 01/02/03/04，不更改该严格断言。
+- 由于本次回归日志对 unittest 输出尾部截断两次，已将快速诊断压缩输出改为优先保留 `FAIL/ERROR` 测试名和异常首行，补独立失败日志正向测试；固定 Windows npm12 真实测试门禁保留。对修复后路径、顺序、日志及回归断言执行源码合同检查；**尚未通过下一次真实 Actions 验收**。未触发 AC、创建新分支/PR 或发布 Release。
+
 ## 2026-11-04：03/full Run #24 —— npm 12 缩写参数改为提前真实回归
 
 - **Windows 真实日志：** 用户手动触发 [03/full #41755069778](https://github.com/rileyaaa/Codex-Portable/actions/runs/41755069778)，源提交 `186a1fe33ca9933152765e3d37839d7a437bd2c5`。动作安全检查、Node/npm/Corepack/Playwright/Python 3.15.2/Chromium/7-Zip 安装与哈希门禁、Python 3.15 PyInstaller 真实 EXE 冻结执行通过；394 项 Python unittest 全部通过，`test_automation.js` 10/10 通过。失败发生在后续 `test_portable_npm.js` 10 项中的 1 项：`outside prefixes and cwd are rejected before npm config loading`。
