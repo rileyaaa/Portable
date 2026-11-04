@@ -4,12 +4,12 @@
   "lastSuccessfulToolUpdate": "2026-11-03",
   "tools": {
     "python": {
-      "version": "3.14",
+      "version": "3.15.2",
       "status": "bundled",
       "path": "tool/python/python.exe"
     },
     "pip": {
-      "version": "26.1.2",
+      "version": "26.3",
       "status": "bundled",
       "path": "tool/python/Lib/site-packages/pip"
     },
@@ -24,22 +24,22 @@
       "path": "tool/node/node.exe"
     },
     "npm": {
-      "version": "11.20.0",
+      "version": "12.2.1",
       "status": "bundled",
       "path": "tool/node/node_modules/npm"
     },
     "corepack": {
-      "version": "0.35.0",
+      "version": "0.36.0",
       "status": "bundled",
       "path": "tool/node/node_modules/corepack"
     },
     "playwright-mcp": {
-      "version": "0.0.83",
+      "version": "0.0.84",
       "status": "bundled",
       "path": "tool/automation/playwright"
     },
     "chromium": {
-      "version": "155.0.8059.12",
+      "version": "157.0.8103.15",
       "status": "bundled",
       "path": "tool/automation/browsers"
     },
@@ -49,7 +49,7 @@
       "path": "tool/android/platform-tools"
     },
     "7zip": {
-      "version": "26.01",
+      "version": "26.05",
       "status": "bundled",
       "path": "tool/bin/7z.exe"
     },

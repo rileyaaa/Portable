@@ -1,1235 +1,1235 @@
 {
   "schemaVersion": 1,
-  "browserVersion": "155.0.8059.12",
-  "revision": "1247",
+  "browserVersion": "157.0.8103.15",
+  "revision": "1252",
   "platform": "win32-x64",
   "archive": {
-    "sourceUrl": "https://cdn.playwright.dev/builds/cft/155.0.8059.12/win64/chrome-win64.zip",
-    "resolvedUrl": "https://storage.googleapis.com/chrome-for-testing-public/155.0.8059.12/win64/chrome-win64.zip",
-    "sha256": "48e66b6d93271398c68564ac8ca081b862cb7b78851ec3eae376a9a8d1941a15",
-    "size": 207283631
+    "sourceUrl": "https://cdn.playwright.dev/builds/cft/157.0.8103.15/win64/chrome-win64.zip",
+    "resolvedUrl": "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.15/win64/chrome-win64.zip",
+    "sha256": "9b79d71060f08e8953e396a3f3c705105cca1c5862ec708f89bfa080fee78af6",
+    "size": 209292933
   },
   "fileCount": 305,
-  "uncompressedBytes": 458240242,
+  "uncompressedBytes": 462783183,
   "files": {
-    "tool/automation/browsers/chromium-1247/chrome-win64/155.0.8059.12.manifest": {
-      "sha256": "f5416e8a28b8734d3e0c56fed98874691390eca19eed6302101e1a21b58190d7",
+    "tool/automation/browsers/chromium-1252/chrome-win64/157.0.8103.15.manifest": {
+      "sha256": "a433ad8a780dcb6cbc2970cf2f51684a9aad6f280eaab89cb0ef5a28478ab274",
       "size": 226
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/ABOUT": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/ABOUT": {
       "sha256": "122b32f3ee3f1e8d65c774f5257fc6cc2127b666148ced0ce2efa3ea57e1d93c",
       "size": 257
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/D3DCompiler_47.dll": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/D3DCompiler_47.dll": {
       "sha256": "f5c95e919b4ffa1ac71049cd45b9f986d2965e6888395ca2806337985334fa56",
       "size": 4753864
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/First Run": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/First Run": {
       "sha256": "839adbaaca1c43dd4575c502ada96ebb4651f1a69b6fc5e42679beb47584181e",
       "size": 8
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/IwaKeyDistribution/iwa-key-distribution.pb": {
-      "sha256": "ad3af233ddeb3958378f0746775ed12ebf90fe1c2dabbe32066f61c486c52852",
-      "size": 3643
+    "tool/automation/browsers/chromium-1252/chrome-win64/IwaKeyDistribution/iwa-key-distribution.pb": {
+      "sha256": "274f2cc20e5627c35d54cef0b5798f0a43bbc560fd52aa61a044a518c881a7d6",
+      "size": 3917
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/IwaKeyDistribution/manifest.json": {
-      "sha256": "763cc370b7677952dd6ce012f40add7f440ccc758ccdc32a52906e9a07e17997",
-      "size": 114
+    "tool/automation/browsers/chromium-1252/chrome-win64/IwaKeyDistribution/manifest.json": {
+      "sha256": "313d7ea9fb517aea7819f0f70ad56a26a7410cae164433ce80f9e88c5be4379c",
+      "size": 115
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/MEIPreload/manifest.json": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/MEIPreload/manifest.json": {
       "sha256": "44844cf3dde6e80087ae0e6bf0d9326d7ef7d23326d24ac83af0850be26923d2",
       "size": 238
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/MEIPreload/preloaded_data.pb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/MEIPreload/preloaded_data.pb": {
       "sha256": "c6070a157b4e28d16fbccbd233e93846ddb070c85e1a1bc64469b7a5f1424fad",
       "size": 8254
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/chrome.dll": {
-      "sha256": "73a2713b3043992677537f605fb1fbc16fe9e1e72024f5aef76f706fe677bc98",
-      "size": 304837632
+    "tool/automation/browsers/chromium-1252/chrome-win64/chrome.dll": {
+      "sha256": "97c0016b9e9002f0fc494ddc76f0624bf40f9ce5ab5c0714e810134a2d242192",
+      "size": 308544512
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/chrome.exe": {
-      "sha256": "74222067d9e6a3ab417a6b1ba00688baded1c7807bb6ef8d1fdf8b6e74d725b8",
-      "size": 4517376
+    "tool/automation/browsers/chromium-1252/chrome-win64/chrome.exe": {
+      "sha256": "7ca0cf1b2cba9b9ec812a8e3df2cb92a5ddbea8c7013b8d71d589a43589fad21",
+      "size": 4105728
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/chrome_100_percent.pak": {
-      "sha256": "bddbd001423ae035035b0851903e7ad586456f817fba7e7a52c4a96537ea37d7",
-      "size": 595443
+    "tool/automation/browsers/chromium-1252/chrome-win64/chrome_100_percent.pak": {
+      "sha256": "e75c1cb09ff1b9f6e090a5fa4b5857b852dbcfc0d9372106057930d78e2b962d",
+      "size": 580473
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/chrome_200_percent.pak": {
-      "sha256": "4e4ebd0445e9524f458f4e91cbd803362738dd151147aa56e6c7185e6f73ca49",
-      "size": 964747
+    "tool/automation/browsers/chromium-1252/chrome-win64/chrome_200_percent.pak": {
+      "sha256": "ca7aa8fffba011ed2eee75cbc4808e8c57ef34c42bc852d691e9e84f76caf54d",
+      "size": 934209
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/chrome_elf.dll": {
-      "sha256": "13dc9e030824041666ac2c233ac69c8f184c62d0f6e6c523f845627893a30dfd",
-      "size": 2808320
+    "tool/automation/browsers/chromium-1252/chrome-win64/chrome_elf.dll": {
+      "sha256": "0894468568d71a1ce8282fa4782b532581ea127dfec5fe7333256b9f5dc1ace8",
+      "size": 2820608
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/chrome_proxy.exe": {
-      "sha256": "16a7b939b44eefaf9b82b05411cbec30368e406ae826b8c9b92187dbffb7bda9",
-      "size": 2567168
+    "tool/automation/browsers/chromium-1252/chrome-win64/chrome_proxy.exe": {
+      "sha256": "906305f8c8370cffbc3d86d0b7b4c0e9c6897d81865bc5ea7872b49c0eff9e23",
+      "size": 2583552
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/chrome_pwa_launcher.exe": {
-      "sha256": "eb134b68086dc37ada32f801f0326a6c12e07b239c8f375a7b5ef0ef1046a7a6",
-      "size": 3197952
+    "tool/automation/browsers/chromium-1252/chrome-win64/chrome_pwa_launcher.exe": {
+      "sha256": "cfd444f389e148423d6b52214e601b6ae1ef1853a51fddd2af9e1c745d22c382",
+      "size": 2868224
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/chrome_wer.dll": {
-      "sha256": "1a34e38007f8b546e58570804c4c8805cce479a6a4adba80b0c292de4b00e94d",
+    "tool/automation/browsers/chromium-1252/chrome-win64/chrome_wer.dll": {
+      "sha256": "4724b440ba09b7e1884f33ebea196ae498140320ba13fb397f3b76922d233cc5",
       "size": 115200
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/dxcompiler.dll": {
-      "sha256": "a20fbf8908b32e5aaf6dce955a0ac2ae1421bec6e5d0fd8aba4ab0661c439c1a",
-      "size": 25910272
+    "tool/automation/browsers/chromium-1252/chrome-win64/dxcompiler.dll": {
+      "sha256": "37fa55592771718e2aad7cf5ea99bee119209cce631e8cb74b94c37a8ac6f958",
+      "size": 25999872
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/elevated_tracing_service.exe": {
-      "sha256": "738c818bb08056cffff1b5a1f0cf2424665606057e7bd32470b87f63327296c4",
-      "size": 4536320
+    "tool/automation/browsers/chromium-1252/chrome-win64/elevated_tracing_service.exe": {
+      "sha256": "9750a072a76eef85835b95b07b8e56befe3560d653e142985f58f2cc2c6dfb9f",
+      "size": 4537344
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/elevation_service.exe": {
-      "sha256": "08747f946cb20b8670501d577714459d0b69bddf73592aa03fe9e67e94dfe52b",
-      "size": 3901952
+    "tool/automation/browsers/chromium-1252/chrome-win64/elevation_service.exe": {
+      "sha256": "bdd84063a15e0ac0e9b63cd9f04dcf17c943f18bd4b881615d880f194a51eb99",
+      "size": 3911168
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-af.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-af.hyb": {
       "sha256": "5487ee44a4cd706d0086522e90c59c76cdf2ac68ce506fd3eae6054b9220c0cf",
       "size": 72640
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-as.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-as.hyb": {
       "sha256": "c2784e33158a807135850f7125a7eaabe472b3cfc7afb82c74f02da69ea250fe",
       "size": 703
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-be.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-be.hyb": {
       "sha256": "25b7cfa039f82ac92990e1789de40988d490db9b613852fb24036b38ff87893c",
       "size": 6098
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-bg.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-bg.hyb": {
       "sha256": "7593f0395081e3eeb2d8516d10746608afd826cffd4e7e37d53936993d200a13",
       "size": 3467
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-bn.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-bn.hyb": {
       "sha256": "c2784e33158a807135850f7125a7eaabe472b3cfc7afb82c74f02da69ea250fe",
       "size": 703
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-cs.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-cs.hyb": {
       "sha256": "97a4755fe9e653a08969f1933e3db19c712078b227bd5aa6799093abc5a0edc3",
       "size": 64245
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-cu.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-cu.hyb": {
       "sha256": "2baee19d5024ff87dcf3a1b9d0da1b3ac5a1e506adeead3b96a4de5395d0290e",
       "size": 52842
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-cy.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-cy.hyb": {
       "sha256": "4d0569fe2f4b41b3164cf610310e1d996fd2c553cc39de6062e50f4e033cc207",
       "size": 35913
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-da.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-da.hyb": {
       "sha256": "86fdfc8db62cdaa11f615dad3712da1f4708294e029a4aad0fc285d4ea16c4bd",
       "size": 6967
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-de-1901.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-de-1901.hyb": {
       "sha256": "8c5fa4b29519d17593e923bc6a9a284df7a6d07fac42f897110b8fb2e0baeef5",
       "size": 121393
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-de-1996.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-de-1996.hyb": {
       "sha256": "d673805547a0228d2f57a5ad551b8760cfcc521f38c49284ed3976e3515bca49",
       "size": 120412
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-de-ch-1901.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-de-ch-1901.hyb": {
       "sha256": "8223a912160354e05735522fdb339dc59b353ad5d1e4f4cfa94898dc348e748f",
       "size": 120218
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-el.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-el.hyb": {
       "sha256": "76ae3454fb0045adb83094832578aa4749ce4dc694c4edcf85b419c1e2d9bcd3",
       "size": 4219
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-en-gb.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-en-gb.hyb": {
       "sha256": "ae4b78009d18e849d87458677151ee3aad1608ad72ec050dfd2421d22e7d031f",
       "size": 46607
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-en-us.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-en-us.hyb": {
       "sha256": "03727cd6f4aa71b203c4c74ca6987ac7d87f13037337ac6f4b6996c2a0dc5f8c",
       "size": 59802
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-es.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-es.hyb": {
       "sha256": "137461792537a2e56a6475e81e2b9ad7a2bdabf1f4738fae186dca3022357349",
       "size": 14995
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-et.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-et.hyb": {
       "sha256": "10079c66014dd2e6abfef5a018e6553fd5a036afb96bd2a235440a188f88b15e",
       "size": 21421
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-eu.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-eu.hyb": {
       "sha256": "e2778a4fc7b8f064a32b6a44bc29f10e264d9d6214b8edb8ebd1f5f6d68e2eb2",
       "size": 665
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-fr.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-fr.hyb": {
       "sha256": "00bd8b2d398d77575da2bfbbc5ec641aad7f2a87d4a31186ec169e85a27de5b7",
       "size": 8165
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-ga.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-ga.hyb": {
       "sha256": "1e3043f395bfb2a4c43d0480ba2f168ed622881cc3482359ca6e99821e983be8",
       "size": 35824
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-gl.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-gl.hyb": {
       "sha256": "89d98eff14e2cf1c2314efdf392339e62d7e786f100202a7377bf7b22095a0c5",
       "size": 9289
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-gu.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-gu.hyb": {
       "sha256": "af0edb67c2219b803c3eb6c1dee6f2d41a3fe00468a9da8be8ef5056d701abf3",
       "size": 655
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-hi.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-hi.hyb": {
       "sha256": "f4df224d459fd111698dd5a13613c5bbf0ed11f04278d60230d028010eac0c42",
       "size": 687
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-hr.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-hr.hyb": {
       "sha256": "d5f066a5657f1d7c39d053956df204b7926f40d2fe4f69573af09d909066e26c",
       "size": 3031
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-hu.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-hu.hyb": {
       "sha256": "8b3a16268cc932b226c17ff405b3cfb6eb38a9511a2043d653dc03729efceac1",
       "size": 317251
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-hy.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-hy.hyb": {
       "sha256": "9b34dfca85cb27546829f104f137757efb274934c1e9d4991f55ad564962a76a",
       "size": 605
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-it.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-it.hyb": {
       "sha256": "f9c027d7fd44b01cd5e1cdf802e20c63560673098af18bea0930ba9af334e0f7",
       "size": 2512
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-ka.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-ka.hyb": {
       "sha256": "2472271c7955c67e9fdb86d0cd3c5d88f5e598da4f44b6741284b2bbcb2e4d52",
       "size": 9996
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-kn.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-kn.hyb": {
       "sha256": "2b999d0a152f804601aa8f38ff0d3a6e5949977bf1daa76fa888acae21526287",
       "size": 711
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-la.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-la.hyb": {
       "sha256": "fd4b6f36135cd3b932e350ec2017dfd89d2e36ac226f54e4c8f2e4bc6db0593d",
       "size": 1839
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-lt.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-lt.hyb": {
       "sha256": "6fe2da26a96834fb9aecbe586d40f728df0ef676a4f235450054e66841b9e2ca",
       "size": 7774
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-lv.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-lv.hyb": {
       "sha256": "65962ccb5055e4c693e5ac493d6affdc810ec168eb2942f5705b7f4e464f9993",
       "size": 38602
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-ml.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-ml.hyb": {
       "sha256": "90572db8f49b01ec6a102732cdf14fc3f07d363cbe0d261103e583043164e888",
       "size": 776
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-mn-cyrl.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-mn-cyrl.hyb": {
       "sha256": "0d2731f16aa2c90faec8e63260358cbccede403faf95e3af8c66bc2db0729ca0",
       "size": 5142
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-mr.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-mr.hyb": {
       "sha256": "f4df224d459fd111698dd5a13613c5bbf0ed11f04278d60230d028010eac0c42",
       "size": 687
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-mul-ethi.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-mul-ethi.hyb": {
       "sha256": "f2fac1bd069ffe5cd1112d94cc31137ed38a1b161093ecd74c9c1688428b688b",
       "size": 3740
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-nb.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-nb.hyb": {
       "sha256": "c2771fbb1bfff7db5e267dc7a4505a9675c6b98cfe7a8f7ae5686d7a5a2b3dd0",
       "size": 145263
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-nl.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-nl.hyb": {
       "sha256": "5ebde398944b461cf940f0520c5a49c0882b6f36f9ac5cda0538c8c8b44fb7ca",
       "size": 77080
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-nn.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-nn.hyb": {
       "sha256": "5bcbb58eaf65f13f6d039244d942f37c127344e3a0a2e6c32d08236945132809",
       "size": 145263
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-or.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-or.hyb": {
       "sha256": "4e9cd302baffc4ea3e9652327ea24072ebf37b5c4fc0719292bdac10aaad665b",
       "size": 647
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-pa.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-pa.hyb": {
       "sha256": "470329d28faa484f945d78ffefb176dcb6f2032c753e25bc014106ad24b2c68a",
       "size": 607
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-pt.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-pt.hyb": {
       "sha256": "f6fbf1bcb260cc86256fc494f388f7b27d10865fbf8f61517dee25af4d58d6e8",
       "size": 1414
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-ru.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-ru.hyb": {
       "sha256": "336ce2048ffd31b7bcaf435e53badfaf0579e405042d49adbc0823f6be5f9614",
       "size": 19886
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-sk.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-sk.hyb": {
       "sha256": "138c5990961da21993653f54a413ddacb8921d6d70b892b7ca154d6e8ad2028c",
       "size": 64103
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-sl.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-sl.hyb": {
       "sha256": "ad746c68562603ac3b15e89da03c76e081c08e7d9c8d4c9f64763e53d696c77c",
       "size": 6631
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-sq.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-sq.hyb": {
       "sha256": "bc29c9401ce952414cbaebc5c8ee1d27c1706c6f77807b5ff713e2124438b3ca",
       "size": 2013
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-sv.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-sv.hyb": {
       "sha256": "56642aa5a37625ff9d034761d16b034d4ba5be74090cbd825956bbce2775ecd1",
       "size": 72119
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-ta.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-ta.hyb": {
       "sha256": "40fda94856a86f065de8baa6184ea63dcdb011ee4ca498a7c1fee44c99314c67",
       "size": 554
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-te.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-te.hyb": {
       "sha256": "516fa9654fa3aeaab480d40eaf6ad78fc039086bd8edc144be3d59525edcac29",
       "size": 703
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-tk.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-tk.hyb": {
       "sha256": "77fdaed29bd842aaa976ab7ef81b617a15c0a2d1ebd1161c1bf26b79a108b5cd",
       "size": 2712
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-uk.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-uk.hyb": {
       "sha256": "1c626abe40d43f6d56a01b5b40305d7c7d6481f616eac00a3f3aaaaca8388786",
       "size": 19417
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/hyph-und-ethi.hyb": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/hyph-und-ethi.hyb": {
       "sha256": "1de83cb787dfaf53fb7e6e8db3aae5008ad24ebdd28be02031306ea9e9f3e285",
       "size": 3484
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/hyphen-data/manifest.json": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/hyphen-data/manifest.json": {
       "sha256": "aeb0e502811ddb8d2561e81e2e82a013152d8b49de59e4b0c04669982138d641",
       "size": 77
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/icudtl.dat": {
-      "sha256": "495c45cc7a65562ec461f860c310c6b66e006acd96833f61d1aa31f77fe18cf1",
-      "size": 10819840
+    "tool/automation/browsers/chromium-1252/chrome-win64/icudtl.dat": {
+      "sha256": "02a01b3188b6a41a756f7322fdb5e6b5ca6573b327b01dfc8ed662d571a6f769",
+      "size": 10824432
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/libEGL.dll": {
-      "sha256": "f05747c9f676230b1b9ebe90f522f01f63ed11cdd069d7105798309ab3bbdc6d",
+    "tool/automation/browsers/chromium-1252/chrome-win64/libEGL.dll": {
+      "sha256": "466a30a9017fb1f6a78e63738f6ef4f3caec762f2eb6c3356461659bcad21721",
       "size": 453120
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/libGLESv2.dll": {
-      "sha256": "c5e68867a92a73d251e686f99e7f1e70096b0e5d03425ab8a17c802bf43bd318",
+    "tool/automation/browsers/chromium-1252/chrome-win64/libGLESv2.dll": {
+      "sha256": "5cdc8f4ce239a7eaf5f68db8d0ead93c37baabd66063d39153a6ba080adf7968",
       "size": 453120
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/af.pak": {
-      "sha256": "c83cbaab03cc4f3356177ef236ad15a1d2d2e0b630b445c140186491f69b4827",
-      "size": 558276
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/af.pak": {
+      "sha256": "92a86fbd713988a7ae8d2d0a55d8a2dc9530bec58bb9dddb4b8a4c45710bfb57",
+      "size": 572637
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/af_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/af_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/af_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/af_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/af_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/af_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/am.pak": {
-      "sha256": "42063e9b1ec9876e8ef41f68bf1d12b641122428d236a7d13affbf906731a621",
-      "size": 900665
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/am.pak": {
+      "sha256": "6a1dd6ba1c43abe4e5e5d465ca0277b942304fe3197461bbf2cc1382623c11f1",
+      "size": 925251
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/am_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/am_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/am_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/am_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/am_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/am_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ar.pak": {
-      "sha256": "1f0a05619facd7b869ade4af490063af8ee0e9132d1fb4ad2cfbd66dad5580b0",
-      "size": 1002369
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ar.pak": {
+      "sha256": "d270724ba7ee8a0e45332e8c13a17c974abafdd6591efcbd46327e8e658e23ef",
+      "size": 1027892
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ar_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ar_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ar_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ar_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ar_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ar_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/bg.pak": {
-      "sha256": "50280a9bc1b3bacdf2ae4c91523615fcf99a9a52dad2e4bb53cb6ad2b9dc18c0",
-      "size": 1035488
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/bg.pak": {
+      "sha256": "f092e4e95a6e08148e5d82b3ba32305232b472bb071d71f327837fb36cd8757d",
+      "size": 1063420
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/bg_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/bg_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/bg_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/bg_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/bg_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/bg_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/bn.pak": {
-      "sha256": "17281ba6d67ad1e26ce9ba994ec3af87dda38a295dab5ac9b44f82207d53a165",
-      "size": 1317598
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/bn.pak": {
+      "sha256": "6f6b8a33c62c07ead66f38699a11082096f6b3ebd6d15e64e2bb2308fbbb1693",
+      "size": 1353839
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/bn_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/bn_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/bn_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/bn_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/bn_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/bn_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ca.pak": {
-      "sha256": "d6f220460dc1bb31caf44792740c54a9ce072a19ddcf11a1b1045959eb72f750",
-      "size": 637369
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ca.pak": {
+      "sha256": "8bfe2375ac2cf74557e6abdf32f36728dd7bf4151609a7969ea0414d56e65f11",
+      "size": 653978
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ca_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ca_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ca_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ca_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ca_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ca_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/cs.pak": {
-      "sha256": "28fa7420869ec03811f0b8e95586d7d65229e8f579df05d3319f57a2e430a629",
-      "size": 653331
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/cs.pak": {
+      "sha256": "e9b9faa908b8c77eaa63f5e04e679466764d5439b27757e777726f32ca548e83",
+      "size": 671089
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/cs_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/cs_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/cs_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/cs_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/cs_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/cs_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/da.pak": {
-      "sha256": "737fabae743daafbc0784c244bcc7e9f67e081c68a9d6a92886f6d5671ea274b",
-      "size": 589735
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/da.pak": {
+      "sha256": "a91845214c8e40f737e6076f9e9acc6db0c79c0cd3e85e410a8727db5810064b",
+      "size": 605929
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/da_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/da_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/da_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/da_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/da_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/da_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/de.pak": {
-      "sha256": "4ae527db52c885b3b7ca6e205713a18cdea202957e4a4abd08d42bb97ace1ccd",
-      "size": 640190
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/de.pak": {
+      "sha256": "f00ee4aa39a291948a1bf8afb0f074b1ff3013e317bf86893771e42e9bd137b9",
+      "size": 658567
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/de_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/de_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/de_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/de_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/de_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/de_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/el.pak": {
-      "sha256": "280412a7ef27b25e6c98ea41d83717cc8d717af57849c96308fd8072690bf5be",
-      "size": 1137830
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/el.pak": {
+      "sha256": "d781f14548d6ad3862bf522d26a37df9525cfa4b5e8fbb737e54db2014e0326a",
+      "size": 1169252
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/el_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/el_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/el_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/el_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/el_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/el_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/en-GB.pak": {
-      "sha256": "771285bdbd231f94a858a50b374c2cc2f0d459a4f2831d4d9b85619fd10e40d9",
-      "size": 508834
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/en-GB.pak": {
+      "sha256": "9f8f462fbbb75fa0c92ed05829fc280b496b045d93aff1592e492f71324357f8",
+      "size": 521753
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/en-GB_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/en-GB_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/en-GB_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/en-GB_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/en-GB_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/en-GB_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/en-US.pak": {
-      "sha256": "6a9d025240f076ea7d6a2c2bd1414f44ff13f70b6d6cb886297323a591932626",
-      "size": 514805
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/en-US.pak": {
+      "sha256": "3127219b0b9793bde81531e1267873ea2f5cc8ec8714317a47b473ab8c2eb50c",
+      "size": 527774
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/en-US_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/en-US_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/en-US_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/en-US_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/en-US_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/en-US_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/es-419.pak": {
-      "sha256": "768be2f2eee938ae90ae1b3ff136b39dcdd527371ed85f740de82070aaa2c938",
-      "size": 623381
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/es-419.pak": {
+      "sha256": "5a386df08fac499c84d5d6fefccf3a7999c7ad0355689cbf17ceb9844ae96fd3",
+      "size": 639392
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/es-419_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/es-419_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/es-419_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/es-419_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/es-419_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/es-419_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/es.pak": {
-      "sha256": "07a78f05df14008ed3e96b23abf08ee95391add002ba6e1e4417ee5cfaa513d1",
-      "size": 619151
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/es.pak": {
+      "sha256": "65e7154d2dcd13b0901ae0a24395ec6964896e5600ee0c64a93a624af50b3548",
+      "size": 635832
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/es_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/es_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/es_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/es_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/es_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/es_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/et.pak": {
-      "sha256": "9741632ae5ae2f77173bd04c73c3f43efd6cf094212c65ad7fc032b4fcccaa30",
-      "size": 567445
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/et.pak": {
+      "sha256": "8d1b52e070de584e66566a4b94593e7e6b0ffa54f02e333f868f36d868183767",
+      "size": 582753
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/et_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/et_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/et_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/et_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/et_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/et_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fa.pak": {
-      "sha256": "d53e93dbfa8ae480508ea3a687ed40782424256b08f1f5abc44c66dbd4e75aa4",
-      "size": 933716
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fa.pak": {
+      "sha256": "dede96833c938d5cd1ffce7bb1bb4f9033906ad637b841e86215d156fe882d27",
+      "size": 960423
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fa_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fa_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fa_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fa_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fa_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fa_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fi.pak": {
-      "sha256": "abb05793deff7f8fb02b5de7f333aabbc8e6b4d2f61327464e208db9a7f0ccfe",
-      "size": 576414
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fi.pak": {
+      "sha256": "a8b3f685006c93b3ffedb43ef3e7b6fcdeb2c97f45da8fe7b3bc443e0bdf14ca",
+      "size": 591938
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fi_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fi_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fi_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fi_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fi_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fi_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fil.pak": {
-      "sha256": "48ad52170e953df461a57ec709d5f560c193da023b673fc4c80078a9af6079dd",
-      "size": 651799
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fil.pak": {
+      "sha256": "cfe56ff05d6ef8b70ab97473adbd48f49ec44870e2562f8c705ee8c8c9245b20",
+      "size": 668432
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fil_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fil_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fil_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fil_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fil_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fil_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fr.pak": {
-      "sha256": "aceaf7b6ea43c0e4719ea1bf766ced378c0cd08ba0e63db18bd38216ef986cf2",
-      "size": 677591
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fr.pak": {
+      "sha256": "cb9f6e74a33658aaf9ec67a42daa112c69e1427d358c9a9588426f819efeae20",
+      "size": 695868
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fr_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fr_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fr_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fr_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/fr_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/fr_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/gu.pak": {
-      "sha256": "3e8795b9600eaf141d4b95f18dfd897e6e4eb3c8c5353a61d3d0529102b8ab4e",
-      "size": 1310116
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/gu.pak": {
+      "sha256": "c509dc8f29efd34d28048e9651492ab83ec25068f5e63c494459a6933ed8991b",
+      "size": 1344949
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/gu_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/gu_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/gu_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/gu_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/gu_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/gu_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/he.pak": {
-      "sha256": "2b8b59360f94e73bac315b9ec6d3ef925cbd0118c96a7f72c730aa760c23e116",
-      "size": 819295
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/he.pak": {
+      "sha256": "054cc5eaad28f229c41c8c432a065c31b76cc0fa6ccd4d790844e431d6f5b57f",
+      "size": 842281
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/he_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/he_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/he_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/he_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/he_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/he_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/hi.pak": {
-      "sha256": "462285836ee0312e577eb497d64685d4736073c391ec508422210c2674e26e62",
-      "size": 1394136
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/hi.pak": {
+      "sha256": "59ca4446c7504d801a8648e546f4cb3011e53220335f5df7c518dfa56f54112a",
+      "size": 1434867
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/hi_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/hi_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/hi_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/hi_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/hi_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/hi_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/hr.pak": {
-      "sha256": "0a83cc3f6ec4f3530d547e4094b4ab355bfeb8b5cb7b5967dab7825ad149d7d2",
-      "size": 629225
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/hr.pak": {
+      "sha256": "b00e14e222e20a33b4be4651da0bab43b481b483b91c9b50080cd3e502da727d",
+      "size": 646565
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/hr_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/hr_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/hr_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/hr_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/hr_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/hr_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/hu.pak": {
-      "sha256": "ad2e1735cbe4b0dbf12c2e901a62cf61142a4c606ef55d3e30d127748c60df57",
-      "size": 674654
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/hu.pak": {
+      "sha256": "28d3be86c1e6804e808e119cc5667e07da69ca61772a71bd21e98013dd9d3d17",
+      "size": 693221
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/hu_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/hu_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/hu_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/hu_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/hu_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/hu_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/id.pak": {
-      "sha256": "ce247e488ad31dba65c75e77aff6ef4a861675462e91a1bb46280b046069f40a",
-      "size": 558271
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/id.pak": {
+      "sha256": "9bdacbe2859d2177006d86c776adadb26fd3e7257b318f0d31dd3c515bc90d14",
+      "size": 573464
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/id_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/id_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/id_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/id_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/id_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/id_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/it.pak": {
-      "sha256": "a912f53b4e7f239eecab65d4947547e8303bdea0a9b43d1b54106a28b42dbb58",
-      "size": 617974
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/it.pak": {
+      "sha256": "b4dc62c19d0b856aa79995fee0a2cf65f8f3c97992dfe9d6b0732e76da44fe81",
+      "size": 633613
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/it_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/it_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/it_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/it_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/it_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/it_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ja.pak": {
-      "sha256": "9d6fb279908a10190b59c35d387ffe423de9580457e090947506cfe597fc31a7",
-      "size": 746839
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ja.pak": {
+      "sha256": "62bc8a49350fed95189ded2a01cf62714fc8553e598ae74f8fb7455c36aaf70c",
+      "size": 766555
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ja_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ja_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ja_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ja_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ja_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ja_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/kn.pak": {
-      "sha256": "6fbb22857589b588b93244ce53750abdec12fecaae09cd1880538a575b83caab",
-      "size": 1500257
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/kn.pak": {
+      "sha256": "057985ed21a3bd39e898a0dc0a89bcfaf46a7c5d58b9358f3853bbff0b779d46",
+      "size": 1541913
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/kn_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/kn_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/kn_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/kn_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/kn_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/kn_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ko.pak": {
-      "sha256": "8979b4a667cd5ff43198912eab9adffc764b0ec63fd5c1e6b53a5015d85b59f9",
-      "size": 636154
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ko.pak": {
+      "sha256": "f217e7ee8c9127fa16a56c5d6bb9dbdb55c31899259bd9d13e8e7151e9420c26",
+      "size": 654102
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ko_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ko_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ko_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ko_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ko_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ko_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/lt.pak": {
-      "sha256": "069458fc016b1abac96c54f56a05c61ba9769aa248dfe4665515dc2c5cfcaa1e",
-      "size": 683914
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/lt.pak": {
+      "sha256": "aa23e117814f507507456a1dd49dc1699379036401eea2eebfd6ae372f2b8578",
+      "size": 700985
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/lt_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/lt_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/lt_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/lt_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/lt_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/lt_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/lv.pak": {
-      "sha256": "2576eb8668ea7772f05df5a778e184d6b15ef81f52aa7446588851923957da61",
-      "size": 680308
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/lv.pak": {
+      "sha256": "ff3c6c4e4a52b87278fed64e21c82ded49158a69093d41e7305c92f4a61e0432",
+      "size": 698034
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/lv_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/lv_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/lv_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/lv_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/lv_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/lv_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ml.pak": {
-      "sha256": "9d9b547c74d6d5909f9b63ad22eb5ac981c564c981c948bf709a146f03575846",
-      "size": 1544178
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ml.pak": {
+      "sha256": "a52b5d1429c6906f2da2ed244ec454c8d83f230936a088a4788b32ce9660bff8",
+      "size": 1587319
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ml_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ml_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ml_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ml_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ml_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ml_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/mr.pak": {
-      "sha256": "06604a2b418e98148d17f62aa59635e4fc0e1133a57fcce56a54593d51c6e1db",
-      "size": 1279740
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/mr.pak": {
+      "sha256": "a197c0592b92f9bb104216ef5e5d07f23dd7208aac709eb419b71442acf1ecd0",
+      "size": 1316332
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/mr_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/mr_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/mr_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/mr_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/mr_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/mr_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ms.pak": {
-      "sha256": "4349098543127044580be56472d17fb4a093e1fbedc2e4f6d4244bf22bc08e46",
-      "size": 586754
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ms.pak": {
+      "sha256": "76b1b9626ef679cacad8f4cbc3fa17fb91db4a5dbff7f9768aee17c8f22168d8",
+      "size": 603203
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ms_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ms_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ms_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ms_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ms_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ms_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/nb.pak": {
-      "sha256": "29290e053519a3f8f7a72eab046750b9277790234b1acb13f38cb90e7ffb543b",
-      "size": 561591
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/nb.pak": {
+      "sha256": "f5ac30384891f0e0bae6823334e8e0f05f8e6eeff15667ece00e1572343a1c5a",
+      "size": 575567
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/nb_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/nb_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/nb_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/nb_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/nb_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/nb_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/nl.pak": {
-      "sha256": "214d1f4755f348957f22e6c37d5533f6cb5dd917836dd0a0f0ae34e0200f8b1c",
-      "size": 585897
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/nl.pak": {
+      "sha256": "7502ee290b0d1400f7fff6216946ca2b70a080c25a19305a1dcfcdafaf525770",
+      "size": 601469
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/nl_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/nl_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/nl_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/nl_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/nl_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/nl_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/pl.pak": {
-      "sha256": "13690eb7a87adf97c679bb7d801ea0f27573fde4e2e1eea7e6d611d143b25c83",
-      "size": 654795
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/pl.pak": {
+      "sha256": "9885722236eb11dfaa836fd628d3e13f19e1bae686af250ea81ad7a5123b3860",
+      "size": 673257
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/pl_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/pl_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/pl_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/pl_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/pl_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/pl_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/pt-BR.pak": {
-      "sha256": "8534c3fa86238ee0e24b7d10f85768f42d7d874c0e4d2f5bd50edd50f52ed942",
-      "size": 612775
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/pt-BR.pak": {
+      "sha256": "117116bb79a326ae0ddf66ee2b7395846c41074df4db881bc1177f6c2729b2ff",
+      "size": 629735
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/pt-BR_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/pt-BR_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/pt-BR_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/pt-BR_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/pt-BR_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/pt-BR_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/pt-PT.pak": {
-      "sha256": "7fed74a2b0848c0bc98bdbb230832432ed104430105ac374972e5868eab48b7d",
-      "size": 616873
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/pt-PT.pak": {
+      "sha256": "b2f542d66d7b77398f028e08749497edbe8bdc66944a4dc27e3ed5d588a344c3",
+      "size": 633131
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/pt-PT_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/pt-PT_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/pt-PT_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/pt-PT_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/pt-PT_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/pt-PT_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ro.pak": {
-      "sha256": "000fbe78774148552436410dcea8b98775998435f43ba944ef89c827bd44aa04",
-      "size": 639136
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ro.pak": {
+      "sha256": "5882d5f72f7754fa9c5bdd79e5414c7883dd15e8e8875cde763196b26fd218aa",
+      "size": 654821
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ro_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ro_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ro_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ro_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ro_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ro_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ru.pak": {
-      "sha256": "101c5632442593dea1d662cbe385a1c3c6b91d2e312ad4bbe7812cced4540a66",
-      "size": 1053592
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ru.pak": {
+      "sha256": "eb2c3ef04f4891ae83e6e49072cb38e0d69491e2881b0166241d55bf4e5f0aa4",
+      "size": 1080745
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ru_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ru_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ru_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ru_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ru_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ru_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sk.pak": {
-      "sha256": "0d8b6c9d91b26fe9e0840ffdbcd24e48084fcb859ca1c7d763fddcf279363496",
-      "size": 664389
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sk.pak": {
+      "sha256": "201a9a645528fd4d6678782205d66e56b67f054adf4f9bb9cad50364f498c779",
+      "size": 682364
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sk_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sk_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sk_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sk_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sk_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sk_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sl.pak": {
-      "sha256": "eeec3dd66179f48ad87ca4063a19a1e6c769b5eec7211b7f3c59a2699c8f495d",
-      "size": 633970
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sl.pak": {
+      "sha256": "c50a34e075d3b3b71da0516089385c0751357c3678a2e93f440dfa56b296c599",
+      "size": 650722
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sl_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sl_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sl_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sl_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sl_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sl_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sr.pak": {
-      "sha256": "a35a104b7873cdc01dfe6d398f2e083f1674e7dba560d20d0163a50ca7f1d8c8",
-      "size": 974238
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sr.pak": {
+      "sha256": "24eb5e1cf63411b45eae19c71bc3ad8e29a9ae47402493112eef7b7921603a40",
+      "size": 1000443
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sr_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sr_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sr_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sr_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sr_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sr_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sv.pak": {
-      "sha256": "a56d96d892344a992e30fe48aac329b1581ea72047446e3850d41077788b1c65",
-      "size": 568798
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sv.pak": {
+      "sha256": "cd250b2fbddbbfbd3744c1db07f637e91892002909bc2833fa48fc7017cc32f4",
+      "size": 584224
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sv_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sv_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sv_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sv_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sv_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sv_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sw.pak": {
-      "sha256": "919db06510eac99e0ffb8800f796d1a4c777b3de30a6fc3bf7b19fffdd3bce92",
-      "size": 601485
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sw.pak": {
+      "sha256": "69d4260ec1ceb0442dace36eb5e7c274c1458f51660374b63811cf2c1721a074",
+      "size": 617841
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sw_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sw_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sw_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sw_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/sw_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/sw_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ta.pak": {
-      "sha256": "72ff14dd5608dbc995d8756402d98b92fc8fa32878b7f4a5fa0f0f8b733501c6",
-      "size": 1538470
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ta.pak": {
+      "sha256": "defe6fd1653cac80df10420a389e4227723cc70345886959933765896a7d8964",
+      "size": 1582115
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ta_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ta_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ta_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ta_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ta_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ta_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/te.pak": {
-      "sha256": "7a297f791fce6c8843339fd79e01df76215a3ccf955269091dc13562015e3ba3",
-      "size": 1425057
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/te.pak": {
+      "sha256": "52620927391668f90cfe250916dcdeef6db97b3a3eec27f05ba561add33c447b",
+      "size": 1466682
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/te_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/te_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/te_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/te_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/te_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/te_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/th.pak": {
-      "sha256": "06ec86443a2f5b37545498fab2d3fa42e498ddba11e34ddc8a1abbdf2719ae1c",
-      "size": 1194069
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/th.pak": {
+      "sha256": "c3d01a65cc1a189acc8ed8835e35b0a56673aa91aa4c8f5740090bf715163122",
+      "size": 1227733
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/th_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/th_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/th_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/th_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/th_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/th_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/tr.pak": {
-      "sha256": "6439c2fc0433c1a951c0e469de28eabe8c7c84e89cd7b9b8435653e6b248ec47",
-      "size": 613022
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/tr.pak": {
+      "sha256": "687cfd8304a928d6b072e1c700af6349fdde71a06c37d464502cf4a316ba485b",
+      "size": 630266
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/tr_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/tr_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/tr_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/tr_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/tr_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/tr_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/uk.pak": {
-      "sha256": "3bea4cb10444e83310987ed92c5a795c27da78bf697eaa7bef46dfcfdaf666e5",
-      "size": 1060401
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/uk.pak": {
+      "sha256": "91486457391724853e13b6b7f13f7238d3c42a010d638b96be79c11d232e9595",
+      "size": 1088644
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/uk_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/uk_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/uk_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/uk_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/uk_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/uk_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ur.pak": {
-      "sha256": "13f47a7c836b0691f714d743a9081bcdcbec4be2311f0c33112b1f2c57c04aa1",
-      "size": 915362
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ur.pak": {
+      "sha256": "905ec97bf3ed742fe5160da03d23f95640d61e39d873c007f6e125de7d029cd7",
+      "size": 940881
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ur_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ur_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ur_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ur_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/ur_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/ur_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/vi.pak": {
-      "sha256": "f687e5c1b4ccb216702fb55cc948a276931a04e20ff512416996de64a0222940",
-      "size": 729149
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/vi.pak": {
+      "sha256": "2d33d514aa099e2ea6b2eab9d4ca43643aafeb27b81191d303105c7da8d5b9d5",
+      "size": 749932
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/vi_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/vi_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/vi_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/vi_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/vi_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/vi_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/zh-CN.pak": {
-      "sha256": "c33abe58c5b8531f3f21069378dbd6bdc46a6805428075facd42014a0e62539e",
-      "size": 523249
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/zh-CN.pak": {
+      "sha256": "599942b835eda7e7dbae9c531ff5169140a6be2591307b3769d17816752cc878",
+      "size": 536627
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/zh-CN_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/zh-CN_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/zh-CN_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/zh-CN_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/zh-CN_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/zh-CN_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/zh-TW.pak": {
-      "sha256": "4c696f724ccc08121a9b4178765311028ad3ac51d13dc34d6906881347a68da5",
-      "size": 516780
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/zh-TW.pak": {
+      "sha256": "5f980b429cd854e19ba4856304f256c3adea75da4cb0950d3881194857494007",
+      "size": 530570
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/zh-TW_FEMININE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/zh-TW_FEMININE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/zh-TW_MASCULINE.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/zh-TW_MASCULINE.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/locales/zh-TW_NEUTER.pak": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/locales/zh-TW_NEUTER.pak": {
       "sha256": "ca73097bd968b363b7145e86b64f3c595e533808b0763dc8863a27fc363cfa51",
       "size": 18
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/notification_helper.exe": {
-      "sha256": "d7c24f3cd3212e5ceb15bc24e7891757f03f599addee43f06d4185fafe7f29ec",
-      "size": 2807808
+    "tool/automation/browsers/chromium-1252/chrome-win64/notification_helper.exe": {
+      "sha256": "f39c20cf82390675f0e9b8cd10224947ae4e0b704b2ac2d850c203aeb901c64a",
+      "size": 2823168
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/resources.pak": {
-      "sha256": "91026d7674e5e8f6579b8e98f6d19ad04139a39be3601c4789883120648c9372",
-      "size": 24257319
+    "tool/automation/browsers/chromium-1252/chrome-win64/resources.pak": {
+      "sha256": "122659813b0fe2ff213303a5ed6fbe487a2d1f16f883c5a3bcea394830fe41cc",
+      "size": 24803010
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/resources/accessibility/reading_mode_gdocs_helper/content.js": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/resources/accessibility/reading_mode_gdocs_helper/content.js": {
       "sha256": "6c0aeaaf9a71ad68aa45764c111e70bb23aa0fbf406644a375b6b709cbbe4b6e",
       "size": 439
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/resources/accessibility/reading_mode_gdocs_helper/gdocs_script.js": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/resources/accessibility/reading_mode_gdocs_helper/gdocs_script.js": {
       "sha256": "d291adabcfcb1a4a4a2ffacdd9d04fdb473ab0d6903556bef7446be9c3646d86",
       "size": 1425
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/resources/accessibility/reading_mode_gdocs_helper_manifest.json": {
-      "sha256": "57723667f11bf0e3cb8ef75bece9b13fd027ffcacbc2f8e0cc0a7e68cdb5b6f5",
+    "tool/automation/browsers/chromium-1252/chrome-win64/resources/accessibility/reading_mode_gdocs_helper_manifest.json": {
+      "sha256": "e08ec66003d34b68170294de994d1a1c7e80c3ffdd2669cebb77e3e3948010c0",
       "size": 2400
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/setup.exe": {
-      "sha256": "7cdd54a77b3aca2560b8dc6fcdf8f18f06bb4360865f159e1e17f255b42aaffd",
-      "size": 7335424
+    "tool/automation/browsers/chromium-1252/chrome-win64/setup.exe": {
+      "sha256": "d74b4a4dea5350474f054b0fde4dcd4f123d667517b63453097a4f0c196b2967",
+      "size": 7044096
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/v8_context_snapshot.bin": {
-      "sha256": "a0892a92ddf0042d5c8eda0de957ac133fdd58626fbd6c211d23d10fce70222e",
-      "size": 753784
+    "tool/automation/browsers/chromium-1252/chrome-win64/v8_context_snapshot.bin": {
+      "sha256": "b439917731d9088c83079c6a6c490391ef21053624f883ee70d366603909d21d",
+      "size": 753096
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/vk_swiftshader.dll": {
-      "sha256": "0db27a1b375b9c61156df05c9994178e74c310db77a88f66a754429255619fa1",
-      "size": 5393920
+    "tool/automation/browsers/chromium-1252/chrome-win64/vk_swiftshader.dll": {
+      "sha256": "56d0dc731e99b1af35ee58e39a835ea5fece422cd4f7de420fd32373b56bee37",
+      "size": 5404160
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/vk_swiftshader_icd.json": {
+    "tool/automation/browsers/chromium-1252/chrome-win64/vk_swiftshader_icd.json": {
       "sha256": "32d83ff113fef532a9f97e0d2831f8656628ab1c99e9060f0332b1532839afd9",
       "size": 106
     },
-    "tool/automation/browsers/chromium-1247/chrome-win64/vulkan-1.dll": {
-      "sha256": "966809881e6556711303e22412302c7993e6b470e9a36868eaf06e7deb8145fc",
+    "tool/automation/browsers/chromium-1252/chrome-win64/vulkan-1.dll": {
+      "sha256": "f459dbcb3ac4b934637e0be02fd63fc3b1738ed553ac810c8641fe9819763918",
       "size": 986112
     }
   }
