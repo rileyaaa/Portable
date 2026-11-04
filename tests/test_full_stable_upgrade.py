@@ -93,6 +93,29 @@ class FullStableUpgradeTests(unittest.TestCase):
                         writer.index("git push origin"))
         self.assertNotIn("full-stable-prepare.py prepare", writer)
 
+    def test_fast_diagnose_preserves_failing_unittest_names_not_tail_noise(self):
+        # Run #25 lost both root causes because the old formatter sliced
+        # unittest output twice and the Actions line displayed only 450 chars.
+        report = (
+            "FAIL: test_first (test_case.Sample.test_first)\\n"
+            "AssertionError: a bad tuple membership check\\n"
+            "ERROR: test_second (test_case.Sample.test_second)\\n"
+            "ModuleNotFoundError: missing audited helper\\n"
+            + ("unrelated output\\n" * 180)
+        )
+        process = subprocess.CompletedProcess(
+            args=["python", "-m", "unittest"], returncode=1,
+            stdout="", stderr=report)
+        with patch.object(fast.subprocess, "run", return_value=process):
+            with self.assertRaises(ValueError) as failure:
+                fast.offline_suite("test_synthetic.py")
+        reason = str(failure.exception)
+        self.assertIn("offline regression failed: test_synthetic.py", reason)
+        self.assertIn("FAIL: test_first", reason[:450])
+        self.assertIn("AssertionError: a bad tuple membership check", reason[:450])
+        self.assertIn("ERROR: test_second", reason[:450])
+        self.assertIn("ModuleNotFoundError: missing audited helper", reason[:450])
+
     def test_fast_batch_diagnostics_no_full_action_artifacts_and_aggregate_errors(self):
         workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
