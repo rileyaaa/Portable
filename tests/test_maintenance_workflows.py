@@ -184,6 +184,9 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertIn("permissions:\n  contents: read", publisher)
         self.assertIn("02-compatibility.py --repo . --native", upgrade)
         self.assertIn("02-compatibility.py --repo . --native", publisher)
+        self.assertIn("02-tool-compatibility.ps1", publisher)
+        self.assertLess(publisher.index("02-tool-compatibility.ps1"),
+                        publisher.index("Ten consecutive seeded release regression rounds"))
         self.assertIn("test_upgrade_roundtrip.py", upgrade)
         self.assertIn("-p 'test_*.py'", publisher)
         self.assertNotIn("gh release create", upgrade)
@@ -194,7 +197,7 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertIn("\non:\n  workflow_dispatch:", workflow)
         self.assertNotIn("\n  push:", workflow)
         self.assertNotIn("\n  schedule:", workflow)
-        self.assertIn("default: auto", workflow)
+        self.assertIn("default: check", workflow)
         self.assertNotIn("      create_pr:", workflow)
         self.assertIn("needs: verify", workflow)
         self.assertNotIn("gh release create", workflow)
