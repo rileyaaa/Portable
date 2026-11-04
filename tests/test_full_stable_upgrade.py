@@ -39,6 +39,19 @@ pure = load("tool/full_stable_pure_wheels.py", "portable_pinned_pyyaml")
 
 
 class FullStableUpgradeTests(unittest.TestCase):
+    def test_real_stager_uses_exact_os_devnull_for_pip_configuration(self):
+        # pip 26.3 compares this value exactly against os.devnull.
+        # On Windows, upper-case NUL is not the same string as "nul".
+        result = subprocess.CompletedProcess(["synthetic.exe"], 0, stdout="", stderr="")
+        with patch.dict(os.environ, {"PIP_CONFIG_FILE": "synthetic-host-pip.ini",
+                                     "PYTHONPATH": "outside-path"}, clear=False):
+            with patch.object(stage.subprocess, "run", return_value=result) as called:
+                stage.run("synthetic.exe", "--version")
+        kwargs = called.call_args.kwargs
+        self.assertEqual(kwargs["env"]["PIP_CONFIG_FILE"], os.devnull)
+        self.assertNotIn("PYTHONPATH", kwargs["env"])
+        self.assertEqual(kwargs["env"]["PYTHONDONTWRITEBYTECODE"], "1")
+
     def test_source_and_workflow_parse_without_running_downloads(self):
         for path in ("tool/full-stable-prepare.py", "tool/full-stable-transfer.py",
                      "tool/full_stable_pure_wheels.py",
