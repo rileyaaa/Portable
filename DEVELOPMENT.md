@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-04：CMD 原生诊断改为按独立启动器汇总，不再首错停止
+
+- 已检查实际 Windows Run #41746956733：`native_diagnose` 的 `portable_node_shims` 在 `npm.cmd` 返回 `ENOENT` 后就整体退出，未执行同组的 `npx.cmd`、`corepack.cmd`。PR #28 已补齐诊断沙箱标记；本次进一步修复 **诊断粒度过粗** 的问题，避免下一次 AC 为第二个启动器错误重复付费。
+- 真实 `tool/node/` CMD 脚本保持原样，`full-stable-native-diagnose.py` 将检查改为三个独立阶段：`npm_cmd`、`npx_cmd`、`corepack_cmd`。三者都只在 `npm_corepack` 安装及 `npm_bootstrap_layout` 通过后运行，但其中一个 CMD 失败不会短路其余两个；最终统一 `NATIVE_DIAGNOSE_RESULT` 显示各自 PASS/FAIL/BLOCKED。新增离线正反向测试，模拟 npx CMD 单独失败仍要求 npm 和 Corepack 各自运行成功，未知启动器不得执行。
+- 本次只改维护诊断、测试和日志，不下载安装新依赖、不调用 Actions、不更改客户包、正式安全守卫、台账或 Release。测试代码提交并不等于 Windows 运行验证；必须等待用户手动下一次短时诊断的真实结果才知道所有三个 CMD 能否在 Win11 环境通过。
+
+
 ## 2026-11-04：新版真实 Windows diagnose Run #41746956733 的 npm 便携入口假失败与沙箱修复
 
 - **直接日志证据：** 手动 `diagnose` Run #41746956733（main 26c8a213319c4daec085766643e42ee45d33fb41），Ubuntu 元数据预检全部通过，Windows `native_diagnose` 在约三分钟内进行了 11 个独立检查，10 PASS / 1 FAIL，唯一失败是 `portable_node_shims`：`npm.cmd --version` 返回退出码 2，stderr 为 `Portable npm refused unsafe or unreadable configuration (ENOENT).`。npm/Corepack 官方来源验证与真实安装、Playwright `npm ci`、Python 3.15.2/41+7 依赖、PyPI optional manifest/license、pip check、PDF→Markdown、CLI wrapper、7-Zip 均实测 PASS。0 个 Artifact，无写入 Job 或 Release。
