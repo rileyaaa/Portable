@@ -664,10 +664,18 @@ def diff_digest(group: str) -> str:
                          for p in allowed_prefixes)
         require(always or (group != 'tools' and ssh_owned) or tool_owned,
                 'Staged changes include an unrelated tool file: ' + path)
-    require(('.gitattributes' in paths) == node_selected,
-            'Node LFS attributes must be staged exactly when updating Node')
     if node_selected:
+        # First install adds a reviewed LFS rule; subsequent Node upgrades
+        # reuse the exact already-committed rule with no attributes diff.
+        baseline = subprocess.check_output(
+            ['git', 'show', 'HEAD:.gitattributes'], cwd=ROOT)
+        existing = NODE_LFS_ATTRIBUTE in baseline
+        require(('.gitattributes' in paths) == (not existing),
+                'Node LFS attributes diff must match first or repeated update')
         verify_node_lfs_index(group)
+    else:
+        require('.gitattributes' not in paths,
+                'Non-Node tool candidate cannot change Git LFS attributes')
     patch = subprocess.check_output(['git', '-c', 'core.quotepath=false', 'diff',
                                      '--cached', '--binary', '--no-ext-diff'], cwd=ROOT)
     return hashlib.sha256(patch).hexdigest()
