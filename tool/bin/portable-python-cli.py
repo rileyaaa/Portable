@@ -9,8 +9,23 @@ points working.
 from __future__ import annotations
 
 import importlib.metadata
+import os
 import re
 import sys
+
+
+def pip_environment(inherited: dict[str, str]) -> dict[str, str]:
+    """Disable host pip.ini and host pip caches for direct pip CMD entrypoints.
+
+    Embedded Python's ._pth controls imports, not pip's separate config files.
+    The main Codex launcher already sets PIP_CONFIG_FILE=nul.
+    """
+    sanitized = {key: value for key, value in inherited.items()
+                 if not key.upper().startswith("PIP_")}
+    sanitized["PIP_CONFIG_FILE"] = os.devnull
+    sanitized["PIP_NO_CACHE_DIR"] = "1"
+    sanitized["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
+    return sanitized
 
 
 def _canonical_name(name: str) -> str:
@@ -38,6 +53,10 @@ def main() -> int:
         print("usage: portable-python-cli.py <console-script-name> [args...]", file=sys.stderr)
         return 2
     requested = sys.argv[1]
+    if _canonical_name(requested) == "pip":
+        clean = pip_environment(dict(os.environ))
+        os.environ.clear()
+        os.environ.update(clean)
     ep = _find_entry_point(requested)
     sys.argv = [requested, *sys.argv[2:]]
     result = ep.load()()

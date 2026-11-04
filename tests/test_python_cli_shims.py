@@ -64,6 +64,27 @@ class PythonCliShimTests(unittest.TestCase):
         data.decode("ascii")
         self.assertNotIn(b"\n", data.replace(b"\r\n", b""))
 
+    def test_direct_pip_entry_suppresses_host_pip_config_and_cache(self):
+        script = ROOT / "tool/bin/portable-python-cli.py"
+        spec = importlib.util.spec_from_file_location("portable_cli_under_test", script)
+        helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(helper)
+        hostile = {
+            "PIP_CONFIG_FILE": "C:\\host\\pip.ini",
+            "pip_index_url": "https://host.invalid/endpoint",
+            "PIP_EXTRA_INDEX_URL": "https://host.invalid/extra",
+            "PIP_CACHE_DIR": "C:\\host\\pip-cache",
+            "PYTHONPATH": "retained-by-the-pip-filter",
+        }
+        clean = helper.pip_environment(hostile)
+        self.assertEqual(clean["PIP_CONFIG_FILE"], os.devnull)
+        self.assertEqual(clean["PIP_NO_CACHE_DIR"], "1")
+        self.assertEqual(clean["PIP_DISABLE_PIP_VERSION_CHECK"], "1")
+        self.assertEqual(clean["PYTHONPATH"], hostile["PYTHONPATH"])
+        self.assertFalse(any(name.upper().startswith("PIP_INDEX") or
+                             name.upper() == "PIP_CACHE_DIR" for name in clean))
+        self.assertIn("pip_environment(dict(os.environ))", script.read_text(encoding="utf-8"))
+
     def test_user_command_mentioning_helper_is_preserved(self):
         command = self.output / "my-user-command.cmd"
         original = b"@echo off\r\nrem See portable-python-cli.py for conventions.\r\necho User command\r\n"

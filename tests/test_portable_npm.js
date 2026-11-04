@@ -138,6 +138,33 @@ test('stale state paths rebase while safe session paths are retained', t => {
 });
 
 
+test('direct npm shims discard inherited host shell and lifecycle Node options', t => {
+  const f = fixture(t);
+  const env = portableEnvironment(f.root, {
+    ...f.env,
+    NPM_CONFIG_SCRIPT_SHELL: path.join(f.base, 'host-shell.exe'),
+    npm_config_node_options: '--require=host.js',
+    NODE_OPTIONS: '--require=host.js',
+  });
+  assert.equal(Object.keys(env).filter(key =>
+    /^(NPM_CONFIG_(SCRIPT_SHELL|NODE_OPTIONS)|NODE_OPTIONS)$/i.test(key)).length, 0);
+});
+
+test('local npmrc cannot load external script-shell or inject lifecycle Node options', async t => {
+  const f = fixture(t);
+  const context = {...f, root: repository, npmPath, parser};
+  const outside = path.join(path.dirname(repository), 'must-not-be-probed-shell.exe');
+  for (const declaration of [
+    `script-shell=${outside}\n`,
+    `node-options=--require=${outside}\n`,
+  ]) {
+    fs.writeFileSync(path.join(f.cwd, '.npmrc'), declaration);
+    const selected = planArguments({...context, mode: 'npm', args: ['prefix']});
+    await assert.rejects(preflightConfigFiles(context, selected.config),
+      /inside the current portable package|lifecycle node-options|package-local and absolute/);
+  }
+});
+
 test('inherited npm path options cannot redirect files outside the package', t => {
   const f = fixture(t);
   for (const [name, value] of Object.entries({

@@ -61,8 +61,41 @@ function portableEnvironment(root, inherited) {
     for (const name of Object.keys(env)) if (name.toUpperCase() === key) delete env[name];
     env[key] = inside(root, value, {directory: !files.has(key)});
   }
+  // Direct npm/npx CMD entry points must not inherit host lifecycle injection:
+  // npm v12 does not type script-shell or node-options as filesystem paths.
   for (const key of Object.keys(env)) {
-    if (/^(NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_COMPILE_CACHE|NODE_V8_COVERAGE|NODE_REDIRECT_WARNINGS|OPENSSL_CONF|SSL_CERT_FILE|SSL_CERT_DIR)$/i.test(key)) delete env[key];
+    if (/^(NPM_CONFIG_(?:SCRIPT_SHELL|NODE_OPTIONS)|NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_COMPILE_CACHE|NODE_V8_COVERAGE|NODE_REDIRECT_WARNINGS|OPENSSL_CONF|SSL_CERT_FILE|SSL_CERT_DIR)$/i.test(key)) delete env[key];
+  }
+  if (process.platform === 'win32') {
+    // Preserve only package-local PATH items (including the main launcher's
+    // optional tools) plus Windows' required system executables.
+    const systemRoot = String(inherited.SystemRoot || inherited.SYSTEMROOT ||
+      inherited.WINDIR || process.env.SystemRoot || process.env.WINDIR || '');
+    if (!/^[A-Za-z]:\\\\/.test(systemRoot) || systemRoot.slice(2).includes(':'))
+      throw new Error('Portable npm requires an ordinary Windows system root');
+    const windows = path.win32.normalize(systemRoot);
+    const localDirs = ['tool\\\\bin', 'tool\\\\python', 'tool\\\\node', 'tool\\\\android\\\\platform-tools']
+      .map(relative => inside(root, path.win32.join(root, relative), {directory: true}));
+    const retained = [];
+    for (const item of String(inherited.PATH || inherited.Path || '').split(';')) {
+      const candidate = item.trim();
+      if (!candidate || candidate.includes('"')) continue;
+      try { retained.push(inside(root, candidate, {directory: true})); }
+      catch { /* Do not inspect or inherit outside PATH entries. */ }
+    }
+    const systemDirs = [path.win32.join(windows, 'System32'), windows,
+      path.win32.join(windows, 'System32', 'WindowsPowerShell', 'v1.0'),
+      path.win32.join(windows, 'System32', 'Wbem')];
+    const seen = new Set(), safePaths = [];
+    for (const item of [...localDirs, ...retained, ...systemDirs]) {
+      const key = item.toLowerCase();
+      if (!seen.has(key)) { seen.add(key); safePaths.push(item); }
+    }
+    for (const key of Object.keys(env)) {
+      if (key.toUpperCase() === 'PATH' || key.toUpperCase() === 'COMSPEC') delete env[key];
+    }
+    env.PATH = safePaths.join(';');
+    env.ComSpec = path.win32.join(windows, 'System32', 'cmd.exe');
   }
   env.NPM_CONFIG_UPDATE_NOTIFIER = 'false';
   return env;
@@ -131,6 +164,18 @@ function validateConfigPaths(root, config, cwd, definitions, includeDefaults = t
   for (const [where, {data}] of config.data) {
     if (where === 'default') continue;
     for (const name of Object.keys(data)) {
+      // Explicit config sources must not use a host shell or inject a child
+      // Node preload. npm v12 defines these as String rather than path.
+      if (name === 'node-options' && data[name])
+        throw new Error('Portable npm refuses injected lifecycle node-options');
+      if (name === 'script-shell' && data[name]) {
+        const shell = data[name];
+        if (typeof shell !== 'string') throw new Error('Invalid npm script shell');
+        if (!(process.platform === 'win32' && shell.toLowerCase() === 'cmd.exe')) {
+          if (!path.isAbsolute(shell)) throw new Error('npm script-shell must be package-local and absolute');
+          inside(root, shell, {required: true});
+        }
+      }
       if (names.has(name) || /:(?:certfile|keyfile)$/.test(name)) check(name, data[name]);
     }
   }
