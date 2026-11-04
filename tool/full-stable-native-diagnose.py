@@ -22,7 +22,14 @@ import time
 SOURCE = Path(__file__).resolve().parent.parent
 PLAN = SOURCE / "tool/full-stable-upgrade-plan.json"
 NODE_VERSION = "26.13.0"
+# A *non-executable* scratch marker: the portable npm JS checks for Codex's
+# file's presence, not its bytes. The real codex.exe remains protected by LFS
+# and release SHA gates; never fetch or execute it in this quick diagnostic.
+DIAGNOSTIC_CODEX_MARKER = b"NOT_A_CODEX_EXECUTABLE__NATIVE_DIAGNOSTIC_ONLY\n"
+BOOTSTRAP_FILES = ("codex.exe", "env.ps1", "tool/node/node.exe",
+                   "tool/node/portable-npm.js")
 COPY_FILES = (
+    "env.ps1",
     "tool/python-packages.in.txt",
     "tool/python-ssh-packages.in.txt",
     "tool/optional-python-manifest.json",
@@ -60,6 +67,21 @@ def copy_plain(source: Path, destination: Path) -> None:
     shutil.copyfile(source, destination)
 
 
+def verify_portable_bootstrap(root: Path) -> str:
+    """Detect missing npm launcher layout *before* a slow Windows CMD attempt."""
+    for name in BOOTSTRAP_FILES:
+        item = root / name
+        if not item.is_file() or item.is_symlink() or item.stat().st_nlink != 1:
+            raise ValueError("Isolated portable npm bootstrap marker missing: " + name)
+    if (root / "codex.exe").read_bytes() != DIAGNOSTIC_CODEX_MARKER:
+        raise ValueError("Unexpected diagnostic Codex marker; no binary may be executed")
+    for name in ("home-runtime/.npmrc", "cache/npm/global.npmrc"):
+        item = root / name
+        if not item.is_file() or item.stat().st_size != 0:
+            raise ValueError("Isolated npm configuration file missing or non-empty: " + name)
+    return "Package-local npm root markers and independent blank configs checked"
+
+
 def sandbox_from_checkout(root: Path, *, node_executable: Path) -> Path:
     """Make a *minimal* disposable tool tree, excluding old Python and Chromium."""
     if root.exists() or root.is_symlink():
@@ -71,10 +93,20 @@ def sandbox_from_checkout(root: Path, *, node_executable: Path) -> Path:
     for relative in COPY_FILES:
         copy_plain(SOURCE / relative, root / relative)
     copy_plain(node_executable, root / "tool/node/node.exe")
+    # The actual npm.cmd -> portable-npm.js launcher's mandatory root markers
+    # are codex.exe, env.ps1, node.exe and portable-npm.js. The previous
+    # diagnostic omitted the first two, causing ENOENT before npm was started.
+    # The synthetic Codex marker is intentionally NOT a runnable PE file.
+    (root / "codex.exe").write_bytes(DIAGNOSTIC_CODEX_MARKER)
     for directory in ("tool/node/node_modules/npm", "tool/node/node_modules/corepack",
                       "tool/automation/playwright", "tool/python", "work/npm",
-                      "work/python", "work/7zip", "tmp"):
+                      "work/python", "work/7zip", "tmp", "home-runtime",
+                      "appdata", "localappdata", "localappdata/state",
+                      "programdata", "cache/npm", "cache/npm-prefix", "cache/xdg"):
         (root / directory).mkdir(parents=True)
+    (root / "home-runtime/.npmrc").write_bytes(b"")
+    (root / "cache/npm/global.npmrc").write_bytes(b"")
+    verify_portable_bootstrap(root)
     return root / "tool"
 
 
@@ -166,12 +198,13 @@ def execute(root: Path, stage, plan: dict, node: Path) -> list[dict]:
     work = root / "work"
     evidence: dict = {}
     records: list[dict] = []
+    record(records, "npm_bootstrap_layout", lambda: verify_portable_bootstrap(root))
     record(records, "windows_tool_contracts", windows_tool_contracts)
     record(records, "node26", lambda: check_node_version(node))
     record(records, "npm_corepack", lambda: stage.stage_npm(plan, work / "npm", evidence),
            after=("node26",))
     record(records, "portable_node_shims", lambda: native_node_shims(stage, root),
-           after=("npm_corepack",))
+           after=("npm_corepack", "npm_bootstrap_layout"))
     record(records, "playwright_npm_ci",
            lambda: stage.stage_playwright(plan, work / "npm", evidence),
            after=("npm_corepack",))
