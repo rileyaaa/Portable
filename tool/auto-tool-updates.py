@@ -256,15 +256,15 @@ def main(argv: list[str] | None = None) -> int:
         # Make it impossible to mistake an up-to-date CLI subset for a full
         # Python/npm/Playwright/browser upgrade or stable-major audit.
         with open(summary, "a", encoding="utf-8") as stream:
-            stream.write("\\n### Official Node / CLI auto-update scope\\n\\n")
+            stream.write("\n### Official Node / CLI auto-update scope\n\n")
             stream.write("Only Node.js within its verified major, ripgrep, fd, and jq are auto-managed. "
                          "Python, pip, npm, Corepack, Playwright, Chromium, 7-Zip, ADB, "
-                         "and SSH remain under a separately reviewed full upgrade plan.\\n\\n")
+                         "and SSH remain under a separately reviewed full upgrade plan.\n\n")
             for name, row in sorted(status.items()):
                 stream.write("- " + name + ": " + row["installed"] +
-                             " → " + row["latest"] + "\\n")
-            stream.write("\\nResult: " + ("Candidate(s): " + ", ".join(changed)
-                                         if changed else "No supported updates needed") + "\\n")
+                             " → " + row["latest"] + "\n")
+            stream.write("\nResult: " + ("Candidate(s): " + ", ".join(changed)
+                                         if changed else "No supported updates needed") + "\n")
     print("AUTO_TOOL_RESULT=" + ("CANDIDATES_READY" if changed else
                                  "SUPPORTED_TOOLS_UP_TO_DATE"), flush=True)
     return 0
