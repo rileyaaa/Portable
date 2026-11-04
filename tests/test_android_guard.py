@@ -74,6 +74,21 @@ class AndroidGuardTests(unittest.TestCase):
              lambda: scanner.load_denylist(self.package, skill_root)),
         )
 
+    def test_lookup_regex_keeps_repetition_and_assertion_guards(self):
+        # Protect the original grep safety contract on CPython 3.14 and 3.15:
+        # the deprecated sre_parse shim must not be needed to load the script.
+        lookup = self.load_script("lookup_name.py")
+        self.assertEqual(lookup.sre_parse.__name__, "re._parser")
+        self.assertTrue(lookup._safe_regex(r"Activity\\s+[A-Za-z]+").search("Activity Main"))
+        for dangerous in (r"(a+)+", r"(a*+)+", r"(?=a)b", r"(?<=a)b",
+                          r"(a)\\1", r"(a|b){1,3}+{1,3}"):
+            with self.subTest(pattern=dangerous):
+                with self.assertRaises((ValueError, lookup.re.error)):
+                    lookup._safe_regex(dangerous)
+        for bad in ("", "a" * 257):
+            with self.assertRaises(ValueError):
+                lookup._safe_regex(bad)
+
     def test_derived_inputs_reject_symlinks_before_content_read(self):
         outside = self.old / "synthetic-source.txt"
         outside.write_text('{"a.b": "example.Name"}')
