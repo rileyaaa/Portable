@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-04：03/full Run #24 —— npm 12 缩写参数改为提前真实回归
+
+- **Windows 真实日志：** 用户手动触发 [03/full #41755069778](https://github.com/rileyaaa/Codex-Portable/actions/runs/41755069778)，源提交 `186a1fe33ca9933152765e3d37839d7a437bd2c5`。动作安全检查、Node/npm/Corepack/Playwright/Python 3.15.2/Chromium/7-Zip 安装与哈希门禁、Python 3.15 PyInstaller 真实 EXE 冻结执行通过；394 项 Python unittest 全部通过，`test_automation.js` 10/10 通过。失败发生在后续 `test_portable_npm.js` 10 项中的 1 项：`outside prefixes and cwd are rejected before npm config loading`。
+- **准确根因：** 该测试同时传入标准 `--prefix`、`--prefix=...` 和旧版 npm 允许的 `--prefi=...` 缩写，原断言要求三者都必须报 `inside the current portable package`。全量更新后的 npm **12.2.1** 在 `@npmcli/config → nopt` 加载 CLI 配置时先拒绝缩写，日志为 `Invalid abbreviated flag "--prefi". Did you mean "--prefix"?`。完整前缀路径、npmrc 链接、继承配置路径和 npx 参数等其余 9 项皆 PASS；此次没有证据表明生产路径边界被放宽。由于 Windows 读锁定验证未通过，后续 19 项 PS5.1、十轮发行审计、客户 ZIP、PR 写入均未执行；无候选 Artifact、Release 或 PR。
+- **修正测试而不削弱守卫：** `tests/test_portable_npm.js` 对完整拼写 `--prefix` 与 `--prefix=...` 保留严格的“必须由包内路径守卫拒绝”断言；对 `--prefi=...` 明确只允许两种**失败**结果：旧版 npm 解析成 prefix 后由路径守卫拒绝，或 npm 12 在解析器里先拒绝缩写。不修改 `tool/node/portable-npm.js` 正式边界，也不跳过任一测试。
+- **前移真实门禁：** 在 `tool/full-stable-prepare.py` 新增 `verify_staged_portable_npm()`，要求实际已安装的固定 npm 12.2.1、普通文件/未硬链接的 Node、测试脚本和 npm metadata，执行 `node.exe --test tests/test_portable_npm.js`；正式 full 在 Node/npm/Corepack staging 完毕后即执行，早于 Playwright、CPython 3.15 和 Chromium 下载。Windows `native_diagnose` 把同一 JS 测试复制到短时隔离包，再用真实 staging 和 Node 执行新增独立检查 `npm12_portable_regressions`；原 npm/npx/corepack CLI、Python、PDF 检查独立汇总不变。新增无网络 mock 合约与阶段顺序正反例，防止只测试旧 npm 11 或用纯模拟掩盖升级风险。
+- **验证边界：** 本轮修复属于代码、回归契约和执行顺序的修改。仍未在真实 Windows npm 12.2.1 上执行修复后的完整 JS 测试或任何 full；不把静态审查、旧版 Node 或 mock 判定为全量验收。没有自行 dispatch/rerun Actions、创建分支、更新已安装工具版本台账、Release 或 LFS。再次手动测试前先复查现有证据和必要性，避免无谓消耗。
+
 ## 2026-11-04：清理 30 个历史分支；03/full #22 的 CPython 3.15 回归兼容修复
 
 - **分支清理实测：** 用户手动执行 [04 #41751757199](https://github.com/rileyaaa/Codex-Portable/actions/runs/41751757199)，工作流最终 SUCCESS，日志包含 `BRANCH_CLEANUP_RESULT=PASS;deleted=30;remaining=main`；再次查询 GitHub 远端分支仅有 `main`，没有未关闭 PR。历史 30 个开发/维护分支已经删除，未删除 Release、标签及现有 Git LFS。一次性 `workflow_dispatch` 批量删除任务执行完即从 `.github/workflows/04-cleanup-branches.yml` 移除，保留且仅保留 `pull_request: [closed]` 自动清理：限制本仓库、基准分支 main、当前 PR 已关闭、没有其它打开的同头分支 PR、远端当前 SHA 仍与关闭事件 head SHA 相同才删除；不会对所有分支进行批量清理，不自动运行全工具升级。
