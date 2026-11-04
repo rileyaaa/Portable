@@ -30,7 +30,12 @@ import os, sys
 from unittest.mock import patch
 sys.path.insert(0, sys.argv[1])
 from pip._internal import configuration as c
-locations = {c.kinds.GLOBAL: [sys.argv[2]], c.kinds.USER: [], c.kinds.SITE: []}
+# pip 26.3 exposes Kind; older bundled pip exposed kinds.
+# Use the genuine configuration source identifiers, never relax the assertions.
+kinds = getattr(c, "Kind", None)
+if kinds is None:
+    kinds = c.kinds
+locations = {kinds.GLOBAL: [sys.argv[2]], kinds.USER: [], kinds.SITE: []}
 # Replace discovery, so no real host/user configuration path is read or probed.
 with patch.object(c, "get_configuration_files", return_value=locations):
     for isolated in (False, True):
@@ -44,9 +49,17 @@ with patch.object(c, "get_configuration_files", return_value=locations):
                 config.load()
             assert "install.target" not in dict(config.items())
 '''
+            # The native Windows diagnostic runs these tests using the staged
+            # python-runtime, while full runs them from the replaced tool/python.
+            # Both must test the pip actually selected for the test process.
+            runtime = Path(sys.executable).resolve().parent
+            site = (runtime / "Lib/site-packages"
+                    if (runtime / "python315._pth").is_file()
+                    else ROOT / "tool/python/Lib/site-packages")
+            self.assertTrue(site.is_dir(), "Bundled or staged pip site-packages missing")
             result = subprocess.run(
                 [sys.executable, "-B", "-c", code,
-                 str(ROOT / "tool/python/Lib/site-packages"), str(config)],
+                 str(site), str(config)],
                 cwd=fixture, capture_output=True, text=True, timeout=20,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
