@@ -174,8 +174,8 @@ class FullStableUpgradeTests(unittest.TestCase):
     def test_fast_batch_diagnostics_no_full_action_artifacts_and_aggregate_errors(self):
         workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
-        self.assertIn("options: [auto, auto-pr, diagnose, check, prepare-tools, prepare-tools-pr, prepare-ssh, prepare-ssh-pr, prepare-all, prepare-all-pr, full, full-pr]", workflow)
-        self.assertIn("!startsWith(inputs.operation, 'full') && inputs.operation != 'diagnose'", workflow)
+        self.assertIn("options: [diagnose, check, update]", workflow)
+        self.assertIn("needs.auto_check.outputs.full_plan_changes == 'true'", workflow)
         quick = workflow.split("\n  fast_diagnose:", 1)[1]
         self.assertIn("inputs.operation == 'diagnose'", quick)
         self.assertNotIn("endsWith(inputs.operation, '-pr')", quick)
@@ -533,7 +533,7 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertIn("needs.full_verify.result == 'success'", cleanup)
         self.assertIn("needs.full_propose.result == 'success'", cleanup)
         self.assertIn("needs.full_propose.result == 'skipped'", cleanup)
-        self.assertIn("inputs.operation == 'full'", cleanup)
+        self.assertIn("inputs.operation == 'update'", cleanup)
         self.assertIn("permissions:\n      actions: write", cleanup)
         self.assertNotIn("contents: write", cleanup)
         self.assertNotIn("pull-requests: write", cleanup)
