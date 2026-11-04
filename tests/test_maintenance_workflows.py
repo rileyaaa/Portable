@@ -271,6 +271,19 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
             self.assertIn(required, script)
         self.assertIn("02_TOOL_ENV_EFFECTIVE=PASS", script)
         self.assertIn("02_TOOL_NATIVE_AND_BROWSER_COMPATIBILITY=PASS", script)
+        self.assertIn("02_TOOL_PATH_COMMAND_RESOLUTION=PASS", script)
+        self.assertIn("Get-Command -Name $Command -CommandType Application", script)
+        self.assertIn("$env:PATH = $OldPath", script)
+        self.assertIn("$RequiredLauncherDirs", script)
+        self.assertIn("tool\\android\\platform-tools\\adb.exe", script)
+        for required_command in ("'python.exe'", "'pip.cmd'", "'node.exe'",
+                                 "'npm.cmd'", "'npx.cmd'", "'corepack.cmd'",
+                                 "'adb.exe'", "'7z.exe'", "'rg.exe'",
+                                 "'fd.exe'", "'jq.exe'"):
+            self.assertIn(required_command, script)
+        for wrapper in ("启动Codex.bat", "启动Codex-维护模式.bat",
+                        "检查login_json.bat"):
+            self.assertIn(wrapper, script)
         self.assertIn("if ($LASTEXITCODE -ne 0)", publisher)
         self.assertIn("needs.verify.result == 'success' && inputs.publish_release", publisher)
         self.assertNotIn("Invoke-WebRequest", script)
