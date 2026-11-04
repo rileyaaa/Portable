@@ -214,7 +214,9 @@ def run(*args: str | Path, cwd: Path | None = None,
               "PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "NPM_CONFIG_PREFIX",
               "NPM_CONFIG_USERCONFIG", "NPM_CONFIG_GLOBALCONFIG"):
         env.pop(k, None)
-    env.update({"PIP_CONFIG_FILE": "NUL", "PYTHONDONTWRITEBYTECODE": "1",
+    # pip checks PIP_CONFIG_FILE against os.devnull exactly (Windows: "nul").
+    # Upper-case "NUL" bypasses that check and could load host config files.
+    env.update({"PIP_CONFIG_FILE": os.devnull, "PYTHONDONTWRITEBYTECODE": "1",
                 "PIP_DISABLE_PIP_VERSION_CHECK": "1", "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1"})
     if extra_env:
         env.update({k: str(v) for k, v in extra_env.items()})
