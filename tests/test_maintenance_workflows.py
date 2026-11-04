@@ -194,8 +194,8 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertIn("\non:\n  workflow_dispatch:", workflow)
         self.assertNotIn("\n  push:", workflow)
         self.assertNotIn("\n  schedule:", workflow)
-        self.assertIn("default: check", workflow)
-        self.assertIn("default: false", workflow)
+        self.assertIn("default: auto", workflow)
+        self.assertNotIn("      create_pr:", workflow)
         self.assertIn("needs: verify", workflow)
         self.assertNotIn("gh release create", workflow)
 
