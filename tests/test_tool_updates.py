@@ -178,7 +178,7 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertIn('Pre-download tool maintenance regression failure.', legacy)
         self.assertLess(legacy.index(needle), legacy.index('Stage checked wheel'))
         self.assertLess(full_verify.index(needle), full_verify.index('Stage full latest-stable'))
-        self.assertIn("if: ${{ inputs.mode == 'prepare' }}", legacy)
+        self.assertIn("if: ${{ inputs.mode == 'prepare' || inputs.mode == 'auto' }}", legacy)
         self.assertIn("-m unittest discover -s tests -p 'test_*.py' -v", legacy)
         self.assertIn("-m unittest discover -s tests -p 'test_*.py' -v", full_verify)
 
