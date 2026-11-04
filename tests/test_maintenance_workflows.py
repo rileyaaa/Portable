@@ -224,8 +224,8 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertIn("gh api --method DELETE", cleanup)
         self.assertIn("gh api --paginate", cleanup)
         for unsafe in ("git push", "git switch -c", "gh pr create",
-                       "gh release", "upload-artifact", "\\n  push:",
-                       "\\n  schedule:", "\\n  workflow_run:"):
+                       "gh release", "upload-artifact", "\n  push:",
+                       "\n  schedule:", "\n  workflow_run:"):
             self.assertNotIn(unsafe, cleanup)
         self.assertIn("'.github/workflows/04-cleanup-branches.yml'",
                       read(ROOT / ".github/maintenance/check-actionlint.ps1"))
