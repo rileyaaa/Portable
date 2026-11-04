@@ -137,15 +137,15 @@ class ToolUpdateTests(unittest.TestCase):
         for forbidden in ('\n  push:', '\n  schedule:', '\n  pull_request:',
                           '\n  workflow_run:'):
             self.assertNotIn(forbidden, workflow)
-        self.assertIn('default: auto', workflow)
-        self.assertIn('prepare-all-pr', workflow)
+        self.assertIn('default: check', workflow)
+        self.assertIn('options: [diagnose, check, update]', workflow)
         self.assertNotIn('      group:', workflow)
         self.assertNotIn('      create_pr:', workflow)
         self.assertIn('needs: verify', workflow)
         self.assertIn('candidate_digest:', workflow)
         self.assertIn('sha256', (ROOT / 'tool/update-tools.py').read_text(encoding='utf-8'))
         self.assertIn('pull-requests: write', workflow)
-        self.assertIn("endsWith(inputs.operation, '-pr') && github.ref == 'refs/heads/main'", workflow)
+        self.assertIn("inputs.operation == 'update' && github.ref == 'refs/heads/main'", workflow)
         self.assertIn('--writer', workflow)
         self.assertIn('release-audit.py --release', workflow)
         self.assertIn('release-audit.py --verify', workflow)
@@ -209,7 +209,7 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertIn('Pre-download tool maintenance regression failure.', legacy)
         self.assertLess(legacy.index(needle), legacy.index('Stage checked wheel'))
         self.assertLess(full_verify.index(needle), full_verify.index('Stage full latest-stable'))
-        self.assertIn("if: ${{ startsWith(inputs.operation, 'prepare-') || startsWith(inputs.operation, 'auto') }}", legacy)
+        self.assertIn("if: ${{ inputs.operation == 'update' }}", legacy)
         self.assertIn("-m unittest discover -s tests -p 'test_*.py' -v", legacy)
         self.assertIn("-m unittest discover -s tests -p 'test_*.py' -v", full_verify)
 
