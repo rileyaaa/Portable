@@ -114,7 +114,7 @@ class FullStableUpgradeTests(unittest.TestCase):
             ast.parse((ROOT / path).read_text(encoding="utf-8"), filename=path)
         source = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
-        self.assertIn("options: [check, diagnose, prepare, full, auto]", source)
+        self.assertIn("options: [diagnose, check, update]", source)
         self.assertIn("needs.auto_check.outputs.updates == 'true'", source)
         self.assertIn("name: Full tool stable refresh - Windows read-only verifier", source)
         self.assertIn("name: Full tool trusted writer", source)
