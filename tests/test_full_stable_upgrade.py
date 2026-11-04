@@ -52,6 +52,61 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertNotIn("PYTHONPATH", kwargs["env"])
         self.assertEqual(kwargs["env"]["PYTHONDONTWRITEBYTECODE"], "1")
 
+    def test_full_exports_real_pinned_models_before_expensive_windows_gates(self):
+        # Full Run #41763058048: 19-test PowerShell suite reached
+        # test_portable_config.ps1 without its required genuine model export.
+        workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
+            encoding="utf-8")
+        verifier = workflow.split("\n  full_verify:", 1)[1].split(
+            "\n  full_propose:", 1)[0]
+        ordered = (
+            "Prepare isolated package-local test state",
+            "Export and validate genuine pinned Codex model catalog",
+            "Preflight real Windows model configuration regression",
+            "Preflight official npm JSON",
+            "Stage full latest-stable Python npm Corepack 7-Zip",
+            "Check Windows PowerShell 5.1 regressions",
+        )
+        for before, after in zip(ordered, ordered[1:]):
+            self.assertLess(verifier.index(before), verifier.index(after))
+        export = verifier.split(
+            "      - name: Export and validate genuine pinned Codex model catalog", 1
+        )[1].split("\n      - name:", 1)[0]
+        for required in (
+            r".\tool\runtime-manifest.json",
+            r"& .\codex.exe --version",
+            "'codex-cli ' + $expected",
+            r"& .\codex.exe debug models --bundled",
+            "ConvertFrom-Json -ErrorAction Stop",
+            "'gpt-6.1-sol', 'gpt-6-luna'",
+            "@($models.models | Where-Object",
+            "Test-Path -LiteralPath $catalog",
+            "[IO.File]::WriteAllText($catalog, $json",
+            "FULL_STABLE_BUNDLED_MODELS_EXPORT=PASS",
+        ):
+            self.assertIn(required, export)
+        self.assertIn("tmp/windows-release-state/bundled-models.json", export)
+        preflight = verifier.split(
+            "      - name: Preflight real Windows model configuration regression", 1
+        )[1].split("\n      - name:", 1)[0]
+        self.assertIn("test_portable_config.ps1 -BundledModelsPath $models", preflight)
+        self.assertIn("Test-Path -LiteralPath $models -PathType Leaf", preflight)
+        self.assertIn("FULL_STABLE_EARLY_MODEL_CONFIG=PASS", preflight)
+        self.assertNotIn("SKIP", preflight)
+        # Still retest with the upgraded complete tool tree, not only the
+        # original Codex runtime. Every one of the 19 full PS tests remains.
+        self.assertIn(
+            "'test_launcher_smoke.ps1', 'test_portable_config.ps1'",
+            verifier.split("      - name: Check Windows PowerShell 5.1 regressions", 1)[1])
+        self.assertIn(
+            r"'.\tmp\windows-release-state\bundled-models.json'",
+            verifier.split("      - name: Check Windows PowerShell 5.1 regressions", 1)[1])
+        config = (ROOT / "tests/test_portable_config.ps1").read_text(
+            encoding="utf-8-sig")
+        self.assertIn("Resolve-Path -LiteralPath $BundledModelsPath", config)
+        self.assertIn("Pinned export must contain Luna", config)
+        self.assertIn("Pinned client must provide actual Sol 6.1 metadata", config)
+
     def test_source_and_workflow_parse_without_running_downloads(self):
         for path in ("tool/full-stable-prepare.py", "tool/full-stable-transfer.py",
                      "tool/full_stable_pure_wheels.py",
