@@ -251,7 +251,22 @@ def main(argv: list[str] | None = None) -> int:
     elif os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
             out.write("updates=" + ("true" if changed else "false") + "\n")
-    print("AUTO_TOOL_RESULT=" + ("CANDIDATES_READY" if changed else "UP_TO_DATE"), flush=True)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary and args.command == "check":
+        # Make it impossible to mistake an up-to-date CLI subset for a full
+        # Python/npm/Playwright/browser upgrade or stable-major audit.
+        with open(summary, "a", encoding="utf-8") as stream:
+            stream.write("\\n### Official Node / CLI auto-update scope\\n\\n")
+            stream.write("Only Node.js within its verified major, ripgrep, fd, and jq are auto-managed. "
+                         "Python, pip, npm, Corepack, Playwright, Chromium, 7-Zip, ADB, "
+                         "and SSH remain under a separately reviewed full upgrade plan.\\n\\n")
+            for name, row in sorted(status.items()):
+                stream.write("- " + name + ": " + row["installed"] +
+                             " → " + row["latest"] + "\\n")
+            stream.write("\\nResult: " + ("Candidate(s): " + ", ".join(changed)
+                                         if changed else "No supported updates needed") + "\\n")
+    print("AUTO_TOOL_RESULT=" + ("CANDIDATES_READY" if changed else
+                                 "SUPPORTED_TOOLS_UP_TO_DATE"), flush=True)
     return 0
 
 
