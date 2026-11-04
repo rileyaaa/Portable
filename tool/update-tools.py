@@ -253,14 +253,68 @@ def validate_pe(path: Path) -> None:
                 'Tool is not Windows AMD64')
 
 
+def probe_child_environment(binary: Path) -> dict[str, str]:
+    """Minimal process environment for Windows native tool/version probes.
+
+    Never trust the runner's SystemRoot/ComSpec, profile folders or arbitrary
+    registry/Node/Git credentials when executing candidate tool binaries.
+    """
+    env: dict[str, str] = {}
+    for key in ('OS', 'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE',
+                'PROCESSOR_IDENTIFIER', 'USERNAME', 'COMPUTERNAME',
+                'CI', 'TERM', 'LANG', 'NO_COLOR'):
+        if key in os.environ:
+            env[key] = os.environ[key]
+    for name, value in {
+        'HOME': ROOT / 'home-runtime', 'USERPROFILE': ROOT / 'home-runtime',
+        'APPDATA': ROOT / 'appdata', 'LOCALAPPDATA': ROOT / 'localappdata',
+        'PROGRAMDATA': ROOT / 'programdata', 'ALLUSERSPROFILE': ROOT / 'programdata',
+        'TEMP': ROOT / 'tmp', 'TMP': ROOT / 'tmp', 'TMPDIR': ROOT / 'tmp',
+        'XDG_CACHE_HOME': ROOT / 'cache/xdg', 'XDG_CONFIG_HOME': ROOT / 'appdata',
+        'XDG_DATA_HOME': ROOT / 'localappdata', 'XDG_STATE_HOME': ROOT / 'localappdata/state',
+        'COREPACK_HOME': ROOT / 'cache/corepack',
+    }.items():
+        env[name] = str(value)
+    env.update({
+        'COREPACK_ENV_FILE': '0', 'COREPACK_ENABLE_PROJECT_SPEC': '0',
+        'GIT_CONFIG_NOSYSTEM': '1', 'PIP_CONFIG_FILE': os.devnull,
+        'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONNOUSERSITE': '1',
+        'POWERSHELL_TELEMETRY_OPTOUT': '1',
+        'PSModuleAnalysisCachePath': 'NUL' if os.name == 'nt' else os.devnull,
+    })
+    if os.name == 'nt':
+        import ctypes
+        buf = ctypes.create_unicode_buffer(32768)
+        size = ctypes.windll.kernel32.GetWindowsDirectoryW(buf, len(buf))
+        require(0 < size < len(buf), 'Cannot resolve real Windows system directory')
+        windows = Path(buf.value)
+        require(re.fullmatch(r'[A-Za-z]:', windows.drive) is not None
+                and ':' not in str(windows)[2:],
+                'Expected ordinary Windows system directory')
+        env.update({
+            'SystemRoot': str(windows), 'WINDIR': str(windows),
+            'SystemDrive': windows.drive, 'ComSpec': str(windows / 'System32/cmd.exe'),
+            'PATHEXT': '.COM;.EXE;.BAT;.CMD',
+            'HOMEDRIVE': str((ROOT / 'home-runtime').drive),
+            'HOMEPATH': str(ROOT / 'home-runtime')[len((ROOT / 'home-runtime').drive):],
+        })
+        env['PATH'] = os.pathsep.join((
+            str(binary.parent), str(windows / 'System32'), str(windows),
+            str(windows / 'System32/WindowsPowerShell/v1.0'),
+        ))
+    else:
+        # This branch exists only for Linux/offline unit tests.
+        env['PATH'] = os.pathsep.join((str(binary.parent), '/usr/bin', '/bin'))
+    return env
+
+
 def probe_binary(path: str, arguments: list[str], pattern: str) -> str | None:
     binary = bounded(ROOT / path)
     if not binary.is_file() or os.name != 'nt':
         return None
     ordinary(binary)
-    env = {key: os.environ[key] for key in ('SystemRoot','WINDIR','COMSPEC','PATHEXT') if key in os.environ}
-    env['PATH'] = str(binary.parent) + os.pathsep + str(Path(env.get('SystemRoot', 'C:\\Windows')) / 'System32')
-    # This is an explicit Windows tool-version probe; no host PATH or user config.
+    env = probe_child_environment(binary)
+    # Explicit absolute package tool-version probe; no host profile or PATH.
     data = subprocess.run([str(binary), *arguments], cwd=ROOT, env=env,
                           capture_output=True, timeout=12)
     require(data.returncode == 0, 'Version probe failed: ' + path)
@@ -318,12 +372,7 @@ def verify_candidates(group: str = 'all') -> None:
                 ordinary(bounded(ROOT / 'tool/node' / shim))
             node = bounded(ROOT / 'tool/node/node.exe')
             ordinary(node)
-            safe_env = {key: os.environ[key] for key in
-                        ('SystemRoot', 'WINDIR', 'COMSPEC', 'PATHEXT', 'HOME',
-                         'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP')
-                        if key in os.environ}
-            safe_env['PATH'] = str(node.parent) + os.pathsep + str(
-                Path(safe_env.get('SystemRoot', 'C:\\Windows')) / 'System32')
+            safe_env = probe_child_environment(node)
             result = subprocess.run([str(node), str(cli), '--version'],
                                     cwd=ROOT, env=safe_env, capture_output=True,
                                     timeout=20, check=False)

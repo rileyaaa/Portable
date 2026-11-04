@@ -64,6 +64,36 @@ class ToolUpdateTests(unittest.TestCase):
         pinned.start()
         self.addCleanup(pinned.stop)
 
+    def test_native_probe_child_environment_is_not_host_configuration(self):
+        # The verifier runs a candidate executable, not merely reading it;
+        # arbitrary host variables and a poisoned SystemRoot must not survive.
+        fake_binary = ROOT / 'tool/node/node.exe'
+        with patch.dict(os.environ, {
+            'SystemRoot': 'Z:\\HostFake', 'COMSPEC': 'Z:\\HostFake\\cmd.exe',
+            'HOME': 'Z:\\Users\\Host', 'APPDATA': 'Z:\\Users\\Host\\AppData',
+            'NODE_OPTIONS': '--require=Z:\\host\\preload.js',
+            'COREPACK_NPM_TOKEN': 'host-secret', 'GITHUB_TOKEN': 'host-secret',
+            'AWS_ACCESS_KEY_ID': 'host-secret', 'HTTP_PROXY': 'http://host.invalid:8080',
+            'NPM_CONFIG_REGISTRY': 'https://host.invalid', 'CI': 'true',
+        }, clear=False):
+            sanitized = tools.probe_child_environment(fake_binary)
+        self.assertEqual(sanitized['HOME'], str(ROOT / 'home-runtime'))
+        self.assertEqual(sanitized['TEMP'], str(ROOT / 'tmp'))
+        self.assertEqual(sanitized['COREPACK_HOME'], str(ROOT / 'cache/corepack'))
+        self.assertEqual(sanitized['COREPACK_ENV_FILE'], '0')
+        self.assertEqual(sanitized['CI'], 'true')
+        self.assertEqual(sanitized['GIT_CONFIG_NOSYSTEM'], '1')
+        self.assertIn(str(fake_binary.parent), sanitized['PATH'])
+        for forbidden in ('NODE_OPTIONS', 'COREPACK_NPM_TOKEN', 'GITHUB_TOKEN',
+                          'AWS_ACCESS_KEY_ID', 'HTTP_PROXY', 'NPM_CONFIG_REGISTRY'):
+            self.assertNotIn(forbidden, sanitized)
+        if os.name == 'nt':
+            self.assertNotEqual(sanitized['SystemRoot'], 'Z:\\HostFake')
+            self.assertNotIn('Z:\\HostFake', sanitized['ComSpec'])
+        script = (ROOT / 'tool/update-tools.py').read_text(encoding='utf-8')
+        self.assertIn('env = probe_child_environment(binary)', script)
+        self.assertIn('safe_env = probe_child_environment(node)', script)
+
     def test_auto_selector_does_not_change_reviewed_legacy_plan_contract(self):
         legacy = [row['tool'] for row in tools.plan()]
         self.assertEqual(legacy, ['ripgrep', 'fd', 'jq'])

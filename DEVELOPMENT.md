@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：更新候选原生版本探针环境白名单
+
+- tool/update-tools.py 的 probe_binary 与 verify_candidates(Corepack) 原先从外层环境继承 SystemRoot、WINDIR、ComSpec、HOME、APPDATA 等并拼装 PATH。若来源是宿主不可信配置，原生探针可能读取错误的用户状态或系统命令目录。此入口独立于 run-codex.ps1，不受主启动器子进程白名单保护。
+- 两个探针现统一使用 probe_child_environment(): 由当前工作包根重建 HOME/APPDATA/LOCALAPPDATA/TEMP、XDG、Corepack 存储、pip/Git/PowerShell 必需状态；Windows 系统目录通过 GetWindowsDirectoryW 取得而不是信任宿主变量；PATH 只含当前被验证工具所在目录与必要系统目录。未知宿主秘钥、代理、Node/npm/Git 配置均不继承。保留原生 SHA/版本比较和已审核 Corepack 版本检查。
+- 增加不执行真实工具的单测：合成恶意 SystemRoot、ComSpec、代理、npm 配置及凭证，核对重建结果与两处真实调用。离线结构回归不代表 Windows 系统路径/Tool 原生验证通过；尚未触发 AC、工具更新或 Release。YOLO 继续例外。
+
 ## 2026-11-05：浏览器安装及桌面自动化的宿主环境回退
 
 - 发现 standalone New-AutomationStartInfo 虽主动清空 ProcessStartInfo 环境，但随后又转发未经审核的外层 SystemRoot、ComSpec 和全套 HTTP(S)/ALL/NO_PROXY 环境。Windows 命令定位可能依赖伪造环境，Chromium/Node/浏览器下载器也可能使用用户未明确选中的宿主代理。
