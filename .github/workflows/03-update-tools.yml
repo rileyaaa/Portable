@@ -1,16 +1,16 @@
-name: "03 - 工具检查和更新（选择一项操作）"
+name: "03 - 工具维护（诊断 / 检查安装 / 更新）"
 
-# One safe operation selector replaces mode + group + create_pr.
-# Only an explicit *-pr choice may enter a separately permissioned candidate writer.
+# Three user-facing operations only. Update never bypasses official
+# SHA-256, Windows release gates, independent writer, PR review or locks.
 on:
   workflow_dispatch:
     inputs:
       operation:
-        description: "默认自动检查；-pr=验证通过后建候选PR；其他选项为诊断或高级固定版本更新"
+        description: "diagnose=故障诊断；check=检查已安装工具；update=一键受控工具更新（含SSH；通过验收后创建候选PR）"
         required: true
         type: choice
-        options: [auto, auto-pr, diagnose, check, prepare-tools, prepare-tools-pr, prepare-ssh, prepare-ssh-pr, prepare-all, prepare-all-pr, full, full-pr]
-        default: auto
+        options: [diagnose, check, update]
+        default: check
 
 permissions:
   contents: read
@@ -22,13 +22,14 @@ concurrency:
 jobs:
   auto_check:
     name: Official latest stable Node and CLI discovery - metadata only
-    if: ${{ github.ref == 'refs/heads/main' && startsWith(inputs.operation, 'auto') }}
+    if: ${{ github.ref == 'refs/heads/main' && inputs.operation == 'update' }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 6
     outputs:
       updates: ${{ steps.discovery.outputs.updates }}
+      full_plan_changes: ${{ steps.reviewed_plan.outputs.full_plan_changes }}
     steps:
       - name: Checkout only trusted source; no LFS or write token
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,10 +49,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python -E -s -B tool/auto-tool-updates.py check
+      - name: Check complete reviewed tool plan including SSH
+        id: reviewed_plan
+        run: python -E -s -B .github/maintenance/03-update-route.py
+      - name: Never split conflicting full and automatic candidates
+        env:
+          AUTO_CHANGES: ${{ steps.discovery.outputs.updates }}
+          FULL_CHANGES: ${{ steps.reviewed_plan.outputs.full_plan_changes }}
+        run: |
+          if [[ "$AUTO_CHANGES" == 'true' && "$FULL_CHANGES" == 'true' ]]; then
+            echo 'Two tool update plans need a single reviewed batch; refusing partial update.' >&2
+            exit 1
+          fi
 
   verify:
     needs: auto_check
-    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && !startsWith(inputs.operation, 'full') && inputs.operation != 'diagnose' && (!startsWith(inputs.operation, 'auto') || (needs.auto_check.result == 'success' && needs.auto_check.outputs.updates == 'true')) }}
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (inputs.operation == 'check' || (inputs.operation == 'update' && needs.auto_check.result == 'success' && needs.auto_check.outputs.updates == 'true' && needs.auto_check.outputs.full_plan_changes == 'false')) }}
     permissions:
       contents: read
     runs-on: windows-latest
@@ -81,7 +94,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'actionlint failed.' }
 
       - name: Prepare isolated package-local test state for Windows candidates
-        if: ${{ startsWith(inputs.operation, 'prepare-') || startsWith(inputs.operation, 'auto') }}
+        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Stop'
@@ -108,7 +121,7 @@ jobs:
             Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Run tool-maintenance tests before downloading any candidate
-        if: ${{ startsWith(inputs.operation, 'prepare-') || startsWith(inputs.operation, 'auto') }}
+        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Stop'
@@ -123,7 +136,7 @@ jobs:
 
 
       - name: Preflight real launcher and relocation before downloading large candidates
-        if: ${{ startsWith(inputs.operation, 'prepare-') || startsWith(inputs.operation, 'auto') }}
+        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 8
         run: |
           $ErrorActionPreference = 'Stop'
@@ -142,7 +155,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'SSH installed-state audit failed.' }
 
       - name: Regenerate exact official Windows auto candidates in the read-only verifier
-        if: ${{ startsWith(inputs.operation, 'auto') }}
+        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 5
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -154,10 +167,10 @@ jobs:
 
       - name: Stage checked wheel or SHA256-pinned archive candidates in the checkout
         id: candidate
-        if: ${{ startsWith(inputs.operation, 'prepare-') || startsWith(inputs.operation, 'auto') }}
+        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 24
         env:
-          TOOL_GROUP: ${{ (startsWith(inputs.operation, 'prepare-ssh') && 'ssh') || (startsWith(inputs.operation, 'prepare-all') && 'all') || 'tools' }}
+          TOOL_GROUP: tools
         run: |
           $ErrorActionPreference = 'Stop'
           $day = [DateTime]::UtcNow.ToString('yyyy-MM-dd')
@@ -186,10 +199,10 @@ jobs:
           "Candidate diff digest: $($digestMatch.Groups[1].Value)" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
       - name: Verify pinned base Python closure and native Paramiko import
-        if: ${{ startsWith(inputs.operation, 'prepare-') || startsWith(inputs.operation, 'auto') }}
+        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 6
         env:
-          TOOL_GROUP: ${{ (startsWith(inputs.operation, 'prepare-ssh') && 'ssh') || (startsWith(inputs.operation, 'prepare-all') && 'all') || 'tools' }}
+          TOOL_GROUP: tools
         run: |
           $ErrorActionPreference = 'Stop'
           & .\tool\python\python.exe -E -s -B .\tool\update-tools.py verify --group $env:TOOL_GROUP
@@ -202,7 +215,7 @@ jobs:
           }
 
       - name: Check converter compatibility on candidate Node before long regressions
-        if: ${{ startsWith(inputs.operation, 'prepare-') || startsWith(inputs.operation, 'auto') }}
+        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 7
         run: |
           $ErrorActionPreference = 'Stop'
@@ -212,7 +225,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Candidate Node converter regression failed: $script" }
           }
       - name: Run complete Python and Node regression suites
-        if: ${{ startsWith(inputs.operation, 'prepare-') || startsWith(inputs.operation, 'auto') }}
+        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 18
         run: |
           $ErrorActionPreference = 'Stop'
@@ -233,7 +246,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Portable compatibility audit failed.' }
 
       - name: Check Windows PowerShell 5.1 regressions
-        if: ${{ startsWith(inputs.operation, 'prepare-') || startsWith(inputs.operation, 'auto') }}
+        if: ${{ inputs.operation == 'update' }}
         # Previous successful 19-test suite took ~22 minutes; run #41555463345
         # reached npm/npx tests at minute 25 and was killed before completion.
         # Retain all 19 checks; allow bounded Windows runner timing variance.
@@ -267,11 +280,11 @@ jobs:
           }
 
       - name: Verify unchanged staged digest, ten Windows audit rounds and real customer ZIP
-        if: ${{ startsWith(inputs.operation, 'prepare-') || startsWith(inputs.operation, 'auto') }}
+        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 55
         env:
           EXPECTED_DIGEST: ${{ steps.candidate.outputs.digest }}
-          TOOL_GROUP: ${{ (startsWith(inputs.operation, 'prepare-ssh') && 'ssh') || (startsWith(inputs.operation, 'prepare-all') && 'all') || 'tools' }}
+          TOOL_GROUP: tools
         run: |
           $ErrorActionPreference = 'Stop'
           $again = (& .\tool\python\python.exe -E -s -B .\tool\update-tools.py digest --group $env:TOOL_GROUP) -join ''
@@ -320,7 +333,7 @@ jobs:
   propose:
     name: Propose verified tools without running downloaded binaries in a write-token job
     needs: verify
-    if: ${{ needs.verify.result == 'success' && (startsWith(inputs.operation, 'prepare-') || startsWith(inputs.operation, 'auto')) && endsWith(inputs.operation, '-pr') && github.ref == 'refs/heads/main' }}
+    if: ${{ needs.verify.result == 'success' && (inputs.operation == 'update') && github.ref == 'refs/heads/main' }}
     permissions:
       contents: write
       pull-requests: write
@@ -343,8 +356,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_DIGEST: ${{ needs.verify.outputs.candidate_digest }}
           APPROVED_DAY: ${{ needs.verify.outputs.candidate_date }}
-          TOOL_GROUP: ${{ (startsWith(inputs.operation, 'prepare-ssh') && 'ssh') || (startsWith(inputs.operation, 'prepare-all') && 'all') || 'tools' }}
-          AUTO_UPDATER_MODE: ${{ startsWith(inputs.operation, 'auto') && 'auto' || 'prepare' }}
+          TOOL_GROUP: tools
+          AUTO_UPDATER_MODE: auto
         run: |
           $ErrorActionPreference = 'Stop'
           $remote = (& gh api "repos/$env:GITHUB_REPOSITORY/branches/main" --jq '.commit.sha') -join ''
@@ -424,7 +437,8 @@ jobs:
 
   full_verify:
     name: Full tool stable refresh - Windows read-only verifier
-    if: github.ref == 'refs/heads/main' && startsWith(inputs.operation, 'full')
+    needs: auto_check
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && inputs.operation == 'update' && needs.auto_check.result == 'success' && needs.auto_check.outputs.updates == 'false' && needs.auto_check.outputs.full_plan_changes == 'true' }}
     permissions:
       contents: read
     runs-on: windows-latest
@@ -718,7 +732,7 @@ jobs:
   full_propose:
     name: Full tool trusted writer - SHA-checked file copy only; no candidate EXE execution
     needs: full_verify
-    if: ${{ needs.full_verify.result == 'success' && inputs.operation == 'full-pr' && github.ref == 'refs/heads/main' }}
+    if: ${{ needs.full_verify.result == 'success' && inputs.operation == 'update' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: write
       pull-requests: write
@@ -789,7 +803,7 @@ jobs:
   full_artifact_cleanup:
     name: Remove consumed full-tool candidate artifact - own run only
     needs: [full_verify, full_propose]
-    if: ${{ always() && github.ref == 'refs/heads/main' && startsWith(inputs.operation, 'full') && needs.full_verify.result == 'success' && (needs.full_propose.result == 'success' || (needs.full_propose.result == 'skipped' && inputs.operation == 'full')) }}
+    if: ${{ always() && github.ref == 'refs/heads/main' && inputs.operation == 'update' && needs.full_verify.result == 'success' && needs.full_propose.result == 'success' }}
     permissions:
       actions: write
     runs-on: ubuntu-latest
