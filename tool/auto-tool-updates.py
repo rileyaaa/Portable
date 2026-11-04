@@ -30,6 +30,13 @@ HOSTS = {"api.github.com", "nodejs.org"}
 MAX_METADATA = 3 * 1024 * 1024
 
 
+class _RejectRedirect(urllib.request.HTTPRedirectHandler):
+    # urllib's stock redirect handler can forward custom request headers.
+    # Reject redirects before a metadata bearer token could reach another host.
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ValueError("Official metadata redirected; no credentials forwarded")
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ValueError(message)
@@ -58,7 +65,8 @@ def request_bytes(url: str, *, limit: int = MAX_METADATA) -> bytes:
                     "Invalid GitHub metadata token")
             headers["Authorization"] = "Bearer " + token
     request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=20) as response:
+    with urllib.request.build_opener(_RejectRedirect()).open(
+            request, timeout=20) as response:
         final = urllib.parse.urlsplit(response.url)
         require(final.scheme == "https" and final.hostname in HOSTS and
                 final.hostname == parsed.hostname,
