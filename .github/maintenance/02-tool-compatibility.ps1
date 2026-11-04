@@ -65,35 +65,7 @@ $LauncherSource = Get-Content -LiteralPath (Join-Path $Root 'run-codex.ps1') -Ra
 $RequiredLauncherDirs = @('bin', 'python', 'node', 'android\platform-tools')
 foreach ($RelativeDir in $RequiredLauncherDirs) {
     $Declaration = '(Join-Path $PortableTool "' + $RelativeDir + '")'
-    $Pattern = '(?m)^[ \t]*' + [regex]::Escape($Declaration) + ',?[ \t]*
-$Node = Join-Path $Root 'tool\node\node.exe'
-function Assert-NativeVersion([string]$Label, [string]$Version, [string]$Executable, [string[]]$Arguments) {
-    $Output = (& $Executable @Arguments 2>&1) -join [Environment]::NewLine
-    if ($LASTEXITCODE -ne 0 -or $Output -notmatch [regex]::Escape($Version)) {
-        throw "Bundled $Label native version mismatch (expected $Version): $Output"
-    }
-    Write-Output "02_TOOL_NATIVE_VERSION=PASS;$Label=$Version"
-}
-Assert-NativeVersion 'python' $Inventory.tools.python.version $Python @('--version')
-Assert-NativeVersion 'pip' $Inventory.tools.pip.version $Python @('-E','-s','-B','-m','pip','--version')
-Assert-NativeVersion 'paramiko' $Inventory.tools.paramiko.version $Python @('-E','-s','-B','-c','import paramiko; print(paramiko.__version__)')
-Assert-NativeVersion 'node' $Inventory.tools.node.version $Node @('--version')
-Assert-NativeVersion 'npm' $Inventory.tools.npm.version $Node @((Join-Path $Root 'tool\node\node_modules\npm\bin\npm-cli.js'),'--version')
-Assert-NativeVersion 'corepack' $Inventory.tools.corepack.version $Node @((Join-Path $Root 'tool\node\node_modules\corepack\dist\corepack.js'),'--version')
-Assert-NativeVersion 'adb' $Inventory.tools.adb.version (Join-Path $Root 'tool\android\platform-tools\adb.exe') @('version')
-Assert-NativeVersion '7zip' $Inventory.tools.'7zip'.version (Join-Path $Root 'tool\bin\7z.exe') @('i')
-Assert-NativeVersion 'ripgrep' $Inventory.tools.ripgrep.version (Join-Path $Root 'tool\bin\rg.exe') @('--version')
-Assert-NativeVersion 'fd' $Inventory.tools.fd.version (Join-Path $Root 'tool\bin\fd.exe') @('--version')
-Assert-NativeVersion 'jq' $Inventory.tools.jq.version (Join-Path $Root 'tool\bin\jq.exe') @('--version')
-$Playwright = Get-Content -LiteralPath (Join-Path $Root 'tool\automation\versions.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-if ($Playwright.playwrightMcp -cne $Inventory.tools.'playwright-mcp'.version -or
-    $Playwright.browser.version -cne $Inventory.tools.chromium.version) {
-    throw 'Playwright/Chromium lock versions differ from installed inventory.'
-}
-& $Python -E -s -B (Join-Path $Root 'tool\automation\install-browser.py') --check
-if ($LASTEXITCODE -ne 0) { throw 'Playwright browser contents or pinned SHA-256 are invalid.' }
-'02_TOOL_NATIVE_AND_BROWSER_COMPATIBILITY=PASS; offline/no-user-credentials' | Write-Output
-
+    $Pattern = '(?m)^[ \t]*' + [regex]::Escape($Declaration) + ',?[ \t]*\r?$'
     if ([regex]::Matches($LauncherSource, $Pattern).Count -ne 1) {
         throw "Codex launcher does not declare the real tool PATH entry: $RelativeDir"
     }
