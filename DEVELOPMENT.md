@@ -1,10 +1,12 @@
 # 开发与维护记录
 
-## 2026-11-04：四个 GitHub Actions 入口精简（维护分支，待合并）
+## 2026-11-04：四个 Actions 入口简化为明确分工（维护 PR #31，待验收）
 
-- **使用入口：** 01 仍需粘贴官方 Release URL，并以默认关闭的 `commit_changes` 显式决定是否提交已验收稳定版；02 仍需填写严格发行标签，并以默认关闭的 `publish_release` 显式授权发布。两项有写入/发布后果的确认不合并进不透明的文字参数。04 本来是 PR 关闭后的自动安全清理，不提供任何手动开关；四个工作流只优化名称与入口交互，不新增自动触发。
-- **03 由三项输入变为一项：** 移除 `mode / group / create_pr`，以唯一 `operation` 下拉框表达完整操作，默认 `auto`。常用 `auto` / `auto-pr` 分别代表只验证与通过后提出候选 PR；诊断和旧 Windows 盘点使用 `diagnose`、`check`；固定候选使用 `prepare-tools`、`prepare-ssh`、`prepare-all`（相应 `-pr` 才提交候选），整目录仍为 `full` / `full-pr`。所有 12 种旧有效组合均保留；自动模式无候选时继续低成本跳过 Windows，任何模式都不自动合并主线或发布正式 Release。
-- **安全和验证范围：** 03 只变更 workflow dispatch 映射/Job 条件与英文参数名，不改实际下载与 SHA-256、Windows 19 项 PowerShell、十轮发行审计、客户 ZIP、可信写入器隔离、Git LFS 或正式 Release 门禁。同步 `tests/test_auto_tool_updates.py`、`test_tool_updates.py`、`test_full_stable_upgrade.py`、`test_maintenance_workflows.py` 的源码合同，并补唯一输入/明确 PR 条件回归；更新 README 与工具说明。维护分支中的静态检查不等于 GitHub Actionlint 或真实 Windows 验收，未启动任何 AC、未改动正式发布，必须在合并后由最新 `main` 另行人工测试。
+- **01：Codex 成对更新。** 官方完整 Release URL 指定 Codex CLI、Code Mode Host 和配套组件；`commit_changes` 默认关闭，只有确认稳定版且 Windows 验证通过才允许提交 `main`。
+- **02：Codex + Tool 全面验收，然后决定发布。** 保留发行标签和 `publish_release=false` 默认验证模式；原有 02 Codex 环境变量/schema、实际模型目录、配置和启动器检查不删。新增 `.github/maintenance/02-tool-compatibility.ps1`：在受隔离的 Windows 进程真正加载 `env.ps1`，验证工具相关包内路径变量不能被宿主旧值劫持，并核对已安装工具目录、Python/pip、Paramiko SSH、Node/npm/Corepack、ADB、7-Zip、rg/fd/jq、Playwright/Chromium 配套版本与浏览器 SHA-256。所有检查与 18 项 PowerShell、十轮发行审计、真实客户 ZIP 验证成功，`publish_release=true` 才允许独立发布 Job。离线检查不能证明真实账号/API、宿主设备或每一条实际网络请求仍正常。
+- **03：只有三个操作：`diagnose` / `check` / `update`。** 诊断故障、检查已安装、或一键运行当前受控的工具更新。SSH 属于 Tool 的完整审核计划，不再独立设置分组，也不再提供多组模式/建 PR 的组合开关。`update` 首先只读发现 Node/rg/fd/jq 的新版和完整已审工具计划与台账的差异；无新候选时跳过昂贵 Windows，两种独立候选同时出现则失败关闭。存在唯一候选时复用相应严格 Windows 门禁和独立写入器，验收后才生成候选 PR，不自动合并或发布。
+- **03 自动化边界：** Node/CLI 可直接跟踪当前已验证主版本或官方哈希允许的稳定版；Python/SSH/npm/浏览器等完整升级器仍要求事先审核确切版本、依赖锁和兼容策略，**未实现任意上游最新版自动解析及安装**。即使 03 报告“无审核计划内更新”，也不等于所有上游已是最新。只允许通过新增受控 resolver、测试及原生验收逐步扩充自动范围，不能仅改 YAML 标签造成虚假“全套自动”。
+- **04：关闭 PR 后安全清理对应分支，无手动输入。** 本轮只修改维护 PR #31 中的代码、测试、文档，不改变现有 `main` 或正式 Release。不自行调度 AC，不在真实 Windows 和 actionlint 验证之前声称整套更新成功。
 
 ## 2026-11-04：03/auto 深度核对：动态计划串扰与 Node 引发 npm 12 降级
 
