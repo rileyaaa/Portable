@@ -58,6 +58,89 @@ foreach ($Name in $Tracked) {
 }
 '02_TOOL_INVENTORY_AND_PAYLOAD_PATHS=PASS' | Write-Output
 
+# An absolute-path version check alone cannot prove that typing adb, npm,
+# python or the CLI tools in a Codex shell resolves to the bundled binary.
+# Guard BOTH the launcher declarations and actual Windows command discovery.
+$LauncherSource = Get-Content -LiteralPath (Join-Path $Root 'run-codex.ps1') -Raw -Encoding UTF8
+$RequiredLauncherDirs = @('bin', 'python', 'node', 'android\platform-tools')
+foreach ($RelativeDir in $RequiredLauncherDirs) {
+    $Declaration = '(Join-Path $PortableTool "' + $RelativeDir + '")'
+    $Pattern = '(?m)^[ \t]*' + [regex]::Escape($Declaration) + ',?[ \t]*
+$Node = Join-Path $Root 'tool\node\node.exe'
+function Assert-NativeVersion([string]$Label, [string]$Version, [string]$Executable, [string[]]$Arguments) {
+    $Output = (& $Executable @Arguments 2>&1) -join [Environment]::NewLine
+    if ($LASTEXITCODE -ne 0 -or $Output -notmatch [regex]::Escape($Version)) {
+        throw "Bundled $Label native version mismatch (expected $Version): $Output"
+    }
+    Write-Output "02_TOOL_NATIVE_VERSION=PASS;$Label=$Version"
+}
+Assert-NativeVersion 'python' $Inventory.tools.python.version $Python @('--version')
+Assert-NativeVersion 'pip' $Inventory.tools.pip.version $Python @('-E','-s','-B','-m','pip','--version')
+Assert-NativeVersion 'paramiko' $Inventory.tools.paramiko.version $Python @('-E','-s','-B','-c','import paramiko; print(paramiko.__version__)')
+Assert-NativeVersion 'node' $Inventory.tools.node.version $Node @('--version')
+Assert-NativeVersion 'npm' $Inventory.tools.npm.version $Node @((Join-Path $Root 'tool\node\node_modules\npm\bin\npm-cli.js'),'--version')
+Assert-NativeVersion 'corepack' $Inventory.tools.corepack.version $Node @((Join-Path $Root 'tool\node\node_modules\corepack\dist\corepack.js'),'--version')
+Assert-NativeVersion 'adb' $Inventory.tools.adb.version (Join-Path $Root 'tool\android\platform-tools\adb.exe') @('version')
+Assert-NativeVersion '7zip' $Inventory.tools.'7zip'.version (Join-Path $Root 'tool\bin\7z.exe') @('i')
+Assert-NativeVersion 'ripgrep' $Inventory.tools.ripgrep.version (Join-Path $Root 'tool\bin\rg.exe') @('--version')
+Assert-NativeVersion 'fd' $Inventory.tools.fd.version (Join-Path $Root 'tool\bin\fd.exe') @('--version')
+Assert-NativeVersion 'jq' $Inventory.tools.jq.version (Join-Path $Root 'tool\bin\jq.exe') @('--version')
+$Playwright = Get-Content -LiteralPath (Join-Path $Root 'tool\automation\versions.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+if ($Playwright.playwrightMcp -cne $Inventory.tools.'playwright-mcp'.version -or
+    $Playwright.browser.version -cne $Inventory.tools.chromium.version) {
+    throw 'Playwright/Chromium lock versions differ from installed inventory.'
+}
+& $Python -E -s -B (Join-Path $Root 'tool\automation\install-browser.py') --check
+if ($LASTEXITCODE -ne 0) { throw 'Playwright browser contents or pinned SHA-256 are invalid.' }
+'02_TOOL_NATIVE_AND_BROWSER_COMPATIBILITY=PASS; offline/no-user-credentials' | Write-Output
+
+    if ([regex]::Matches($LauncherSource, $Pattern).Count -ne 1) {
+        throw "Codex launcher does not declare the real tool PATH entry: $RelativeDir"
+    }
+}
+foreach ($Bat in @('启动Codex.bat', '启动Codex-维护模式.bat', '检查login_json.bat')) {
+    $Source = Get-Content -LiteralPath (Join-Path $Root $Bat) -Raw -Encoding UTF8
+    if (-not $Source.Contains('%~dp0tool\android\platform-tools;')) {
+        throw "Windows batch entry misses bundled ADB: $Bat"
+    }
+}
+$CommandPaths = [ordered]@{
+    'python.exe' = 'tool\python\python.exe'
+    'pip.cmd' = 'tool\bin\pip.cmd'
+    'node.exe' = 'tool\node\node.exe'
+    'npm.cmd' = 'tool\node\npm.cmd'
+    'npx.cmd' = 'tool\node\npx.cmd'
+    'corepack.cmd' = 'tool\node\corepack.cmd'
+    'adb.exe' = 'tool\android\platform-tools\adb.exe'
+    '7z.exe' = 'tool\bin\7z.exe'
+    'rg.exe' = 'tool\bin\rg.exe'
+    'fd.exe' = 'tool\bin\fd.exe'
+    'jq.exe' = 'tool\bin\jq.exe'
+}
+$OldPath = $env:PATH
+try {
+    # Simulate only the verified portable PATH prefixes; do not use any host
+    # package manager or installed third-party directory as a fallback.
+    $PortableDirs = @(
+        (Join-Path $Root 'tool\bin'),
+        (Join-Path $Root 'tool\python'),
+        (Join-Path $Root 'tool\node'),
+        (Join-Path $Root 'tool\android\platform-tools')
+    )
+    $env:PATH = ($PortableDirs -join ';')
+    foreach ($Command in $CommandPaths.Keys) {
+        $Expected = [IO.Path]::GetFullPath((Join-Path $Root $CommandPaths[$Command]))
+        $Resolved = @(Get-Command -Name $Command -CommandType Application -ErrorAction Stop)
+        if ($Resolved.Count -ne 1 -or
+            [IO.Path]::GetFullPath([string]$Resolved[0].Source) -cne $Expected) {
+            throw "Portable command $Command resolves outside its audited package path"
+        }
+    }
+} finally {
+    $env:PATH = $OldPath
+}
+'02_TOOL_PATH_COMMAND_RESOLUTION=PASS; 11 direct commands and 3 BAT launchers' | Write-Output
+
 $Python = Join-Path $Root 'tool\python\python.exe'
 $Node = Join-Path $Root 'tool\node\node.exe'
 function Assert-NativeVersion([string]$Label, [string]$Version, [string]$Executable, [string[]]$Arguments) {
