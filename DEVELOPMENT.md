@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：Corepack 交叉审查修正 Yarn/pnpm 包内状态与参数兼容性
+
+- 对前次 Corepack 修复再次检查上游 v0.36.0 README：COREPACK_HOME、COREPACK_ENV_FILE、COREPACK_ENABLE_PROJECT_SPEC 为受支持选项；但我们的 Corepack 二次过滤错误删除了 portableEnvironment() 已按当前包根重建的 YARN_CACHE_FOLDER、PNPM_HOME、PNPM_STORE_DIR。此行为既取消了明确的缓存定向，也可能使正常 Yarn/pnpm 流程退回默认目录，已修正为保留生成的包内变量；所有从宿主继承的 YARN_/PNPM_/COREPACK_ 仍在首次正向白名单阶段丢弃。
+- 同时修复参数误判：Corepack 的 pack -o/--output 和 install --cache-only 仍须在包内验证，而 corepack pnpm/yarn 后续参数属于下游管理器，不能把正常管理器选项当成 Corepack 打包输出。enable/disable 仍禁止生成或替换未经审查的 shim。
+- 更新 JS 正向/拒绝测试，包含被污染的宿主 Yarn/pnpm 环境、包内重定向和下游参数原样转发。仅进行了语法和模拟路径函数测试，真实 Windows Corepack、Yarn、pnpm、GitHub Actions 和文件访问观察均待验收。YOLO 继续例外，未动 main、Release。
+
 ## 2026-11-04：full-stable-prepare 维护子进程与官方下载代理隔离
 
 - 本轮审查发现 Windows 全套工具候选准备器的 run() 以前使用 os.environ.copy()，只排除少量已知变量，向其实际执行的 staged Python/pip、Node/npm/Corepack 和 7-Zip 泄露可能存在的 GITHUB_TOKEN、NPM_CONFIG_REGISTRY、未知宿主凭证和 HTTP_PROXY 等环境。官方 HTTPS 下载原先使用 urllib.request.urlopen()，可能读取 Windows 代理注册表或宿主环境。

@@ -166,12 +166,10 @@ function portableEnvironment(root, inherited) {
 
 function corepackEnvironment(root, inherited, cwd) {
   const env = portableEnvironment(root, inherited);
-  // Corepack's official defaults otherwise use the host LOCALAPPDATA and may
-  // import host tokens, registry overrides, integrity bypasses or .corepack.env.
-  // Also remove external Yarn/pnpm state forwarded to managed package managers.
-  for (const key of Object.keys(env)) {
-    if (/^(COREPACK_|YARN_|PNPM_)/i.test(key)) delete env[key];
-  }
+  // portableEnvironment() starts from an allowlist, so no host COREPACK_*,
+  // YARN_* or PNPM_* setting survives. Preserve the *reconstructed* package-
+  // local Yarn/pnpm cache and executable paths for Corepack's grandchildren.
+  // Removing them here would undo that isolation and can break normal tools.
   env.COREPACK_HOME = inside(root, path.join(root, 'cache', 'corepack'), {directory: true});
   env.COREPACK_ENV_FILE = '0';
   env.COREPACK_ENABLE_UNSAFE_CUSTOM_URLS = '0';
@@ -198,6 +196,10 @@ function planCorepackArguments(root, cwd, args) {
   // the audited npm.cmd entirely; disable can delete them. Other commands work.
   if (command === 'enable' || command === 'disable')
     throw new Error('Portable Corepack refuses unmanaged enable/disable shims');
+  // Other commands (for example "corepack pnpm ...") forward their options to
+  // the manager. Do NOT interpret a Yarn/pnpm -o or --output as a Corepack
+  // archive output or suppress arbitrary manager CLI features.
+  if (!['pack', 'install'].includes(command)) return args;
   const checked = (value, required = false) => {
     if (!value || value.startsWith('-'))
       throw new Error('Corepack file argument is required');
@@ -205,13 +207,11 @@ function planCorepackArguments(root, cwd, args) {
   };
   for (let i = 0; i < args.length; i++) {
     const argument = args[i];
-    if (argument === '--install-directory' || argument.startsWith('--install-directory='))
-      throw new Error('Portable Corepack refuses unmanaged install directories');
-    if (argument === '-o' || argument === '--output') {
+    if (command === 'pack' && (argument === '-o' || argument === '--output')) {
       checked(args[++i]);
-    } else if (argument.startsWith('--output=')) {
+    } else if (command === 'pack' && argument.startsWith('--output=')) {
       checked(argument.slice('--output='.length));
-    } else if (/^-o[^-]/.test(argument)) {
+    } else if (command === 'pack' && /^-o[^-]/.test(argument)) {
       checked(argument.slice(argument.startsWith('-o=') ? 3 : 2));
     } else if (command === 'install' && argument === '--cache-only') {
       checked(args[++i], true);

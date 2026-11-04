@@ -302,8 +302,11 @@ test('Corepack direct entry clears host overrides and keeps its cache inside the
   assert.equal(injected.COREPACK_ENABLE_UNSAFE_CUSTOM_URLS, '0');
   assert.equal(injected.COREPACK_ENABLE_PROJECT_SPEC, '0');
   for (const name of ['COREPACK_NPM_TOKEN', 'COREPACK_NPM_REGISTRY',
-    'COREPACK_INTEGRITY_KEYS', 'YARN_RC_FILENAME', 'PNPM_STORE_DIR'])
+    'COREPACK_INTEGRITY_KEYS', 'YARN_RC_FILENAME'])
     assert.equal(injected[name], undefined);
+  assert.equal(injected.YARN_CACHE_FOLDER, path.join(f.root, 'cache', 'yarn'));
+  assert.equal(injected.PNPM_HOME, path.join(f.root, 'cache', 'pnpm'));
+  assert.equal(injected.PNPM_STORE_DIR, path.join(f.root, 'cache', 'pnpm-store'));
   assert.equal(injected.LOCALAPPDATA, path.join(f.root, 'localappdata'));
 });
 
@@ -328,8 +331,16 @@ test('Corepack preserves ordinary commands but refuses unmanaged shims and outsi
     ['install', '-g', '--cache-only', archive]);
   for (const command of [['enable'], ['enable', 'npm'], ['disable', 'npm']])
     assert.throws(() => planCorepackArguments(f.root, f.cwd, command), /unmanaged/);
-  assert.throws(() => planCorepackArguments(f.root, f.cwd,
-    ['pack', '--install-directory', path.join(f.root, 'tool', 'node')]), /unmanaged/);
+  // These are explicitly passed to the package manager, not Corepack's
+  // pack/install archive handling. No accidental CLI regression.
+  for (const command of [
+    ['pnpm', 'install', '-o', path.join(f.base, 'manager-specific-output')],
+    ['yarn', '--output=' + path.join(f.base, 'manager-specific-output')],
+    ['pnpm', 'install', '--cache-only', path.join(f.base, 'manager-data')],
+  ]) assert.deepEqual(planCorepackArguments(f.root, f.cwd, command), command);
+  assert.deepEqual(planCorepackArguments(f.root, f.cwd,
+    ['install', '-g', '--install-directory', 'ordinary-forwarded-option']),
+    ['install', '-g', '--install-directory', 'ordinary-forwarded-option']);
   for (const command of [
     ['pack', '-o', path.join(f.base, 'outside.tgz')],
     ['pack', '--output=' + path.join(f.base, 'outside.tgz')],
