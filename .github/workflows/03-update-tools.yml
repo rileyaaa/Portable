@@ -472,6 +472,21 @@ jobs:
           'FULL_STABLE_BUNDLED_MODELS_EXPORT=PASS; pinned binary and JSON model identities verified' |
             Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
+      - name: Preflight real Windows model configuration regression before tool downloads
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $models = '.\tmp\windows-release-state\bundled-models.json'
+          if (-not (Test-Path -LiteralPath $models -PathType Leaf)) {
+            throw 'Missing verified pinned Codex model export before Windows regression.'
+          }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_config.ps1 -BundledModelsPath $models
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Pinned Codex model/config regression failed before expensive full tool staging.'
+          }
+          'FULL_STABLE_EARLY_MODEL_CONFIG=PASS' |
+            Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
       - name: Preflight official npm JSON before time-consuming Windows launcher checks
         timeout-minutes: 3
         run: |
