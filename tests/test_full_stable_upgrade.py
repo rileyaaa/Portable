@@ -284,7 +284,8 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertIn('after=("python315_install",)', source)
         pip_test = (ROOT / "tests/test_pip_config_isolation.py").read_text(
             encoding="utf-8")
-        self.assertIn('getattr(c, "Kind", None)', pip_test)
+        self.assertIn('getattr(c, "kinds", None)', pip_test)
+        self.assertIn('kinds = c.Kind', pip_test)
         self.assertIn('runtime / "python315._pth"', pip_test)
 
     def test_windows_native_contracts_are_real_bounded_unittests(self):
