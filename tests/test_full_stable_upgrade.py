@@ -274,7 +274,7 @@ class FullStableUpgradeTests(unittest.TestCase):
                         source.index("stage_browser(temp, version, revision"))
         diagnostic = (ROOT / "tool/full-stable-native-diagnose.py").read_text(
             encoding="utf-8")
-        self.assertIn('"tests/test_portable_npm.js"', native.COPY_FILES)
+        self.assertIn("tests/test_portable_npm.js", native.COPY_FILES)
         self.assertIn('record(records, "npm12_portable_regressions"', diagnostic)
         self.assertIn('lambda: stage.verify_staged_portable_npm(root)', diagnostic)
         self.assertIn('after=("npm_corepack", "npm_bootstrap_layout")', diagnostic)
