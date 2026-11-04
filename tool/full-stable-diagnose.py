@@ -81,8 +81,19 @@ def offline_suite(pattern: str) -> str:
     completed = subprocess.run(command, cwd=ROOT, text=True, capture_output=True,
                                timeout=90, check=False, encoding="utf-8", errors="replace")
     if completed.returncode != 0:
-        raise ValueError(("offline regression failed: " + pattern + "\n" +
-                          completed.stdout + "\n" + completed.stderr)[-2400:])
+        # Preserve the actual failing test names and assertion/exception types.
+        # Previously a long unittest traceback was tail-truncated twice and
+        # displayed only unrelated output in the Actions diagnosis summary.
+        output = completed.stdout + "\n" + completed.stderr
+        findings = [
+            line.strip() for line in output.splitlines()
+            if re.match(r"^(?:FAIL|ERROR): ", line.strip()) or re.match(
+                r"^(?:AssertionError|ModuleNotFoundError|ImportError|"
+                r"KeyError|TypeError|ValueError|RuntimeError|SyntaxError|"
+                r"OSError|FileNotFoundError|PermissionError):", line.strip())
+        ]
+        summary = " | ".join(findings[:6]) if findings else output[-1000:]
+        raise ValueError("offline regression failed: " + pattern + "; " + summary[:1600])
     return pattern + " PASS"
 
 
