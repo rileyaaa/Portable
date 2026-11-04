@@ -114,8 +114,8 @@ class FullStableUpgradeTests(unittest.TestCase):
             ast.parse((ROOT / path).read_text(encoding="utf-8"), filename=path)
         source = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
-        self.assertIn("options: [check, diagnose, prepare, full]", source)
-        self.assertIn("    if: github.ref == 'refs/heads/main' && inputs.mode != 'full'", source)
+        self.assertIn("options: [check, diagnose, prepare, full, auto]", source)
+        self.assertIn("needs.auto_check.outputs.updates == 'true'", source)
         self.assertIn("name: Full tool stable refresh - Windows read-only verifier", source)
         self.assertIn("name: Full tool trusted writer", source)
         self.assertIn("needs: full_verify", source)
@@ -174,7 +174,7 @@ class FullStableUpgradeTests(unittest.TestCase):
     def test_fast_batch_diagnostics_no_full_action_artifacts_and_aggregate_errors(self):
         workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
-        self.assertIn("options: [check, diagnose, prepare, full]", workflow)
+        self.assertIn("options: [check, diagnose, prepare, full, auto]", workflow)
         self.assertIn("inputs.mode != 'full' && inputs.mode != 'diagnose'", workflow)
         quick = workflow.split("\n  fast_diagnose:", 1)[1]
         self.assertIn("inputs.mode == 'diagnose'", quick)
