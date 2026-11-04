@@ -128,6 +128,12 @@ Assert-NativeVersion 'paramiko' $Inventory.tools.paramiko.version $Python @('-E'
 Assert-NativeVersion 'node' $Inventory.tools.node.version $Node @('--version')
 Assert-NativeVersion 'npm' $Inventory.tools.npm.version $Node @((Join-Path $Root 'tool\node\node_modules\npm\bin\npm-cli.js'),'--version')
 Assert-NativeVersion 'corepack' $Inventory.tools.corepack.version $Node @((Join-Path $Root 'tool\node\node_modules\corepack\dist\corepack.js'),'--version')
+$CorepackCmd = Join-Path $Root 'tool\node\corepack.cmd'
+$CorepackResult = (& $CorepackCmd '--version' 2>&1) -join [Environment]::NewLine
+if ($LASTEXITCODE -ne 0 -or $CorepackResult.Trim() -cne [string]$Inventory.tools.corepack.version) {
+    throw 'Bundled Corepack CMD wrapper failed direct portable version check.'
+}
+'02_TOOL_COREPACK_SHIM=PASS; guarded Corepack --version' | Write-Output
 Assert-NativeVersion 'adb' $Inventory.tools.adb.version (Join-Path $Root 'tool\android\platform-tools\adb.exe') @('version')
 Assert-NativeVersion '7zip' $Inventory.tools.'7zip'.version (Join-Path $Root 'tool\bin\7z.exe') @('i')
 Assert-NativeVersion 'ripgrep' $Inventory.tools.ripgrep.version (Join-Path $Root 'tool\bin\rg.exe') @('--version')

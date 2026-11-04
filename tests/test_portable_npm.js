@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const {test} = require('node:test');
-const {inside, windowsSystemRoot, portableEnvironment, planArguments, preflightConfigFiles} = require('../tool/node/portable-npm');
+const {inside, windowsSystemRoot, portableEnvironment, corepackEnvironment, planCorepackArguments,
+  planArguments, preflightConfigFiles} = require('../tool/node/portable-npm');
 
 const repository = path.resolve(__dirname, '..');
 const npmPath = path.join(repository, 'tool/node/node_modules/npm');
@@ -237,4 +238,61 @@ test('config file preflight rejects external paths before following the config c
   await preflightConfigFiles(context, selected.config);
   assert.equal(selected.config.data.get('cli').data.registry, 'https://registry.npmjs.org/');
   assert.equal(selected.config.data.get('cli').data.proxy, 'http://127.0.0.1:9999');
+});
+
+test('Corepack direct entry clears host overrides and keeps its cache inside the package', t => {
+  const f = fixture(t);
+  const injected = corepackEnvironment(f.root, {
+    ...f.env,
+    COREPACK_HOME: f.base,
+    COREPACK_ENV_FILE: path.join(f.base, '.corepack.env'),
+    COREPACK_NPM_TOKEN: 'host-secret',
+    COREPACK_NPM_REGISTRY: 'https://host.invalid',
+    COREPACK_ENABLE_UNSAFE_CUSTOM_URLS: '1',
+    COREPACK_INTEGRITY_KEYS: '0',
+    YARN_RC_FILENAME: path.join(f.base, '.yarnrc.yml'),
+    PNPM_STORE_DIR: path.join(f.base, 'pnpm-store'),
+  }, f.cwd);
+  assert.equal(injected.COREPACK_HOME, path.join(f.root, 'cache', 'corepack'));
+  assert.equal(injected.COREPACK_ENV_FILE, '0');
+  assert.equal(injected.COREPACK_ENABLE_UNSAFE_CUSTOM_URLS, '0');
+  assert.equal(injected.COREPACK_ENABLE_PROJECT_SPEC, '0');
+  for (const name of ['COREPACK_NPM_TOKEN', 'COREPACK_NPM_REGISTRY',
+    'COREPACK_INTEGRITY_KEYS', 'YARN_RC_FILENAME', 'PNPM_STORE_DIR'])
+    assert.equal(injected[name], undefined);
+  assert.equal(injected.LOCALAPPDATA, path.join(f.root, 'localappdata'));
+});
+
+test('Corepack honors only package-local project discovery', t => {
+  const f = fixture(t);
+  // The fixture already has a package.json in the untrusted parent.
+  assert.equal(corepackEnvironment(f.root, f.env, f.cwd).COREPACK_ENABLE_PROJECT_SPEC, '0');
+  const manifest = path.join(f.root, 'work', 'package.json');
+  fs.writeFileSync(manifest, '{"name":"portable-project","version":"1.0.0"}');
+  assert.equal(corepackEnvironment(f.root, f.env, f.cwd).COREPACK_ENABLE_PROJECT_SPEC, '1');
+});
+
+test('Corepack preserves ordinary commands but refuses unmanaged shims and outside files', t => {
+  const f = fixture(t);
+  const archive = path.join(f.cwd, 'manager.tgz');
+  fs.writeFileSync(archive, 'fixture');
+  assert.deepEqual(planCorepackArguments(f.root, f.cwd, ['--version']), ['--version']);
+  assert.deepEqual(planCorepackArguments(f.root, f.cwd, ['pack', '-o', 'output.tgz']),
+    ['pack', '-o', 'output.tgz']);
+  assert.deepEqual(planCorepackArguments(f.root, f.cwd,
+    ['install', '-g', '--cache-only', archive]),
+    ['install', '-g', '--cache-only', archive]);
+  for (const command of [['enable'], ['enable', 'npm'], ['disable', 'npm']])
+    assert.throws(() => planCorepackArguments(f.root, f.cwd, command), /unmanaged/);
+  assert.throws(() => planCorepackArguments(f.root, f.cwd,
+    ['pack', '--install-directory', path.join(f.root, 'tool', 'node')]), /unmanaged/);
+  for (const command of [
+    ['pack', '-o', path.join(f.base, 'outside.tgz')],
+    ['pack', '--output=' + path.join(f.base, 'outside.tgz')],
+    ['install', '-g', '--cache-only', path.join(f.base, 'outside.tgz')],
+  ])
+    assert.throws(() => planCorepackArguments(f.root, f.cwd, command),
+      /inside the current portable package/);
+  assert.throws(() => planCorepackArguments(f.root, f.cwd, ['pack', '--output']),
+    /file argument is required/);
 });

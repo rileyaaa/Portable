@@ -109,6 +109,64 @@ function portableEnvironment(root, inherited) {
   return env;
 }
 
+function corepackEnvironment(root, inherited, cwd) {
+  const env = portableEnvironment(root, inherited);
+  // Corepack's official defaults otherwise use the host LOCALAPPDATA and may
+  // import host tokens, registry overrides, integrity bypasses or .corepack.env.
+  // Also remove external Yarn/pnpm state forwarded to managed package managers.
+  for (const key of Object.keys(env)) {
+    if (/^(COREPACK_|YARN_|PNPM_)/i.test(key)) delete env[key];
+  }
+  env.COREPACK_HOME = inside(root, path.join(root, 'cache', 'corepack'), {directory: true});
+  env.COREPACK_ENV_FILE = '0';
+  env.COREPACK_ENABLE_UNSAFE_CUSTOM_URLS = '0';
+
+  // Corepack normally searches parent directories for package.json. A portable
+  // cwd with no package metadata must NOT read a host parent project's settings.
+  let cursor = inside(root, cwd, {directory: true, required: true});
+  let localProject = false;
+  const boundary = path.resolve(root);
+  for (;;) {
+    const manifest = inside(root, path.join(cursor, 'package.json'));
+    if (fs.existsSync(manifest)) { localProject = true; break; }
+    if (cursor === boundary) break;
+    cursor = path.dirname(cursor);
+  }
+  env.COREPACK_ENABLE_PROJECT_SPEC = localProject ? '1' : '0';
+  return env;
+}
+
+function planCorepackArguments(root, cwd, args) {
+  inside(root, cwd, {directory: true, required: true});
+  const command = args.find(arg => arg && !arg.startsWith('-')) || '';
+  // Corepack enable emits unmanaged Yarn/pnpm shims, and enable npm can replace
+  // the audited npm.cmd entirely; disable can delete them. Other commands work.
+  if (command === 'enable' || command === 'disable')
+    throw new Error('Portable Corepack refuses unmanaged enable/disable shims');
+  const checked = (value, required = false) => {
+    if (!value || value.startsWith('-'))
+      throw new Error('Corepack file argument is required');
+    return inside(root, path.resolve(cwd, value), {required});
+  };
+  for (let i = 0; i < args.length; i++) {
+    const argument = args[i];
+    if (argument === '--install-directory' || argument.startsWith('--install-directory='))
+      throw new Error('Portable Corepack refuses unmanaged install directories');
+    if (argument === '-o' || argument === '--output') {
+      checked(args[++i]);
+    } else if (argument.startsWith('--output=')) {
+      checked(argument.slice('--output='.length));
+    } else if (/^-o[^-]/.test(argument)) {
+      checked(argument.slice(argument.startsWith('-o=') ? 3 : 2));
+    } else if (command === 'install' && argument === '--cache-only') {
+      checked(args[++i], true);
+    } else if (command === 'install' && argument.startsWith('--cache-only=')) {
+      checked(argument.slice('--cache-only='.length), true);
+    }
+  }
+  return args;
+}
+
 // Match the upstream npx boundary: everything after the first positional
 // command (or --) belongs to that command, including its own --prefix flag.
 function npxOptionCount(args, definitions, shorthands) {
@@ -227,12 +285,22 @@ async function main() {
     inside(root, path.join(root, marker), {required: true});
   const npmPath = path.join(__dirname, 'node_modules/npm');
   const [mode, ...args] = process.argv.slice(2);
-  if (!['npm', 'npx'].includes(mode)) throw new Error('Use npm or npx');
-  const cliPath = inside(root, path.join(npmPath, 'bin', `${mode}-cli.js`), {required: true});
+  if (!['npm', 'npx', 'corepack'].includes(mode)) throw new Error('Use npm, npx or corepack');
+  const cliPath = inside(root, mode === 'corepack'
+    ? path.join(__dirname, 'node_modules/corepack/dist/corepack.js')
+    : path.join(npmPath, 'bin', mode + '-cli.js'), {required: true});
   inside(root, process.cwd(), {directory: true, required: true});
-  const environment = portableEnvironment(root, process.env);
+  const environment = mode === 'corepack'
+    ? corepackEnvironment(root, process.env, process.cwd())
+    : portableEnvironment(root, process.env);
+  if (mode === 'corepack') planCorepackArguments(root, process.cwd(), args);
   for (const key of Object.keys(process.env)) if (!(key in environment)) delete process.env[key];
   Object.assign(process.env, environment);
+  if (mode === 'corepack') {
+    process.argv = [process.execPath, cliPath, ...args];
+    require(cliPath);
+    return;
+  }
   inside(root, path.join(npmPath, 'package.json'), {required: true});
   const configEntry = inside(root, path.join(npmPath, 'node_modules/@npmcli/config/lib/index.js'), {required: true});
   const definitionsEntry = inside(root, path.join(npmPath, 'node_modules/@npmcli/config/lib/definitions/index.js'), {required: true});
@@ -251,4 +319,5 @@ if (require.main === module) {
   });
 }
 
-module.exports = {inside, windowsSystemRoot, portableEnvironment, planArguments, npxOptionCount, preflightConfigFiles};
+module.exports = {inside, windowsSystemRoot, portableEnvironment, corepackEnvironment, planCorepackArguments,
+  planArguments, npxOptionCount, preflightConfigFiles};

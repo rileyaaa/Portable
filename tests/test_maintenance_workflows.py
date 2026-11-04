@@ -251,6 +251,22 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertTrue((ROOT / "tool/python/ssh-packages/paramiko").is_dir())
         self.assertTrue((ROOT / "tool/python/ssh-packages/cryptography").is_dir())
 
+    def test_corepack_entry_uses_package_guard_and_does_not_restore_upstream_shim(self):
+        cmd = (ROOT / 'tool/node/corepack.cmd').read_text(encoding='ascii')
+        self.assertIn('PSModuleAnalysisCachePath=NUL', cmd)
+        self.assertIn('if errorlevel 1 exit /b 3', cmd)
+        self.assertIn('portable-npm.js" corepack %*', cmd)
+        self.assertNotIn('  node  ', cmd)
+        shim = read(ROOT / 'tool/node/portable-npm.js')
+        for required in ('COREPACK_HOME', "COREPACK_ENV_FILE = '0'",
+                         'COREPACK_ENABLE_PROJECT_SPEC', 'planCorepackArguments',
+                         "mode === 'corepack'"):
+            self.assertIn(required, shim)
+        updater = read(ROOT / 'tool/update-tools.py')
+        self.assertIn("'corepack.cmd'", updater)
+        native_gate = read(ROOT / '.github/maintenance/02-tool-compatibility.ps1')
+        self.assertIn('02_TOOL_COREPACK_SHIM=PASS', native_gate)
+
     def test_release_gate_checks_effective_tool_paths_and_native_versions(self):
         publisher = self.files["release"]
         script = read(ROOT / ".github/maintenance/02-tool-compatibility.ps1")

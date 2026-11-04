@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-04：独立 Corepack 入口的宿主配置与非受控 shim 风险（PR #31，待原生验证）
+
+- 继续检查主启动器之外的 Tool PATH：发现 npm/npx 已通过受控 CMD 和 JS 预检，但安装台账里的 Corepack 0.36.0 仍直接调用上游 corepack.js，未清理继承的 COREPACK_HOME、COREPACK_ENV_FILE、COREPACK_NPM_TOKEN、Yarn/pnpm 路径环境及 NODE_OPTIONS。上游 Corepack 文档确认 COREPACK_HOME 默认使用 Windows LOCALAPPDATA，COREPACK_ENV_FILE 可重新载入项目环境，enable/disable 可在 Node 目录新增、替换或删除可执行 shim。原入口的 native --version 测试绕过了这些行为。
+- 将 tool/node/corepack.cmd 接到原 npm 路径/重解析/可执行文件预检和同一 Node 入口清理流程；在 portable-npm.js 的独立 corepack 分支中重定向 COREPACK_HOME 至包内 cache/corepack，禁止隐式 .corepack.env，移除宿主 Corepack 凭证和选项、Yarn/pnpm 环境。只有在当前包内找到经过路径检查的 package.json 才启用 Corepack 项目发现；没有包内 manifest 时关闭项目发现，避免越过包根读取宿主父目录配置。
+- 原生 Corepack version、pack、install 等正常命令保留；为避免 corepack enable npm 替换审核过的 npm.cmd 或 enable 生成未经审查的 Yarn/pnpm 可执行入口，暂时拒绝 enable/disable 和 --install-directory（今后可另做安全 shim 生成机制）。pack 的输出文件、install --cache-only 的离线输入须在包内。用户显式传给 pnpm/yarn 的脚本、路径及包外访问依然需要真实 Windows 沙箱，不把该工具入口封装当作 OS 级禁令。
+- 增加 JS 正向/恶意输入回归、维护契约检测，以及 02/03 原生 Tool 验收对实际 corepack.cmd --version 的检查，不再只测试通过 Node.exe 直接载入供应商 Corepack。**本次仅完成源码级验证/测试补齐，尚未触发 GitHub Actions、PowerShell 5.1、原生 Corepack/npm/Yarn/pnpm 或 ProcMon 文件 I/O 验收。** main、正式 Release 和二进制保持不变。
+
 ## 2026-11-04：原生环境变量有效性与「只能写当前包」的技术边界
 
 - 对 `env.ps1` 59 个不同默认赋值逐项分类：45 个 `CODEX_*`（大多数是项目启动器界面，不能冒称官方 Codex 环境变量）、13 个 Android/Tool 路径变量、1 个 `OPENAI_API_KEY`。逐项找到启动器或账号脚本的读取/传递位置，**这只证明配置链接，不等于上游消费者或 Windows 系统实际遵守，也不等于所有变量都直接承担目录隔离**。
