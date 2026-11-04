@@ -893,6 +893,8 @@ $ToolPaths = @(
     (Join-Path $PortableCache "npm-prefix\node_modules\.bin"),
     (Join-Path $PortableCache "pnpm"),
     (Join-Path $PortableTool "android\jdk\bin"),
+    # ADB ships independently of the optional full Android SDK.
+    (Join-Path $PortableTool "android\platform-tools"),
     (Join-Path $PortableTool "android\sdk\platform-tools"),
     (Join-Path $PortableTool "android\sdk\emulator"),
     (Join-Path $PortableTool "android\sdk\cmdline-tools\latest\bin"),
