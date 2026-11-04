@@ -2,8 +2,8 @@
   "name": "codex-portable-browser-tools",
   "version": "1.0.0",
   "private": true,
-  "description": "Pinned Microsoft Playwright MCP for explicit portable browser tasks",
+  "description": "Pinned latest stable Playwright MCP with package-local Chromium",
   "dependencies": {
-    "@playwright/mcp": "0.0.83"
+    "@playwright/mcp": "0.0.84"
   }
 }

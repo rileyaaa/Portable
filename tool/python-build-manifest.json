@@ -1,109 +1,22 @@
 {
-  "schema": 1,
-  "source_commit": "fcaf45e5dfe4c97f096475f211a423b6d882c4ae",
-  "note": "Exact historical Git objects, not new wheel downloads. Packaging remains opt-in via package-local python -m PyInstaller; no compilation was performed during restoration.",
+  "schema": 2,
+  "target": "Windows x64 CPython 3.15.2",
+  "note": "Fresh official SHA256-pinned PyPI wheels, not historical Git objects. PyInstaller is invoked via package-local python -m PyInstaller.",
   "packages": {
-    "pyinstaller": "6.21.0",
-    "pyinstaller-hooks-contrib": "2026.6",
+    "pyinstaller": "6.22.3",
+    "pyinstaller-hooks-contrib": "2026.9",
     "altgraph": "0.17.5",
     "pefile": "2024.8.26",
     "pywin32-ctypes": "0.2.3",
-    "setuptools": "82.0.1"
+    "setuptools": "84.2.1"
   },
-  "existing_dependency": {
-    "packaging": "26.2"
+  "wheel_sha256": {
+    "pyinstaller": "500bd58c7bf7e584a8435adccbd763a0b918d5c12b08d74ff50fd79b2915458b",
+    "pyinstaller-hooks-contrib": "fb3e67dd64122561724c48ad0366ac9e8c16e638b63bf7d85de03bf3fdbf06c3",
+    "altgraph": "f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597",
+    "pefile": "76f8b485dcd3b1bb8166f1128d395fa3d87af26360c2358fb75b80019b957c6f",
+    "pywin32-ctypes": "8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8",
+    "setuptools": "ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2"
   },
-  "objects": [
-    {
-      "path": "tool/python/Lib/site-packages/PyInstaller",
-      "type": "tree",
-      "sha": "c611536f0a60ea58732901e8789b27ded3106585"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/pyinstaller-6.21.0.dist-info",
-      "type": "tree",
-      "sha": "2d279476a75e0d9b16ede6da1c8f31a054902585"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/_pyinstaller_hooks_contrib",
-      "type": "tree",
-      "sha": "9e30cc3b9327769b0fcfba48e4a24c65fe0ca0b4"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/pyinstaller_hooks_contrib-2026.6.dist-info",
-      "type": "tree",
-      "sha": "dabcde454f36b79095dc123a484ba8ba948308ed"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/altgraph",
-      "type": "tree",
-      "sha": "058ae5133410ffd10fa49ed8c7cdd37848bcf843"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/altgraph-0.17.5.dist-info",
-      "type": "tree",
-      "sha": "938faf183764463f3ae489e664767bd0bf1a0ab1"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/pefile.py",
-      "type": "blob",
-      "sha": "f80467897996d4bc55c45a5ee16cda7215bd489d"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/peutils.py",
-      "type": "blob",
-      "sha": "95cb011fe40406a8ec4ea66494e081a52d607e5a"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/ordlookup",
-      "type": "tree",
-      "sha": "00d7926e86270cd6e126d4982dfb173932e772d6"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/pefile-2024.8.26.dist-info",
-      "type": "tree",
-      "sha": "47659268a6d790b657c31592511a902038699191"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/win32ctypes",
-      "type": "tree",
-      "sha": "2b28b776e46551b1debd8112f08bdfbdd5255503"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/pywin32_ctypes-0.2.3.dist-info",
-      "type": "tree",
-      "sha": "efdbb168291f05306b4cb6d620240fbd7bcfdf03"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/setuptools",
-      "type": "tree",
-      "sha": "b5a14743e5ccf696e8b4c5b805365fa1d5f6b488"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/setuptools-82.0.1.dist-info",
-      "type": "tree",
-      "sha": "edbb7520fa14d98c0dfb081385f2d8b194dca0de"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/distutils-precedence.pth",
-      "type": "blob",
-      "sha": "7f009fe9bb04116f3f68e0df3d90c0d84599803e"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/bin/pyinstaller.exe",
-      "type": "blob",
-      "sha": "bfbc1b2ff526ddd41c5cd2a2c019e3aafbe771b8"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/_distutils_hack/__init__.py",
-      "type": "blob",
-      "sha": "94f71b99ecefd27e6cf3fd06fc3c0eef5fd73910"
-    },
-    {
-      "path": "tool/python/Lib/site-packages/_distutils_hack/override.py",
-      "type": "blob",
-      "sha": "2cc433a4a55e3b41fa31089918fb62096092f89f"
-    }
-  ],
-  "excluded_generated": "_distutils_hack/__pycache__ from the historical tree is intentionally not restored."
+  "objects": []
 }
