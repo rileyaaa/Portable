@@ -1,0 +1,276 @@
+name: "99｜一次性清理 Codex-Portable Actions 历史（临时）"
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_delete:
+        description: "勾选后永久删除已确认的162条旧执行记录；不构建、不发布、不修改分支"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cleanup:
+    name: "仅清理历史运行记录（不执行任何打包任务）"
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm_delete }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: "核对162条固定 Run ID 后逐条永久删除"
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError
+          
+          REPOSITORY = 'rileyaaa/Codex-Portable'
+          EXPECTED = {
+              39366666960: (390116065, ".github/workflows/restore-codex-archive.yml"),
+              39367046281: (390116065, ".github/workflows/restore-codex-archive.yml"),
+              39883291701: (393518747, ".github/workflows/release.yml"),
+              40053157057: (393518747, ".github/workflows/release.yml"),
+              40054016597: (393518747, ".github/workflows/release.yml"),
+              40055716596: (393518747, ".github/workflows/release.yml"),
+              40056474654: (393518747, ".github/workflows/release.yml"),
+              40064428873: (394835129, ".github/workflows/maintenance-once.yml"),
+              40064532363: (394835129, ".github/workflows/maintenance-once.yml"),
+              40064538870: (393518747, ".github/workflows/release.yml"),
+              40065279347: (394835129, ".github/workflows/maintenance-once.yml"),
+              40065781327: (394835129, ".github/workflows/maintenance-once.yml"),
+              40066085104: (394835129, ".github/workflows/maintenance-once.yml"),
+              40066777003: (394835129, ".github/workflows/maintenance-once.yml"),
+              40066815723: (394835129, ".github/workflows/maintenance-once.yml"),
+              40066865377: (394835129, ".github/workflows/maintenance-once.yml"),
+              40067778631: (394835129, ".github/workflows/maintenance-once.yml"),
+              40067858314: (394835129, ".github/workflows/maintenance-once.yml"),
+              40068712160: (394835129, ".github/workflows/maintenance-once.yml"),
+              40068917036: (394835129, ".github/workflows/maintenance-once.yml"),
+              40068937238: (393518747, ".github/workflows/release.yml"),
+              40071968037: (394892202, ".github/workflows/recheck-once.yml"),
+              40072638903: (394892202, ".github/workflows/recheck-once.yml"),
+              40073174519: (394892202, ".github/workflows/recheck-once.yml"),
+              40073270781: (394892202, ".github/workflows/recheck-once.yml"),
+              40073361660: (394892202, ".github/workflows/recheck-once.yml"),
+              40073399090: (393518747, ".github/workflows/release.yml"),
+              40073789274: (394892202, ".github/workflows/recheck-once.yml"),
+              40074108320: (394892202, ".github/workflows/recheck-once.yml"),
+              40074571096: (394892202, ".github/workflows/recheck-once.yml"),
+              40074589382: (393518747, ".github/workflows/release.yml"),
+              40075751378: (394892202, ".github/workflows/recheck-once.yml"),
+              40076858019: (394892202, ".github/workflows/recheck-once.yml"),
+              40077684682: (394892202, ".github/workflows/recheck-once.yml"),
+              40077771570: (394892202, ".github/workflows/recheck-once.yml"),
+              40077895167: (394892202, ".github/workflows/recheck-once.yml"),
+              40078523465: (394892202, ".github/workflows/recheck-once.yml"),
+              40078601267: (394892202, ".github/workflows/recheck-once.yml"),
+              40078704992: (394892202, ".github/workflows/recheck-once.yml"),
+              40078752456: (393518747, ".github/workflows/release.yml"),
+              40080794113: (394965821, ".github/workflows/permission-display-once.yml"),
+              40080867183: (394965821, ".github/workflows/permission-display-once.yml"),
+              40081033088: (394965821, ".github/workflows/permission-display-once.yml"),
+              40081135721: (394965821, ".github/workflows/permission-display-once.yml"),
+              40081210184: (394965821, ".github/workflows/permission-display-once.yml"),
+              40081278730: (393518747, ".github/workflows/release.yml"),
+              40081632745: (394973227, ".github/workflows/cli-order-once.yml"),
+              40081814149: (393518747, ".github/workflows/release.yml"),
+              40082583382: (394981639, ".github/workflows/cli-scope-once.yml"),
+              40084580119: (394981639, ".github/workflows/cli-scope-once.yml"),
+              40085076504: (394981639, ".github/workflows/cli-scope-once.yml"),
+              40085366606: (394981639, ".github/workflows/cli-scope-once.yml"),
+              40085598917: (394981639, ".github/workflows/cli-scope-once.yml"),
+              40085702107: (394981639, ".github/workflows/cli-scope-once.yml"),
+              40085718428: (393518747, ".github/workflows/release.yml"),
+              40085971935: (394981639, ".github/workflows/cli-scope-once.yml"),
+              40086330338: (394981639, ".github/workflows/cli-scope-once.yml"),
+              40086468502: (394981639, ".github/workflows/cli-scope-once.yml"),
+              40104354047: (394981639, ".github/workflows/cli-scope-once.yml"),
+              40105103992: (394981639, ".github/workflows/cli-scope-once.yml"),
+              40105408500: (394981639, ".github/workflows/cli-scope-once.yml"),
+              40106880653: (395206361, ".github/workflows/review-two-pass-once.yml"),
+              40108159218: (395206361, ".github/workflows/review-two-pass-once.yml"),
+              40108689329: (395222948, ".github/workflows/login-input-repair-once.yml"),
+              40108847669: (395222948, ".github/workflows/login-input-repair-once.yml"),
+              40108984881: (395222948, ".github/workflows/login-input-repair-once.yml"),
+              40109313099: (395206361, ".github/workflows/review-two-pass-once.yml"),
+              40110150382: (395236233, ".github/workflows/login-url-repair-once.yml"),
+              40110276993: (395236233, ".github/workflows/login-url-repair-once.yml"),
+              40110404921: (395206361, ".github/workflows/review-two-pass-once.yml"),
+              40113414569: (395206361, ".github/workflows/review-two-pass-once.yml"),
+              40113955421: (395206361, ".github/workflows/review-two-pass-once.yml"),
+              40114094085: (395206361, ".github/workflows/review-two-pass-once.yml"),
+              40115142380: (395206361, ".github/workflows/review-two-pass-once.yml"),
+              40117796342: (395206361, ".github/workflows/review-two-pass-once.yml"),
+              40118438938: (395206361, ".github/workflows/review-two-pass-once.yml"),
+              40119575879: (393518747, ".github/workflows/release.yml"),
+              40158618545: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40158622943: (393518747, ".github/workflows/release.yml"),
+              40159180241: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40159281803: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40159303860: (393518747, ".github/workflows/release.yml"),
+              40159566531: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40159786142: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40159811138: (393518747, ".github/workflows/release.yml"),
+              40160568235: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40161130613: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40161313406: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40161614377: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40161641866: (393518747, ".github/workflows/release.yml"),
+              40172666778: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40173757395: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40173977873: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40174253552: (393518747, ".github/workflows/release.yml"),
+              40175009940: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40175077262: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40175292043: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40176018534: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40176287276: (393518747, ".github/workflows/release.yml"),
+              40179590268: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40179805199: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40179830098: (393518747, ".github/workflows/release.yml"),
+              40182532695: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40183181411: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40183447817: (393518747, ".github/workflows/release.yml"),
+              40184951754: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40205843737: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40206237696: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40206266734: (393518747, ".github/workflows/release.yml"),
+              40206750315: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40207107803: (395615863, ".github/workflows/review-three-pass-once.yml"),
+              40207321415: (393518747, ".github/workflows/release.yml"),
+              40252041365: (393518747, ".github/workflows/release.yml"),
+              40252304579: (393518747, ".github/workflows/release.yml"),
+              40252651459: (393518747, ".github/workflows/release.yml"),
+              40253783757: (393518747, ".github/workflows/release.yml"),
+              40259080140: (393518747, ".github/workflows/release.yml"),
+              40259494275: (393518747, ".github/workflows/release.yml"),
+              40260047518: (393518747, ".github/workflows/release.yml"),
+              40267390511: (393518747, ".github/workflows/release.yml"),
+              40990442666: (401296911, ".github/workflows/upgrade-codex-0166.yml"),
+              40991229354: (401296911, ".github/workflows/upgrade-codex-0166.yml"),
+              40992017717: (401296911, ".github/workflows/upgrade-codex-0166.yml"),
+              40992799592: (401296911, ".github/workflows/upgrade-codex-0166.yml"),
+              40993573097: (401296911, ".github/workflows/upgrade-codex-0166.yml"),
+              40994385378: (393518747, ".github/workflows/release.yml"),
+              41031684488: (401562391, ".github/workflows/request-release-r2.yml"),
+              41031703406: (393518747, ".github/workflows/release.yml"),
+              41191578421: (402642183, ".github/workflows/repack-0166-r1-once.yml"),
+              41191588113: (393518747, ".github/workflows/release.yml"),
+              41371082524: (403679198, ".github/workflows/01-update-codex.yml"),
+              41371083880: (393518747, ".github/workflows/release.yml"),
+              41371398305: (393518747, ".github/workflows/release.yml"),
+              41371651647: (393518747, ".github/workflows/release.yml"),
+              41371684261: (393518747, ".github/workflows/release.yml"),
+              41371889974: (393518747, ".github/workflows/release.yml"),
+              41372824640: (403679198, ".github/workflows/01-update-codex.yml"),
+              41373338288: (403679198, ".github/workflows/01-update-codex.yml"),
+              41419650909: (404318174, ".github/workflows/03-update-tools.yml"),
+              41422066536: (404318174, ".github/workflows/03-update-tools.yml"),
+              41422353149: (404318174, ".github/workflows/03-update-tools.yml"),
+              41425693314: (404318174, ".github/workflows/03-update-tools.yml"),
+              41430341405: (404318174, ".github/workflows/03-update-tools.yml"),
+              41450908392: (404318174, ".github/workflows/03-update-tools.yml"),
+              41459805288: (404318174, ".github/workflows/03-update-tools.yml"),
+              41481792646: (404318174, ".github/workflows/03-update-tools.yml"),
+              41554504292: (404318174, ".github/workflows/03-update-tools.yml"),
+              41555463345: (404318174, ".github/workflows/03-update-tools.yml"),
+              41561816105: (404318174, ".github/workflows/03-update-tools.yml"),
+              41573391951: (404318174, ".github/workflows/03-update-tools.yml"),
+              41575652433: (404318174, ".github/workflows/03-update-tools.yml"),
+              41595966300: (404318174, ".github/workflows/03-update-tools.yml"),
+              41599822488: (404318174, ".github/workflows/03-update-tools.yml"),
+              41605992170: (404318174, ".github/workflows/03-update-tools.yml"),
+              41617214862: (404318174, ".github/workflows/03-update-tools.yml"),
+              41640031417: (404318174, ".github/workflows/03-update-tools.yml"),
+              41661582386: (404318174, ".github/workflows/03-update-tools.yml"),
+              41746956733: (404318174, ".github/workflows/03-update-tools.yml"),
+              41749611928: (404318174, ".github/workflows/03-update-tools.yml"),
+              41750556896: (404318174, ".github/workflows/03-update-tools.yml"),
+              41753761029: (404318174, ".github/workflows/03-update-tools.yml"),
+              41755069778: (404318174, ".github/workflows/03-update-tools.yml"),
+          }
+          assert len(EXPECTED) == 162
+          assert os.environ.get('GITHUB_REPOSITORY') == REPOSITORY
+          self_run_id = int(os.environ['GITHUB_RUN_ID'])
+          assert self_run_id not in EXPECTED, 'Current run is unexpectedly an old run'
+          token = os.environ['GH_TOKEN']
+          assert token, 'Missing GitHub Actions token'
+          
+          def request(method, endpoint):
+              req = Request(
+                  f'https://api.github.com/repos/{REPOSITORY}/{endpoint}',
+                  method=method,
+                  headers={'Authorization': 'Bearer ' + token,
+                           'Accept': 'application/vnd.github+json',
+                           'X-GitHub-Api-Version': '2022-11-28'},
+              )
+              for attempt in range(5):
+                  try:
+                      with urlopen(req, timeout=40) as response:
+                          return json.load(response) if method == 'GET' else response.status
+                  except HTTPError as err:
+                      if method == 'DELETE' and err.code == 404:
+                          return 404
+                      if err.code in (429, 500, 502, 503, 504) or (err.code == 403 and err.headers.get('Retry-After')):
+                          pause = int(err.headers.get('Retry-After', '0') or '0')
+                          pause = min(60, max(pause, 3 * (attempt + 1)))
+                          print(f'Retrying {method} {endpoint}: HTTP {err.code}; sleep {pause}s', flush=True)
+                          time.sleep(pause)
+                          continue
+                      raise
+              raise RuntimeError(f'API retry limit reached: {method} {endpoint}')
+          
+          # Enumerate the complete repository history and match all old run IDs before deletion.
+          runs = []
+          for page in range(1, 12):
+              response = request('GET', f'actions/runs?per_page=100&page={page}')
+              part = response['workflow_runs']
+              runs.extend(part)
+              if len(part) < 100:
+                  break
+          else:
+              raise SystemExit('STOP: Too many pages; no deletion attempted')
+          
+          current_ids = {run['id'] for run in runs}
+          if len(current_ids) != len(runs) or self_run_id not in current_ids:
+              raise SystemExit('STOP: Incomplete run enumeration or cleanup run not found')
+          unknown = current_ids - set(EXPECTED) - {self_run_id}
+          if unknown:
+              raise SystemExit(f'STOP: Unknown new runs: {sorted(unknown)}; no deletion attempted')
+          
+          pending = []
+          for item in runs:
+              run_id = item['id']
+              if run_id == self_run_id:
+                  continue
+              workflow_id, path = EXPECTED[run_id]
+              if (item.get('workflow_id') != workflow_id or
+                      item.get('path') != path or
+                      item.get('status') != 'completed' or
+                      item.get('repository', {}).get('full_name') != REPOSITORY):
+                  raise SystemExit(f'STOP: Unexpected identity/status for {run_id}; no deletion attempted')
+              pending.append(run_id)
+          
+          print(f'PRECHECK OK: {len(pending)} of 162 old runs remain; current run {self_run_id} preserved', flush=True)
+          deleted = 0
+          for run_id in sorted(pending, reverse=True):
+              result = request('DELETE', f'actions/runs/{run_id}')
+              if result not in (204, 404):
+                  raise SystemExit(f'Unexpected deletion status for {run_id}: {result}')
+              if result == 204:
+                  deleted += 1
+              print(f'CLEANUP {deleted}/{len(pending)}: {run_id} (HTTP {result})', flush=True)
+              time.sleep(0.25)
+          
+          print(f'COMPLETE: {deleted} old runs deleted, {162-len(pending)} already absent.', flush=True)
+          print(f'Cleanup run {self_run_id} is intentionally kept for manual deletion after workflow removal.', flush=True)
+          PY
