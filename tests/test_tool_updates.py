@@ -797,6 +797,7 @@ class ToolUpdateTests(unittest.TestCase):
                 tools.enable_node_lfs()
                 self.assertEqual(attrs.read_bytes(), original)
                 self.assertEqual(tools.verify_node_lfs_index('all'), digest)
+                self.assertRegex(tools.diff_digest('all'), r'^[0-9a-f]{64}$')
                 attrs.write_bytes(original + tools.NODE_LFS_ATTRIBUTE)
                 with self.assertRaisesRegex(ValueError, 'Unexpected attributes'):
                     tools.enable_node_lfs()
