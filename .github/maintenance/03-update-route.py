@@ -27,7 +27,7 @@ FULL_TARGETS = REVIEWED_TOOLS | {"chromium", "pyinstaller"}
 
 
 def stable(value: str) -> tuple[int, ...]:
-    if not isinstance(value, str) or re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){1,3}", value) is None:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", value) is None:
         raise ValueError("Unreviewed stable version: " + repr(value))
     return tuple(int(part) for part in value.split("."))
 
