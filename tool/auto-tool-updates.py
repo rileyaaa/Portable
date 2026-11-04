@@ -65,7 +65,10 @@ def request_bytes(url: str, *, limit: int = MAX_METADATA) -> bytes:
                     "Invalid GitHub metadata token")
             headers["Authorization"] = "Bearer " + token
     request = urllib.request.Request(url, headers=headers)
-    with urllib.request.build_opener(_RejectRedirect()).open(
+    # Explicitly suppress ambient HTTP(S)_PROXY / Windows Internet Settings
+    # for bearer-bearing metadata requests. The redirect guard is separate.
+    with urllib.request.build_opener(
+            urllib.request.ProxyHandler({}), _RejectRedirect()).open(
             request, timeout=20) as response:
         final = urllib.parse.urlsplit(response.url)
         require(final.scheme == "https" and final.hostname in HOSTS and

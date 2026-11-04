@@ -84,13 +84,15 @@ class BrowserInstallTests(unittest.TestCase):
             result = io.BytesIO(payload)
             result.url = url
             return result
-        with patch.dict(os.environ, {"HTTP_PROXY": "http://127.0.0.1:10808"}, clear=True), \
+        # Preserve Windows system variables while injecting a synthetic proxy;
+        # deleting SystemRoot/ComSpec here would make the offline test invasive.
+        with patch.dict(os.environ, {"HTTP_PROXY": "http://127.0.0.1:10808"}), \
              patch.object(browser.urllib.request, "build_opener") as factory:
             factory.return_value.open.side_effect = lambda url, timeout: response(official)
             target = browser.download_archive(self.root, self.root, manifest)
             self.assertEqual(target.read_bytes(), payload)
-            self.assertEqual(factory.call_args.args[0].proxies,
-                             {"http": "http://127.0.0.1:10808"})
+            self.assertEqual(factory.call_args.args[0].proxies["http"],
+                             "http://127.0.0.1:10808")
             self.assertIsInstance(factory.call_args.args[1],
                                   browser._RejectBrowserDownloadRedirect)
             self.assertEqual(factory.return_value.open.call_args.kwargs["timeout"], 60)

@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：自动更新元数据令牌禁止隐式 Runner 代理
+
+- auto-tool-updates.py 已禁止元数据请求的 3xx 重定向，并只在 api.github.com 传递 GITHUB_TOKEN/GH_TOKEN；但 build_opener(_RejectRedirect()) 仍会由 urllib 自动补上读取宿主 HTTP(S)_PROXY 或 Windows Internet Settings 的 ProxyHandler。补全显式空 ProxyHandler，避免把凭证请求送往未经选择的中间代理，且保持原来的精确官方 URL 与跳转拒绝策略。
+- 扩展离线测试，在合成 HTTPS_PROXY 的环境下检查两次请求：仅官方 GitHub API 收到令牌，Node 元数据无令牌，且 opener 的代理映射为空、跳转拒绝类保留。另外避免 Chromium 下载测试临时清空整个 Windows 进程环境，只覆盖合成代理并核对对应字段，减少对原生 Runner 的副作用。
+- 本次没有联网、触发 AC、安装工具或修改 main/正式 Release。后续需在有真实网络的 Windows Runner 验证升级通路。
+
 ## 2026-11-05：浏览器缺件补装拒绝任何 HTTP 重定向
 
 - 独立 tool/automation/install-browser.py 此前在 urllib opener 自动处理 3xx **之后**才比较 response.url 与浏览器清单的固定 Google Storage 下载地址；如果源端异常跳转，额外的网络请求可能已发给未批准的域名。旧代码还在检查最终 URL 之前创建 chrome-win64.zip。

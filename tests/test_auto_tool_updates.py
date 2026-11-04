@@ -85,13 +85,17 @@ class AutoToolTests(unittest.TestCase):
                 return Response(request.full_url)
         opener = Opener()
         with patch.dict(os.environ, {"GITHUB_TOKEN": "safe-test-token",
-                                    "GH_TOKEN": ""}), \
+                                    "GH_TOKEN": "", "HTTPS_PROXY": "http://host-proxy.invalid:8080"}), \
              patch.object(auto.urllib.request, "build_opener",
-                          return_value=opener):
+                          return_value=opener) as factory:
             github = "https://api.github.com/repos/jqlang/jq/releases/latest"
             node = "https://nodejs.org/dist/index.json"
             self.assertEqual(auto.request_bytes(github), b"{}")
             self.assertEqual(auto.request_bytes(node), b"{}")
+            self.assertEqual(factory.call_count, 2)
+            for invocation in factory.call_args_list:
+                self.assertEqual(invocation.args[0].proxies, {})
+                self.assertIsInstance(invocation.args[1], auto._RejectRedirect)
         self.assertEqual(seen, [(github, "Bearer safe-test-token"),
                                 (node, None)])
         with self.assertRaisesRegex(ValueError, "no credentials forwarded"):
