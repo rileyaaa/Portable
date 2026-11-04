@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-04：full-stable-prepare 维护子进程与官方下载代理隔离
+
+- 本轮审查发现 Windows 全套工具候选准备器的 run() 以前使用 os.environ.copy()，只排除少量已知变量，向其实际执行的 staged Python/pip、Node/npm/Corepack 和 7-Zip 泄露可能存在的 GITHUB_TOKEN、NPM_CONFIG_REGISTRY、未知宿主凭证和 HTTP_PROXY 等环境。官方 HTTPS 下载原先使用 urllib.request.urlopen()，可能读取 Windows 代理注册表或宿主环境。
+- 改为 stage_child_environment() 正向白名单：Windows 系统目录由 GetWindowsDirectoryW 查询而非信任宿主 SystemRoot，PATH 仅包内 Tool 和必要 Windows 系统路径；HOME、APPDATA、LOCALAPPDATA、TEMP、XDG、Python/Node 缓存及 PowerShell 状态定位包内；未知凭证和包管理器注入不传递给维护子进程。npm_env() 和 PIP_CACHE_DIR 提供的明确审核覆盖仍允许，但其它未审查 extra_env 键直接拒绝。
+- 官方包下载使用显式空 ProxyHandler，不再自动查询 Windows 系统代理。没有替换既有官方 URL/SHA256/完整性校验。相应离线测试覆盖宿主敏感环境排除、合法额外 npm/pip 配置、未经审核变量拒绝和真实下载适配器代理处理。
+- 这些修改仅用于 full-stable 候选准备入口，尚未在 Windows GitHub Runner 原生执行。对需要公司代理访问官方源的环境，当前策略将要求后续设计明确受控代理方式，而非偷偷沿用宿主值。未执行更新、网络下载或 AC；未改 main、Release 或 YOLO。
+
 ## 2026-11-04：Windows 原生验收增加受污染宿主环境下的独立 Python 命令检查
 
 - 交叉检查发现 02 Tool 原生检查只运行绝对 python.exe -m pip 等版本探针，不能证明真正输入 pip.cmd、httpx.cmd 时的 console_script 包装器仍正常。因此新增真实 CMD 入口的正向兼容验收，测试前注入假的 PIP_CONFIG_FILE、PYTHONPATH、OPENAI_API_KEY、NODE_OPTIONS、HTTP_PROXY 宿主值，测试完在 finally 中逐个恢复。

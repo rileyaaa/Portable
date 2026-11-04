@@ -39,18 +39,31 @@ pure = load("tool/full_stable_pure_wheels.py", "portable_pinned_pyyaml")
 
 
 class FullStableUpgradeTests(unittest.TestCase):
-    def test_real_stager_uses_exact_os_devnull_for_pip_configuration(self):
-        # pip 26.3 compares this value exactly against os.devnull.
-        # On Windows, upper-case NUL is not the same string as "nul".
+    def test_full_stager_child_environment_rejects_arbitrary_host_secrets(self):
         result = subprocess.CompletedProcess(["synthetic.exe"], 0, stdout="", stderr="")
-        with patch.dict(os.environ, {"PIP_CONFIG_FILE": "synthetic-host-pip.ini",
-                                     "PYTHONPATH": "outside-path"}, clear=False):
+        with patch.dict(os.environ, {
+            "PIP_CONFIG_FILE": "synthetic-host-pip.ini", "PYTHONPATH": "outside-path",
+            "NODE_OPTIONS": "--require=outside.js", "GITHUB_TOKEN": "host-secret",
+            "AWS_ACCESS_KEY_ID": "host-secret", "PRIVATE_LOCAL_TOKEN": "host-secret",
+            "NPM_CONFIG_REGISTRY": "https://host-registry.invalid/",
+            "HTTP_PROXY": "http://host-proxy.invalid:8080", "CI": "true",
+        }, clear=False):
             with patch.object(stage.subprocess, "run", return_value=result) as called:
                 stage.run("synthetic.exe", "--version")
-        kwargs = called.call_args.kwargs
-        self.assertEqual(kwargs["env"]["PIP_CONFIG_FILE"], os.devnull)
-        self.assertNotIn("PYTHONPATH", kwargs["env"])
-        self.assertEqual(kwargs["env"]["PYTHONDONTWRITEBYTECODE"], "1")
+        env = called.call_args.kwargs["env"]
+        self.assertEqual(env["PIP_CONFIG_FILE"], os.devnull)
+        self.assertEqual(env["PYTHONDONTWRITEBYTECODE"], "1")
+        self.assertEqual(env["CI"], "true")
+        self.assertEqual(env["HOME"], str(ROOT / "home-runtime"))
+        self.assertEqual(env["TEMP"], str(ROOT / "tmp"))
+        for key in ("PYTHONPATH", "NODE_OPTIONS", "GITHUB_TOKEN", "AWS_ACCESS_KEY_ID",
+                    "PRIVATE_LOCAL_TOKEN", "NPM_CONFIG_REGISTRY", "HTTP_PROXY"):
+            self.assertNotIn(key, env)
+        cache = ROOT / "tmp/stager-test-pip-cache"
+        env_with_override = stage.stage_child_environment({"PIP_CACHE_DIR": cache})
+        self.assertEqual(env_with_override["PIP_CACHE_DIR"], str(cache))
+        with self.assertRaisesRegex(ValueError, "Unreviewed extra subprocess"):
+            stage.stage_child_environment({"NODE_OPTIONS": "--require=host.js"})
 
     def test_full_exports_real_pinned_models_before_expensive_windows_gates(self):
         # Full Run #41763058048: 19-test PowerShell suite reached
@@ -1159,8 +1172,8 @@ class FullStableUpgradeTests(unittest.TestCase):
             return response
         with tempfile.TemporaryDirectory() as folder:
             dest = Path(folder) / "metadata.json"
-            with patch.object(stage.urllib.request, "urlopen",
-                              side_effect=fake_urlopen):
+            with patch.object(stage.urllib.request, "build_opener") as factory:
+                factory.return_value.open.side_effect = fake_urlopen
                 item = stage.download(url, dest, limit=4*1024*1024,
                                       accept="application/json", timeout=20)
                 self.assertEqual(dest.read_bytes(), raw)
@@ -1171,6 +1184,8 @@ class FullStableUpgradeTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Unexpected official-download"):
                     stage.download(url, Path(folder) / "bad-accept",
                                    accept="text/html", timeout=20)
+                factory.assert_called_once()
+                self.assertEqual(factory.call_args.args[0].proxies, {})
             self.assertEqual(len(recorded), 1)
             self.assertEqual(recorded[0][0], url)
             self.assertEqual(recorded[0][1], "application/json")

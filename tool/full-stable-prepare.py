@@ -115,7 +115,11 @@ def download(url: str, target: Path, *, expected: str | None = None,
     require(not target.exists(), "Download target must be new: " + str(target))
     h256, h512 = hashlib.sha256(), hashlib.sha512()
     total = 0
-    with urllib.request.urlopen(urllib.request.Request(
+    # An explicit empty ProxyHandler prevents urllib from consulting Windows
+    # registry Internet Settings or ambient HTTP(S)_PROXY during official
+    # locked-candidate downloads. No automatic host proxy is permitted.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(urllib.request.Request(
             url, headers={"User-Agent": "Codex-Portable-full-stable/1",
                           "Accept": accept}), timeout=timeout) as response:
         final = urllib.parse.urlsplit(response.url)
@@ -207,19 +211,85 @@ def untar_checked(source: Path, destination: Path, *, prefix: str = "package",
     plain_tree(destination)
 
 
+def stage_child_environment(extra_env: dict | None = None) -> dict[str, str]:
+    """Allow only controlled OS fields and package-local paths in child tools.
+
+    The host Python orchestrator needs normal GitHub Runner state, but the
+    downloaded Python/npm/Node/7-Zip candidates must not inherit that state.
+    """
+    env: dict[str, str] = {}
+    for key in ("OS", "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER",
+                "NUMBER_OF_PROCESSORS", "USERNAME", "COMPUTERNAME",
+                "CI", "TERM", "NO_COLOR", "FORCE_COLOR", "LANG", "TZ"):
+        if key in os.environ:
+            env[key] = os.environ[key]
+    portable = {
+        "HOME": ROOT / "home-runtime", "USERPROFILE": ROOT / "home-runtime",
+        "APPDATA": ROOT / "appdata", "LOCALAPPDATA": ROOT / "localappdata",
+        "PROGRAMDATA": ROOT / "programdata", "ALLUSERSPROFILE": ROOT / "programdata",
+        "PUBLIC": ROOT / "home-runtime",
+        "TEMP": ROOT / "tmp", "TMP": ROOT / "tmp", "TMPDIR": ROOT / "tmp",
+        "XDG_CACHE_HOME": ROOT / "cache/xdg",
+        "XDG_CONFIG_HOME": ROOT / "appdata", "XDG_DATA_HOME": ROOT / "localappdata",
+        "XDG_STATE_HOME": ROOT / "localappdata/state",
+        "PYTHONUSERBASE": ROOT / "cache/python-userbase",
+        "PYTHONPYCACHEPREFIX": ROOT / "cache/pycache",
+        "YARN_CACHE_FOLDER": ROOT / "cache/yarn",
+        "PNPM_HOME": ROOT / "cache/pnpm", "PNPM_STORE_DIR": ROOT / "cache/pnpm-store",
+    }
+    env.update({name: str(value) for name, value in portable.items()})
+    env.update({"PIP_CONFIG_FILE": os.devnull, "PIP_NO_CACHE_DIR": "1",
+                "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+                "PYTHONDONTWRITEBYTECODE": "1", "PYTHONNOUSERSITE": "1",
+                "GIT_CONFIG_NOSYSTEM": "1", "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1",
+                "POWERSHELL_TELEMETRY_OPTOUT": "1",
+                "PSModuleAnalysisCachePath": "NUL" if os.name == "nt" else os.devnull})
+    if os.name == "nt":
+        # Resolve Windows through the kernel API, not inherited SystemRoot,
+        # ComSpec or PATH that can name unrelated host programs.
+        import ctypes
+        buf = ctypes.create_unicode_buffer(32768)
+        length = ctypes.windll.kernel32.GetWindowsDirectoryW(buf, len(buf))
+        require(0 < length < len(buf), "Cannot find the real Windows directory")
+        windows = Path(buf.value)
+        require(re.fullmatch(r"[A-Za-z]:", windows.drive) is not None and
+                ":" not in str(windows)[2:], "Unexpected Windows system directory")
+        env.update({"SystemRoot": str(windows), "WINDIR": str(windows),
+                    "SystemDrive": windows.drive,
+                    "ComSpec": str(windows / "System32/cmd.exe"),
+                    "PATHEXT": ".COM;.EXE;.BAT;.CMD",
+                    "HOMEDRIVE": str(ROOT.drive),
+                    "HOMEPATH": str(ROOT)[len(ROOT.drive):],
+                    "PSModulePath": os.pathsep.join((
+                        str(ROOT / "cache/powershell/modules"),
+                        str(windows / "System32/WindowsPowerShell/v1.0/Modules"),
+                    ))})
+        env["PATH"] = os.pathsep.join(str(p) for p in (
+            TOOL / "bin", TOOL / "python", TOOL / "node",
+            TOOL / "android/platform-tools", windows / "System32", windows,
+            windows / "System32/WindowsPowerShell/v1.0",
+            windows / "System32/Wbem",
+        ))
+    else:
+        env["PATH"] = os.pathsep.join(("/usr/bin", "/bin"))
+    if extra_env:
+        # Only reviewed stager-provided cache and npm registry settings may
+        # override defaults. Arbitrary caller-controlled command hooks fail.
+        allowed = {
+            "PIP_CACHE_DIR", "NPM_CONFIG_CACHE", "NPM_CONFIG_USERCONFIG",
+            "NPM_CONFIG_GLOBALCONFIG", "NPM_CONFIG_REGISTRY",
+            "NPM_CONFIG_UPDATE_NOTIFIER", "NPM_CONFIG_AUDIT",
+            "NPM_CONFIG_FUND", "HOME", "USERPROFILE",
+            "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD",
+        }
+        require(set(extra_env) <= allowed, "Unreviewed extra subprocess environment")
+        env.update({name: str(value) for name, value in extra_env.items()})
+    return env
+
+
 def run(*args: str | Path, cwd: Path | None = None,
         extra_env: dict | None = None, capture: bool = False):
-    env = os.environ.copy()
-    for k in ("PYTHONPATH", "PYTHONHOME", "NODE_PATH", "NODE_OPTIONS", "PIP_REQUIRE_VIRTUALENV",
-              "PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL", "NPM_CONFIG_PREFIX",
-              "NPM_CONFIG_USERCONFIG", "NPM_CONFIG_GLOBALCONFIG"):
-        env.pop(k, None)
-    # pip checks PIP_CONFIG_FILE against os.devnull exactly (Windows: "nul").
-    # Upper-case "NUL" bypasses that check and could load host config files.
-    env.update({"PIP_CONFIG_FILE": os.devnull, "PYTHONDONTWRITEBYTECODE": "1",
-                "PIP_DISABLE_PIP_VERSION_CHECK": "1", "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1"})
-    if extra_env:
-        env.update({k: str(v) for k, v in extra_env.items()})
+    env = stage_child_environment(extra_env)
     cmd = [str(x) for x in args]
     p = subprocess.run(cmd, cwd=cwd or ROOT, env=env, check=False,
                        text=True, capture_output=capture, encoding="utf-8", errors="replace")
