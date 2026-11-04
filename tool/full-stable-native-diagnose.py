@@ -176,6 +176,14 @@ NATIVE_NODE_CMD_LABELS = (
     ("corepack_cmd", "corepack.cmd"),
 )
 
+# Run the checkout's actual Python compatibility tests under the *newly staged*
+# CPython 3.15 + pip 26.3, not the old bundled 3.14 interpreter. Full run #22
+# exposed sre_parse and pip.Kind changes only after expensive full staging.
+STAGED_PYTHON_REGRESSIONS = (
+    ("python315_android_guard", "test_android_guard.py"),
+    ("python315_pip_config", "test_pip_config_isolation.py"),
+)
+
 
 def native_node_shim(stage, root: Path, label: str) -> str:
     """Execute one real portable CMD so failures in others are still collected."""
@@ -186,6 +194,18 @@ def native_node_shim(stage, root: Path, label: str) -> str:
         raise ValueError("Missing ordinary portable Windows Node launcher: " + label)
     stage.run(launcher, "--version", cwd=root)
     return label + " real Windows CMD launcher passed"
+
+
+def staged_python_regression(stage, runtime: Path, pattern: str) -> str:
+    """Run narrow production test suites under the real staged Windows Python."""
+    if pattern not in {p for _, p in STAGED_PYTHON_REGRESSIONS}:
+        raise ValueError("Unapproved staged Python compatibility test: " + pattern)
+    python = runtime / "python.exe"
+    if runtime.name != "python-runtime" or not python.is_file() or python.is_symlink():
+        raise ValueError("Missing isolated CPython 3.15 runtime for compatibility tests")
+    stage.run(python, "-E", "-s", "-B", "-m", "unittest", "discover",
+              "-s", "tests", "-p", pattern, "-q", cwd=SOURCE)
+    return "Real staged CPython 3.15 and pip compatibility suite passed: " + pattern
 
 
 def windows_tool_contracts() -> str:
@@ -235,6 +255,12 @@ def execute(root: Path, stage, plan: dict, node: Path) -> list[dict]:
     record(records, "python_native_pdf",
            lambda: stage.smoke_staged_python(built["runtime"], evidence["pdf_compatibility"]),
            after=("python315_install",))
+    # Independent compatibility tests; one failure must not hide the other.
+    # Run before python_cli_shims moves python-runtime into tool/python.
+    for probe, pattern in STAGED_PYTHON_REGRESSIONS:
+        record(records, probe,
+               lambda pattern=pattern: staged_python_regression(stage, built["runtime"], pattern),
+               after=("python315_install",))
     record(records, "python_cli_shims",
            lambda: check_python_shims(stage, root, built["runtime"], work / "python"),
            after=("python315_install",))
