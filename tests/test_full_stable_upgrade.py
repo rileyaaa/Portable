@@ -1159,6 +1159,50 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertLess(verifier.index("full-stable-prepare.py npm-preflight"),
                         verifier.index("full-stable-prepare.py prepare"))
 
+    def test_full_stable_download_redirect_host_policy_before_connection(self):
+        """Official CDN handoffs work, never connect to arbitrary redirectors."""
+        good = (
+            ("https://github.com/owner/repo/releases/download/v1/file.zip",
+             "https://release-assets.githubusercontent.com/asset?token=opaque"),
+            ("https://github.com/owner/repo/releases/download/v1/file.zip",
+             "https://objects.githubusercontent.com/asset?token=opaque"),
+            ("https://pypi.org/pypi/pkg/1.0/json",
+             "https://files.pythonhosted.org/packages/pkg.whl"),
+            ("https://nodejs.org/dist/v1/SHASUMS256.txt",
+             "https://nodejs.org/dist/v1/other.txt"),
+            ("https://7-zip.org/a/7z.exe", "https://www.7-zip.org/a/7z.exe"),
+        )
+        for before, after in good:
+            with self.subTest(origin=before, approved=after):
+                stage.approve_download_redirect(before, after)
+                incoming = stage.urllib.request.Request(before,
+                    headers={"Authorization": "synthetic-private-token",
+                             "Cookie": "synthetic-session"})
+                forwarded = stage._ApprovedDownloadRedirect().redirect_request(
+                    incoming, None, 302, "Found", {}, after)
+                self.assertEqual(forwarded.full_url, after)
+                self.assertFalse(forwarded.has_header("Authorization"))
+                self.assertFalse(forwarded.has_header("Cookie"))
+        before = "https://github.com/owner/repo/releases/download/v1/file.zip"
+        for malicious in (
+            "https://attacker.invalid/collect",
+            "https://release-assets.githubusercontent.com.attacker.invalid/a",
+            "http://github.com/file",
+            "https://user:pass@release-assets.githubusercontent.com/a",
+            "https://github.com:8443/file",
+            "https://release-assets.githubusercontent.com/a#fragment",
+            "file:///C:/Windows/system.ini",
+            "https://127.0.0.1/admin",
+        ):
+            with self.subTest(denied=malicious):
+                with self.assertRaisesRegex(ValueError, "Unapproved official download redirect"):
+                    stage._ApprovedDownloadRedirect().redirect_request(
+                        stage.urllib.request.Request(before), None,
+                        302, "Found", {}, malicious)
+        with self.assertRaisesRegex(ValueError, "Unapproved official download redirect"):
+            stage.approve_download_redirect("https://registry.npmjs.org/npm/12.2.1",
+                                             "https://release-assets.githubusercontent.com/a")
+
     def test_official_npm_metadata_http_accept_json_is_not_archive(self):
         """Verify the real download adapter, not just a mocked metadata parser."""
         url = "https://registry.npmjs.org/npm/12.2.1"
@@ -1186,6 +1230,7 @@ class FullStableUpgradeTests(unittest.TestCase):
                                    accept="text/html", timeout=20)
                 factory.assert_called_once()
                 self.assertEqual(factory.call_args.args[0].proxies, {})
+                self.assertIsInstance(factory.call_args.args[1], stage._ApprovedDownloadRedirect)
             self.assertEqual(len(recorded), 1)
             self.assertEqual(recorded[0][0], url)
             self.assertEqual(recorded[0][1], "application/json")

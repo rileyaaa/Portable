@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：全量工具官方下载逐跳重定向审查（PR #31）
+
+- 修复 full-stable-prepare.py 只核验**初始官方 URL**、且下载后的 final 检查仅限制 HTTPS 的问题：原先 urllib 在自动重定向时可能先连接任意 HTTPS 主机，再完成最终检查，不能把初始 URL 来源校验误认成全链路校验。
+- 新增 HTTPRedirectHandler 逐次执行 approve_download_redirect()：只接受相同官方主机，或 github.com -> 官方 release-assets.githubusercontent.com / objects.githubusercontent.com / github-releases.githubusercontent.com、pypi.org -> files.pythonhosted.org、7-zip.org 与其 www 子域的明确跳转。拒绝非 HTTPS、嵌入凭据、非标准端口、片段、外部主机及伪造后缀，并从重定向请求去除 Authorization/Cookie 等头。保留显式空 ProxyHandler（不继承系统代理）、固定 URL/SHA256/integrity/大小上限以及下载完成后的二次目标检查。
+- 对官方 CDN 正常跳转和恶意跨站、HTTP 降级、用户凭据、异常端口及伪造域名新增离线回归。已独立运行 Python 标准库重定向回调的合成验证；未运行真正的互联网下载或 Windows GitHub Actions。若将来官方 CDN 域名变更必须显式审核，不允许放宽到所有 HTTPS 域名。
+
 ## 2026-11-05：更新候选原生版本探针环境白名单
 
 - tool/update-tools.py 的 probe_binary 与 verify_candidates(Corepack) 原先从外层环境继承 SystemRoot、WINDIR、ComSpec、HOME、APPDATA 等并拼装 PATH。若来源是宿主不可信配置，原生探针可能读取错误的用户状态或系统命令目录。此入口独立于 run-codex.ps1，不受主启动器子进程白名单保护。

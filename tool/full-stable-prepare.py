@@ -47,6 +47,17 @@ MAX_FILES = 25000
 WINDOWS_BAD = re.compile(r'[<>:"\\|?*\x00-\x1f]')
 ALLOWED_HOSTS = {"www.python.org", "files.pythonhosted.org", "pypi.org", "registry.npmjs.org",
                  "github.com", "storage.googleapis.com", "cdn.playwright.dev"}
+# The upstream GitHub release endpoint legitimately redirects to its signed
+# asset CDN. Never treat arbitrary HTTPS redirects as official downloads.
+GITHUB_RELEASE_ASSETS = {"release-assets.githubusercontent.com",
+                         "objects.githubusercontent.com",
+                         "github-releases.githubusercontent.com"}
+TRUSTED_DOWNLOAD_REDIRECTS = {
+    "github.com": GITHUB_RELEASE_ASSETS,
+    "pypi.org": {"files.pythonhosted.org"},
+    "7-zip.org": {"www.7-zip.org"},
+    "www.7-zip.org": {"7-zip.org"},
+}
 SSH = {"paramiko", "bcrypt", "cryptography", "invoke", "pynacl", "cffi", "pycparser"}
 
 
@@ -102,6 +113,34 @@ def plain_tree(path: Path) -> None:
             require(st.st_nlink == 1, "Refuse hard link: " + str(p))
 
 
+def approve_download_redirect(source: str, target: str) -> None:
+    """Check each official redirect *before* urllib sends the next request.
+
+    Only exact hostnames and explicitly reviewed upstream CDN handoffs are
+    permitted. An HTTPS-only final-response check is too late: an untrusted
+    server would already have received a request.
+    """
+    current = urllib.parse.urlsplit(source)
+    following = urllib.parse.urlsplit(target)
+    approved = {current.hostname} | TRUSTED_DOWNLOAD_REDIRECTS.get(current.hostname, set())
+    require(following.scheme == "https" and following.hostname in approved and
+            following.username is None and following.password is None and
+            following.port in (None, 443) and not following.fragment,
+            "Unapproved official download redirect")
+
+
+class _ApprovedDownloadRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        approve_download_redirect(req.full_url, newurl)
+        forwarded = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if forwarded is not None:
+            # Future callers must not silently forward auth or session cookies
+            # from github.com to a signed CDN origin.
+            for name in ("Authorization", "Proxy-Authorization", "Cookie"):
+                forwarded.remove_header(name)
+        return forwarded
+
+
 def download(url: str, target: Path, *, expected: str | None = None,
              limit: int = MAX_BYTES, integrity: str | None = None,
              accept: str = "application/octet-stream", timeout: int = 90) -> dict:
@@ -118,12 +157,14 @@ def download(url: str, target: Path, *, expected: str | None = None,
     # An explicit empty ProxyHandler prevents urllib from consulting Windows
     # registry Internet Settings or ambient HTTP(S)_PROXY during official
     # locked-candidate downloads. No automatic host proxy is permitted.
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}), _ApprovedDownloadRedirect())
     with opener.open(urllib.request.Request(
             url, headers={"User-Agent": "Codex-Portable-full-stable/1",
                           "Accept": accept}), timeout=timeout) as response:
-        final = urllib.parse.urlsplit(response.url)
-        require(final.scheme == "https", "Download redirected to insecure HTTP")
+        # Defense in depth for a mocked/custom opener: the normal redirect
+        # policy above already rejected unapproved hosts before connecting.
+        approve_download_redirect(url, response.url)
         with target.open("xb") as out:
             while True:
                 block = response.read(1024 * 1024)
