@@ -10,13 +10,13 @@ on:
         options: [check, diagnose, prepare, full, auto]
         default: check
       group:
-        description: "旧 prepare 批次：tools/ssh/all；full 全目录模式忽略此选项；all=两者（会重装 SSH）"
+        description: "仅 prepare 选择 tools/ssh/all；auto 固定 tools，full 忽略；all=两者（会重装 SSH）"
         required: true
         type: choice
         options: [ssh, tools, all]
         default: tools
       create_pr:
-        description: "prepare/full 全部验证成功后准备候选分支和 PR；不自动合并或发布"
+        description: "prepare/auto/full 全部验证成功后准备候选分支和 PR；不自动合并或发布"
         required: true
         type: boolean
         default: false
