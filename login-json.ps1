@@ -325,13 +325,12 @@ function Set-PortableEnvironment {
 
 function Set-PortableProcessPath {
     $tool = Join-Path $Root "tool"
+    # Only audited portable command shims and installed runtimes.
+    # Vendor Python bin EXEs can carry stale interpreter launchers, and Go is absent.
     $portableCandidates = @(
         (Join-Path $tool "bin"),
         (Join-Path $tool "python"),
-        (Join-Path $tool "python\Scripts"),
-        (Join-Path $tool "python\Lib\site-packages\bin"),
-        (Join-Path $tool "node"),
-        (Join-Path $tool "go\bin")
+        (Join-Path $tool "node")
     )
     foreach ($candidate in $portableCandidates) {
         if (-not (Test-IsUnderDirectory -Path $candidate -Directory $Root)) {
