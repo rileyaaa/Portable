@@ -174,11 +174,11 @@ class FullStableUpgradeTests(unittest.TestCase):
     def test_fast_batch_diagnostics_no_full_action_artifacts_and_aggregate_errors(self):
         workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
-        self.assertIn("options: [check, diagnose, prepare, full, auto]", workflow)
-        self.assertIn("inputs.mode != 'full' && inputs.mode != 'diagnose'", workflow)
+        self.assertIn("options: [auto, auto-pr, diagnose, check, prepare-tools, prepare-tools-pr, prepare-ssh, prepare-ssh-pr, prepare-all, prepare-all-pr, full, full-pr]", workflow)
+        self.assertIn("!startsWith(inputs.operation, 'full') && inputs.operation != 'diagnose'", workflow)
         quick = workflow.split("\n  fast_diagnose:", 1)[1]
-        self.assertIn("inputs.mode == 'diagnose'", quick)
-        self.assertIn("inputs.create_pr == false", quick)
+        self.assertIn("inputs.operation == 'diagnose'", quick)
+        self.assertNotIn("endsWith(inputs.operation, '-pr')", quick)
         self.assertIn("permissions:\n      contents: read", quick)
         self.assertNotIn("contents: write", quick)
         self.assertNotIn("actions: write", quick)
@@ -234,8 +234,8 @@ class FullStableUpgradeTests(unittest.TestCase):
         nativejob = workflow.split("\n  native_diagnose:", 1)[1]
         self.assertIn("needs: fast_diagnose", nativejob)
         self.assertIn("needs.fast_diagnose.result == 'success'", nativejob)
-        self.assertIn("inputs.mode == 'diagnose'", nativejob)
-        self.assertIn("inputs.create_pr == false", nativejob)
+        self.assertIn("inputs.operation == 'diagnose'", nativejob)
+        self.assertNotIn("endsWith(inputs.operation, '-pr')", nativejob)
         self.assertIn("runs-on: windows-latest", nativejob)
         self.assertIn("permissions:\n      contents: read", nativejob)
         self.assertIn("node-version: '26.13.0'", nativejob)
@@ -533,7 +533,7 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertIn("needs.full_verify.result == 'success'", cleanup)
         self.assertIn("needs.full_propose.result == 'success'", cleanup)
         self.assertIn("needs.full_propose.result == 'skipped'", cleanup)
-        self.assertIn("!inputs.create_pr", cleanup)
+        self.assertIn("inputs.operation == 'full'", cleanup)
         self.assertIn("permissions:\n      actions: write", cleanup)
         self.assertNotIn("contents: write", cleanup)
         self.assertNotIn("pull-requests: write", cleanup)
