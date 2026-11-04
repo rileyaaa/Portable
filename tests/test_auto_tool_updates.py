@@ -150,6 +150,58 @@ class AutoToolTests(unittest.TestCase):
                 saved = json.loads(out.read_text(encoding="utf-8"))
                 self.assertEqual(saved["candidates"], [cand])
 
+    def test_node_only_candidate_generates_independent_official_digest(self):
+        installed = {"node": "26.13.0", "ripgrep": "15.2.0",
+                     "fd": "10.5.0", "jq": "1.8.2"}
+        checksum = ("c" * 64 + "  node-v26.14.0-win-x64.zip\n").encode("ascii")
+        def unchanged(tool):
+            stable = installed[tool]
+            return stable, official_release(tool, stable)
+        with patch.object(auto, "ledger_versions", return_value=installed), \
+             patch.object(auto, "official_node_latest", return_value="26.14.0"), \
+             patch.object(auto, "github_release", side_effect=unchanged), \
+             patch.object(auto, "request_bytes", return_value=checksum):
+            candidates, status = auto.discover()
+        self.assertEqual([row["tool"] for row in candidates], ["node"])
+        self.assertEqual(candidates[0]["sha256"], "c" * 64)
+        self.assertEqual(candidates[0]["destination"], "tool/node")
+        self.assertEqual(status["node"]["policy"], "same_verified_major_only")
+
+    def test_jq_only_candidate_has_exact_verified_executable(self):
+        installed = {"node": "26.13.0", "ripgrep": "15.2.0",
+                     "fd": "10.5.0", "jq": "1.8.2"}
+        def release(tool):
+            stable = "1.9.0" if tool == "jq" else installed[tool]
+            return stable, official_release(tool, stable)
+        with patch.object(auto, "ledger_versions", return_value=installed), \
+             patch.object(auto, "official_node_latest", return_value="26.13.0"), \
+             patch.object(auto, "github_release", side_effect=release):
+            candidates, _ = auto.discover()
+        self.assertEqual([row["tool"] for row in candidates], ["jq"])
+        self.assertEqual(candidates[0]["kind"], "executable")
+        self.assertEqual(candidates[0]["destination"], "tool/bin/jq.exe")
+        self.assertEqual(candidates[0]["sha256"], "a" * 64)
+
+    def test_unchanged_auto_check_outputs_false_without_plan(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "output"
+            scratch = Path(folder) / "auto-tool-update-plan.json"
+            with patch.object(auto, "discover", return_value=([], {})), \
+                 patch.object(auto, "OUT", scratch), \
+                 patch.dict(os.environ, {"GITHUB_OUTPUT": str(output),
+                                      "GITHUB_STEP_SUMMARY": ""}):
+                self.assertEqual(auto.main(["check"]), 0)
+            self.assertEqual(output.read_text(encoding="utf-8"), "updates=false\n")
+            self.assertFalse(scratch.exists())
+
+    def test_auto_metadata_rejects_unapproved_origins(self):
+        for url in ("http://api.github.com/repos/jqlang/jq/releases/latest",
+                    "https://evil.invalid/", "https://api.github.com:444/repos/a",
+                    "https://user@api.github.com/repos/a",
+                    "https://nodejs.org/dist/index.json?unreviewed=true"):
+            with self.subTest(url=url), self.assertRaisesRegex(ValueError, "Unapproved"):
+                auto.request_bytes(url)
+
     def test_node_only_auto_preserves_separately_pinned_npm_and_corepack(self):
         # Official Node 26 currently bundles npm 11.x, but our package has
         # separately audited npm 12.x. Auto must not silently downgrade npm.
