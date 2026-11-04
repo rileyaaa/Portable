@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -63,6 +64,42 @@ class AutoToolTests(unittest.TestCase):
                     with patch.object(auto, "request_json", return_value=forged):
                         with self.assertRaises(ValueError):
                             auto.github_release(tool)
+
+    def test_metadata_bearer_only_to_github_api_and_no_redirects(self):
+        # Authorization is never sent to nodejs.org or GitHub asset URLs.
+        seen = []
+        class Response:
+            def __init__(self, url):
+                self.url = url
+            def read(self, limit):
+                return b"{}"
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+        class Opener:
+            def open(self, request, timeout):
+                seen.append((request.full_url,
+                             request.get_header("Authorization")))
+                return Response(request.full_url)
+        opener = Opener()
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "safe-test-token",
+                                    "GH_TOKEN": ""}), \
+             patch.object(auto.urllib.request, "build_opener",
+                          return_value=opener):
+            github = "https://api.github.com/repos/jqlang/jq/releases/latest"
+            node = "https://nodejs.org/dist/index.json"
+            self.assertEqual(auto.request_bytes(github), b"{}")
+            self.assertEqual(auto.request_bytes(node), b"{}")
+        self.assertEqual(seen, [(github, "Bearer safe-test-token"),
+                                (node, None)])
+        with self.assertRaisesRegex(ValueError, "no credentials forwarded"):
+            auto._RejectRedirect().redirect_request(
+                None, None, 302, "Moved", {},
+                "https://attacker.invalid/token")
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "bad\r\nheader"}):
+            with self.assertRaisesRegex(ValueError, "Invalid GitHub"):
+                auto.request_bytes(github)
 
     def test_node_official_shasums_and_release_index(self):
         index = [{"version": "v26.14.0", "files": ["win-x64-zip"]},
