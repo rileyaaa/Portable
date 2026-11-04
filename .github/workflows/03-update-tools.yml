@@ -154,6 +154,14 @@ jobs:
           & .\tool\python\python.exe -E -s -B .\tool\prepare-ssh.py check
           if ($LASTEXITCODE -ne 0) { throw 'SSH installed-state audit failed.' }
 
+      - name: Check real installed Tool and SSH runtimes plus effective environment mappings
+        if: ${{ inputs.operation == 'check' }}
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\02-tool-compatibility.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled Tool installation or environment mapping failed.' }
+
       - name: Regenerate exact official Windows auto candidates in the read-only verifier
         if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 5
