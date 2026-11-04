@@ -150,6 +150,25 @@ class AutoToolTests(unittest.TestCase):
                 saved = json.loads(out.read_text(encoding="utf-8"))
                 self.assertEqual(saved["candidates"], [cand])
 
+    def test_node_only_auto_preserves_separately_pinned_npm_and_corepack(self):
+        # Official Node 26 currently bundles npm 11.x, but our package has
+        # separately audited npm 12.x. Auto must not silently downgrade npm.
+        source = (ROOT / "tool/update-tools.py").read_text(encoding="utf-8")
+        for contract in (
+            "NODE_PORTABLE_DIRS = ('node_modules/corepack', 'node_modules/npm')",
+            "NPM_RETAIN_MAX_BYTES",
+            "shutil.rmtree(target_dir)",
+            "shutil.copytree(original_dir, target_dir)",
+            "Node-only upgrade changed the pinned npm version",
+            "Node-only upgrade changed the pinned Corepack version",
+        ):
+            self.assertIn(contract, source)
+        test_source = (ROOT / "tests/test_tool_updates.py").read_text(
+            encoding="utf-8")
+        self.assertIn("def test_node_upgrade_preserves_portable_npm", test_source)
+        self.assertIn("def test_node_inventory_preserves_pinned_npm", test_source)
+        self.assertIn("def test_auto_selector_does_not_change_reviewed", test_source)
+
     def test_workflow_auto_is_manual_and_preserves_release_gates(self):
         workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
