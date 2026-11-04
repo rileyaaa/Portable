@@ -761,6 +761,48 @@ class ToolUpdateTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'canonical staged Git LFS pointer'):
                     tools.verify_node_lfs_index('all')
 
+    def test_repeated_node_upgrade_reuses_existing_canonical_lfs_rule(self):
+        # Main has already committed this rule after the first Node 26 upgrade.
+        # A later official Node update must retain it and verify the new pointer.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(['git', 'init', '-q', str(root)], check=True)
+            for key, value in (('user.name', 'fixture'),
+                               ('user.email', 'fixture@example.invalid')):
+                subprocess.run(['git', '-C', str(root), 'config', key, value],
+                               check=True)
+            attrs = root / '.gitattributes'
+            original = b'other.exe -text\n' + tools.NODE_LFS_ATTRIBUTE
+            attrs.write_bytes(original)
+            subprocess.run(['git', '-C', str(root), 'add', '.gitattributes'],
+                           check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'pinned-lfs'],
+                           check=True)
+            node = root / tools.NODE_LFS_PATH
+            node.parent.mkdir(parents=True)
+            node.write_bytes(b'MZ' + b'\x19' * 512)
+            digest = hashlib.sha256(node.read_bytes()).hexdigest()
+            pointer = (
+                b'version https://git-lfs.github.com/spec/v1\n' +
+                b'oid sha256:' + digest.encode('ascii') + b'\nsize ' +
+                str(node.stat().st_size).encode('ascii') + b'\n')
+            oid = subprocess.check_output(
+                ['git', '-C', str(root), 'hash-object', '-w', '--stdin'],
+                input=pointer).strip().decode('ascii')
+            subprocess.run(
+                ['git', '-C', str(root), 'update-index', '--add', '--cacheinfo',
+                 f'100644,{oid},{tools.NODE_LFS_PATH}'], check=True)
+            with patch.object(tools, 'ROOT', root), patch.object(
+                    tools, 'selected_rows', return_value=[NODE_LFS_FIXTURE]):
+                tools.enable_node_lfs()
+                self.assertEqual(attrs.read_bytes(), original)
+                self.assertEqual(tools.verify_node_lfs_index('all'), digest)
+                attrs.write_bytes(original + tools.NODE_LFS_ATTRIBUTE)
+                with self.assertRaisesRegex(ValueError, 'Unexpected attributes'):
+                    tools.enable_node_lfs()
+                with self.assertRaisesRegex(ValueError, 'reviewed baseline'):
+                    tools.verify_node_lfs_index('all')
+
     def test_node_lfs_rule_rejects_preexisting_unreviewed_changes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
