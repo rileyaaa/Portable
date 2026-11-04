@@ -1,12 +1,6 @@
-name: "04 - Branch cleanup (manual purge and closed PR)"
+name: "04 - PR closed branch cleanup (automatic)"
 
 on:
-  workflow_dispatch:
-    inputs:
-      confirmation:
-        description: "Type DELETE_ALL_EXCEPT_MAIN to delete every other remote branch"
-        required: true
-        type: string
   pull_request:
     types: [closed]
 
@@ -14,57 +8,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: codex-portable-branch-cleanup
+  group: codex-portable-pr-branch-cleanup
   cancel-in-progress: false
 
 jobs:
-  purge_non_main:
-    name: Manually delete all non-main branches without touching tags or LFS
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirmation == 'DELETE_ALL_EXCEPT_MAIN' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-      pull-requests: read
-    steps:
-      - name: Recheck repository, open PRs and delete only non-main refs
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          default_branch="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')"
-          if [[ "$default_branch" != "main" ]]; then
-            echo 'Refusing cleanup: default branch is not main.' >&2
-            exit 1
-          fi
-          open_prs="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=1" --jq 'length')"
-          if [[ "$open_prs" != "0" ]]; then
-            echo 'Refusing bulk cleanup while an open PR exists.' >&2
-            exit 1
-          fi
-          branches="$(gh api --paginate "repos/$GITHUB_REPOSITORY/branches?per_page=100" --jq '.[].name')"
-          if [[ -z "$branches" ]]; then
-            echo 'Refusing cleanup: GitHub returned no branches.' >&2
-            exit 1
-          fi
-          deleted=0
-          while IFS= read -r branch; do
-            [[ -n "$branch" ]] || continue
-            [[ "$branch" == "main" ]] && continue
-            encoded="$(BRANCH_NAME="$branch" python3 -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["BRANCH_NAME"],safe="/"))')"
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$encoded" > /dev/null
-            echo "BRANCH_PURGED=$branch"
-            deleted=$((deleted + 1))
-          done <<< "$branches"
-          remaining="$(gh api --paginate "repos/$GITHUB_REPOSITORY/branches?per_page=100" --jq '.[].name')"
-          if [[ "$remaining" != "main" ]]; then
-            echo "Unexpected branches after cleanup: $remaining" >&2
-            exit 1
-          fi
-          echo "BRANCH_CLEANUP_RESULT=PASS;deleted=$deleted;remaining=main"
-          echo "BRANCH_CLEANUP_RESULT=PASS;deleted=$deleted;remaining=main;no tags/releases/LFS touched" >> "$GITHUB_STEP_SUMMARY"
-
   cleanup_closed_pr:
     name: Remove a same-repository PR branch when its PR closes
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref != 'main' }}
