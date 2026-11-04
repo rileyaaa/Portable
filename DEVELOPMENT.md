@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-04：Python 19 个独立 CLI 的环境白名单（PR #31，待 Windows 验收）
+
+- 确认前一轮只对 pip 控制 PIP_*，但 portable-python-cli.py 对其他 18 个 console_script 未重建环境，且原 pip 仍会转发 PYTHONPATH、任意宿主凭证、用户目录及代理；任一第三方 CLI 都可在自己的脚本运行时读取这些值。
+- 所有 console_script 在加载第三方入口前统一清空并从正向白名单重建环境：包内 HOME/APPDATA/TEMP/XDG、pip nul 禁配置与无缓存、Python/Node/npm/Yarn/pnpm/Gradle/Android 路径、Git 系统配置与 PowerShell 模块缓存；未知宿主秘密、NODE_OPTIONS、PYTHONPATH、PIP_* 注册表和宿主代理均不沿用。包内 Codex 显式开启代理/转发/命令联网时才保留代理，且移包后旧根路径不匹配。
+- Windows 子进程的 SystemRoot、ComSpec、PATH 基于 GetWindowsDirectoryW 的实际系统目录生成而不是继承变量；PYTHON CLI 默认保持 -E -s -B、19 个 CMD 路径预检、CRLF 与原命令转发未改动。
+- 新增正反向 Python 单元测试与 Windows 系统目录合同检查，覆盖默认隔离、正常路径、显式代理、异常宿主信息。边界：环境重建发生于解释器启动之后，无法约束原生 python.exe 直接运行或任意用户脚本的包外访问，仍须 Windows 原生 PowerShell/Python/ProcMon 验收。未运行 AC，YOLO 功能不变，不改 main/Release。
+
 ## 2026-11-04：独立 npm/npx/Corepack 不再传递任意宿主环境（PR #31，待 Windows 验收）
 
 - 确定漏洞：portable-npm.js 在直接 CMD 启动时以前复制完整宿主环境，再仅过滤部分已知危险变量；任意秘密、第三方配置、npm registry 与代理配置都可能流入 npm 生命周期脚本。主 Codex 的子进程白名单不覆盖独立启动器。

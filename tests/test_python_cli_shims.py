@@ -64,7 +64,7 @@ class PythonCliShimTests(unittest.TestCase):
         data.decode("ascii")
         self.assertNotIn(b"\n", data.replace(b"\r\n", b""))
 
-    def test_direct_pip_entry_suppresses_host_pip_config_and_cache(self):
+    def test_all_python_cli_entries_discard_host_config_and_secrets(self):
         script = ROOT / "tool/bin/portable-python-cli.py"
         spec = importlib.util.spec_from_file_location("portable_cli_under_test", script)
         helper = importlib.util.module_from_spec(spec)
@@ -74,16 +74,77 @@ class PythonCliShimTests(unittest.TestCase):
             "pip_index_url": "https://host.invalid/endpoint",
             "PIP_EXTRA_INDEX_URL": "https://host.invalid/extra",
             "PIP_CACHE_DIR": "C:\\host\\pip-cache",
-            "PYTHONPATH": "retained-by-the-pip-filter",
+            "PYTHONPATH": "C:\\host\\site-packages",
+            "NODE_OPTIONS": "--require=host.js",
+            "APPDATA": "C:\\host\\AppData",
+            "OPENAI_API_KEY": "host-secret",
+            "GITHUB_TOKEN": "host-secret",
+            "PRIVATE_ENV_KEY": "host-secret",
+            "HTTP_PROXY": "http://host.invalid:8080",
+            "CI": "true",
         }
-        clean = helper.pip_environment(hostile)
+        clean = helper.portable_cli_environment(hostile, self.root)
+        self.assertEqual(clean["HOME"], str(self.root / "home-runtime"))
+        self.assertEqual(clean["APPDATA"], str(self.root / "appdata"))
         self.assertEqual(clean["PIP_CONFIG_FILE"], os.devnull)
         self.assertEqual(clean["PIP_NO_CACHE_DIR"], "1")
         self.assertEqual(clean["PIP_DISABLE_PIP_VERSION_CHECK"], "1")
-        self.assertEqual(clean["PYTHONPATH"], hostile["PYTHONPATH"])
-        self.assertFalse(any(name.upper().startswith("PIP_INDEX") or
-                             name.upper() == "PIP_CACHE_DIR" for name in clean))
-        self.assertIn("pip_environment(dict(os.environ))", script.read_text(encoding="utf-8"))
+        self.assertEqual(clean["CI"], "true")
+        self.assertEqual(clean["PNPM_STORE_DIR"], str(self.root / "cache/pnpm-store"))
+        for key in ("pip_index_url", "PIP_EXTRA_INDEX_URL", "PIP_CACHE_DIR",
+                    "PYTHONPATH", "NODE_OPTIONS", "OPENAI_API_KEY",
+                    "GITHUB_TOKEN", "PRIVATE_ENV_KEY", "HTTP_PROXY"):
+            self.assertNotIn(key.upper(), {name.upper() for name in clean})
+        self.assertIn("clean = portable_cli_environment(dict(os.environ))",
+                      script.read_text(encoding="utf-8"))
+        self.assertEqual(helper.pip_environment(hostile)["PIP_CONFIG_FILE"], os.devnull)
+        self.assertNotIn("PYTHONPATH", helper.pip_environment(hostile))
+
+    def test_only_explicit_package_proxy_reaches_python_cli(self):
+        script = ROOT / "tool/bin/portable-python-cli.py"
+        spec = importlib.util.spec_from_file_location("portable_cli_proxy_under_test", script)
+        helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(helper)
+        inherited = {
+            "CODEX_INSTALL_DIR": str(self.root),
+            "CODEX_HOME": str(self.root / "home"),
+            "CODEX_PROXY_ENABLED": "true",
+            "CODEX_PROXY_FOR_SUBPROCESS": "true",
+            "CODEX_SANDBOX_NETWORK_ACCESS": "true",
+            "HTTP_PROXY": "http://127.0.0.1:10808",
+            "NO_PROXY": "localhost",
+        }
+        approved = helper.portable_cli_environment(inherited, self.root)
+        self.assertEqual(approved["HTTP_PROXY"], inherited["HTTP_PROXY"])
+        self.assertEqual(approved["NO_PROXY"], inherited["NO_PROXY"])
+        self.assertNotIn("CODEX_INSTALL_DIR", approved)
+        for edit in (
+            {"CODEX_INSTALL_DIR": str(self.base)},
+            {"CODEX_HOME": str(self.base / "home")},
+            {"CODEX_PROXY_ENABLED": "false"},
+            {"CODEX_PROXY_FOR_SUBPROCESS": "false"},
+            {"CODEX_SANDBOX_NETWORK_ACCESS": "false"},
+        ):
+            self.assertNotIn("HTTP_PROXY",
+                helper.portable_cli_environment({**inherited, **edit}, self.root))
+
+    def test_native_windows_paths_use_os_api_not_untrusted_systemroot(self):
+        script = (ROOT / "tool/bin/portable-python-cli.py").read_text(encoding="utf-8")
+        self.assertIn("GetWindowsDirectoryW", script)
+        self.assertNotIn('inherited["SystemRoot"]', script)
+        if os.name == "nt":
+            spec = importlib.util.spec_from_file_location("portable_cli_windows_under_test",
+                                                         ROOT / "tool/bin/portable-python-cli.py")
+            helper = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(helper)
+            clean = helper.portable_cli_environment({
+                "SystemRoot": "Z:\\HostFake", "ComSpec": "Z:\\HostFake\\cmd.exe",
+                "PATH": "Z:\\HostFake", "HOMEDRIVE": "Z:",
+                "HOMEPATH": "\\Host", "PSModulePath": "Z:\\HostModules",
+            }, self.root)
+            self.assertNotIn("Z:\\HostFake", clean["PATH"])
+            self.assertNotIn("Z:\\HostModules", clean["PSModulePath"])
+            self.assertEqual(clean["HOMEDRIVE"], os.path.splitdrive(clean["HOME"])[0])
 
     def test_generated_shims_disable_host_powershell_bootstrap_cache(self):
         generated = self.module.render_cmd("synthetic").decode("ascii")

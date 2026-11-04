@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Run an installed console_script through the bundled portable Python.
+"""Relocatable console_script entrypoint for the bundled Windows Python.
 
-The Windows distlib .exe launchers under Lib/site-packages/bin embed the Python
-absolute path present at installation time.  The .cmd shims in tool/bin call this
-helper instead, so moving the whole Codex Portable directory keeps CLI entry
-points working.
+The owning CMD validates the package, executable, helper and working directory.
+This helper rebuilds the child's environment before importing any third-party
+console_script; it does not sandbox arbitrary code or the Python startup itself.
 """
 from __future__ import annotations
 
@@ -14,18 +13,134 @@ import re
 import sys
 
 
-def pip_environment(inherited: dict[str, str]) -> dict[str, str]:
-    """Disable host pip.ini and host pip caches for direct pip CMD entrypoints.
+def _inherited(inherited: dict[str, str], name: str) -> str:
+    for key, value in inherited.items():
+        if key.upper() == name.upper() and isinstance(value, str):
+            return value
+    return ""
 
-    Embedded Python's ._pth controls imports, not pip's separate config files.
-    The main Codex launcher already sets PIP_CONFIG_FILE=nul.
-    """
-    sanitized = {key: value for key, value in inherited.items()
-                 if not key.upper().startswith("PIP_")}
-    sanitized["PIP_CONFIG_FILE"] = os.devnull
-    sanitized["PIP_NO_CACHE_DIR"] = "1"
-    sanitized["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
-    return sanitized
+
+def portable_cli_environment(
+    inherited: dict[str, str], package_root: str | os.PathLike[str] | None = None
+) -> dict[str, str]:
+    """Rebuild a minimal portable environment for all 19 CLI console shims."""
+    if package_root is None:
+        package_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+    root = os.path.abspath(os.fspath(package_root))
+    join = lambda *parts: os.path.join(root, *parts)
+    env: dict[str, str] = {}
+    for name in (
+        "PATHEXT", "OS", "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER",
+        "NUMBER_OF_PROCESSORS", "USERNAME", "USERDOMAIN", "COMPUTERNAME",
+        "CI", "TERM", "COLORTERM", "NO_COLOR", "FORCE_COLOR",
+        "LANG", "LC_ALL", "LC_CTYPE", "TZ",
+    ):
+        value = _inherited(inherited, name)
+        if value:
+            env[name] = value
+
+    values = {
+        "HOME": join("home-runtime"), "USERPROFILE": join("home-runtime"),
+        "APPDATA": join("appdata"), "LOCALAPPDATA": join("localappdata"),
+        "PROGRAMDATA": join("programdata"), "ALLUSERSPROFILE": join("programdata"),
+        "PUBLIC": join("home-runtime"),
+        "TEMP": join("tmp"), "TMP": join("tmp"), "TMPDIR": join("tmp"),
+        "XDG_CONFIG_HOME": join("appdata"), "XDG_DATA_HOME": join("localappdata"),
+        "XDG_STATE_HOME": join("localappdata", "state"),
+        "XDG_CACHE_HOME": join("cache", "xdg"),
+        "PIP_CONFIG_FILE": os.devnull, "PIP_NO_CACHE_DIR": "1",
+        "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+        "PYTHONDONTWRITEBYTECODE": "1", "PYTHONNOUSERSITE": "1",
+        "PYTHONUSERBASE": join("cache", "python-userbase"),
+        "PYTHONPYCACHEPREFIX": join("cache", "pycache"),
+        "NPM_CONFIG_CACHE": join("cache", "npm"),
+        "NPM_CONFIG_PREFIX": join("cache", "npm-prefix"),
+        "NPM_CONFIG_GLOBALCONFIG": join("cache", "npm", "global.npmrc"),
+        "NPM_CONFIG_USERCONFIG": join("home-runtime", ".npmrc"),
+        "NODE_REPL_HISTORY": join("home-runtime", ".node_repl_history"),
+        "YARN_CACHE_FOLDER": join("cache", "yarn"),
+        "PNPM_HOME": join("cache", "pnpm"),
+        "PNPM_STORE_DIR": join("cache", "pnpm-store"),
+        "GRADLE_USER_HOME": join("cache", "gradle"),
+        "MAVEN_OPTS": '-Dmaven.repo.local="' + join("cache", "maven") + '"',
+        "ANDROID_HOME": join("tool", "android", "sdk"),
+        "ANDROID_SDK_ROOT": join("tool", "android", "sdk"),
+        "ANDROID_USER_HOME": join("home-runtime", ".android"),
+        "ANDROID_SDK_HOME": join("home-runtime"),
+        "ADB_VENDOR_KEYS": join("home-runtime", ".android", "adbkey"),
+        "JAVA_HOME": join("tool", "android", "jdk"),
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "POWERSHELL_TELEMETRY_OPTOUT": "1",
+        "PSModuleAnalysisCachePath": "NUL" if os.name == "nt" else os.devnull,
+    }
+    env.update(values)
+
+    # A direct CLI must not inherit host credentials/proxy. Preserve only a
+    # proxy that the relocated package launcher explicitly chose for local
+    # commands. These anchors prevent accidental leakage, not env spoofing.
+    def same_path(candidate: str, expected: str) -> bool:
+        return bool(candidate) and os.path.normcase(os.path.abspath(candidate)) == os.path.normcase(expected)
+
+    def enabled(name: str) -> bool:
+        return _inherited(inherited, name).strip().lower() in {"1", "true", "yes", "on"}
+
+    approved_proxy = (
+        same_path(_inherited(inherited, "CODEX_INSTALL_DIR"), root)
+        and same_path(_inherited(inherited, "CODEX_HOME"), join("home"))
+        and enabled("CODEX_PROXY_ENABLED")
+        and enabled("CODEX_PROXY_FOR_SUBPROCESS")
+        and enabled("CODEX_SANDBOX_NETWORK_ACCESS")
+    )
+    if approved_proxy:
+        for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+                     "http_proxy", "https_proxy", "all_proxy", "no_proxy"):
+            value = _inherited(inherited, name)
+            if value:
+                env[name] = value
+
+    if os.name == "nt":
+        # GetWindowsDirectoryW reads the real OS location, not the caller's
+        # potentially poisoned SystemRoot/ComSpec/PATH environment variables.
+        import ctypes
+
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = ctypes.windll.kernel32.GetWindowsDirectoryW(buffer, len(buffer))
+        if not 0 < length < len(buffer):
+            raise RuntimeError("Cannot determine the real Windows directory")
+        windows = os.path.normpath(buffer.value)
+        drive, _ = os.path.splitdrive(windows)
+        if not re.match(r"^[A-Za-z]:$", drive) or ":" in windows[2:]:
+            raise RuntimeError("Only an ordinary local Windows system root is supported")
+        env["SystemRoot"] = windows
+        env["WINDIR"] = windows
+        env["SystemDrive"] = drive
+        env["ComSpec"] = os.path.join(windows, "System32", "cmd.exe")
+        env["PATHEXT"] = ".COM;.EXE;.BAT;.CMD"
+        env["HOMEDRIVE"], env["HOMEPATH"] = os.path.splitdrive(env["HOME"])
+        dirs = [
+            join("tool", "bin"), join("tool", "python"),
+            join("tool", "node"), join("tool", "android", "platform-tools"),
+            os.path.join(windows, "System32"), windows,
+            os.path.join(windows, "System32", "WindowsPowerShell", "v1.0"),
+            os.path.join(windows, "System32", "Wbem"),
+        ]
+        env["PATH"] = os.pathsep.join(dirs)
+        env["PSModulePath"] = os.pathsep.join((
+            join("cache", "powershell", "modules"),
+            os.path.join(windows, "System32", "WindowsPowerShell", "v1.0", "Modules"),
+        ))
+    else:
+        # Synthetic POSIX tests only; the shipped package targets Windows x64.
+        env["PATH"] = os.pathsep.join((
+            join("tool", "bin"), join("tool", "python"),
+            join("tool", "node"), "/usr/bin", "/bin",
+        ))
+    return env
+
+
+def pip_environment(inherited: dict[str, str]) -> dict[str, str]:
+    """Compatibility helper: pip uses the same strict environment as other CLIs."""
+    return portable_cli_environment(inherited)
 
 
 def _canonical_name(name: str) -> str:
@@ -53,10 +168,11 @@ def main() -> int:
         print("usage: portable-python-cli.py <console-script-name> [args...]", file=sys.stderr)
         return 2
     requested = sys.argv[1]
-    if _canonical_name(requested) == "pip":
-        clean = pip_environment(dict(os.environ))
-        os.environ.clear()
-        os.environ.update(clean)
+    # Sanitize before importlib.metadata resolves and loads third-party script
+    # entrypoints; CMD and Python -E -s -B cover interpreter bootstrap separately.
+    clean = portable_cli_environment(dict(os.environ))
+    os.environ.clear()
+    os.environ.update(clean)
     ep = _find_entry_point(requested)
     sys.argv = [requested, *sys.argv[2:]]
     result = ep.load()()
