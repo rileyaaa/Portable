@@ -218,6 +218,19 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
                     "$env:" + name in launcher or "$env:" + name in login,
                     "A Codex setting has no startup/login consumer: " + name)
         self.assertIn("$env:OPENAI_API_KEY", launcher)
+        # env.local.ps1 also supports settings without default values.
+        # They must have a real consumer and cannot bypass protected policy.
+        allowlist = env.split("$supportedCodex =", 1)[1].split(
+            ")) { [void]$supportedCodex.Add($name) }", 1)[0]
+        allowed = set(re.findall(r"'(CODEX_[A-Z0-9_]+)'", allowlist))
+        self.assertGreaterEqual(len(allowed), 43)
+        for name in sorted(allowed):
+            with self.subTest(optional_variable=name):
+                self.assertTrue("$env:" + name in launcher or "$env:" + name in login)
+        for protected in ("CODEX_PORTABLE_PROFILE", "CODEX_APPROVAL_POLICY",
+                          "CODEX_SANDBOX_MODE", "CODEX_SANDBOX_NETWORK_ACCESS",
+                          "CODEX_FAST_MODE", "CODEX_INSTALL_DIR", "CODEX_PYTHON"):
+            self.assertNotIn(protected, allowed)
         reset = launcher.split("function Reset-PortableInvariantEnvironment {", 1)[1].split(
             "\nReset-PortableInvariantEnvironment", 1)[0]
         child = launcher.split("    $fixed = @(", 1)[1].split("\n    )", 1)[0]
