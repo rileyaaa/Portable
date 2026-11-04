@@ -1,5 +1,16 @@
 # 开发与维护记录
 
+## 2026-11-04：Codex 0.166.0 与全体已安装 Tool 升级后环境变量审查（源码审计，待 Windows 实测）
+
+- **逐项覆盖：** 对照 `env.ps1` 的 59 个不同变量（45 个 `CODEX_*`、13 个 Android/工具路径变量、1 个 `OPENAI_API_KEY`），逐个追踪 `run-codex.ps1`、`login-json.ps1` 的实际读取。没有发现失去唯一消费者的默认 Codex 配置项；账号 JSON 的 5 个参数归 `login-json.ps1` 读取，不能只扫描主启动器便误判废弃。交叉检查启动器的 50 个受控重置变量与子进程传递名单和 `shell_environment_policy.set`，没有发现已重置却没有传给子进程/沙箱命令的项目。以上为源码证据，并非真实 API 生效证明。
+- **准确版本的上游配置核对：** 查询 `openai/codex` 官方 `rust-v0.166.0/codex-rs/core/config.schema.json`，验证启动器使用的 `model`、`model_provider(s)`、`service_tier`、`model_catalog_json`、`model_instructions_file`、`developer_instructions`、`sandbox_mode`、`approval_policy`、`sandbox_workspace_write`、`shell_environment_policy`、`features`（Fast、Apps、Plugins、WebSocket 配套策略、voice/dictation）、`tui` 与持久化设置仍有相应 schema 字段；没有以当前 main 分支的变动代替 **0.166.0** 精确版本。schema 字段合法不等于用户实际联网、账号资格或远端模型已经可用。
+- **确定问题一：独立 ADB 的 PATH 错位。** `installed-tools.json` 已安装 ADB 37.0.1 位于 `tool/android/platform-tools/adb.exe`；原启动器与三份 BAT 只将未预装的 `tool/android/sdk/platform-tools` 加入 PATH，导致通过 Codex shell 直接找 `adb` 不可靠。已在 `run-codex.ps1` 和两份字节相同的常用/YOLO 模式副本、`启动Codex.bat`、`启动Codex-维护模式.bat`、`检查login_json.bat` 增加真实路径，且保留可选 SDK 路径。`tests/test_portable_paths.ps1`、`test_python_runtime_dependencies.py` 增加入口及真实子进程 PATH 回归。
+- **确定问题二：账号检查 PATH 的旧工具残留。** `login-json.ps1` 原 `Set-PortableProcessPath` 仍包含已移除的 `tool/go/bin`、目前空的 `tool/python/Scripts` 以及包含 19 个第三方 EXE/文件的 `tool/python/Lib/site-packages/bin`，与 `tool/bin` 审核的安全便携 CMD 入口冲突。已将其 PATH 限制为 `tool/bin`、`tool/python`、`tool/node` 加必需系统目录；不改供应商 EXE 字节，不使用宿主 PATH 兜底。
+- **Tool 实际位置：** Python 3.15.2、pip 26.3、Node 26.13.0/npm 12.2.1/Corepack 0.36.0、Paramiko 5.1.0、ADB 37.0.1、7-Zip 26.05、rg 15.2.0、fd 10.5.0、jq 1.8.2 及配套 Playwright MCP/Chromium 的已安装台账路径均可在 Git 文件树找到。Python 嵌入式 `python315._pth` 已声明 `import site`，其 `codex_portable_ssh.pth` 指向同包的 `ssh-packages`；浏览器启动器单独设置 `PLAYWRIGHT_BROWSERS_PATH`、禁用自动下载及 GC。这两类不是遗失的全局环境变量。Git、JDK、完整 Android SDK、Go、Appium/Frida 等当前**并未预装**，相应预留路径不可当成可执行工具的验收通过。
+- **嵌入式 Python 环境例外：** 官方 Python 3.15 Windows `._pth` 隔离模式会忽略 Python 初始化环境变量（见 https://docs.python.org/3.15/library/sys_path_init.html）；因此 `PYTHONPYCACHEPREFIX`、`PYTHONUSERBASE` 不能单独证明嵌入式解释器会按它们重定向缓存或 user-site。受控包装器 `-B`、`PIP_CONFIG_FILE=nul` 和包内路径仍应单独验证，不把这两个变量宣称为已实测生效。
+- **已补回归：** `tests/test_maintenance_workflows.py` 遍历声明的 Codex/Tool 变量读者、受控重置、实际子进程与配置传递，并检查 Python/SSH 的 `._pth/.pth`；`tests/test_portable_paths.ps1` 扩展全部工具路径传递、shell policy 和 ADB/bin PATH；`tests/test_python_runtime_dependencies.py` 防止旧 vendor/Go PATH 回归。原 02 Windows 兼容性、19 项 Tool PowerShell、十轮发行审计与客户 ZIP 校验不跳过。
+- **证据边界：** 本次**没有启动 GitHub Actions**、没有运行 Windows 原生工具、没有发起实际 Codex API/登录/SSH 连接/ADB 设备请求；不能由源码通过推断它们全部真实生效。PR #31 保持待审核，`main`、已发布的 ZIP 和 Release 均未更改。以后 Windows 验收还需检查真正的 Codex CLI/config、Node/npm/pip/Paramiko/浏览器/ADB 原生行为，涉及外部认证与硬件的项目需在用户本机授权后另验。
+
 ## 2026-11-04：四个 Actions 入口简化为明确分工（维护 PR #31，待验收）
 
 - **01：Codex 成对更新。** 官方完整 Release URL 指定 Codex CLI、Code Mode Host 和配套组件；`commit_changes` 默认关闭，只有确认稳定版且 Windows 验证通过才允许提交 `main`。
