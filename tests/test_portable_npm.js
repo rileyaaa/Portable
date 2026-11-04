@@ -79,8 +79,14 @@ test('explicit in-package prefix and global cache prefix remain usable', async t
 
 test('outside prefixes and cwd are rejected before npm config loading', t => {
   const f = fixture(t);
-  for (const args of [['--prefix', f.base, 'prefix'], [`--prefix=${f.base}`, 'prefix'], [`--prefi=${f.base}`, 'prefix']])
+  // Canonical prefix spellings must always reach the portable path guard.
+  for (const args of [['--prefix', f.base, 'prefix'], [`--prefix=${f.base}`, 'prefix']])
     assert.throws(() => plan(f, 'npm', args), /inside the current portable package/);
+  // npm 11 accepted --prefi as an alias; npm 12 explicitly rejects ambiguous
+  // abbreviations before the path guard. Both outcomes fail closed. Do not
+  // weaken the canonical --prefix assertions or permit an outside path.
+  assert.throws(() => plan(f, 'npm', [`--prefi=${f.base}`, 'prefix']),
+    /inside the current portable package|Invalid abbreviated flag "--prefi"/);
   assert.throws(() => plan({...f, cwd: f.base}, 'npm', ['prefix']), /inside the current portable package/);
 });
 
