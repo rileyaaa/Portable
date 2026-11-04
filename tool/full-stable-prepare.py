@@ -806,6 +806,28 @@ def stage_npm(plan: dict, temp: Path, evidence: dict) -> None:
     run(node, TOOL / "node/node_modules/corepack/dist/corepack.js", "--version")
 
 
+
+def verify_staged_portable_npm(root: Path) -> None:
+    """Run the real first-party npm boundaries against the actual staged npm.
+
+    The old 11.x npm accepted abbreviated flags that npm 12 rejects before
+    invoking our portable path guard. A --version smoke does not cover nopt,
+    @npmcli/config, npx argument forwarding, or linked/outside path rejects.
+    """
+    require(root == ROOT, "Staged npm regression must run in its owned package")
+    node = root / "tool/node/node.exe"
+    test = root / "tests/test_portable_npm.js"
+    metadata = root / "tool/node/node_modules/npm/package.json"
+    for file in (node, test, metadata):
+        require(file.is_file() and not file.is_symlink() and
+                file.stat().st_nlink == 1,
+                "Missing or linked staged npm regression input: " + str(file))
+    npm = obj(metadata)
+    require(npm.get("name") == "npm" and npm.get("version") == "12.2.1",
+            "Portable npm regression requires the real pinned npm 12.2.1")
+    run(node, "--test", test, cwd=root)
+    print("STAGED_NPM12_PORTABLE_REGRESSIONS=PASS", flush=True)
+
 def pe_amd64(path: Path) -> bool:
     with path.open("rb") as stream:
         if stream.read(2) != b"MZ":
@@ -1349,6 +1371,11 @@ def prepare(plan: dict) -> None:
         print("FULL_STABLE_PHASE_BEGIN=node_npm_corepack", flush=True)
         stage_npm(plan, temp, evidence)
         print("FULL_STABLE_PHASE_END=node_npm_corepack;status=PASS", flush=True)
+        # Run the same real test that follows the full upgraded Node runtime,
+        # before Playwright, CPython and the large Chromium ZIP are downloaded.
+        print("FULL_STABLE_PHASE_BEGIN=npm12_portable_regressions", flush=True)
+        verify_staged_portable_npm(ROOT)
+        print("FULL_STABLE_PHASE_END=npm12_portable_regressions;status=PASS", flush=True)
         print("FULL_STABLE_PHASE_BEGIN=playwright_mcp", flush=True)
         version, revision = stage_playwright(plan, temp, evidence)
         print("FULL_STABLE_PHASE_END=playwright_mcp;status=PASS", flush=True)
