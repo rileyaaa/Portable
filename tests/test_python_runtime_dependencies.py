@@ -20,6 +20,15 @@ class PythonRuntimeDependencyTests(unittest.TestCase):
     def test_vendor_launchers_are_not_exposed_by_default_path(self):
         launcher = (ROOT/'run-codex.ps1').read_text(encoding='utf-8-sig')
         self.assertNotIn('(Join-Path $PortableTool "python\\Lib\\site-packages\\bin")', launcher)
+        self.assertIn('(Join-Path $PortableTool "android\\platform-tools")', launcher)
+        login = (ROOT / 'login-json.ps1').read_text(encoding='utf-8-sig')
+        self.assertNotIn('(Join-Path $tool "python\\Lib\\site-packages\\bin")', login)
+        self.assertNotIn('(Join-Path $tool "go\\bin")', login)
+        for launcher_bat in ("启动Codex.bat", "启动Codex-维护模式.bat", "检查login_json.bat"):
+            with self.subTest(launcher=launcher_bat):
+                source = (ROOT / launcher_bat).read_text(encoding='utf-8-sig')
+                self.assertIn(r"tool\android\platform-tools;", source)
+                self.assertNotIn(r"tool\python\Lib\site-packages\bin", source)
         for script in (ROOT/'home/plugins/android-apk-lab').rglob('*.ps1'):
             self.assertNotIn('site-packages\\bin', script.read_text(encoding='utf-8-sig'))
         for bat in ROOT.glob('*.bat'):
