@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-04：03/auto 官方稳定版 Node/CLI 自动候选与完整 Windows PR 门禁（未实际运行）
+
+- **动机与明确边界：** 03/full #28 已全量成功并将经验证的工具升级合入 main，但 full 升级器和依赖锁中同时有 Python、pip、npm、Corepack、Playwright MCP、PDF 兼容策略、7-Zip 的固定目标/ABI/哈希断言；不能将 `latest` 字符串直接塞给完整更新器而称自动最新版。新增独立手动模式 `auto`，当前仅支持已有验证链的 **Node.js（限当前已验证主版本内）、ripgrep、fd、jq**；Python/pip/npm/SSH/Playwright/Chromium/7-Zip/ADB 的上游新版本**不会**被本模式偷偷安装，原 `full` 不变。绝不把支持范围内“无更新”误称为整个 tool 最新。
+- **官方版本和身份：** 新增 `tool/auto-tool-updates.py`，无外部依赖，在只读 Ubuntu `auto_check` 读取 `tool/installed-tools.json`，查询 Node 官网 Windows ZIP 版本索引和独立 `SHASUMS256.txt`，GitHub Releases 官方 ripgrep/fd/jq 的 exact-name Windows x64 资源及 GitHub 提供的 SHA-256 `digest`。严格拒绝 draft、prerelease、版本倒退、非 Windows 资源、缺哈希、不可信 URL、异常输出与重名资源；如果该安全范围内没有更新，工作流直接跳过 Windows 耗时任务与候选分支；其他工具仍明确标记需要单独审核。
+- **复用已验收链：** 03/auto 在 Windows 读权限任务重新解析官方资源生成独立 `tmp/auto-tool-update-plan.json`，然后复用旧 `prepare` 的实际下载哈希校验、PE 架构/路径限制、完整 Python/Node 测试、19 项 PS5.1、10 轮发行审计、真实客户 ZIP。只有全部成功且手动输入 `create_pr=true`，独立写权限任务才再次查询官方版本、重建候选并要求 SHA-256 diff 与已验收结果一致，再推送候选分支并尝试 PR；仓库目前不允许 Actions 自建 PR，仍可利用 GitHub Connector 从已验证分支补建，不需要重复 AC。PR 仍须人工合并，04 在关闭后按 SHA 安全删分支；不自动发布 Release。
+- **历史 LFS 复用修复：** `main/.gitattributes` 已存在 canonical `tool/node/node.exe` LFS 规则，旧 Node 更新器会因“只能首次追加规则”失败，也错误地要求每次 Node 升级都产生 `.gitattributes` diff。现允许原始单一规则保持完全不变，且每次仍严格核对 index 的 canonical Git LFS pointer 与普通文件真实 SHA-256、长度、MZ 和原始 LFS 属性；发现额外规则、未审查修改、裸大文件或内容不匹配仍拒绝。补新旧两种场景的无网络正反向回归。
+- **打包、文档与验证界限：** 更新 `tests/test_auto_tool_updates.py`、既有 `tests/test_tool_updates.py` / `tests/test_full_stable_upgrade.py`、`tests/test_release_package.py`，排除仅维护人员使用的自动发现脚本，不污染客户 ZIP；更新 `tool/工具更新说明.md` 写清操作与限制。此项为源码和离线模拟安全合同修改，**尚未在新代码上运行任何 GitHub Actions Windows/Ubuntu 验证**，不得声称 auto 真实更新已通过。不自行触发工作流、不创建分支/PR、不发布 Release；后续若新的 Node 主版本或第三方未提供可信哈希，需要人工审查兼容性，而不是绕过断言。
+
 ## 2026-11-04：03/full #27 Windows 配置测试缺少真实模型目录
 
 - [Run #27](https://github.com/rileyaaa/Codex-Portable/actions/runs/41763058048) 已通过工具暂存、PyInstaller 实际 EXE、396 项 Python 测试、Node 回归、候选校验和 ZIP 输入预检；Windows PowerShell 第一项启动器测试通过，第二项 `test_portable_config.ps1` 因 `tmp/windows-release-state/bundled-models.json` 不存在而失败。后续 PowerShell 测试、10 轮发行审计和客户 ZIP 未执行；没有产生 PR 或 Artifact。
