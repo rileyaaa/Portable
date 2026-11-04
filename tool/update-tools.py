@@ -51,11 +51,14 @@ NODE_LFS_ATTRIBUTE = b'tool/node/node.exe filter=lfs diff=lfs merge=lfs -text\n'
 NODE_LFS_PATH = 'tool/node/node.exe'
 NODE_PORTABLE_FILES = ('portable-npm.js', 'npm', 'npm.cmd', 'npm.ps1',
                        'npx', 'npx.cmd', 'npx.ps1', 'corepack', 'corepack.cmd')
-# Node.js 25+ no longer ships Corepack. The existing 0.35.x package
-# supports Node 26 and must not disappear as a side effect of upgrading Node.
-NODE_PORTABLE_DIRS = ('node_modules/corepack',)
+# Node.js 25+ no longer ships Corepack. The official Node 26 ZIP still
+# includes npm 11.x, while the portable distribution separately pins npm 12.x.
+# A Node-only auto upgrade must retain BOTH locally audited distributions.
+NODE_PORTABLE_DIRS = ('node_modules/corepack', 'node_modules/npm')
 COREPACK_MAX_BYTES = 60 * 1024 * 1024
 COREPACK_MAX_ENTRIES = 10000
+NPM_RETAIN_MAX_BYTES = 120 * 1024 * 1024
+NPM_RETAIN_MAX_ENTRIES = 30000
 REPO_BY_TOOL = {'ripgrep': 'BurntSushi/ripgrep', 'fd': 'sharkdp/fd',
                 'jq': 'jqlang/jq'}
 
@@ -466,6 +469,11 @@ def prepare_row(row: dict, temp: Path) -> None:
                     original_dir = dest.joinpath(*PurePosixPath(relative).parts)
                     bounded(original_dir)
                     ordinary(original_dir, directory=True)
+                    cap_entries, cap_bytes = (
+                        (NPM_RETAIN_MAX_ENTRIES, NPM_RETAIN_MAX_BYTES)
+                        if relative == 'node_modules/npm'
+                        else (COREPACK_MAX_ENTRIES, COREPACK_MAX_BYTES)
+                    )
                     count = 0
                     size = 0
                     for child in original_dir.rglob('*'):
@@ -475,11 +483,23 @@ def prepare_row(row: dict, temp: Path) -> None:
                         count += 1
                         if not is_dir:
                             size += child.stat().st_size
-                        require(count <= COREPACK_MAX_ENTRIES and size <= COREPACK_MAX_BYTES,
-                                'Existing Corepack payload exceeds reviewed bounds')
-                    require(count > 0, 'Existing Corepack package is empty')
+                        require(count <= cap_entries and size <= cap_bytes,
+                                'Existing pinned Node dependency exceeds reviewed bounds: ' +
+                                relative)
+                    require(count > 0, 'Existing pinned Node dependency is empty: ' + relative)
                     target_dir = staging.joinpath(*PurePosixPath(relative).parts)
-                    require(not target_dir.exists(), 'Unexpected upstream Corepack conflict')
+                    if target_dir.exists() or target_dir.is_symlink():
+                        require(relative == 'node_modules/npm',
+                                'Unexpected upstream Corepack conflict')
+                        # The official Node ZIP can bundle npm 11.x. Its file
+                        # tree has been inspected as an ordinary archive,
+                        # but must not replace our separately pinned npm 12.x.
+                        bounded(target_dir)
+                        ordinary(target_dir, directory=True)
+                        for child in target_dir.rglob('*'):
+                            bounded(child)
+                            ordinary(child, directory=child.is_dir())
+                        shutil.rmtree(target_dir)
                     target_dir.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copytree(original_dir, target_dir)
             backup = temp / ('backup-' + row['tool'])
