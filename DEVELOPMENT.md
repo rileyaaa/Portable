@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-04：独立 npm/npx/Corepack 不再传递任意宿主环境（PR #31，待 Windows 验收）
+
+- 确定漏洞：portable-npm.js 在直接 CMD 启动时以前复制完整宿主环境，再仅过滤部分已知危险变量；任意秘密、第三方配置、npm registry 与代理配置都可能流入 npm 生命周期脚本。主 Codex 的子进程白名单不覆盖独立启动器。
+- 修复：直接从空环境建立白名单，保留系统和终端必需值，HOME、APPDATA、LOCALAPPDATA、TEMP、npm 配置和 Python/Yarn/pnpm/Gradle/PowerShell 缓存按包根重建。宿主任意令牌、NPM_CONFIG_*、Git/SSH/Node/Python 注入、模块路径和代理默认不继承；Windows HOMEDRIVE、HOMEPATH、PSModulePath 在运行时生成。
+- 兼容性：当 CODEX_INSTALL_DIR、CODEX_HOME 与当前包匹配，并且包内显式启用代理、转发代理和本地命令联网时，保留配置好的 HTTP(S)/ALL/NO_PROXY。路径与配置开关仅是减少误继承的线索，不是 OS 防伪令牌。需要其他 Registry 或代理可通过明确的 npm 命令参数或包内受预检 .npmrc 配置。
+- 新增正反向 Node 单测，覆盖未知秘密、注册表/代理、授权代理、旧包根和系统 HOME/模块缓存。通过源码语法与合成离线逻辑检查；尚未运行 Windows 原生 Node/npm/Corepack、PowerShell、ProcMon 或 GitHub Actions；YOLO 维持原功能，main 和正式 Release 未修改。
+
 ## 2026-11-04：独立 Corepack 入口的宿主配置与非受控 shim 风险（PR #31，待原生验证）
 
 - 继续检查主启动器之外的 Tool PATH：发现 npm/npx 已通过受控 CMD 和 JS 预检，但安装台账里的 Corepack 0.36.0 仍直接调用上游 corepack.js，未清理继承的 COREPACK_HOME、COREPACK_ENV_FILE、COREPACK_NPM_TOKEN、Yarn/pnpm 路径环境及 NODE_OPTIONS。上游 Corepack 文档确认 COREPACK_HOME 默认使用 Windows LOCALAPPDATA，COREPACK_ENV_FILE 可重新载入项目环境，enable/disable 可在 Node 目录新增、替换或删除可执行 shim。原入口的 native --version 测试绕过了这些行为。

@@ -47,8 +47,48 @@ function windowsSystemRoot(inherited) {
   return path.win32.normalize(systemRoot);
 }
 
+function inheritedValue(environment, name) {
+  // Windows environment keys are case-insensitive.
+  for (const [key, value] of Object.entries(environment))
+    if (key.toUpperCase() === name.toUpperCase() && typeof value === 'string')
+      return value;
+  return '';
+}
+
 function portableEnvironment(root, inherited) {
-  const env = {...inherited};
+  // Start from an allowlist: otherwise arbitrary host secrets, npm registry
+  // settings and tool overrides flow into lifecycle scripts and grandchildren.
+  const env = {};
+  for (const name of [
+    'SystemRoot', 'WINDIR', 'SystemDrive', 'PATHEXT', 'OS',
+    'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER', 'NUMBER_OF_PROCESSORS',
+    'USERNAME', 'USERDOMAIN', 'COMPUTERNAME', 'CI', 'TERM', 'COLORTERM',
+    'NO_COLOR', 'FORCE_COLOR', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ',
+  ]) {
+    const value = inheritedValue(inherited, name);
+    if (value) env[name] = value;
+  }
+
+  // Preserve the explicitly selected package proxy, never an ambient host
+  // proxy. Package anchors are provenance hints, not an OS security token.
+  const truthy = value => /^(?:1|true|yes|on)$/i.test(String(value).trim());
+  const samePath = (a, b) => {
+    if (!a) return false;
+    const x = path.resolve(a), y = path.resolve(b);
+    return process.platform === 'win32' ? x.toLowerCase() === y.toLowerCase() : x === y;
+  };
+  const forwardProxy = samePath(inheritedValue(inherited, 'CODEX_INSTALL_DIR'), root) &&
+    samePath(inheritedValue(inherited, 'CODEX_HOME'), path.join(root, 'home')) &&
+    truthy(inheritedValue(inherited, 'CODEX_PROXY_ENABLED')) &&
+    truthy(inheritedValue(inherited, 'CODEX_PROXY_FOR_SUBPROCESS')) &&
+    truthy(inheritedValue(inherited, 'CODEX_SANDBOX_NETWORK_ACCESS'));
+  if (forwardProxy) {
+    for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+      'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy']) {
+      const value = inheritedValue(inherited, name);
+      if (value) env[name] = value;
+    }
+  }
   const values = {
     HOME: 'home-runtime', USERPROFILE: 'home-runtime', APPDATA: 'appdata',
     LOCALAPPDATA: 'localappdata', PROGRAMDATA: 'programdata', ALLUSERSPROFILE: 'programdata',
@@ -71,13 +111,21 @@ function portableEnvironment(root, inherited) {
     for (const name of Object.keys(env)) if (name.toUpperCase() === key) delete env[name];
     env[key] = inside(root, value, {directory: !files.has(key)});
   }
-  // Direct npm/npx CMD entry points must not inherit host lifecycle injection:
-  // npm v12 does not type script-shell or node-options as filesystem paths.
-  for (const key of Object.keys(env)) {
-    if (/^(NPM_CONFIG_(?:SCRIPT_SHELL|NODE_OPTIONS|SHELL|EDITOR|GIT|BROWSER|VIEWER)|NODE_OPTIONS|NODE_PATH|NODE_EXTRA_CA_CERTS|NODE_COMPILE_CACHE|NODE_V8_COVERAGE|NODE_REDIRECT_WARNINGS|OPENSSL_CONF|SSL_CERT_FILE|SSL_CERT_DIR|SHELL|EDITOR|VISUAL|GIT_.*|SSH_.*)$/i.test(key)) delete env[key];
-  }
-  // Git packages must not load a host SSH helper or machine-level git config.
+  // Only these derived environment values, not host tool configuration.
   env.GIT_CONFIG_NOSYSTEM = '1';
+  env.PIP_CONFIG_FILE = 'nul';
+  env.PIP_NO_CACHE_DIR = '1';
+  env.PIP_DISABLE_PIP_VERSION_CHECK = '1';
+  env.PYTHONDONTWRITEBYTECODE = '1';
+  env.PYTHONNOUSERSITE = '1';
+  for (const [name, relative] of Object.entries({
+    PYTHONUSERBASE: 'cache/python-userbase', PYTHONPYCACHEPREFIX: 'cache/pycache',
+    YARN_CACHE_FOLDER: 'cache/yarn', PNPM_HOME: 'cache/pnpm',
+    PNPM_STORE_DIR: 'cache/pnpm-store', GRADLE_USER_HOME: 'cache/gradle',
+  })) env[name] = inside(root, path.join(root, relative), {directory: true});
+  env.MAVEN_OPTS = '-Dmaven.repo.local="' + path.join(root, 'cache', 'maven') + '"';
+  env.POWERSHELL_TELEMETRY_OPTOUT = '1';
+  env.PSModuleAnalysisCachePath = 'NUL';
   if (process.platform === 'win32') {
     // Preserve only package-local PATH items (including the main launcher's
     // optional tools) plus Windows' required system executables.
@@ -104,6 +152,13 @@ function portableEnvironment(root, inherited) {
     }
     env.PATH = safePaths.join(';');
     env.ComSpec = path.win32.join(windows, 'System32', 'cmd.exe');
+    const portableHome = path.win32.resolve(env.HOME);
+    env.HOMEDRIVE = portableHome.slice(0, 2);
+    env.HOMEPATH = portableHome.slice(2);
+    env.PSModulePath = [
+      inside(root, path.join(root, 'cache', 'powershell', 'modules'), {directory: true}),
+      path.win32.join(windows, 'System32', 'WindowsPowerShell', 'v1.0', 'Modules'),
+    ].join(';');
   }
   env.NPM_CONFIG_UPDATE_NOTIFIER = 'false';
   return env;

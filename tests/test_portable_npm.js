@@ -203,18 +203,62 @@ test('local npmrc cannot load external script-shell or inject lifecycle Node opt
   }
 });
 
-test('inherited npm path options cannot redirect files outside the package', t => {
+test('inherited npm configuration and arbitrary host secrets do not reach the direct CLI', t => {
   const f = fixture(t);
-  for (const [name, value] of Object.entries({
-    npm_config_cafile: path.join(f.base, 'outside.pem'),
-    NPM_CONFIG_LOGS_DIR: path.join(f.base, 'outside-logs'),
-    NPM_CONFIG_INIT_MODULE: path.join(f.base, 'outside-init.js'),
-    NPM_CONFIG_PROVENANCE_FILE: path.join(f.base, 'outside.json'),
+  const injected = portableEnvironment(f.root, {
+    ...f.env, OPENAI_API_KEY: 'host-secret', AWS_ACCESS_KEY_ID: 'host-secret',
+    GITHUB_TOKEN: 'host-secret', PRIVATE_SESSION_VALUE: 'host-secret',
+    RUSTC_WRAPPER: path.join(f.base, 'host.exe'), PYTHONPATH: f.base,
+    NODE_OPTIONS: '--require=host.js', PSModulePath: path.join(f.base, 'Modules'),
+    npm_config_cafile: path.join(f.base, 'private.pem'),
     NPM_CONFIG_PACK_DESTINATION: f.base,
-  })) {
-    const env = portableEnvironment(f.root, {...f.env, [name]: value});
-    assert.throws(() => plan({...f, env}, 'npm', ['prefix']), /inside the current portable package/);
+    NPM_CONFIG_REGISTRY: 'https://host-registry.invalid/',
+    NPM_CONFIG_HTTPS_PROXY: 'http://host.invalid:8443',
+    HTTP_PROXY: 'http://host.invalid:8443', NO_PROXY: '*',
+    CI: 'true', TERM: 'xterm-256color',
+  });
+  for (const name of ['OPENAI_API_KEY','AWS_ACCESS_KEY_ID','GITHUB_TOKEN',
+    'PRIVATE_SESSION_VALUE','RUSTC_WRAPPER','PYTHONPATH','NODE_OPTIONS',
+    'npm_config_cafile','NPM_CONFIG_PACK_DESTINATION','NPM_CONFIG_REGISTRY',
+    'NPM_CONFIG_HTTPS_PROXY','HTTP_PROXY','NO_PROXY']) {
+    assert.equal(Object.keys(injected).some(k => k.toUpperCase() === name.toUpperCase()),
+      false, 'Must not inherit: ' + name);
   }
+  assert.equal(injected.CI, 'true');
+  assert.equal(injected.TERM, 'xterm-256color');
+  assert.equal(injected.PIP_CONFIG_FILE, 'nul');
+  assert.equal(injected.PNPM_STORE_DIR, path.join(f.root, 'cache', 'pnpm-store'));
+  assert.equal(injected.PSModuleAnalysisCachePath, 'NUL');
+  assert.equal(plan({...f, env: injected}, 'npm', ['prefix']).prefix, f.cwd);
+});
+
+test('package-authorized proxy remains usable; host proxy and stale roots are dropped', t => {
+  const f = fixture(t);
+  const parent = {...f.env, HTTP_PROXY: 'http://127.0.0.1:10808',
+    NO_PROXY: 'localhost', CODEX_INSTALL_DIR: f.root,
+    CODEX_HOME: path.join(f.root, 'home'),
+    CODEX_PROXY_ENABLED: 'true', CODEX_PROXY_FOR_SUBPROCESS: 'true',
+    CODEX_SANDBOX_NETWORK_ACCESS: 'true'};
+  const ok = portableEnvironment(f.root, parent);
+  assert.equal(ok.HTTP_PROXY, parent.HTTP_PROXY);
+  assert.equal(ok.NO_PROXY, parent.NO_PROXY);
+  assert.equal(ok.CODEX_INSTALL_DIR, undefined);
+  for (const overrides of [
+    {CODEX_PROXY_FOR_SUBPROCESS: 'false'}, {CODEX_SANDBOX_NETWORK_ACCESS: 'false'},
+    {CODEX_PROXY_ENABLED: 'false'}, {CODEX_INSTALL_DIR: f.base},
+    {CODEX_HOME: path.join(f.base, 'home')},
+  ]) assert.equal(portableEnvironment(f.root, {...parent, ...overrides}).HTTP_PROXY, undefined);
+});
+
+test('Windows child home drive and module path are rebuilt inside the package', t => {
+  if (process.platform !== 'win32') return;
+  const f = fixture(t);
+  const e = portableEnvironment(f.root, {...f.env,
+    HOMEDRIVE: 'Z:', HOMEPATH: '\\Users\\Host', PSModulePath: 'Z:\\HostModules'});
+  assert.equal(e.HOMEDRIVE, path.win32.parse(f.root).root.slice(0, 2));
+  assert.equal(e.HOMEPATH, path.win32.resolve(e.HOME).slice(2));
+  assert.ok(e.PSModulePath.includes(path.win32.join(f.root, 'cache', 'powershell', 'modules')));
+  assert.ok(!e.PSModulePath.includes('Z:\\HostModules'));
 });
 
 test('config file preflight rejects external paths before following the config chain', async t => {
