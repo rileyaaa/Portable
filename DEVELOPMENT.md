@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-04：环境变量第二轮交叉复核（维护 PR #31）
+
+- 复核时发现此前 02/03/check 的工具测试虽然能用绝对路径执行版本命令，却不能证明最终 Codex shell 的 `PATH` 能找到命令。补强 `.github/maintenance/02-tool-compatibility.ps1`：验证主启动器四项必要 PATH（bin、Python、Node、独立 ADB）、三个 BAT 入口、以及在隔离的四段 PATH 下解析出的 Python/pip、Node/npm/npx/Corepack、ADB、7-Zip、rg/fd/jq 共 11 项命令，禁止宿主 PATH 兜底；用 `try/finally` 恢复环境。正则支持 Windows CRLF，避免因换行格式误报。
+- 写入中一度出现重复的 PowerShell 原生版本校验段落，已从 GitHub 分支修正并重新读取。独立检查显示文件的本地字符串/括号结构闭合、`Assert-NativeVersion` 只有 1 个定义、原生校验调用仍为 11 组；回归加上重复/截断检查。**这不是 PowerShell Parser 的真实运行结果**，仍需 Windows Runner 验证。
+- GitHub 仓库树核对 11/11 个被检查的命令入口均存在；三份主/常用/YOLO 运行脚本的 Git Blob SHA 一致。重新统计 59 个默认环境变量、43 个本地允许配置项，全部能追到启动器/账号脚本读取；13 个工具变量均具重置、Codex 子进程及 shell 策略传递。官方 `rust-v0.166.0` 配置 Schema 中重新确认 17 个核心字段与 7 个功能键存在，14 项审定 Tool 版本与本地台账一致。以上是源码、目录及 Schema 交叉检查，尚不构成系统上工具生效或真实服务登录证明。
+- 在 03/update 的 Ubuntu 只读检查中，新增 `test_maintenance_workflows.py` 预先验证环境与发布路由契约（在任何官方版本下载查询之前执行）。没有启动 AC、下载更新候选、合并 PR 或改动 main/Release。
+
 ## 2026-11-04：Codex 0.166.0 与全体已安装 Tool 升级后环境变量审查（源码审计，待 Windows 实测）
 
 - **逐项覆盖：** 对照 `env.ps1` 的 59 个不同变量（45 个 `CODEX_*`、13 个 Android/工具路径变量、1 个 `OPENAI_API_KEY`），逐个追踪 `run-codex.ps1`、`login-json.ps1` 的实际读取。没有发现失去唯一消费者的默认 Codex 配置项；额外检查 `env.local.ps1` 允许覆盖的全部 43 项 Codex 变量（其中 5 项无默认值），全部能找到实际读取位置，且未把审批/沙箱等 7 项受保护设置错误放行；账号 JSON 的 5 个参数归 `login-json.ps1` 读取，不能只扫描主启动器便误判废弃。交叉检查启动器的 50 个受控重置变量与子进程传递名单和 `shell_environment_policy.set`，没有发现已重置却没有传给子进程/沙箱命令的项目。以上为源码证据，并非真实 API 生效证明。
