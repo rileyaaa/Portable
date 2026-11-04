@@ -108,7 +108,13 @@ def ledger() -> dict:
 
 
 def plan() -> list[dict]:
-    obj = load_json(PLAN)
+    # Auto mode uses a freshly generated, official-metadata-only scratch plan.
+    # The Windows verifier and the token-bearing writer each regenerate it
+    # independently; their SHA-256 staged diffs must match exactly.
+    auto_mode = os.environ.get('TOOL_AUTO_UPDATE_PLAN', '')
+    require(auto_mode in ('', '1'), 'Unapproved automatic candidate-plan selector')
+    selected_plan = ROOT / 'tmp/auto-tool-update-plan.json' if auto_mode == '1' else PLAN
+    obj = load_json(selected_plan)
     require(obj.get('schema') == 1 and obj.get('platform') == 'win32-x64',
             'Invalid pinned update plan')
     rows = obj.get('candidates')
