@@ -130,6 +130,14 @@ jobs:
           & .\tool\python\python.exe -B .\.github\maintenance\02-compatibility.py --repo . --native
           if ($LASTEXITCODE -ne 0) { throw 'Variable/schema/native compatibility gate failed. Review the compatibility audit before publishing.' }
 
+      - name: Verify live Codex/Tool variables, SSH imports, bundled native tools and browser locks
+        if: ${{ success() }}
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\02-tool-compatibility.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Portable Tool variables or native binaries failed before Release.' }
+
       - name: Windows PowerShell 5.1 - test_portable_config
         if: ${{ success() }}
         timeout-minutes: 3
