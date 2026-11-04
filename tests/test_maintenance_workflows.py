@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import json
+import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -201,6 +202,41 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertNotIn("      create_pr:", workflow)
         self.assertIn("needs: verify", workflow)
         self.assertNotIn("gh release create", workflow)
+
+    def test_every_codex_and_tool_default_variable_has_effective_consumer(self):
+        env = read(ROOT / "env.ps1")
+        launcher = read(ROOT / "run-codex.ps1")
+        login = read(ROOT / "login-json.ps1")
+        names = set(re.findall(r"(?m)^\\s*\\$env:([A-Z][A-Z0-9_]+)\\s*=", env))
+        codex = {name for name in names if name.startswith("CODEX_")}
+        tools = names - codex - {"OPENAI_API_KEY"}
+        self.assertGreaterEqual(len(codex), 45)
+        self.assertGreaterEqual(len(tools), 13)
+        for name in sorted(codex):
+            with self.subTest(variable=name):
+                self.assertTrue(
+                    "$env:" + name in launcher or "$env:" + name in login,
+                    "A Codex setting has no startup/login consumer: " + name)
+        self.assertIn("$env:OPENAI_API_KEY", launcher)
+        reset = launcher.split("function Reset-PortableInvariantEnvironment {", 1)[1].split(
+            "\nReset-PortableInvariantEnvironment", 1)[0]
+        child = launcher.split("    $fixed = @(", 1)[1].split("\n    )", 1)[0]
+        for name in sorted(tools):
+            with self.subTest(variable=name):
+                self.assertIn("$env:" + name + " =", reset)
+                self.assertIn('"' + name + '"', child)
+                self.assertIn('Append-TomlSet $Builder "' + name + '" $env:' + name,
+                              launcher)
+
+    def test_embedded_python_315_ssh_pth_links_to_package_local_dependency_tree(self):
+        runtime = read(ROOT / "tool/python/python315._pth").splitlines()
+        ssh = read(ROOT / "tool/python/Lib/site-packages/codex_portable_ssh.pth").strip()
+        self.assertIn("python315.zip", runtime)
+        self.assertIn("Lib\\site-packages", runtime)
+        self.assertIn("import site", runtime)
+        self.assertEqual(ssh, "../../ssh-packages")
+        self.assertTrue((ROOT / "tool/python/ssh-packages/paramiko").is_dir())
+        self.assertTrue((ROOT / "tool/python/ssh-packages/cryptography").is_dir())
 
     def test_release_gate_checks_effective_tool_paths_and_native_versions(self):
         publisher = self.files["release"]
