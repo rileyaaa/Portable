@@ -502,8 +502,15 @@ def enable_node_lfs() -> None:
     baseline = subprocess.check_output(['git', 'show', 'HEAD:.gitattributes'], cwd=ROOT)
     require(attributes.read_bytes().replace(b'\r\n', b'\n') == baseline,
             'Unexpected attributes modification before Node update')
-    require(baseline.endswith(b'\n') and NODE_LFS_ATTRIBUTE not in baseline,
-            'Node LFS rule already exists or .gitattributes lacks final LF; review manually')
+    require(baseline.endswith(b'\n'),
+            'Node LFS attributes lack final LF; review manually')
+    if NODE_LFS_ATTRIBUTE in baseline:
+        # The current main already tracks node.exe with this exact LFS rule.
+        # Repeated upgrades must reuse it, never append a duplicate.
+        require(baseline.count(NODE_LFS_ATTRIBUTE) == 1 and
+                baseline.endswith(NODE_LFS_ATTRIBUTE),
+                'Existing Node LFS rule is noncanonical or duplicated')
+        return
     attributes.write_bytes(baseline + NODE_LFS_ATTRIBUTE)
 
 
@@ -518,8 +525,13 @@ def verify_node_lfs_index(group: str) -> str | None:
         return None
     baseline = subprocess.check_output(['git', 'show', 'HEAD:.gitattributes'], cwd=ROOT)
     staged = subprocess.check_output(['git', 'show', ':.gitattributes'], cwd=ROOT)
-    require(staged == baseline + NODE_LFS_ATTRIBUTE,
-            'Staged Node LFS rule must be the exact reviewed one-line addition')
+    existing = NODE_LFS_ATTRIBUTE in baseline
+    require(not existing or (baseline.count(NODE_LFS_ATTRIBUTE) == 1 and
+                            baseline.endswith(NODE_LFS_ATTRIBUTE)),
+            'Existing Node LFS rule is noncanonical or duplicated')
+    expected = baseline if existing else baseline + NODE_LFS_ATTRIBUTE
+    require(staged == expected,
+            'Staged Node LFS rule must retain the reviewed baseline or one-line addition')
     pointer = subprocess.check_output(['git', 'show', ':' + NODE_LFS_PATH], cwd=ROOT)
     match = re.fullmatch(
         rb'version https://git-lfs.github.com/spec/v1\n'
