@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-04：Windows 原生验收增加受污染宿主环境下的独立 Python 命令检查
+
+- 交叉检查发现 02 Tool 原生检查只运行绝对 python.exe -m pip 等版本探针，不能证明真正输入 pip.cmd、httpx.cmd 时的 console_script 包装器仍正常。因此新增真实 CMD 入口的正向兼容验收，测试前注入假的 PIP_CONFIG_FILE、PYTHONPATH、OPENAI_API_KEY、NODE_OPTIONS、HTTP_PROXY 宿主值，测试完在 finally 中逐个恢复。
+- 原生检查仅运行 pip.cmd --version 和 httpx.cmd --help，无安装、下载、账号、网络或设备动作。02 和 03 两条候选 Windows 验证复用同一检查器；新增离线测试合同确保检查不被误删。
+- 代码已写入 PR #31，未自行启动 GitHub Actions/Windows PowerShell；实际是否通过需 Windows Runner 验证。宿主变量过滤需结合真实文件 I/O 才可证明更高等级隔离。
+
 ## 2026-11-04：Python 19 个独立 CLI 的环境白名单（PR #31，待 Windows 验收）
 
 - 确认前一轮只对 pip 控制 PIP_*，但 portable-python-cli.py 对其他 18 个 console_script 未重建环境，且原 pip 仍会转发 PYTHONPATH、任意宿主凭证、用户目录及代理；任一第三方 CLI 都可在自己的脚本运行时读取这些值。

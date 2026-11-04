@@ -307,6 +307,22 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertIn("needs.verify.result == 'success' && inputs.publish_release", publisher)
         self.assertNotIn("Invoke-WebRequest", script)
 
+    def test_windows_native_gate_executes_direct_python_shims_with_host_injection(self):
+        script = read(ROOT / '.github/maintenance/02-tool-compatibility.ps1')
+        for required in (
+            "Join-Path $Root 'tool\\bin\\pip.cmd'",
+            "Join-Path $Root 'tool\\bin\\httpx.cmd'",
+            "'--version' 2>&1", "'--help' 2>&1",
+            '$env:PYTHONPATH', '$env:PIP_CONFIG_FILE',
+            '$env:OPENAI_API_KEY', '$env:NODE_OPTIONS', '$env:HTTP_PROXY',
+            "SetEnvironmentVariable($Name, $SavedHostile[$Name], 'Process')",
+            "02_TOOL_PYTHON_SHIMS=PASS",
+        ):
+            self.assertIn(required, script)
+        self.assertLess(script.index("02_TOOL_PYTHON_SHIMS=PASS"),
+                        script.index("02_TOOL_NATIVE_AND_BROWSER_COMPATIBILITY=PASS"))
+        self.assertEqual(script.count('02_TOOL_PYTHON_SHIMS=PASS'), 1)
+
     def test_all_03_windows_paths_audit_updated_native_tool_commands(self):
         workflow = read(ROOT / ".github/workflows/03-update-tools.yml")
         auto = workflow.split("\n  verify:\n", 1)[1].split("\n  propose:\n", 1)[0]

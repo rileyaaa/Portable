@@ -125,6 +125,36 @@ function Assert-NativeVersion([string]$Label, [string]$Version, [string]$Executa
 Assert-NativeVersion 'python' $Inventory.tools.python.version $Python @('--version')
 Assert-NativeVersion 'pip' $Inventory.tools.pip.version $Python @('-E','-s','-B','-m','pip','--version')
 Assert-NativeVersion 'paramiko' $Inventory.tools.paramiko.version $Python @('-E','-s','-B','-c','import paramiko; print(paramiko.__version__)')
+# Run real standalone Python CMD entrypoints under hostile host configuration.
+# Merely checking python.exe -m pip bypasses the new Python console_script
+# sanitizer; neither command below installs packages nor contacts the network.
+$HostileNames = @('PIP_CONFIG_FILE','PYTHONPATH','OPENAI_API_KEY','NODE_OPTIONS','HTTP_PROXY')
+$SavedHostile = @{}
+foreach ($Name in $HostileNames) {
+    $SavedHostile[$Name] = [Environment]::GetEnvironmentVariable($Name, 'Process')
+}
+try {
+    $env:PIP_CONFIG_FILE = 'Z:\untrusted-host-pip.ini'
+    $env:PYTHONPATH = 'Z:\untrusted-host-site'
+    $env:OPENAI_API_KEY = 'fake-host-secret-canary'
+    $env:NODE_OPTIONS = '--require=Z:\untrusted-host-node.js'
+    $env:HTTP_PROXY = 'http://host-proxy.invalid:9999'
+    $PipShim = Join-Path $Root 'tool\bin\pip.cmd'
+    $PipShimResult = (& $PipShim '--version' 2>&1) -join [Environment]::NewLine
+    if ($LASTEXITCODE -ne 0 -or $PipShimResult -notmatch ('pip ' + [regex]::Escape([string]$Inventory.tools.pip.version))) {
+        throw 'Direct portable pip.cmd failed with injected host configuration.'
+    }
+    $HttpxShim = Join-Path $Root 'tool\bin\httpx.cmd'
+    $HttpxHelp = (& $HttpxShim '--help' 2>&1) -join [Environment]::NewLine
+    if ($LASTEXITCODE -ne 0 -or $HttpxHelp -notmatch '(?i)usage') {
+        throw 'Direct portable httpx.cmd help failed with injected host configuration.'
+    }
+} finally {
+    foreach ($Name in $HostileNames) {
+        [Environment]::SetEnvironmentVariable($Name, $SavedHostile[$Name], 'Process')
+    }
+}
+'02_TOOL_PYTHON_SHIMS=PASS; real pip/httpx CMD under hostile host environment' | Write-Output
 Assert-NativeVersion 'node' $Inventory.tools.node.version $Node @('--version')
 Assert-NativeVersion 'npm' $Inventory.tools.npm.version $Node @((Join-Path $Root 'tool\node\node_modules\npm\bin\npm-cli.js'),'--version')
 Assert-NativeVersion 'corepack' $Inventory.tools.corepack.version $Node @((Join-Path $Root 'tool\node\node_modules\corepack\dist\corepack.js'),'--version')
