@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：五个用户可双击 BAT 的 Windows 系统程序启动边界
+
+- 启动Codex.bat、启动Codex-维护模式.bat、检查login_json.bat、检查隔离.bat、清理缓存.bat 原来在执行 PowerShell 路径/链接安全预检之前，直接用可能被外层污染的 %SystemRoot% 查找 powershell.exe；PSModulePath 也会包含该未经验证的目录。
+- 五个入口现在在任何包内目录操作及 call :RejectReparse 之前，清除 CMD __APPDIR__ 同名继承变量、重新计算当前 64 位 cmd.exe 所在目录并严格要求结尾为 \System32\；仅从该目录创建 PowerShell 绝对路径、重建 SystemRoot/WINDIR/SystemDrive/ComSpec/PATHEXT，并先把 PATH 与 PSModulePath 设为系统内受控目录；然后才执行原有包根/代码预检、包内缓存变量设置和实际脚本。JSON 登录菜单的 findstr.exe 同样固定在这个已选 System32 目录。
+- 新增 maintenance 合同测试：五个文件的系统根前置顺序、没有以旧 %SystemRoot% 直接选择 PowerShell、UTF-8/ASCII 原有 CRLF 和 findstr 调用位置。以其他目录复制的 cmd.exe、32 位 SysWOW64 cmd.exe 或将来 Windows 不支持的 CMD 伪变量启动均安全拒绝，无回退。该方案不防御已被替换的上层 cmd.exe，也未获得 Windows OS 级隔离保证。尚需 Windows 11 x64、双击/终端、恶意环境变量和重解析点原生验收；未运行 GitHub Actions，YOLO/main/Release 未改。
+
 ## 2026-11-05：npm/npx/Corepack 独立 CMD 的系统 PowerShell 引导信任边界
 
 - 对三个 Node 入口重复应用 Python CMD 的前置路径重建：移除继承的 __APPDIR__ 遮蔽值，仅接受正在运行的 Windows x64 System32 cmd.exe；由其自身目录推导系统 PowerShell 与 SystemRoot/WINDIR/ComSpec，严格固定预检用 PATH 与 PSModulePath。没有替换或执行全局 Node/npm，也没有更改现有 Node 注入参数清理顺序。

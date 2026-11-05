@@ -251,6 +251,35 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertTrue((ROOT / "tool/python/ssh-packages/paramiko").is_dir())
         self.assertTrue((ROOT / "tool/python/ssh-packages/cryptography").is_dir())
 
+    def test_user_facing_bat_entry_rebuilds_native_windows_state_before_work(self):
+        launchers = ("启动Codex.bat", "启动Codex-维护模式.bat",
+                     "检查login_json.bat", "检查隔离.bat", "清理缓存.bat")
+        for name in launchers:
+            with self.subTest(entry=name):
+                source = (ROOT / name).read_bytes()
+                expected = (
+                    b'@echo off\r\nsetlocal DisableDelayedExpansion\r\n'
+                    b'set "__APPDIR__="\r\n'
+                    b'set "_CODEX_SYSTEM_BIN=%__APPDIR__%"\r\n'
+                )
+                self.assertTrue(source.startswith(expected))
+                for required in (
+                    b'if /i not "%_CODEX_SYSTEM_BIN:~-10%"=="\\System32\\" exit /b 3',
+                    b'if not exist "%_CODEX_NATIVE_POWERSHELL%" exit /b 3',
+                    b'for %%I in ("%_CODEX_SYSTEM_BIN%..") do set "SystemRoot=%%~fI"',
+                    b'set "ComSpec=%_CODEX_SYSTEM_BIN%cmd.exe"',
+                    b'"%_CODEX_NATIVE_POWERSHELL%" -NoLogo -NoProfile',
+                    b'"%_CODEX_NATIVE_POWERSHELL%" -NoProfile',
+                ):
+                    self.assertIn(required, source)
+                self.assertNotIn(b'"%SystemRoot%\\System32\\WindowsPowerShell', source)
+                self.assertNotIn(b'\n', source.replace(b'\r\n', b''))
+                self.assertLess(source.index(b'set "__APPDIR__="'),
+                                source.index(b'call :RejectReparse'))
+        login = (ROOT / "检查login_json.bat").read_bytes()
+        self.assertIn(b'"%_CODEX_SYSTEM_BIN%findstr.exe"', login)
+        self.assertNotIn(b'"%SystemRoot%\\System32\\findstr.exe"', login)
+
     def test_node_command_shims_use_system32_cmd_anchor_not_host_systemroot(self):
         for name in ('npm', 'npx', 'corepack'):
             source = (ROOT / 'tool/node' / (name + '.cmd')).read_bytes()
