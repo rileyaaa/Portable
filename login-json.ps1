@@ -279,7 +279,23 @@ function Write-Utf8CsvFileAtomic {
     }
 }
 
+# Windows runtime environment must not be inherited from an arbitrary shell.
+function Set-LoginTrustedWindowsEnvironment {
+    $windows = [IO.Path]::GetFullPath([Environment]::GetFolderPath('Windows')).TrimEnd('\')
+    if ($windows -notmatch '^[A-Za-z]:\\' -or $windows.Substring(2).Contains(':') -or
+        -not [IO.File]::Exists((Join-Path $windows 'System32\cmd.exe'))) {
+        throw 'JSON login requires a real local Windows system directory.'
+    }
+    $env:SystemRoot = $windows
+    $env:WINDIR = $windows
+    $env:SystemDrive = [IO.Path]::GetPathRoot($windows).TrimEnd('\')
+    $env:ComSpec = Join-Path $windows 'System32\cmd.exe'
+    $env:PATHEXT = '.COM;.EXE;.BAT;.CMD'
+    return $windows
+}
+
 function Set-PortableEnvironment {
+    [void](Set-LoginTrustedWindowsEnvironment)
     New-Dir $LoginDir
     New-Dir $HomeDir
     New-Dir $TmpDir
@@ -337,11 +353,12 @@ function Set-PortableProcessPath {
             throw "Refusing package tool path through outside/reparse path: $candidate"
         }
     }
+    $WindowsRoot = Set-LoginTrustedWindowsEnvironment
     $systemCandidates = @(
-        (Join-Path $env:SystemRoot "System32"),
-        $env:SystemRoot,
-        (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0"),
-        (Join-Path $env:SystemRoot "System32\Wbem")
+        (Join-Path $WindowsRoot "System32"),
+        $WindowsRoot,
+        (Join-Path $WindowsRoot "System32\WindowsPowerShell\v1.0"),
+        (Join-Path $WindowsRoot "System32\Wbem")
     )
     $parts = New-Object System.Collections.Generic.List[string]
     foreach ($candidate in @($portableCandidates + $systemCandidates)) {
@@ -909,6 +926,7 @@ function Set-LoginChildEnvironmentValue {
 
 function Protect-LoginChildEnvironment {
     param([System.Diagnostics.ProcessStartInfo]$StartInfo)
+    [void](Set-LoginTrustedWindowsEnvironment)
 
     # True 7A isolation: clear the entire inherited environment, then restore only
     # Windows runtime essentials and package-local HOME/TEMP/PATH. Request credentials

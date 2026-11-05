@@ -307,6 +307,30 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertIn("needs.verify.result == 'success' && inputs.publish_release", publisher)
         self.assertNotIn("Invoke-WebRequest", script)
 
+    def test_tool_setup_and_json_login_rebuild_windows_root_before_subprocesses(self):
+        setup = read(ROOT / 'tool/setup-tools.ps1')
+        login = read(ROOT / 'login-json.ps1')
+        for source, label in ((setup, 'setup'), (login, 'login')):
+            with self.subTest(entry=label):
+                self.assertIn("[Environment]::GetFolderPath('Windows')", source)
+                self.assertIn("System32\\cmd.exe", source)
+                self.assertIn("PATHEXT", source)
+        self.assertIn("$env:SystemRoot = $SetupWindowsRoot", setup)
+        self.assertIn("Join-Path $SetupWindowsRoot 'System32'", setup)
+        self.assertNotIn("Join-Path $env:SystemRoot 'System32'", setup)
+        child_setup = setup.split('function Set-SetupChildPortableEnvironment(', 1)[1].split(
+            'function Assert-SetupInstallTree', 1)[0]
+        self.assertIn("$env:SystemRoot = $SetupWindowsRoot", child_setup)
+        self.assertIn("$env:ComSpec = Join-Path $SetupWindowsRoot 'System32\\cmd.exe'", child_setup)
+        self.assertIn("function Set-LoginTrustedWindowsEnvironment", login)
+        self.assertIn("[void](Set-LoginTrustedWindowsEnvironment)", login)
+        self.assertIn("$WindowsRoot = Set-LoginTrustedWindowsEnvironment", login)
+        self.assertIn("Join-Path $WindowsRoot \"System32\"", login)
+        self.assertNotIn('Join-Path $env:SystemRoot "System32"', login)
+        child_login = login.split('function Protect-LoginChildEnvironment {', 1)[1].split(
+            'function Invoke-JsonHttpPython {', 1)[0]
+        self.assertIn('[void](Set-LoginTrustedWindowsEnvironment)', child_login)
+
     def test_codex_main_reconstructs_os_root_for_path_and_every_child(self):
         source = read(ROOT / 'run-codex.ps1')
         self.assertIn("[Environment]::GetFolderPath('Windows')", source)

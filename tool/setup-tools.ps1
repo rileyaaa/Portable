@@ -35,6 +35,23 @@ foreach ($marker in @('codex.exe','env.ps1')) {
     if (-not (Test-Path -LiteralPath $markerPath -PathType Leaf)) { throw 'Current tool directory is not a valid portable package.' }
 }
 
+# This PowerShell process may inherit poisoned SystemRoot/ComSpec variables.
+# Reconstruct OS essentials from the Windows SpecialFolder, not the host env.
+function Get-SetupTrustedWindowsRoot {
+    $windows = [IO.Path]::GetFullPath([Environment]::GetFolderPath('Windows')).TrimEnd('\')
+    if ($windows -notmatch '^[A-Za-z]:\\' -or $windows.Substring(2).Contains(':') -or
+        -not [IO.File]::Exists((Join-Path $windows 'System32\cmd.exe'))) {
+        throw 'Setup requires a real local Windows system directory.'
+    }
+    return $windows
+}
+$SetupWindowsRoot = Get-SetupTrustedWindowsRoot
+$env:SystemRoot = $SetupWindowsRoot
+$env:WINDIR = $SetupWindowsRoot
+$env:SystemDrive = [IO.Path]::GetPathRoot($SetupWindowsRoot).TrimEnd('\')
+$env:ComSpec = Join-Path $SetupWindowsRoot 'System32\cmd.exe'
+$env:PATHEXT = '.COM;.EXE;.BAT;.CMD'
+
 function Resolve-PortableSetupPath([string]$Path) {
     $full = [IO.Path]::GetFullPath($Path).TrimEnd('\')
     if (-not ($full.Equals($Root,[StringComparison]::OrdinalIgnoreCase) -or $full.StartsWith($Root + '\',[StringComparison]::OrdinalIgnoreCase))) {
@@ -178,10 +195,10 @@ $env:PYTHONNOUSERSITE = '1'
 # pip --isolated alone still loads system config; os.devnull disables all files.
 $env:PIP_CONFIG_FILE = 'nul'
 $systemPaths = @(
-    (Join-Path $env:SystemRoot 'System32'),
-    $env:SystemRoot,
-    (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0'),
-    (Join-Path $env:SystemRoot 'System32\Wbem')
+    (Join-Path $SetupWindowsRoot 'System32'),
+    $SetupWindowsRoot,
+    (Join-Path $SetupWindowsRoot 'System32\WindowsPowerShell\v1.0'),
+    (Join-Path $SetupWindowsRoot 'System32\Wbem')
 )
 $portablePaths = @(
     (Resolve-PortableSetupPath $Bin),
@@ -224,6 +241,12 @@ function Set-SetupChildPortableEnvironment([System.Diagnostics.ProcessStartInfo]
     # Package installers/import tests can execute third-party code. Never pass arbitrary
     # host variables (including unusually named secrets) into those children.
     try { $ProcessStartInfo.EnvironmentVariables.Clear() } catch { try { $ProcessStartInfo.Environment.Clear() } catch {} }
+    # Defend the child even if another function changes the process variables.
+    $env:SystemRoot = $SetupWindowsRoot
+    $env:WINDIR = $SetupWindowsRoot
+    $env:SystemDrive = [IO.Path]::GetPathRoot($SetupWindowsRoot).TrimEnd('\')
+    $env:ComSpec = Join-Path $SetupWindowsRoot 'System32\cmd.exe'
+    $env:PATHEXT = '.COM;.EXE;.BAT;.CMD'
     foreach ($name in @('SystemRoot','WINDIR','SystemDrive','ComSpec','PATHEXT','OS','PROCESSOR_ARCHITECTURE','PROCESSOR_IDENTIFIER','NUMBER_OF_PROCESSORS','USERNAME','COMPUTERNAME')) {
         Set-SetupProcessEnvironmentValue $ProcessStartInfo $name ([Environment]::GetEnvironmentVariable($name))
     }

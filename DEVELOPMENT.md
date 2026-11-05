@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：工具安装与 JSON 登录入口重建可信系统路径
+
+- 发现 setup-tools.ps1 和 login-json.ps1 的 PATH 系统段仍从宿主 SystemRoot 拼接 System32/PowerShell/Wbem，两者的受控子进程也重新导入外层系统环境。这是主 run-codex.ps1 修复之外的同类遗漏。
+- setup-tools.ps1 在路径前置检查后，从 [Environment]::GetFolderPath('Windows') 查询真实 Windows 目录，要求普通本地盘符及 System32/cmd.exe 存在，重建 SystemRoot/WINDIR/SystemDrive/ComSpec/PATHEXT；系统 PATH 使用 $SetupWindowsRoot，子进程再次重建 OS 基础环境。login-json.ps1 新增 Set-LoginTrustedWindowsEnvironment，在状态初始化、加载包内 env.ps1 后的 PATH 设置及网络/Python 子进程环境处调用，防止包内环境覆盖操作系统信任根。
+- 新增 maintenance 离线合同测试，覆盖两个入口、二次环境重置、PATH 字符串和子进程边界。保持原脚本 UTF-8 BOM 与 CRLF、原有锁、工具路径及代理/JSON 登录业务逻辑；Windows PowerShell 5.1 回归仍待真实 Runner 验收。不能解决 BAT 在进入脚本前对不可信 SystemRoot 的依赖，该项仍是明确待办。未执行 AC，不动 main/Release/YOLO。
+
 ## 2026-11-05：Codex 主进程、子进程与 SOCKS bridge 不再信任宿主 SystemRoot
 
 - 主 run-codex.ps1 之前使用 $env:SystemRoot 直接拼装 System32、PowerShell 和 Wbem PATH；其 Codex 子进程白名单及独立 SOCKS HTTP bridge 也再次继承 SystemRoot/WINDIR/ComSpec。直接运行 PowerShell 时这些宿主变量可以是伪造值，与独立 npm/Python 的保护目标不一致。
