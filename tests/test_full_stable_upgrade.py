@@ -99,6 +99,15 @@ class FullStableUpgradeTests(unittest.TestCase):
             self.assertEqual(safe["NPM_CONFIG_REGISTRY"], "https://registry.npmjs.org")
             self.assertEqual(safe["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"], "1")
             self.assertEqual(safe["HOME"], str(owned / "npm-home"))
+            if os.name == "nt":
+                self.assertEqual(safe["HOMEDRIVE"], (owned / "npm-home").drive)
+                self.assertEqual(safe["HOMEPATH"],
+                                 str(owned / "npm-home")[len((owned / "npm-home").drive):])
+                self.assertTrue(stage.stage_child_environment()["HOMEPATH"].endswith(
+                    "\\home-runtime"))
+                with self.assertRaisesRegex(ValueError, "ordinary local Windows drive"):
+                    stage.stage_child_environment({
+                        "NPM_CONFIG_CACHE": owned / "cache:alternate-stream"})
             self.assertEqual(safe["NPM_CONFIG_USERCONFIG"], str(owned / "user.npmrc"))
             with self.assertRaisesRegex(ValueError, "distinct"):
                 stage.stage_child_environment({
@@ -111,12 +120,16 @@ class FullStableUpgradeTests(unittest.TestCase):
                 stage.stage_child_environment(overrides)
             (owned / "user.npmrc").write_bytes(b"")
             link = owned / "linked-user.npmrc"
-            os.link(owned / "user.npmrc", link)
             try:
-                with self.assertRaisesRegex(ValueError, "unique empty ordinary"):
-                    stage.stage_child_environment(overrides)
-            finally:
-                link.unlink()
+                os.link(owned / "user.npmrc", link)
+            except OSError:
+                pass  # Hardlink creation is not always permitted by Windows.
+            else:
+                try:
+                    with self.assertRaisesRegex(ValueError, "unique empty ordinary"):
+                        stage.stage_child_environment(overrides)
+                finally:
+                    link.unlink()
             redirect = owned / "linked-cache"
             try:
                 os.symlink(owned / "npm-home", redirect, target_is_directory=True)

@@ -275,6 +275,11 @@ def checked_stage_child_path(name: str, value: str | os.PathLike[str]) -> str:
     candidate = Path(os.fspath(value))
     require(candidate.is_absolute() and ".." not in candidate.parts,
             "Stager override must use an absolute owned package tmp path")
+    if os.name == "nt":
+        # Reject UNC roots and NTFS alternate data streams in checked overrides.
+        require(re.fullmatch(r"[A-Za-z]:", candidate.drive) is not None and
+                ":" not in str(candidate)[len(candidate.drive):],
+                "Stager override requires an ordinary local Windows drive path")
     tmp = ROOT / "tmp"
     try:
         relative = candidate.relative_to(tmp)
@@ -356,8 +361,6 @@ def stage_child_environment(extra_env: dict | None = None) -> dict[str, str]:
                     "SystemDrive": windows.drive,
                     "ComSpec": str(windows / "System32/cmd.exe"),
                     "PATHEXT": ".COM;.EXE;.BAT;.CMD",
-                    "HOMEDRIVE": str(ROOT.drive),
-                    "HOMEPATH": str(ROOT)[len(ROOT.drive):],
                     "PSModulePath": os.pathsep.join((
                         str(ROOT / "cache/powershell/modules"),
                         str(windows / "System32/WindowsPowerShell/v1.0/Modules"),
@@ -390,6 +393,12 @@ def stage_child_environment(extra_env: dict | None = None) -> dict[str, str]:
             require(validated["HOME"] == validated["USERPROFILE"],
                     "Stager HOME and USERPROFILE must reference the same directory")
         env.update(validated)
+    if os.name == "nt":
+        # Use the FINAL package-local HOME, including approved temporary
+        # npm workspaces, instead of the stale package root.
+        home = Path(env["HOME"])
+        env["HOMEDRIVE"] = home.drive
+        env["HOMEPATH"] = str(home)[len(home.drive):]
     return env
 
 

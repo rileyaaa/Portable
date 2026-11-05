@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：全量更新器 Windows HOME、ADS 和测试兼容性补正
+
+- 候选 npm 环境原来按 ROOT 导出 Windows HOMEDRIVE/HOMEPATH，然而 npm_env(temp) 会将 HOME/USERPROFILE 重新指向 ROOT/tmp 中的临时 npm-home。子进程由不同变量看到不同用户目录，可能发生无意的配置或缓存回退。改为在所有受控环境覆盖后，从最终 HOME 重新生成 HOMEDRIVE/HOMEPATH。
+- 在受控临时路径检查中补充 Windows 盘符验证，拒绝 UNC 与 NTFS alternate data stream（盘符之后的额外冒号）。Python 测试新增受控 npm HOME、默认 HOME 的 Windows 盘符/相对路径一致性以及 ADS 拒绝；硬链接创建受限时仅跳过其负向子场景，不影响其他严格检查。
+- 已通过本地 Linux Python 合成路径校验 10 项；未执行完整 Windows 原生工具和工作流。仍须复核子进程路径/文件访问竞态与 Windows 11 x64 工具正向兼容。未运行 Actions，未改 main、Release、YOLO。
+
 ## 2026-11-05：修复 full-stable-prepare 子进程白名单只校验变量名、不校验值
 
 - 对 03 工具全量升级候选准备流程复核发现 stage_child_environment(extra_env) 先前只检查 `extra_env` 键名：`PIP_CACHE_DIR`、`NPM_CONFIG_USERCONFIG`/`GLOBALCONFIG`、`HOME` 等可被任意绝对路径指定到宿主目录；`NPM_CONFIG_REGISTRY` 可指定任意 registry，`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` 等安全开关也可被任意改写。这会破坏独立下载/装载时的包内隔离。
