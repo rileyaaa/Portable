@@ -251,6 +251,31 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertTrue((ROOT / "tool/python/ssh-packages/paramiko").is_dir())
         self.assertTrue((ROOT / "tool/python/ssh-packages/cryptography").is_dir())
 
+    def test_windows_tool_gate_runs_real_cmd_under_forged_os_environment(self):
+        script = read(ROOT / '.github/maintenance/02-tool-compatibility.ps1')
+        for required in (
+            'function Assert-PoisonedNativeBootstrap',
+            "[Environment]::GetFolderPath('Windows')",
+            "Join-Path $Windows 'System32\\cmd.exe'",
+            '$Start.EnvironmentVariables.Clear()',
+            "'SystemRoot','WINDIR'",
+            "['ComSpec'] = 'Z:\\host-fake-cmd.exe'",
+            "['__APPDIR__'] = 'Z:\\host-fake\\System32\\'",
+            "['PSModulePath'] = 'Z:\\host-fake-modules'",
+            "['NODE_OPTIONS'] = '--require=Z:\\host-injected.js'",
+            "['OPENAI_API_KEY'] = 'synthetic-host-canary'",
+            'WaitForExit(30000)', "'/d /s /c \"\"'",
+            "Join-Path $Root 'tool\\bin\\pip.cmd'",
+            "Join-Path $Root 'tool\\node\\npm.cmd'",
+            "Join-Path $Root 'tool\\node\\npx.cmd'",
+            "Join-Path $Root 'tool\\node\\corepack.cmd'",
+            "02_TOOL_NATIVE_CMD_POISONED=PASS",
+        ):
+            self.assertIn(required, script)
+        self.assertLess(script.index('02_TOOL_NATIVE_CMD_POISONED=PASS'),
+                        script.index('02_TOOL_NATIVE_AND_BROWSER_COMPATIBILITY=PASS'))
+        self.assertEqual(script.count("02_TOOL_NATIVE_CMD_POISONED=PASS"), 1)
+
     def test_node_powershell_shims_rebuild_and_restore_native_environment(self):
         for name in ('npm', 'npx'):
             with self.subTest(shim=name):
@@ -267,7 +292,7 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
                     "$env:PSModuleAnalysisCachePath = 'NUL'",
                     "$PreviousNativeSettings = @{}",
                     "SetEnvironmentVariable($name, $PreviousNativeSettings[$name], 'Process')",
-                    "Assert-NpmBootstrapPath $NodeExecutable $true" if False else "Assert-NpmBootstrapPath $Path $true",
+                    "Assert-NpmBootstrapPath $Path $true",
                 ):
                     self.assertIn(required, source)
                 self.assertLess(source.index("$env:SystemRoot = $TrustedWindowsRoot"),

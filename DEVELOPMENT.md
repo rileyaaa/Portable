@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：02 Windows 真实 CMD 入口的受污染宿主回归
+
+- 仅检查源码存在 __APPDIR__ 防护，不足以证明 Windows cmd.exe 真实展开动态变量及 Python/Node/npm/Corepack 的可用性。02 Tool compatibility 原生门槛新增 Assert-PoisonedNativeBootstrap：通过 [Environment]::GetFolderPath('Windows') 选中真实系统 cmd.exe，以 ProcessStartInfo 只为该测试子进程构造假的 SystemRoot/WINDIR/ComSpec/__APPDIR__/PATH/PSModulePath/NODE_OPTIONS/PIP_CONFIG_FILE/OPENAI_API_KEY，不修改 Runner 父环境。
+- 依次通过包内 pip.cmd、npm.cmd、npx.cmd、corepack.cmd 执行 --version，确认退出码为 0 且版本匹配已安装台账；30 秒超时退出，仅读取输出，不安装包、不打开浏览器、不访问账号或设备。02/03 已共享兼容性检查器；新增离线测试合同核对该真实入口门槛和伪造环境字段。
+- 本次只是**提交验证脚本**，未在 Windows 11/PowerShell 5.1 下实际执行，不能把合同测试写成真实 CMD 验收结果。该系统前置保护依赖 Windows cmd.exe 的未文档化 __APPDIR__ 动态变量，最终合入前必须执行本测试并核对可信文件路径、流程和日志；不动 YOLO/main/Release，也未触发 AC。
+
 ## 2026-11-05：PowerShell 直接运行 npm/npx 的系统变量与模块路径复原
 
 - tool/node/npm.ps1 与 npx.ps1 不经过 CMD 包装，因此不能依赖新 __APPDIR__ 前置检查。虽然二者已有包内 Node/JS/工作目录预检和 Node 启动注入变量清理，执行期间仍可能继承宿主 SystemRoot、ComSpec 和 PowerShell 模块搜索路径。

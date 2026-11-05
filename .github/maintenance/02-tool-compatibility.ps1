@@ -164,6 +164,62 @@ if ($LASTEXITCODE -ne 0 -or $CorepackResult.Trim() -cne [string]$Inventory.tools
     throw 'Bundled Corepack CMD wrapper failed direct portable version check.'
 }
 '02_TOOL_COREPACK_SHIM=PASS; guarded Corepack --version' | Write-Output
+# Exercise real CMD + PowerShell pre-bootstrap under a poisoned *child-only*
+# Windows environment. Explicit real cmd.exe avoids starting a fake shell,
+# and ProcessStartInfo prevents mutation of the test runner's own SystemRoot.
+function Assert-PoisonedNativeBootstrap([string]$Shim, [string]$Version) {
+    $Windows = [IO.Path]::GetFullPath([Environment]::GetFolderPath('Windows'))
+    $TrustedCmd = Join-Path $Windows 'System32\cmd.exe'
+    if (-not [IO.File]::Exists($TrustedCmd)) { throw 'Cannot find trusted native CMD.' }
+    $Start = New-Object Diagnostics.ProcessStartInfo
+    $Start.FileName = $TrustedCmd
+    # CMD /S removes the outer quotes, preserving a quoted path with spaces.
+    $Start.Arguments = '/d /s /c ""' + $Shim + '" --version"'
+    $Start.WorkingDirectory = $Root
+    $Start.UseShellExecute = $false
+    $Start.CreateNoWindow = $true
+    $Start.RedirectStandardOutput = $true
+    $Start.RedirectStandardError = $true
+    $Start.EnvironmentVariables.Clear()
+    foreach ($name in @('SystemRoot','WINDIR')) {
+        $Start.EnvironmentVariables[$name] = 'Z:\host-fake-windows'
+    }
+    $Start.EnvironmentVariables['ComSpec'] = 'Z:\host-fake-cmd.exe'
+    $Start.EnvironmentVariables['__APPDIR__'] = 'Z:\host-fake\System32\'
+    $Start.EnvironmentVariables['PATH'] = 'Z:\host-fake-tools'
+    $Start.EnvironmentVariables['PSModulePath'] = 'Z:\host-fake-modules'
+    $Start.EnvironmentVariables['NODE_OPTIONS'] = '--require=Z:\host-injected.js'
+    $Start.EnvironmentVariables['PIP_CONFIG_FILE'] = 'Z:\host-pip.ini'
+    $Start.EnvironmentVariables['OPENAI_API_KEY'] = 'synthetic-host-canary'
+    $Start.EnvironmentVariables['TEMP'] = Join-Path $Root 'tmp'
+    $Start.EnvironmentVariables['TMP'] = Join-Path $Root 'tmp'
+    $Started = New-Object Diagnostics.Process
+    $Started.StartInfo = $Start
+    try {
+        if (-not $Started.Start()) { throw 'Synthetic native bootstrap did not start.' }
+        $OutTask = $Started.StandardOutput.ReadToEndAsync()
+        $ErrTask = $Started.StandardError.ReadToEndAsync()
+        if (-not $Started.WaitForExit(30000)) {
+            try { $Started.Kill() } catch {}
+            throw 'Synthetic native bootstrap timed out.'
+        }
+        $Output = $OutTask.GetAwaiter().GetResult()
+        $Errors = $ErrTask.GetAwaiter().GetResult()
+        if ($Started.ExitCode -ne 0 -or $Output -notmatch [regex]::Escape($Version)) {
+            throw 'CMD native bootstrap failed to reject host SystemRoot/__APPDIR__: ' +
+                  (Split-Path -Leaf $Shim) + ';exit=' + $Started.ExitCode +
+                  ';stdout=' + $Output.Substring(0,[Math]::Min(150,$Output.Length)) +
+                  ';stderr=' + $Errors.Substring(0,[Math]::Min(150,$Errors.Length))
+        }
+    } finally {
+        $Started.Dispose()
+    }
+}
+Assert-PoisonedNativeBootstrap (Join-Path $Root 'tool\bin\pip.cmd') ('pip ' + [string]$Inventory.tools.pip.version)
+Assert-PoisonedNativeBootstrap (Join-Path $Root 'tool\node\npm.cmd') ([string]$Inventory.tools.npm.version)
+Assert-PoisonedNativeBootstrap (Join-Path $Root 'tool\node\npx.cmd') ([string]$Inventory.tools.npm.version)
+Assert-PoisonedNativeBootstrap (Join-Path $Root 'tool\node\corepack.cmd') ([string]$Inventory.tools.corepack.version)
+'02_TOOL_NATIVE_CMD_POISONED=PASS; isolated real CMD ignores forged SystemRoot/ComSpec/__APPDIR__' | Write-Output
 Assert-NativeVersion 'adb' $Inventory.tools.adb.version (Join-Path $Root 'tool\android\platform-tools\adb.exe') @('version')
 Assert-NativeVersion '7zip' $Inventory.tools.'7zip'.version (Join-Path $Root 'tool\bin\7z.exe') @('i')
 Assert-NativeVersion 'ripgrep' $Inventory.tools.ripgrep.version (Join-Path $Root 'tool\bin\rg.exe') @('--version')
