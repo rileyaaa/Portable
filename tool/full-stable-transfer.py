@@ -289,6 +289,10 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
         scratch = ROOT / "tmp"
         checked_disk(scratch)
         require(scratch.is_dir(), "Owned candidate transaction tmp is missing")
+        # A failed rollback intentionally preserves original bytes in tmp.
+        # Never start a new write while that unresolved journal still exists.
+        require(not any(scratch.glob("full-writer-journal-*")),
+                "Unresolved full-writer transaction: recover preserved originals first")
         transaction = Path(tempfile.mkdtemp(prefix="full-writer-journal-", dir=scratch))
         preserve_transaction = False
         try:
@@ -312,6 +316,16 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
                         pending.stat().st_size == item["size"],
                         "Prepared candidate payload changed since validation")
                 staged[name] = pending
+
+            # Store exact names for manual recovery after process death or a
+            # failed rollback. The journal lives in ignored package tmp and is
+            # removed after success or a complete rollback.
+            with (transaction / "recovery-map.json").open("x", encoding="utf-8") as recovery:
+                json.dump({"sourceCommit": expected_base, "files": [
+                    {"index": i, "path": item["path"], "status": item["status"]}
+                    for i, item in enumerate(planned)
+                ]}, recovery, ensure_ascii=False, sort_keys=True)
+                recovery.write("\n")
 
             # Phase 2b: original file bytes are moved to same-volume private
             # backup names before replacing/deleting them. A failed later

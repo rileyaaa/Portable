@@ -1964,7 +1964,22 @@ class FullStableUpgradeTests(unittest.TestCase):
                     "A failed rollback must preserve exact base bytes")
                 self.assertEqual(original_backup.read_bytes(),
                                  b"original-binary-baseline\x00")
+                recovery = json.loads((preserved[0] / "recovery-map.json").read_text(
+                    encoding="utf-8"))
+                self.assertEqual(recovery["sourceCommit"], base)
+                self.assertEqual(recovery["files"][0], {
+                    "index": 0, "path": "tool/python/python315.dll", "status": "M"})
+                self.assertTrue(any(x["status"] == "D" for x in recovery["files"]))
+                # Simulate a maintainer restoring the original bytes, but
+                # forgetting to remove the unresolved journal. Even though
+                # Git status is clean, a new write must refuse to start.
                 original_replace(original_backup, base_modified)
+                self.assertEqual(subprocess.check_output(
+                    ["git", "-C", str(tmp), "status", "--porcelain"],
+                    text=True).strip(), "")
+                with self.assertRaisesRegex(ValueError, "Unresolved full-writer transaction"):
+                    transfer.apply(archive, archived_sha, diff, base)
+                self.assertTrue((preserved[0] / "recovery-map.json").exists())
                 import shutil
                 shutil.rmtree(preserved[0])
                 self.assertEqual(subprocess.check_output(
