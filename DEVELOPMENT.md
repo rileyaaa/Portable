@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：PowerShell 直接运行 npm/npx 的系统变量与模块路径复原
+
+- tool/node/npm.ps1 与 npx.ps1 不经过 CMD 包装，因此不能依赖新 __APPDIR__ 前置检查。虽然二者已有包内 Node/JS/工作目录预检和 Node 启动注入变量清理，执行期间仍可能继承宿主 SystemRoot、ComSpec 和 PowerShell 模块搜索路径。
+- 两份脚本现于加载第三方代码/启动 Node 之前查询 [Environment]::GetFolderPath('Windows')，检验普通本地盘符及 cmd.exe，重设 SystemRoot/WINDIR/SystemDrive/ComSpec/PATHEXT，预检用 PSModulePath 仅指向真实系统模块且设置 PSModuleAnalysisCachePath=NUL；保留原 Node 可执行文件绝对路径和命令参数转发。通过外层 try/finally 在调用结束后恢复原 PowerShell 进程的 Windows 系统和模块环境变量，避免污染交互式调用者。
+- 新增 maintenance 合同测试，验证两份 PS1 的前置保护、恢复逻辑、UTF-8 BOM/CRLF 和 Node 调用顺序；未在 Windows 5.1 原生执行，不能保证任何已经加载的上层 PowerShell 模块本身可信，也不改变 YOLO。未运行 Actions/main/Release。
+
 ## 2026-11-05：五个用户可双击 BAT 的 Windows 系统程序启动边界
 
 - 启动Codex.bat、启动Codex-维护模式.bat、检查login_json.bat、检查隔离.bat、清理缓存.bat 原来在执行 PowerShell 路径/链接安全预检之前，直接用可能被外层污染的 %SystemRoot% 查找 powershell.exe；PSModulePath 也会包含该未经验证的目录。

@@ -251,6 +251,31 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertTrue((ROOT / "tool/python/ssh-packages/paramiko").is_dir())
         self.assertTrue((ROOT / "tool/python/ssh-packages/cryptography").is_dir())
 
+    def test_node_powershell_shims_rebuild_and_restore_native_environment(self):
+        for name in ('npm', 'npx'):
+            with self.subTest(shim=name):
+                path = ROOT / 'tool/node' / (name + '.ps1')
+                body = path.read_bytes()
+                self.assertTrue(body.startswith(b'\xef\xbb\xbf'))
+                self.assertNotIn(b'\n', body.replace(b'\r\n', b''))
+                source = body.decode('utf-8-sig')
+                for required in (
+                    "[Environment]::GetFolderPath('Windows')",
+                    "$env:SystemRoot = $TrustedWindowsRoot",
+                    "$env:ComSpec = Join-Path $TrustedWindowsRoot 'System32\\cmd.exe'",
+                    "$env:PSModulePath = Join-Path $TrustedWindowsRoot 'System32\\WindowsPowerShell\\v1.0\\Modules'",
+                    "$env:PSModuleAnalysisCachePath = 'NUL'",
+                    "$PreviousNativeSettings = @{}",
+                    "SetEnvironmentVariable($name, $PreviousNativeSettings[$name], 'Process')",
+                    "Assert-NpmBootstrapPath $NodeExecutable $true" if False else "Assert-NpmBootstrapPath $Path $true",
+                ):
+                    self.assertIn(required, source)
+                self.assertLess(source.index("$env:SystemRoot = $TrustedWindowsRoot"),
+                                source.index("function Assert-NpmBootstrapPath"))
+                self.assertLess(source.index("function Assert-NpmBootstrapPath"),
+                                source.index("& $NodeExecutable $PortableNpmScript"))
+                self.assertEqual(source.count("exit $NpmExitCode"), 1)
+
     def test_user_facing_bat_entry_rebuilds_native_windows_state_before_work(self):
         launchers = ("启动Codex.bat", "启动Codex-维护模式.bat",
                      "检查login_json.bat", "检查隔离.bat", "清理缓存.bat")

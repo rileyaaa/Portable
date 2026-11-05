@@ -1,5 +1,28 @@
 ﻿# Portable npm entrypoint. Do not search host Node or global npm installations.
 $ErrorActionPreference = 'Stop'
+# Direct PS1 invocation already runs inside PowerShell; prevent this wrapper
+# from passing forged host Windows paths or autoloading host modules before
+# checking package input. Preserve the caller's process environment on exit.
+$NativeNames = @('SystemRoot', 'WINDIR', 'SystemDrive', 'ComSpec', 'PATHEXT',
+                 'PSModulePath', 'PSModuleAnalysisCachePath', 'POWERSHELL_TELEMETRY_OPTOUT')
+$PreviousNativeSettings = @{}
+foreach ($name in $NativeNames) {
+    $PreviousNativeSettings[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+}
+try {
+    $TrustedWindowsRoot = [IO.Path]::GetFullPath([Environment]::GetFolderPath('Windows')).TrimEnd('\')
+    if ($TrustedWindowsRoot -notmatch '^[A-Za-z]:\\' -or $TrustedWindowsRoot.Substring(2).Contains(':') -or
+        -not [IO.File]::Exists((Join-Path $TrustedWindowsRoot 'System32\cmd.exe'))) {
+        throw 'Portable npm requires a real Windows system directory.'
+    }
+    $env:SystemRoot = $TrustedWindowsRoot
+    $env:WINDIR = $TrustedWindowsRoot
+    $env:SystemDrive = [IO.Path]::GetPathRoot($TrustedWindowsRoot).TrimEnd('\')
+    $env:ComSpec = Join-Path $TrustedWindowsRoot 'System32\cmd.exe'
+    $env:PATHEXT = '.COM;.EXE;.BAT;.CMD'
+    $env:PSModulePath = Join-Path $TrustedWindowsRoot 'System32\WindowsPowerShell\v1.0\Modules'
+    $env:PSModuleAnalysisCachePath = 'NUL'
+    $env:POWERSHELL_TELEMETRY_OPTOUT = '1'
 function Assert-NpmBootstrapPath {
     param([string]$Path, [bool]$File)
     $Path = [IO.Path]::GetFullPath($Path)
@@ -58,6 +81,11 @@ try {
 } finally {
     foreach ($Name in $PreviousNodeSettings.Keys) {
         [Environment]::SetEnvironmentVariable($Name, $PreviousNodeSettings[$Name], 'Process')
+    }
+}
+} finally {
+    foreach ($name in $NativeNames) {
+        [Environment]::SetEnvironmentVariable($name, $PreviousNativeSettings[$name], 'Process')
     }
 }
 exit $NpmExitCode
