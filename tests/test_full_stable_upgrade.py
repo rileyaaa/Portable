@@ -1811,6 +1811,11 @@ class FullStableUpgradeTests(unittest.TestCase):
                 transfer.pack(archive, base)
                 archived_sha = transfer.digest_file(archive)
                 diff = transfer.diff_sha()
+                with zipfile.ZipFile(archive) as generated:
+                    written = json.loads(generated.read("manifest.json"))["files"]
+                modified_index = next(i for i, entry in enumerate(written)
+                                      if entry["path"] == "tool/python/python315.dll")
+                self.assertEqual(written[modified_index]["status"], "M")
                 subprocess.run(["git", "-C", str(tmp), "reset", "--hard", "HEAD"],
                                check=True, capture_output=True)
                 # A compressed JSON bomb must be rejected before unbounded
@@ -1935,22 +1940,27 @@ class FullStableUpgradeTests(unittest.TestCase):
                     ["git", "-C", str(tmp), "status", "--porcelain"],
                     text=True).strip(), "")
 
-                # Fail on the THIRD rename: the first modified file is
-                # already backed up and replaced, but the first add fails.
-                # The rollback must restore that first modified file exactly.
+                # Fail when the modified DLL has already been moved to
+                # its original-N backup. Git name order may list added files
+                # first; a fixed "third os.replace" is not a valid fault.
                 original_replace = os.replace
-                moves = [0]
-                def fail_later_replace(src, dest):
-                    moves[0] += 1
-                    if moves[0] == 3:
-                        raise OSError("synthetic third-rename failure")
+                replacement = {"failed": False, "restored": False}
+                def fail_after_dll_backup(src, dest):
+                    if (Path(src).name == "payload-" + str(modified_index)
+                            and Path(dest) == base_modified
+                            and not replacement["failed"]):
+                        replacement["failed"] = True
+                        raise OSError("synthetic DLL replacement failure")
+                    if (Path(src).name == "original-" + str(modified_index)
+                            and Path(dest) == base_modified):
+                        replacement["restored"] = True
                     return original_replace(src, dest)
                 with patch.object(transfer.os, "replace",
-                                  side_effect=fail_later_replace):
-                    with self.assertRaisesRegex(OSError, "third-rename failure"):
+                                  side_effect=fail_after_dll_backup):
+                    with self.assertRaisesRegex(OSError, "DLL replacement failure"):
                         transfer.apply(archive, archived_sha, diff, base)
-                self.assertGreaterEqual(moves[0], 4,
-                    "A rollback must actually rename the original back")
+                self.assertTrue(replacement["failed"])
+                self.assertTrue(replacement["restored"])
                 self.assertEqual(base_modified.read_bytes(),
                                  b"original-binary-baseline\x00")
                 self.assertEqual(base_deleted.read_bytes(),
@@ -1981,22 +1991,22 @@ class FullStableUpgradeTests(unittest.TestCase):
                                  "Rollback must also remove new empty directories")
                 self.assertFalse((tmp / "tool/bin").exists())
 
-                # Simulate a second error DURING rollback: unlike an unsafe
-                # TemporaryDirectory teardown, the original backup must be
-                # retained for manual recovery, not deleted with the journal.
-                moves = [0]
+                # Fail only while restoring the saved original DLL after
+                # all candidate writes and the final Git diff check. A fixed
+                # rename count might otherwise fail during an added file.
                 def fail_rollback_replace(src, dest):
-                    moves[0] += 1
-                    if moves[0] in (3, 4):
-                        raise OSError("synthetic move/rollback fault")
+                    if (Path(src).name == "original-" + str(modified_index)
+                            and Path(dest) == base_modified):
+                        raise OSError("synthetic recovery rename failure")
                     return original_replace(src, dest)
-                with patch.object(transfer.os, "replace",
-                                  side_effect=fail_rollback_replace):
-                    with self.assertRaisesRegex(RuntimeError, "originals preserved at"):
-                        transfer.apply(archive, archived_sha, diff, base)
+                with patch.object(transfer, "diff_sha", return_value="0" * 64):
+                    with patch.object(transfer.os, "replace",
+                                      side_effect=fail_rollback_replace):
+                        with self.assertRaisesRegex(RuntimeError, "originals preserved at"):
+                            transfer.apply(archive, archived_sha, diff, base)
                 preserved = list((tmp / "tmp").glob("full-writer-journal-*"))
                 self.assertEqual(len(preserved), 1)
-                original_backup = preserved[0] / "original-0"
+                original_backup = preserved[0] / ("original-" + str(modified_index))
                 self.assertTrue(original_backup.is_file(),
                     "A failed rollback must preserve exact base bytes")
                 self.assertEqual(original_backup.read_bytes(),
@@ -2005,13 +2015,13 @@ class FullStableUpgradeTests(unittest.TestCase):
                     encoding="utf-8"))
                 self.assertEqual(recovery["schema"], 2)
                 self.assertEqual(recovery["sourceCommit"], base)
-                self.assertEqual({k: recovery["files"][0][k]
+                self.assertEqual({k: recovery["files"][modified_index][k]
                                   for k in ("index", "path", "status")}, {
-                    "index": 0, "path": "tool/python/python315.dll", "status": "M"})
-                self.assertEqual(recovery["files"][0]["baseSHA256"],
-                                 hashlib.sha256(b"original-binary-baseline\\x00").hexdigest())
-                self.assertEqual(recovery["files"][0]["candidateSHA256"],
-                                 hashlib.sha256(b"payload 0\\n").hexdigest())
+                    "index": modified_index, "path": "tool/python/python315.dll", "status": "M"})
+                self.assertEqual(recovery["files"][modified_index]["baseSHA256"],
+                                 hashlib.sha256(b"original-binary-baseline\x00").hexdigest())
+                self.assertEqual(recovery["files"][modified_index]["candidateSHA256"],
+                                 hashlib.sha256(b"payload 0\n").hexdigest())
                 self.assertTrue(any(x["status"] == "D" for x in recovery["files"]))
 
                 # Recovery is read-only by default; a foreign change to the
@@ -2022,16 +2032,16 @@ class FullStableUpgradeTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Recovery destination changed"):
                     transfer.recover(preserved[0], restore=True)
                 self.assertTrue(original_backup.is_file())
-                base_modified.write_bytes(b"payload 0\\n")
+                base_modified.write_bytes(b"payload 0\n")
                 original_backup.write_bytes(b"tampered-original")
                 with self.assertRaisesRegex(ValueError, "Recovery original backup digest"):
                     transfer.recover(preserved[0], restore=True)
-                original_backup.write_bytes(b"original-binary-baseline\\x00")
+                original_backup.write_bytes(b"original-binary-baseline\x00")
 
                 transfer.recover(preserved[0], restore=True)
                 self.assertFalse(preserved[0].exists())
-                self.assertEqual(base_modified.read_bytes(), b"original-binary-baseline\\x00")
-                self.assertEqual(base_deleted.read_bytes(), b"original-deleted-baseline\\x00")
+                self.assertEqual(base_modified.read_bytes(), b"original-binary-baseline\x00")
+                self.assertEqual(base_deleted.read_bytes(), b"original-deleted-baseline\x00")
                 self.assertEqual(subprocess.check_output(
                     ["git", "-C", str(tmp), "status", "--porcelain"],
                     text=True).strip(), "")

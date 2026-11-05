@@ -275,7 +275,7 @@ def recovery_plan(directory: Path) -> tuple[Path, list[dict]]:
     require(1 <= len(records) <= MAX_FILES, "Invalid recovery file count")
     raw = git("ls-tree", "-r", "--name-only", "-z",
               "HEAD", "--", "tool", binary=True)
-    base_names = {x.decode("utf-8", "strict") for x in raw.split(b"\\0") if x}
+    base_names = {x.decode("utf-8", "strict") for x in raw.split(b"\0") if x}
     base_folded = {x.casefold() for x in base_names}
     require(len(base_names) == len(base_folded), "Ambiguous base Git paths")
     names = set()
@@ -293,7 +293,8 @@ def recovery_plan(directory: Path) -> tuple[Path, list[dict]]:
         if status != "D":
             expected_keys.add("candidateSHA256")
         require(set(record) == expected_keys and
-                all(re.fullmatch(r"[a-f0-9]{64}", record[key])
+                all(isinstance(record[key], str) and
+                    re.fullmatch(r"[a-f0-9]{64}", record[key])
                     for key in expected_keys if key.endswith("SHA256")),
                 "Invalid recovery hash or record")
         require(name.casefold() not in names, "Colliding recovery file paths")
@@ -309,7 +310,7 @@ def recovery_plan(directory: Path) -> tuple[Path, list[dict]]:
     staged = git("-c", "core.quotepath=false", "diff", "--cached",
                  "--name-only", "-z", binary=True)
     require(all(x.decode("utf-8", "strict").casefold() in names
-                for x in staged.split(b"\\0") if x),
+                for x in staged.split(b"\0") if x),
             "Recovery refuses unrelated staged Git changes")
     for entry in journal.iterdir():
         checked_disk(entry)
