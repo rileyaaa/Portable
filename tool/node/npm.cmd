@@ -2,6 +2,7 @@
 setlocal DisableDelayedExpansion
 set "__APPDIR__="
 set "_CODEX_SYSTEM_BIN=%__APPDIR__%"
+if not "%_CODEX_SYSTEM_BIN:~1,2%"==":\" exit /b 3
 if /i not "%_CODEX_SYSTEM_BIN:~-10%"=="\System32\" exit /b 3
 set "_CODEX_NATIVE_POWERSHELL=%_CODEX_SYSTEM_BIN%WindowsPowerShell\v1.0\powershell.exe"
 if not exist "%_CODEX_NATIVE_POWERSHELL%" exit /b 3
@@ -12,6 +13,22 @@ set "ComSpec=%_CODEX_SYSTEM_BIN%cmd.exe"
 set "PATHEXT=.COM;.EXE;.BAT;.CMD"
 set "PATH=%_CODEX_SYSTEM_BIN%;%_CODEX_SYSTEM_BIN%WindowsPowerShell\v1.0"
 set "PSModulePath=%_CODEX_SYSTEM_BIN%WindowsPowerShell\v1.0\Modules"
+set "COR_ENABLE_PROFILING=0"
+set "COR_PROFILER="
+set "COR_PROFILER_PATH="
+set "COR_PROFILER_PATH_32="
+set "COR_PROFILER_PATH_64="
+set "CORECLR_ENABLE_PROFILING=0"
+set "CORECLR_PROFILER="
+set "CORECLR_PROFILER_PATH="
+set "CORECLR_PROFILER_PATH_32="
+set "CORECLR_PROFILER_PATH_64="
+set "DOTNET_ENABLE_PROFILING=0"
+set "DOTNET_PROFILER="
+set "DOTNET_PROFILER_PATH="
+set "DOTNET_STARTUP_HOOKS="
+set "DOTNET_ADDITIONAL_DEPS="
+set "DOTNET_SHARED_STORE="
 rem Disable PowerShell caches before bootstrap validates any package directory.
 set "POWERSHELL_TELEMETRY_OPTOUT=1"
 set "PSModuleAnalysisCachePath=NUL"
