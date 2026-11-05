@@ -72,6 +72,28 @@ if (($RootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
     exit 3
 }
 
+# Environment variables named SystemRoot/WINDIR/ComSpec are caller-controlled.
+# Query the OS instead of trusting them when rebuilding child PATH/system tools.
+# This happens after PowerShell has started; the BAT pre-bootstrap limitation
+# must be audited separately and is NOT a substitute for a native OS sandbox.
+function Get-CodexTrustedWindowsRoot {
+    $windows = [IO.Path]::GetFullPath([Environment]::GetFolderPath('Windows')).TrimEnd('\')
+    if ($windows -notmatch '^[A-Za-z]:\\' -or $windows.Substring(2).Contains(':') -or
+        -not [IO.File]::Exists((Join-Path $windows 'System32\cmd.exe'))) {
+        throw 'Codex Portable requires a real local Windows system directory.'
+    }
+    return $windows
+}
+$PortableWindowsRoot = Get-CodexTrustedWindowsRoot
+function Reset-CodexTrustedSystemEnvironment {
+    $env:SystemRoot = $PortableWindowsRoot
+    $env:WINDIR = $PortableWindowsRoot
+    $env:SystemDrive = [IO.Path]::GetPathRoot($PortableWindowsRoot).TrimEnd('\')
+    $env:ComSpec = Join-Path $PortableWindowsRoot 'System32\cmd.exe'
+    $env:PATHEXT = '.COM;.EXE;.BAT;.CMD'
+}
+Reset-CodexTrustedSystemEnvironment
+
 # Version_History 中的专用启动器自动加载同名前缀的 *-env.ps1；根目录启动器仍使用 env.ps1。
 if ([string]::IsNullOrWhiteSpace($EnvFile)) {
     $scriptLeaf = Split-Path -Leaf $PSCommandPath
@@ -915,10 +937,10 @@ $ToolPaths = @(
 )
 if (-not [string]::IsNullOrWhiteSpace($AndroidBuildToolsPath)) { $ToolPaths = @($AndroidBuildToolsPath) + $ToolPaths }
 $SystemPaths = @(
-    (Join-Path $env:SystemRoot "System32"),
-    $env:SystemRoot,
-    (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0"),
-    (Join-Path $env:SystemRoot "System32\Wbem")
+    (Join-Path $PortableWindowsRoot "System32"),
+    $PortableWindowsRoot,
+    (Join-Path $PortableWindowsRoot "System32\WindowsPowerShell\v1.0"),
+    (Join-Path $PortableWindowsRoot "System32\Wbem")
 )
 
 function Set-PortableProcessPath {
@@ -1091,6 +1113,8 @@ $TuiFullscreenTranscript = Convert-ToTomlBool -Value $env:CODEX_TUI_FULLSCREEN_T
 # env.ps1/env.local.ps1 加载后，重新固定所有“便携边界常量”。
 # 用户配置只能改变模型/API/代理等业务值，不能把工具链、用户目录或缓存重新指向宿主机。
 function Reset-PortableInvariantEnvironment {
+    # env.ps1/env.local.ps1 cannot override trusted system executables.
+    Reset-CodexTrustedSystemEnvironment
     # This edition ships runtime tools only; stale compiler paths must not survive.
     foreach ($name in @('GOPATH','GOCACHE','GOMODCACHE','GOROOT','GOTOOLCHAIN','UV_CACHE_DIR','UV_PYTHON_INSTALL_DIR','UV_TOOL_DIR','UV_TOOL_BIN_DIR')) {
         Remove-Item ("Env:" + $name) -ErrorAction SilentlyContinue
@@ -1918,6 +1942,7 @@ function Set-CodexChildPortableEnvironment {
     param([System.Diagnostics.ProcessStartInfo]$ProcessStartInfo)
     try { $ProcessStartInfo.EnvironmentVariables.Clear() } catch { try { $ProcessStartInfo.Environment.Clear() } catch {} }
 
+    Reset-CodexTrustedSystemEnvironment
     foreach ($name in @("SystemRoot","WINDIR","SystemDrive","ComSpec","PATHEXT","OS","PROCESSOR_ARCHITECTURE","PROCESSOR_IDENTIFIER","NUMBER_OF_PROCESSORS","USERNAME","COMPUTERNAME")) {
         Set-ProcessEnvironmentValue $ProcessStartInfo $name ([Environment]::GetEnvironmentVariable($name))
     }
@@ -2545,6 +2570,7 @@ function Start-CodexSocksHttpBridge {
         )
         $psi.Arguments = ($bridgeArgs | ForEach-Object { ConvertTo-WindowsCommandLineArgument ([string]$_) }) -join " "
         try { $psi.EnvironmentVariables.Clear() } catch { try { $psi.Environment.Clear() } catch {} }
+        Reset-CodexTrustedSystemEnvironment
         foreach ($name in @("SystemRoot","WINDIR","SystemDrive","ComSpec","PATHEXT","OS","PROCESSOR_ARCHITECTURE","TEMP","TMP","HOME","USERPROFILE","PATH")) {
             Set-ProcessEnvironmentValue $psi $name ([Environment]::GetEnvironmentVariable($name))
         }

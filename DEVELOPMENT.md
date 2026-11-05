@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：Codex 主进程、子进程与 SOCKS bridge 不再信任宿主 SystemRoot
+
+- 主 run-codex.ps1 之前使用 $env:SystemRoot 直接拼装 System32、PowerShell 和 Wbem PATH；其 Codex 子进程白名单及独立 SOCKS HTTP bridge 也再次继承 SystemRoot/WINDIR/ComSpec。直接运行 PowerShell 时这些宿主变量可以是伪造值，与独立 npm/Python 的保护目标不一致。
+- 现于根目录检验后使用 [Environment]::GetFolderPath('Windows') 获取真实 Windows 系统目录，要求普通本地盘符路径及必要的系统 cmd.exe；在主环境、包内 env.ps1/env.local.ps1 配置加载后的 invariant reset、Codex 子进程和 SOCKS bridge 入口全部重新生成 SystemRoot/WINDIR/SystemDrive/ComSpec/PATHEXT。PATH 系统段只从受控 $PortableWindowsRoot 构造，原有包内 Tool PATH 优先顺序及用户明确的 API/YOLO 选择不变。
+- 添加离线维护合同测试，防止今后退回 Join-Path $env:SystemRoot 拼装系统 PATH，并检查两个子进程入口和配置重置路径。此举从脚本运行阶段收紧边界，不能解决 BAT 在安全预检前先用环境变量定位 PowerShell 的问题；不能宣称 Windows OS 沙箱或设备物理隔离。Windows 原生 PowerShell 5.1、进程树与网络回归尚未运行，未触发 AC、未改 main/Release。
+
 ## 2026-11-05：自动更新元数据令牌禁止隐式 Runner 代理
 
 - auto-tool-updates.py 已禁止元数据请求的 3xx 重定向，并只在 api.github.com 传递 GITHUB_TOKEN/GH_TOKEN；但 build_opener(_RejectRedirect()) 仍会由 urllib 自动补上读取宿主 HTTP(S)_PROXY 或 Windows Internet Settings 的 ProxyHandler。补全显式空 ProxyHandler，避免把凭证请求送往未经选择的中间代理，且保持原来的精确官方 URL 与跳转拒绝策略。

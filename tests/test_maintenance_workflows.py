@@ -307,6 +307,28 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertIn("needs.verify.result == 'success' && inputs.publish_release", publisher)
         self.assertNotIn("Invoke-WebRequest", script)
 
+    def test_codex_main_reconstructs_os_root_for_path_and_every_child(self):
+        source = read(ROOT / 'run-codex.ps1')
+        self.assertIn("[Environment]::GetFolderPath('Windows')", source)
+        self.assertIn("function Reset-CodexTrustedSystemEnvironment", source)
+        self.assertIn("$env:SystemRoot = $PortableWindowsRoot", source)
+        self.assertIn("$env:ComSpec = Join-Path $PortableWindowsRoot 'System32\\cmd.exe'", source)
+        paths = source.split('$SystemPaths = @(', 1)[1].split(')', 1)[0]
+        self.assertIn('$PortableWindowsRoot', paths)
+        self.assertNotIn('$env:SystemRoot', paths)
+        reset = source.split('function Reset-PortableInvariantEnvironment {', 1)[1].split(
+            'Reset-PortableInvariantEnvironment\n', 1)[0]
+        self.assertIn('Reset-CodexTrustedSystemEnvironment', reset)
+        child = source.split('function Set-CodexChildPortableEnvironment {', 1)[1].split(
+            'function New-CodexChildStartInfo {', 1)[0]
+        self.assertIn('Reset-CodexTrustedSystemEnvironment', child)
+        bridge = source.split('function Start-CodexProxyBridge', 1)
+        # Both normal Codex child and optional SOCKS bridge must use trusted OS state.
+        self.assertGreaterEqual(source.count('Reset-CodexTrustedSystemEnvironment'), 4)
+        self.assertIn('Reset-CodexTrustedSystemEnvironment', source.split(
+            'Set-ProcessEnvironmentValue $psi "PYTHONDONTWRITEBYTECODE"', 1)[0][-1000:])
+        self.assertNotIn('Join-Path $env:SystemRoot "System32"', source)
+
     def test_automation_children_rebuild_os_paths_and_only_forward_authorized_proxy(self):
         source = read(ROOT / 'tool/automation/portable-automation.ps1')
         child = source.split('function New-AutomationStartInfo {', 1)[1].split(
