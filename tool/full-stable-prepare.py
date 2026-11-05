@@ -252,6 +252,63 @@ def untar_checked(source: Path, destination: Path, *, prefix: str = "package",
     plain_tree(destination)
 
 
+# These are the ONLY extra_env entries allowed to select filesystem paths.
+# Each lives below the stager's owned tmp root, not merely beneath ROOT.
+STAGER_PATH_DIRECTORIES = {
+    "PIP_CACHE_DIR", "NPM_CONFIG_CACHE", "HOME", "USERPROFILE",
+}
+STAGER_PATH_FILES = {
+    "NPM_CONFIG_USERCONFIG", "NPM_CONFIG_GLOBALCONFIG",
+}
+STAGER_FIXED_VALUES = {
+    "NPM_CONFIG_REGISTRY": "https://registry.npmjs.org",
+    "NPM_CONFIG_UPDATE_NOTIFIER": "false",
+    "NPM_CONFIG_AUDIT": "false",
+    "NPM_CONFIG_FUND": "false",
+    "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1",
+}
+
+
+def checked_stage_child_path(name: str, value: str | os.PathLike[str]) -> str:
+    """Refuse off-package, redirected or malformed npm/pip process settings."""
+    require(isinstance(value, (str, os.PathLike)), "Invalid stager path override")
+    candidate = Path(os.fspath(value))
+    require(candidate.is_absolute() and ".." not in candidate.parts,
+            "Stager override must use an absolute owned package tmp path")
+    tmp = ROOT / "tmp"
+    try:
+        relative = candidate.relative_to(tmp)
+    except ValueError:
+        raise ValueError("Stager override must stay inside package tmp") from None
+    require(relative.parts, "Stager override must not select the tmp root itself")
+    # Verify by lstat before any candidate launch. Resolve() alone would follow
+    # reparse points, and is_symlink() alone misses Windows junction variants.
+    current = ROOT
+    for component in ("tmp", *relative.parts):
+        current = current / component
+        try:
+            info = current.lstat()
+        except FileNotFoundError:
+            require(name in STAGER_PATH_DIRECTORIES,
+                    "Stager npmrc must be an existing ordinary file")
+            continue
+        require(not stat.S_ISLNK(info.st_mode) and
+                not (getattr(info, "st_file_attributes", 0) & 0x400),
+                "Stager override refuses symlink or Windows reparse")
+        if current == candidate:
+            if name in STAGER_PATH_FILES:
+                require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and
+                        info.st_size == 0,
+                        "Stager npmrc must be a unique empty ordinary file")
+            else:
+                require(stat.S_ISDIR(info.st_mode),
+                        "Stager cache/home override must be a directory")
+        else:
+            require(stat.S_ISDIR(info.st_mode),
+                    "Stager override contains a non-directory parent")
+    return str(candidate)
+
+
 def stage_child_environment(extra_env: dict | None = None) -> dict[str, str]:
     """Allow only controlled OS fields and package-local paths in child tools.
 
@@ -314,17 +371,25 @@ def stage_child_environment(extra_env: dict | None = None) -> dict[str, str]:
     else:
         env["PATH"] = os.pathsep.join(("/usr/bin", "/bin"))
     if extra_env:
-        # Only reviewed stager-provided cache and npm registry settings may
-        # override defaults. Arbitrary caller-controlled command hooks fail.
-        allowed = {
-            "PIP_CACHE_DIR", "NPM_CONFIG_CACHE", "NPM_CONFIG_USERCONFIG",
-            "NPM_CONFIG_GLOBALCONFIG", "NPM_CONFIG_REGISTRY",
-            "NPM_CONFIG_UPDATE_NOTIFIER", "NPM_CONFIG_AUDIT",
-            "NPM_CONFIG_FUND", "HOME", "USERPROFILE",
-            "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD",
-        }
+        # Review keys AND values. A string-key whitelist alone lets an
+        # arbitrary file/config/registry escape via an approved key.
+        allowed = STAGER_PATH_DIRECTORIES | STAGER_PATH_FILES | STAGER_FIXED_VALUES.keys()
         require(set(extra_env) <= allowed, "Unreviewed extra subprocess environment")
-        env.update({name: str(value) for name, value in extra_env.items()})
+        validated = {}
+        for name, value in extra_env.items():
+            if name in STAGER_PATH_DIRECTORIES | STAGER_PATH_FILES:
+                validated[name] = checked_stage_child_path(name, value)
+            else:
+                require(value == STAGER_FIXED_VALUES[name],
+                        "Unapproved official registry or npm/browser safety option")
+                validated[name] = value
+        if "NPM_CONFIG_USERCONFIG" in validated and "NPM_CONFIG_GLOBALCONFIG" in validated:
+            require(validated["NPM_CONFIG_USERCONFIG"] != validated["NPM_CONFIG_GLOBALCONFIG"],
+                    "Stager user and global npmrc must remain distinct")
+        if "HOME" in validated and "USERPROFILE" in validated:
+            require(validated["HOME"] == validated["USERPROFILE"],
+                    "Stager HOME and USERPROFILE must reference the same directory")
+        env.update(validated)
     return env
 
 

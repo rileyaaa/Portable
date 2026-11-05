@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：修复 full-stable-prepare 子进程白名单只校验变量名、不校验值
+
+- 对 03 工具全量升级候选准备流程复核发现 stage_child_environment(extra_env) 先前只检查 `extra_env` 键名：`PIP_CACHE_DIR`、`NPM_CONFIG_USERCONFIG`/`GLOBALCONFIG`、`HOME` 等可被任意绝对路径指定到宿主目录；`NPM_CONFIG_REGISTRY` 可指定任意 registry，`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` 等安全开关也可被任意改写。这会破坏独立下载/装载时的包内隔离。
+- 新增 checked_stage_child_path()：额外缓存/home/npmrc 只能是 ROOT/tmp 下绝对路径，不允许相对路径、..、包外路径；逐层 lstat 检查 Windows reparse/symlink/异常祖先。两个 npmrc 必须已存在、独立、为空、且是单链接普通文件；HOME 与 USERPROFILE 必须一致。官方 registry 固定为 https://registry.npmjs.org，其他 npm 通知、审计、资助与 Playwright 下载开关只接受全量升级器既有的安全固定值，不允许外部覆盖。原来的 npm_env(temp) 正常配置仍可使用。
+- 新增 Python unittest：正向 stage.npm_env 与隔离环境回归，以及跨边界、相对路径、..、非空 npmrc、同路径 user/global、同目录 home、硬链、可用时 symlink 和恶意 registry/开关的拒绝测试。不运行真正 npm、网络下载或 Actions；Windows 原生验收仍需要在候选 Runner 上完成。YOLO 不变，main/Release 未改。
+
 ## 2026-11-05：启动前 CLR 清理合同截取修正
 
 - 回读时发现检查 27 个 CMD/BAT 的新测试错误使用首次出现 "%_CODEX_NATIVE_POWERSHELL%" 的文本位置作为启动点，而该变量先在 if not exist 中出现，导致误报清理不足。已改为以完整的 `"%_CODEX_NATIVE_POWERSHELL%" -NoLogo` 实际调用点截取，保留所有变量必须在第一个 PowerShell 进程启动之前被清理的严格检查。该项是测试误判修正，不改变实际运行的 27 个 CMD/BAT；真实 Windows 11 测试仍待执行。

@@ -65,6 +65,67 @@ class FullStableUpgradeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unreviewed extra subprocess"):
             stage.stage_child_environment({"NODE_OPTIONS": "--require=host.js"})
 
+    def test_full_stager_rejects_untrusted_values_of_approved_env_keys(self):
+        # A previously allowed PIP_CACHE_DIR/HOME/npmrc or registry could
+        # escape via an approved key. Do not create or read anything outside
+        # the package's owned tmp directory.
+        outside = ROOT.parent / "outside-stager-config"
+        for name in stage.STAGER_PATH_DIRECTORIES | stage.STAGER_PATH_FILES:
+            with self.subTest(name=name):
+                with self.assertRaisesRegex(ValueError, "inside package tmp"):
+                    stage.stage_child_environment({name: outside})
+                with self.assertRaisesRegex(ValueError, "absolute owned package tmp"):
+                    stage.stage_child_environment({name: "relative-host-folder"})
+                with self.assertRaisesRegex(ValueError, "absolute owned package tmp"):
+                    stage.stage_child_environment({name: ROOT / "tmp/../escape"})
+        for name, value in (
+            ("NPM_CONFIG_REGISTRY", "https://evil.invalid"),
+            ("NPM_CONFIG_REGISTRY", "http://registry.npmjs.org"),
+            ("NPM_CONFIG_AUDIT", "true"),
+            ("NPM_CONFIG_FUND", "true"),
+            ("NPM_CONFIG_UPDATE_NOTIFIER", "true"),
+            ("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "0"),
+        ):
+            with self.subTest(option=name, value=value):
+                with self.assertRaisesRegex(ValueError, "Unapproved official registry"):
+                    stage.stage_child_environment({name: value})
+
+        scratch = ROOT / "tmp"
+        scratch.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="stager-environment-", dir=scratch) as directory:
+            owned = Path(directory)
+            overrides = stage.npm_env(owned)
+            safe = stage.stage_child_environment(overrides)
+            self.assertEqual(safe["NPM_CONFIG_REGISTRY"], "https://registry.npmjs.org")
+            self.assertEqual(safe["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"], "1")
+            self.assertEqual(safe["HOME"], str(owned / "npm-home"))
+            self.assertEqual(safe["NPM_CONFIG_USERCONFIG"], str(owned / "user.npmrc"))
+            with self.assertRaisesRegex(ValueError, "distinct"):
+                stage.stage_child_environment({
+                    **overrides, "NPM_CONFIG_GLOBALCONFIG": overrides["NPM_CONFIG_USERCONFIG"]})
+            with self.assertRaisesRegex(ValueError, "same directory"):
+                stage.stage_child_environment({
+                    **overrides, "USERPROFILE": owned})
+            (owned / "user.npmrc").write_text("registry=https://evil.invalid\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "unique empty ordinary"):
+                stage.stage_child_environment(overrides)
+            (owned / "user.npmrc").write_bytes(b"")
+            link = owned / "linked-user.npmrc"
+            os.link(owned / "user.npmrc", link)
+            try:
+                with self.assertRaisesRegex(ValueError, "unique empty ordinary"):
+                    stage.stage_child_environment(overrides)
+            finally:
+                link.unlink()
+            redirect = owned / "linked-cache"
+            try:
+                os.symlink(owned / "npm-home", redirect, target_is_directory=True)
+            except OSError:
+                pass  # Some Windows runners prohibit symlinks without privileges.
+            else:
+                with self.assertRaisesRegex(ValueError, "symlink or Windows reparse"):
+                    stage.stage_child_environment({"NPM_CONFIG_CACHE": redirect})
+
     def test_full_exports_real_pinned_models_before_expensive_windows_gates(self):
         # Full Run #41763058048: 19-test PowerShell suite reached
         # test_portable_config.ps1 without its required genuine model export.
@@ -1288,7 +1349,7 @@ class FullStableUpgradeTests(unittest.TestCase):
             stage.verify_npm_config_isolation(node, npm, project, env)
             bad = dict(env)
             bad["NPM_CONFIG_GLOBALCONFIG"] = bad["NPM_CONFIG_USERCONFIG"]
-            with self.assertRaisesRegex(ValueError, "Command failed"):
+            with self.assertRaisesRegex(ValueError, "Command failed|remain distinct"):
                 stage.verify_npm_config_isolation(node, npm, project, bad)
 
     def test_npm_config_guard_happens_before_registry_package_install(self):
