@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-05：CLR 分析器启动前注入边界与 27 个 CMD/BAT 入口
+
+- 深入复核启动链时确认：Windows PowerShell 5.1 使用的 .NET Framework 在执行任意 -Command 路径预检之前初始化 CLR。微软官方文档明确描述 `COR_ENABLE_PROFILING=1` 和 `COR_PROFILER` 能触发分析器加载，`COR_PROFILER_PATH` 还可选择 DLL 文件。因此仅从 System32 选择 powershell.exe 并清理 PSModulePath，不能阻止从宿主环境加载本机第三方 CLR profiler。参考：https://learn.microsoft.com/en-us/dotnet/framework/unmanaged-api/profiling/setting-up-a-profiling-environment
+- 所有 27 个 Windows CMD/BAT 包装入口（19 个 Python CLI、3 个 Node/Corepack、5 个用户 BAT）现于首个 PowerShell 进程创建前强制 `COR_ENABLE_PROFILING=0`、`CORECLR_ENABLE_PROFILING=0`、`DOTNET_ENABLE_PROFILING=0`，并清空 profiler GUID/path、DOTNET_STARTUP_HOOKS、DOTNET_ADDITIONAL_DEPS、DOTNET_SHARED_STORE 等已知启动注入变量。上述清理位于 CMD 系统程序目录检查之后、PowerShell 安全预检之前；不需从宿主继承任何 profiler 支持。
+- 增加 System32 目录的盘符路径前置约束，明确拒绝 UNC 形式的 CMD 动态目录，防止仅凭以 `\System32\` 结尾就接受 UNC 网络目标。注意该检查并不能证明任意本地 `X:\fake\System32\cmd.exe` 的真实性；复制的/恶意的 CMD EXE 无法仅靠批处理逻辑防御。动态 __APPDIR__ 本身非微软长期兼容保证，仍需 Windows 11 x64 正向与负向测试。
+- 唯一 Python CLI 模板与当前所有已生成 .cmd 同步更新；维护合同会覆盖 27 个入口、首个 PowerShell 调用之前的变量清理、CRLF、受控系统程序路径。02 共用 Windows 验收现会在完全隔离的子 cmd.exe 环境中注入合成的无效 profiler GUID、DLL 和 startup hook 路径，执行 pip/npm/npx/Corepack --version；这些测试尚未运行。无网络安装、无真实 profiler DLL、未触发 AC，main/Release/YOLO 未改。
+
 ## 2026-11-05：Windows Tool 原生门槛补 VBA CLI 无参调用
 
 - 为上轮补齐的 legacy vba_extract.cmd 增加真正的 Windows 原生 Tool 正向检查：调用该包内 CMD **不传 XLSM 参数**，只验证 XlsxWriter 官方脚本的 Usage 输出和退出码。此检查能验证 CMD -> portable-python-cli.py -> runpy -> vendor vba_extract.py 的完整启动和离线兼容路径，而不读取或写出用户 Excel 文件。

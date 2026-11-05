@@ -285,6 +285,47 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
                         script.index('02_TOOL_NATIVE_AND_BROWSER_COMPATIBILITY=PASS'))
         self.assertEqual(script.count("02_TOOL_NATIVE_CMD_POISONED=PASS"), 1)
 
+    def test_every_windows_cmd_clears_clr_profiler_bootstrap_before_ps(self):
+        cmd_files = sorted((ROOT / "tool/bin").glob("*.cmd"))
+        self.assertEqual(len(cmd_files), 19)
+        cmd_files.extend(ROOT / "tool/node" / (name + ".cmd")
+                         for name in ("npm", "npx", "corepack"))
+        cmd_files.extend(ROOT / name for name in (
+            "启动Codex.bat", "启动Codex-维护模式.bat",
+            "检查login_json.bat", "检查隔离.bat", "清理缓存.bat",
+        ))
+        self.assertEqual(len(cmd_files), 27)
+        for path in cmd_files:
+            with self.subTest(entry=path.name):
+                source = path.read_bytes()
+                # Use the FIRST PowerShell invocation as the cutoff. The CLR
+                # starts before the first -Command path validation can run.
+                self.assertEqual(source.count(b'"%_CODEX_NATIVE_POWERSHELL%"') >= 1, True)
+                preflight = source.split(b'"%_CODEX_NATIVE_POWERSHELL%"', 1)[0]
+                for required in (
+                    b'if not "%_CODEX_SYSTEM_BIN:~1,2%"==":\\" exit /b 3',
+                    b'set "COR_ENABLE_PROFILING=0"',
+                    b'set "COR_PROFILER="',
+                    b'set "COR_PROFILER_PATH="',
+                    b'set "COR_PROFILER_PATH_32="',
+                    b'set "COR_PROFILER_PATH_64="',
+                    b'set "CORECLR_ENABLE_PROFILING=0"',
+                    b'set "CORECLR_PROFILER="',
+                    b'set "CORECLR_PROFILER_PATH="',
+                    b'set "DOTNET_ENABLE_PROFILING=0"',
+                    b'set "DOTNET_STARTUP_HOOKS="',
+                    b'set "DOTNET_ADDITIONAL_DEPS="',
+                    b'set "DOTNET_SHARED_STORE="',
+                ):
+                    self.assertIn(required + b'\r\n', preflight)
+                self.assertNotIn(b'\n', source.replace(b'\r\n', b''))
+                self.assertNotIn(b'"%SystemRoot%\\System32\\WindowsPowerShell', source)
+        gate = read(ROOT / '.github/maintenance/02-tool-compatibility.ps1')
+        for name in ("COR_ENABLE_PROFILING", "COR_PROFILER",
+                     "COR_PROFILER_PATH", "CORECLR_ENABLE_PROFILING",
+                     "DOTNET_ENABLE_PROFILING", "DOTNET_STARTUP_HOOKS"):
+            self.assertIn("$Start.EnvironmentVariables['" + name + "']", gate)
+
     def test_node_powershell_shims_rebuild_and_restore_native_environment(self):
         for name in ('npm', 'npx'):
             with self.subTest(shim=name):

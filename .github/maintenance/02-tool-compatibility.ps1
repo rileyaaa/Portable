@@ -197,6 +197,15 @@ function Assert-PoisonedNativeBootstrap([string]$Shim, [string]$Version) {
     $Start.EnvironmentVariables['__APPDIR__'] = 'Z:\host-fake\System32\'
     $Start.EnvironmentVariables['PATH'] = 'Z:\host-fake-tools'
     $Start.EnvironmentVariables['PSModulePath'] = 'Z:\host-fake-modules'
+    # CLR profiler injection can run BEFORE PowerShell's -Command preflight.
+    # These harmless invalid paths/IDs must not reach managed bootstrap.
+    $Start.EnvironmentVariables['COR_ENABLE_PROFILING'] = '1'
+    $Start.EnvironmentVariables['COR_PROFILER'] = '{11111111-1111-1111-1111-111111111111}'
+    $Start.EnvironmentVariables['COR_PROFILER_PATH'] = 'Z:\host-clr-profiler.dll'
+    $Start.EnvironmentVariables['CORECLR_ENABLE_PROFILING'] = '1'
+    $Start.EnvironmentVariables['CORECLR_PROFILER_PATH'] = 'Z:\host-coreclr-profiler.dll'
+    $Start.EnvironmentVariables['DOTNET_ENABLE_PROFILING'] = '1'
+    $Start.EnvironmentVariables['DOTNET_STARTUP_HOOKS'] = 'Z:\host-startup-hook.dll'
     $Start.EnvironmentVariables['NODE_OPTIONS'] = '--require=Z:\host-injected.js'
     $Start.EnvironmentVariables['PIP_CONFIG_FILE'] = 'Z:\host-pip.ini'
     $Start.EnvironmentVariables['OPENAI_API_KEY'] = 'synthetic-host-canary'
