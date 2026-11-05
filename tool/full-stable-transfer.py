@@ -326,6 +326,11 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
                     for i, item in enumerate(planned)
                 ]}, recovery, ensure_ascii=False, sort_keys=True)
                 recovery.write("\n")
+                recovery.flush()
+                # Fail before any original-file rename if the recovery map
+                # cannot be flushed. A process crash is still not an atomic
+                # multi-file transaction or a power-loss-safe journal.
+                os.fsync(recovery.fileno())
 
             # Phase 2b: original file bytes are moved to same-volume private
             # backup names before replacing/deleting them. A failed later

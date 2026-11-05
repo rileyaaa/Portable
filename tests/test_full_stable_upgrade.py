@@ -1898,6 +1898,21 @@ class FullStableUpgradeTests(unittest.TestCase):
                                  b"original-binary-baseline\x00")
                 self.assertEqual(base_deleted.read_bytes(),
                                  b"original-deleted-baseline\x00")
+                # A recovery index write/sync fault must abort BEFORE any
+                # base rename; there must be no journal or staged Git state.
+                with patch.object(transfer.os, "fsync",
+                                  side_effect=OSError("synthetic journal fsync fault")):
+                    with self.assertRaisesRegex(OSError, "synthetic journal fsync fault"):
+                        transfer.apply(archive, archived_sha, diff, base)
+                self.assertEqual(base_modified.read_bytes(),
+                                 b"original-binary-baseline\x00")
+                self.assertEqual(base_deleted.read_bytes(),
+                                 b"original-deleted-baseline\x00")
+                self.assertEqual(list((tmp / "tmp").glob("full-writer-journal-*")), [])
+                self.assertEqual(subprocess.check_output(
+                    ["git", "-C", str(tmp), "status", "--porcelain"],
+                    text=True).strip(), "")
+
                 # Fail on the THIRD rename: the first modified file is
                 # already backed up and replaced, but the first add fails.
                 # The rollback must restore that first modified file exactly.
