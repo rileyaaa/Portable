@@ -298,10 +298,12 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         for path in cmd_files:
             with self.subTest(entry=path.name):
                 source = path.read_bytes()
-                # Use the FIRST PowerShell invocation as the cutoff. The CLR
-                # starts before the first -Command path validation can run.
-                self.assertEqual(source.count(b'"%_CODEX_NATIVE_POWERSHELL%"') >= 1, True)
-                preflight = source.split(b'"%_CODEX_NATIVE_POWERSHELL%"', 1)[0]
+                # Use the FIRST PowerShell invocation as the cutoff. The
+                # earlier 'if not exist' contains the quoted same variable,
+                # but does NOT launch PowerShell. CLR initialization precedes
+                # the first -Command path validation.
+                self.assertIn(b'"%_CODEX_NATIVE_POWERSHELL%" -NoLogo', source)
+                preflight = source.split(b'"%_CODEX_NATIVE_POWERSHELL%" -NoLogo', 1)[0]
                 for required in (
                     b'if not "%_CODEX_SYSTEM_BIN:~1,2%"==":\\" exit /b 3',
                     b'set "COR_ENABLE_PROFILING=0"',

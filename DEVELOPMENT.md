@@ -1,5 +1,9 @@
 # 开发与维护记录
 
+## 2026-11-05：启动前 CLR 清理合同截取修正
+
+- 回读时发现检查 27 个 CMD/BAT 的新测试错误使用首次出现 "%_CODEX_NATIVE_POWERSHELL%" 的文本位置作为启动点，而该变量先在 if not exist 中出现，导致误报清理不足。已改为以完整的 `"%_CODEX_NATIVE_POWERSHELL%" -NoLogo` 实际调用点截取，保留所有变量必须在第一个 PowerShell 进程启动之前被清理的严格检查。该项是测试误判修正，不改变实际运行的 27 个 CMD/BAT；真实 Windows 11 测试仍待执行。
+
 ## 2026-11-05：CLR 分析器启动前注入边界与 27 个 CMD/BAT 入口
 
 - 深入复核启动链时确认：Windows PowerShell 5.1 使用的 .NET Framework 在执行任意 -Command 路径预检之前初始化 CLR。微软官方文档明确描述 `COR_ENABLE_PROFILING=1` 和 `COR_PROFILER` 能触发分析器加载，`COR_PROFILER_PATH` 还可选择 DLL 文件。因此仅从 System32 选择 powershell.exe 并清理 PSModulePath，不能阻止从宿主环境加载本机第三方 CLR profiler。参考：https://learn.microsoft.com/en-us/dotnet/framework/unmanaged-api/profiling/setting-up-a-profiling-environment
