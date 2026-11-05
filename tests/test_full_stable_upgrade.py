@@ -1709,6 +1709,7 @@ class FullStableUpgradeTests(unittest.TestCase):
             scratch = root / "tmp"
             scratch.mkdir(parents=True)
             source = ROOT / "tool/full-stable-transfer.py"
+            updater = load("tool/update-tools.py", "portable_updater_shared_lock_probe")
             child_program = (
                 "import importlib.util, pathlib, sys\n"
                 "spec = importlib.util.spec_from_file_location('worker', sys.argv[1])\n"
@@ -1721,7 +1722,9 @@ class FullStableUpgradeTests(unittest.TestCase):
             )
             # Python source in -c needs actual linefeed escapes, not a raw
             # backslash followed by the letter n in the resulting program.
-            with patch.object(transfer, "ROOT", root):
+            with (patch.object(transfer, "ROOT", root),
+                  patch.object(stage, "ROOT", root),
+                  patch.object(updater, "ROOT", root)):
                 worker = subprocess.Popen(
                     [sys.executable, "-E", "-s", "-B", "-c",
                      child_program, str(source), str(root)],
@@ -1738,6 +1741,16 @@ class FullStableUpgradeTests(unittest.TestCase):
                         with self.assertRaisesRegex(
                                 ValueError, "Concurrent full-stable transfer"):
                             operation()
+                    # The other two update entrypoints import this exact
+                    # lock implementation. A second real process holding it
+                    # must exclude both producers before any writes begin.
+                    for factory in (stage.shared_upgrade_lock,
+                                    updater.shared_upgrade_lock):
+                        with self.subTest(producer=factory.__module__):
+                            with self.assertRaisesRegex(
+                                    ValueError, "Concurrent full-stable transfer"):
+                                with factory():
+                                    self.fail("Concurrent writer acquired a busy lock")
                 finally:
                     if worker.poll() is None:
                         worker.kill()
@@ -1746,6 +1759,10 @@ class FullStableUpgradeTests(unittest.TestCase):
                 # A crash releases the OS lock, but the lock FILE remains
                 # to prevent a second inode / split-brain lock race.
                 with transfer.exclusive_transfer_lock():
+                    pass
+                with stage.shared_upgrade_lock():
+                    pass
+                with updater.shared_upgrade_lock():
                     pass
                 lock_file = scratch / ".full-stable-transfer.lock"
                 self.assertTrue(lock_file.is_file())

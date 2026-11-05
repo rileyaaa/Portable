@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-05：两条工具候选生产路线共用全量事务排他锁（PR #31）
+
+- 核查 `full-stable-prepare.py prepare` 会替换 Python、npm/Corepack、7-Zip、Chromium 等候选文件；`update-tools.py prepare` 会更新工具、安装 SSH 子进程并写入版本台账。此前仅 `full-stable-transfer.py pack/apply/recover` 获取排他文件锁，无法阻止不同维护路线同时在同一个工作树写入。
+- 两个 `prepare` 入口现在都从**同一目录、精准路径**加载受信任的 `full-stable-transfer.py`，使用现有 `exclusive_transfer_lock()` 而不复制第二套 Windows/POSIX 锁实现。先安全建立包内 tmp，再申请非阻塞排他锁；候选下载/替换、SSH 安装子进程、Git LFS 配置、台账和文档更新均保持在持锁范围内，竞争时直接报错，不继续写入。
+- 增补 Linux/Windows 通用的仓库回归：一个独立 Python 进程持有传输锁时，全量的三个入口以及两个 prepare 模块的锁入口都必须拒绝；强制终止后可再次获取，锁文件仍保持原 inode。静态测试禁止把 prepare 锁放到首个文件替换或最终台账写入之后。
+- 限制仍存在：`full-stable-prepare.py npm-preflight` 与 `update-tools.py check/verify/digest` 只读/元数据命令未被纳入写入锁；**独立执行的 `prepare-ssh.py` 尚未参加互斥**，也不能阻止其他不配合的进程直接修改文件。句柄层目录竞态、NTFS junction 和 Windows 原生持锁/终止仍需验收。本次未运行仓库完整 unittest 或 GitHub Actions，main、Release、二进制与 YOLO 保持不变。
+
 ## 2026-11-05：全量候选打包、写入与显式恢复的跨进程互斥（PR #31）
 
 - 发现旧的 `apply` 仅在预验证完成后通过 `glob(full-writer-journal-*)` 检查旧事务；两个进程可能同时看到“无事务”，分别创建备份目录并更新同一个工作树。只靠 GitHub workflow 的 `concurrency` 也无法保护手动在同一工作目录执行的进程。

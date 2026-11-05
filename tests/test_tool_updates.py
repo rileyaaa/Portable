@@ -64,6 +64,34 @@ class ToolUpdateTests(unittest.TestCase):
         pinned.start()
         self.addCleanup(pinned.stop)
 
+    def test_both_tool_writer_routes_share_full_transfer_lock(self):
+        # Prevent a later refactor from shortening lock scope or introducing
+        # a second incompatible lock file for one of the maintenance writers.
+        updater = (ROOT / 'tool/update-tools.py').read_text(encoding='utf-8')
+        stager = (ROOT / 'tool/full-stable-prepare.py').read_text(encoding='utf-8')
+        entry = 'source = Path(__file__).resolve().with_name("full-stable-transfer.py")'
+        for script in (updater, stager):
+            self.assertIn(entry, script)
+            self.assertIn('transfer.ROOT = ROOT', script)
+            self.assertIn('return transfer.exclusive_transfer_lock()', script)
+        updating = updater.split(
+            'def prepare(group: str, *, day: str, writer: bool = False) -> None:',
+            1)[1].split('\ndef diff_digest(', 1)[0]
+        staging = stager.split(
+            'def prepare(plan: dict) -> None:', 1)[1].split('\ndef main()', 1)[0]
+        self.assertEqual(updating.count('with shared_upgrade_lock():'), 1)
+        self.assertEqual(staging.count('with shared_upgrade_lock():'), 1)
+        self.assertLess(updating.index('with shared_upgrade_lock():'),
+                        updating.index('prepare_row(row, temp)'))
+        self.assertLess(updating.index('with shared_upgrade_lock():'),
+                        updating.index('subprocess.run(args, cwd=ROOT, timeout=600, check=True)'))
+        self.assertLess(updating.index('with shared_upgrade_lock():'),
+                        updating.index('record_updates(selected, ssh=ssh, day=day)'))
+        self.assertLess(staging.index('with shared_upgrade_lock():'),
+                        staging.index('stage_npm(plan, temp, evidence)'))
+        self.assertLess(staging.index('with shared_upgrade_lock():'),
+                        staging.index('update_version_inventory(plan, evidence)'))
+
     def test_bounded_rejects_dangling_windows_reparse_metadata(self):
         # A target-less junction can evade exists()/is_symlink(). Prove
         # bounded() lstat's the entry itself before approving missing paths.
