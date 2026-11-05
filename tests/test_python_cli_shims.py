@@ -146,6 +146,64 @@ class PythonCliShimTests(unittest.TestCase):
             self.assertNotIn("Z:\\HostModules", clean["PSModulePath"])
             self.assertEqual(clean["HOMEDRIVE"], os.path.splitdrive(clean["HOME"])[0])
 
+    def test_legacy_vba_extract_passes_through_portable_python_guard(self):
+        # XlsxWriter ships vba_extract.py as a direct script rather than a
+        # console_script entrypoint. It must use the same positive environment
+        # allowlist, but still preserve the vendor's original CLI semantics.
+        cmd = (ROOT / "tool/bin/vba_extract.cmd").read_bytes()
+        self.assertIn(b'set "_CODEX_BOOTSTRAP_CODE2=%~dp0portable-python-cli.py"', cmd)
+        self.assertIn(b'set "_CODEX_BOOTSTRAP_CODE3=%~dp0..\\python\\Lib\\site-packages\\bin\\vba_extract.py"', cmd)
+        self.assertIn(b'$env:_CODEX_BOOTSTRAP_CODE3', cmd)
+        self.assertIn(b'"%~dp0portable-python-cli.py" "vba_extract" %*', cmd)
+        self.assertNotIn(b' -B "%~dp0..\\python\\Lib\\site-packages\\bin\\vba_extract.py" %*', cmd)
+        helper_path = ROOT / "tool/bin/portable-python-cli.py"
+        spec = importlib.util.spec_from_file_location("portable_vba_guard_test", helper_path)
+        helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(helper)
+        vendor = self.vendor / "vba_extract.py"
+        vendor.write_text("raise RuntimeError('vendor code must not be executed in this test')\n",
+                          encoding="utf-8")
+        guarded = helper.portable_cli_environment({
+            "OPENAI_API_KEY": "host-secret", "NODE_OPTIONS": "--require=host.js",
+            "PYTHONPATH": str(self.base), "CI": "true",
+        }, self.root)
+        self.assertEqual(guarded["HOME"], str(self.root / "home-runtime"))
+        self.assertEqual(guarded["CI"], "true")
+        for key in ("OPENAI_API_KEY", "NODE_OPTIONS", "PYTHONPATH"):
+            self.assertNotIn(key, guarded)
+        with mock.patch.object(helper.runpy, "run_path", return_value={}) as run, \
+             mock.patch.object(helper.sys, "argv", ["helper.py"]):
+            self.assertEqual(helper._run_legacy_vba_extract(
+                self.root, ["synthetic.xlsm"]), 0)
+            run.assert_called_once_with(str(vendor), run_name="__main__")
+            self.assertEqual(helper.sys.argv, [str(vendor), "synthetic.xlsm"])
+        alias = self.base / "linked-vba.py"
+        os.link(vendor, alias)
+        try:
+            with mock.patch.object(helper.runpy, "run_path") as run:
+                with self.assertRaisesRegex(RuntimeError, "one ordinary script"):
+                    helper._run_legacy_vba_extract(self.root, ["synthetic.xlsm"])
+                run.assert_not_called()
+        finally:
+            alias.unlink()
+        outside = self.base / "outside-vba.py"
+        outside.write_text("raise RuntimeError('unsafe')", encoding="utf-8")
+        vendor.unlink()
+        try:
+            os.symlink(outside, vendor)
+        except OSError:
+            # Some Windows runners disallow symlink creation without privileges;
+            # the hardlink case above still exercises the negative I/O boundary.
+            pass
+        else:
+            with mock.patch.object(helper.runpy, "run_path") as run:
+                with self.assertRaisesRegex(RuntimeError, "links or reparse"):
+                    helper._run_legacy_vba_extract(self.root, ["synthetic.xlsm"])
+                run.assert_not_called()
+        source = helper_path.read_text(encoding="utf-8")
+        self.assertLess(source.index("os.environ.update(clean)"),
+                        source.index('if requested == "vba_extract":'))
+
     def test_generated_python_cmds_use_native_system_dir_before_powershell(self):
         # CMD's __APPDIR__ fallback is evaluated only after removing an
         # inherited value with the same name. Fail closed unless the running

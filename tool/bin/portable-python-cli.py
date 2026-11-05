@@ -10,6 +10,8 @@ from __future__ import annotations
 import importlib.metadata
 import os
 import re
+import runpy
+import stat
 import sys
 
 
@@ -143,6 +145,41 @@ def pip_environment(inherited: dict[str, str]) -> dict[str, str]:
     return portable_cli_environment(inherited)
 
 
+
+def _run_legacy_vba_extract(package_root: str | os.PathLike[str],
+                            arguments: list[str]) -> int:
+    """Run XlsxWriter's non-console_script entry after environment scrubbing.
+
+    This is a single exact bundled filename. No caller-provided script path,
+    PYTHONPATH, environment-selected entrypoint or host fallback is allowed.
+    """
+    root = os.path.abspath(os.fspath(package_root))
+    script = os.path.join(root, "tool", "python", "Lib",
+                          "site-packages", "bin", "vba_extract.py")
+    ancestors: list[str] = []
+    cursor = script
+    while cursor:
+        ancestors.append(cursor)
+        parent = os.path.dirname(cursor)
+        if parent == cursor:
+            break
+        cursor = parent
+    for candidate in reversed(ancestors):
+        info = os.lstat(candidate)
+        if (stat.S_ISLNK(info.st_mode) or
+                getattr(info, "st_file_attributes", 0) & 0x400):
+            raise RuntimeError("Portable VBA entry must not contain links or reparse points")
+        if candidate == script:
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise RuntimeError("Portable VBA entry requires one ordinary script file")
+        elif not stat.S_ISDIR(info.st_mode):
+            raise RuntimeError("Portable VBA entry must have ordinary directory ancestors")
+    # Match the original 'python.exe vba_extract.py <args>' argv contract.
+    sys.argv = [script, *arguments]
+    runpy.run_path(script, run_name="__main__")
+    return 0
+
+
 def _canonical_name(name: str) -> str:
     lower = name.lower()
     if re.fullmatch(r"pip\d+(?:\.\d+)?", lower):
@@ -173,6 +210,9 @@ def main() -> int:
     clean = portable_cli_environment(dict(os.environ))
     os.environ.clear()
     os.environ.update(clean)
+    if requested == "vba_extract":
+        package_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+        return _run_legacy_vba_extract(package_root, sys.argv[2:])
     ep = _find_entry_point(requested)
     sys.argv = [requested, *sys.argv[2:]]
     result = ep.load()()

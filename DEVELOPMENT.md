@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：补齐 XlsxWriter legacy vba_extract.cmd 的环境隔离
+
+- 复核 19 个 Python CLI 时发现独立的 tool/bin/vba_extract.cmd 没有经过 portable-python-cli.py 的运行时白名单：它直接以 -E -s -B 执行 XlsxWriter 附带的 site-packages/bin/vba_extract.py。虽已有 Windows CMD/PowerShell 路径预检，但脚本本身和下游模块仍可能读取未知宿主凭证或第三方环境。18 个生成的 console_script 不存在这条旁路。
+- 现改为先预检 bundled python.exe、portable-python-cli.py 和固定 vendor vba_extract.py 三个源文件（新增第三条 CMD bootstrap 文件路径检查），随后调用 python.exe -E -s -B portable-python-cli.py vba_extract ...。Python helper 清空并重建包内正向白名单后，仅对这个精确的 legacy 名称使用 runpy.run_path；运行前从卷根到脚本逐段 lstat 拒绝 symlink、junction/reparse、硬链及异常目录。保留原版 XlsxWriter 的路径和 CLI argv、工作目录限制、脚本执行和输出语义，不允许用户选择任意脚本。
+- 补充离线测试：合成宿主秘密/Node 注入/PYTHONPATH 的过滤、正常 argv/runpy 调用、硬链和可创建时的 symlink 拒绝、运行期白名单先于第三方脚本。vba_extract.cmd 保持 ASCII CRLF，生成器仍只维护 18 个受控 console_script。尚未在 Windows 原生环境运行 vba_extract 或处理真实 XLSM；未运行 AC，不改 main/Release/YOLO。
+
 ## 2026-11-05：02 Windows 真实 CMD 入口的受污染宿主回归
 
 - 仅检查源码存在 __APPDIR__ 防护，不足以证明 Windows cmd.exe 真实展开动态变量及 Python/Node/npm/Corepack 的可用性。02 Tool compatibility 原生门槛新增 Assert-PoisonedNativeBootstrap：通过 [Environment]::GetFolderPath('Windows') 选中真实系统 cmd.exe，以 ProcessStartInfo 只为该测试子进程构造假的 SystemRoot/WINDIR/ComSpec/__APPDIR__/PATH/PSModulePath/NODE_OPTIONS/PIP_CONFIG_FILE/OPENAI_API_KEY，不修改 Runner 父环境。
