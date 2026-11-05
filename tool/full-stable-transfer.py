@@ -222,6 +222,138 @@ def pack(output: Path, expected_base: str) -> None:
     print("FULL_STABLE_CHANGED_FILES=" + str(len(payload)))
 
 
+
+def checked_recovery_state(journal: Path, record: dict) -> tuple[Path, Path, bool]:
+    """Fail closed if a destination or saved original changed since the journal."""
+    dest = ROOT / record["path"]
+    saved = journal / ("original-" + str(record["index"]))
+    checked_disk(dest, missing=True)
+    checked_disk(saved, missing=True)
+    status = record["status"]
+    has_saved = saved.is_file()
+    if status == "A":
+        require(not has_saved, "Added recovery file unexpectedly has an original")
+        if dest.exists():
+            require(dest.is_file() and
+                    digest_file(dest) == record["candidateSHA256"],
+                    "Recovery destination changed outside candidate: " + str(dest))
+    elif has_saved:
+        require(digest_file(saved) == record["baseSHA256"],
+                "Recovery original backup digest mismatch: " + str(saved))
+        if dest.exists():
+            require(status == "M" and dest.is_file() and
+                    digest_file(dest) == record["candidateSHA256"],
+                    "Recovery destination changed outside candidate: " + str(dest))
+    else:
+        # A previous rollback or interrupted recovery may already have
+        # restored this original. It must match the pre-write snapshot.
+        require(dest.is_file() and
+                digest_file(dest) == record["baseSHA256"],
+                "Recovery original is missing or modified: " + str(dest))
+    return dest, saved, has_saved
+
+
+def recovery_plan(directory: Path) -> tuple[Path, list[dict]]:
+    """Read-only validation. Never trust a journal name or its JSON paths."""
+    journal = Path(directory).absolute()
+    require(journal.parent == ROOT / "tmp" and
+            re.fullmatch(r"full-writer-journal-[A-Za-z0-9_-]+", journal.name),
+            "Recovery journal must be directly inside package tmp")
+    checked_disk(journal)
+    require(journal.is_dir(), "Recovery journal must be an ordinary directory")
+    mapping = journal / "recovery-map.json"
+    checked_disk(mapping)
+    require(mapping.is_file() and mapping.stat().st_size <= MAX_MANIFEST,
+            "Recovery map missing or oversized")
+    data = json.loads(mapping.read_text(encoding="utf-8"))
+    require(isinstance(data, dict) and data.get("schema") == 2 and
+            data.get("sourceCommit") == git("rev-parse", "HEAD") and
+            isinstance(data.get("files"), list),
+            "Recovery requires a schema-2 journal for the current HEAD; "
+            "older or mismatched journals require manual inspection")
+    records = data["files"]
+    require(1 <= len(records) <= MAX_FILES, "Invalid recovery file count")
+    raw = git("ls-tree", "-r", "--name-only", "-z",
+              "HEAD", "--", "tool", binary=True)
+    base_names = {x.decode("utf-8", "strict") for x in raw.split(b"\\0") if x}
+    base_folded = {x.casefold() for x in base_names}
+    require(len(base_names) == len(base_folded), "Ambiguous base Git paths")
+    names = set()
+    allowed = {"recovery-map.json"}
+    for index, record in enumerate(records):
+        require(isinstance(record, dict) and
+                type(record.get("index")) is int and record["index"] == index,
+                "Recovery indices must be contiguous")
+        name = checked_name(record.get("path"))
+        status = record.get("status")
+        require(status in ("A", "M", "D"), "Invalid recovery file status")
+        expected_keys = {"index", "path", "status"}
+        if status != "A":
+            expected_keys.add("baseSHA256")
+        if status != "D":
+            expected_keys.add("candidateSHA256")
+        require(set(record) == expected_keys and
+                all(re.fullmatch(r"[a-f0-9]{64}", record[key])
+                    for key in expected_keys if key.endswith("SHA256")),
+                "Invalid recovery hash or record")
+        require(name.casefold() not in names, "Colliding recovery file paths")
+        names.add(name.casefold())
+        require((name.casefold() not in base_folded if status == "A"
+                 else name in base_names),
+                "Recovery status differs from source Git tree")
+        if status != "A":
+            allowed.add("original-" + str(index))
+        if status != "D":
+            allowed.add("payload-" + str(index))
+        checked_recovery_state(journal, record)
+    staged = git("-c", "core.quotepath=false", "diff", "--cached",
+                 "--name-only", "-z", binary=True)
+    require(all(x.decode("utf-8", "strict").casefold() in names
+                for x in staged.split(b"\\0") if x),
+            "Recovery refuses unrelated staged Git changes")
+    for entry in journal.iterdir():
+        checked_disk(entry)
+        require(entry.is_file() and entry.name in allowed,
+                "Unexpected recovery journal entry: " + entry.name)
+        if entry.name.startswith("payload-"):
+            index = int(entry.name.removeprefix("payload-"))
+            require(digest_file(entry) == records[index]["candidateSHA256"],
+                    "Recovery staged payload digest mismatch: " + entry.name)
+    return journal, records
+
+
+def recover(directory: Path, *, restore: bool = False) -> None:
+    """Explicit opt-in recovery; default invocation is validation only.
+
+    Do not overwrite human edits, follow reparse links, or guess the original
+    from an unauthenticated old map. This is not a power-loss-safe transaction
+    or a filesystem-handle-level defense against concurrent replacements.
+    """
+    journal, records = recovery_plan(directory)
+    print("FULL_STABLE_RECOVERY_AUDIT=PASS")
+    if not restore:
+        return
+    try:
+        for record in reversed(records):
+            dest, saved, has_saved = checked_recovery_state(journal, record)
+            if record["status"] == "A":
+                if dest.exists():
+                    dest.unlink()
+            elif has_saved:
+                os.replace(saved, dest)
+        # Index changes may have been staged just before a process died.
+        # Reset only after all original bytes have been restored.
+        git("reset", "--quiet", "HEAD", "--", "tool")
+        require(not git("status", "--porcelain"),
+                "Recovery did not restore a clean checkout")
+        recovery_plan(journal)  # Verify all base bytes before deleting backups.
+    except BaseException as error:
+        raise RuntimeError("Recovery incomplete; journal retained at " +
+                           str(journal) + ": " + str(error)) from error
+    checked_disk(journal)
+    shutil.rmtree(journal)
+    print("FULL_STABLE_RECOVERY=PASS")
+
 def apply(archive: Path, expected_sha: str, expected_diff: str,
           expected_base: str) -> None:
     require(re.fullmatch(r"[a-f0-9]{64}", expected_sha) is not None and
@@ -331,11 +463,26 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
             # Store exact names for manual recovery after process death or a
             # failed rollback. The journal lives in ignored package tmp and is
             # removed after success or a complete rollback.
+            require(not git("status", "--porcelain"),
+                    "Checkout changed while staging the candidate")
+            recovery_files: list[dict] = []
+            for index, item in enumerate(planned):
+                record = {"index": index, "path": item["path"],
+                          "status": item["status"]}
+                if item["status"] != "A":
+                    dest = ROOT / item["path"]
+                    checked_disk(dest)
+                    require(dest.is_file(), "Original file disappeared before journaling")
+                    record["baseSHA256"] = digest_file(dest)
+                if item["status"] != "D":
+                    record["candidateSHA256"] = item["sha256"]
+                recovery_files.append(record)
+            require(not git("status", "--porcelain"),
+                    "Checkout changed while recording original hashes")
             with (transaction / "recovery-map.json").open("x", encoding="utf-8") as recovery:
-                json.dump({"sourceCommit": expected_base, "files": [
-                    {"index": i, "path": item["path"], "status": item["status"]}
-                    for i, item in enumerate(planned)
-                ]}, recovery, ensure_ascii=False, sort_keys=True)
+                json.dump({"schema": 2, "sourceCommit": expected_base,
+                           "files": recovery_files},
+                          recovery, ensure_ascii=False, sort_keys=True)
                 recovery.write("\n")
                 recovery.flush()
                 # Fail before any original-file rename if the recovery map
@@ -375,6 +522,8 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
                         # exact binary bytes and is an atomic rename on the
                         # normal package volume. Keep it until all Git gates
                         # have succeeded.
+                        require(digest_file(dest) == recovery_files[index]["baseSHA256"],
+                                "Original changed after recovery snapshot: " + name)
                         saved = transaction / ("original-" + str(index))
                         os.replace(dest, saved)
                         journal.append((status, dest, saved))
@@ -460,11 +609,16 @@ def main() -> None:
     a.add_argument("--base", required=True)
     a.add_argument("--sha256", required=True)
     a.add_argument("--diff", required=True)
+    r = sub.add_parser("recover", help="Audit a preserved journal; --restore is explicit")
+    r.add_argument("--journal", required=True, type=Path)
+    r.add_argument("--restore", action="store_true")
     args = parser.parse_args()
     if args.command == "pack":
         pack(args.archive, args.base)
-    else:
+    elif args.command == "apply":
         apply(args.archive, args.sha256, args.diff, args.base)
+    else:
+        recover(args.journal, restore=args.restore)
 
 
 if __name__ == "__main__":

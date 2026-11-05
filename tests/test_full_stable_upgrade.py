@@ -2003,22 +2003,65 @@ class FullStableUpgradeTests(unittest.TestCase):
                                  b"original-binary-baseline\x00")
                 recovery = json.loads((preserved[0] / "recovery-map.json").read_text(
                     encoding="utf-8"))
+                self.assertEqual(recovery["schema"], 2)
                 self.assertEqual(recovery["sourceCommit"], base)
-                self.assertEqual(recovery["files"][0], {
+                self.assertEqual({k: recovery["files"][0][k]
+                                  for k in ("index", "path", "status")}, {
                     "index": 0, "path": "tool/python/python315.dll", "status": "M"})
+                self.assertEqual(recovery["files"][0]["baseSHA256"],
+                                 hashlib.sha256(b"original-binary-baseline\\x00").hexdigest())
+                self.assertEqual(recovery["files"][0]["candidateSHA256"],
+                                 hashlib.sha256(b"payload 0\\n").hexdigest())
                 self.assertTrue(any(x["status"] == "D" for x in recovery["files"]))
-                # Simulate a maintainer restoring the original bytes, but
-                # forgetting to remove the unresolved journal. Even though
-                # Git status is clean, a new write must refuse to start.
-                original_replace(original_backup, base_modified)
+
+                # Recovery is read-only by default; a foreign change to the
+                # candidate must stop even explicitly requested restoration.
+                transfer.recover(preserved[0])
+                self.assertTrue(original_backup.is_file())
+                base_modified.write_bytes(b"foreign-user-edit")
+                with self.assertRaisesRegex(ValueError, "Recovery destination changed"):
+                    transfer.recover(preserved[0], restore=True)
+                self.assertTrue(original_backup.is_file())
+                base_modified.write_bytes(b"payload 0\\n")
+                original_backup.write_bytes(b"tampered-original")
+                with self.assertRaisesRegex(ValueError, "Recovery original backup digest"):
+                    transfer.recover(preserved[0], restore=True)
+                original_backup.write_bytes(b"original-binary-baseline\\x00")
+
+                transfer.recover(preserved[0], restore=True)
+                self.assertFalse(preserved[0].exists())
+                self.assertEqual(base_modified.read_bytes(), b"original-binary-baseline\\x00")
+                self.assertEqual(base_deleted.read_bytes(), b"original-deleted-baseline\\x00")
                 self.assertEqual(subprocess.check_output(
                     ["git", "-C", str(tmp), "status", "--porcelain"],
                     text=True).strip(), "")
+
+                # A process may die after originals are restored but before
+                # deleting the journal. Still block future applies until a
+                # verified, explicitly requested recovery clears it.
+                stale = tmp / "tmp/full-writer-journal-stale"
+                stale.mkdir()
+                (stale / "recovery-map.json").write_text(
+                    json.dumps(recovery), encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "Unresolved full-writer transaction"):
                     transfer.apply(archive, archived_sha, diff, base)
-                self.assertTrue((preserved[0] / "recovery-map.json").exists())
+                transfer.recover(stale)
+                self.assertTrue(stale.exists())
+                transfer.recover(stale, restore=True)
+                self.assertFalse(stale.exists())
+
+                # Legacy schema-1 maps lack the original-byte digest. Refuse
+                # automatic restoration rather than trusting bare file names.
+                old = tmp / "tmp/full-writer-journal-legacy"
+                old.mkdir()
+                (old / "recovery-map.json").write_text(
+                    json.dumps({"sourceCommit": base, "files": recovery["files"]}),
+                    encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "schema-2"):
+                    transfer.recover(old, restore=True)
+                self.assertTrue((old / "recovery-map.json").exists())
                 import shutil
-                shutil.rmtree(preserved[0])
+                shutil.rmtree(old)
                 self.assertEqual(subprocess.check_output(
                     ["git", "-C", str(tmp), "status", "--porcelain"],
                     text=True).strip(), "")

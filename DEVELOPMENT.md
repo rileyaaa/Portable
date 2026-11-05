@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-05：全量工具事务中断后显式验证与恢复（PR #31）
+
+- 写入器的 recovery-map.json 升级为 schema 2：首次移动任何 M/D 原件之前记录索引、路径、Git 基线 SHA、原始文件 SHA-256 和候选 SHA-256，并在 flush + fsync 成功后才开始替换；移动 M/D 文件前重新验证原件哈希。此机制降低了中途文件变更被误当作原件的风险，但不等于原子事务或防 TOCTOU 的 OS 级保护。
+- 新增 `python tool/full-stable-transfer.py recover --journal tmp/full-writer-journal-...`，**默认只读核查**；必须明确加 `--restore` 才会尝试恢复。恢复前校验 Journal 在包内 tmp 的直接子目录、路径及文件类型、schema/HEAD、A/M/D 与 Git HEAD 基线一致、所有保存原件和现存候选的 SHA-256、无意外文件、无无关 Git 暂存改动；恢复后核对工作树干净，再删除日志目录。中途任何一步失败保留日志供再次审查。
+- 对旧版无原件 SHA-256 的 schema 1 日志、安全性无法证明的修改目标、损坏的备份，明确拒绝自动恢复；需要人工检查和保全，不能直接删除日志或强行执行 git restore/reset --hard。新增离线真实 Git 正反向回归，包括只读审计、候选被用户改写、备份被篡改、成功复原、已恢复但旧日志残留及旧格式拒绝。
+- **验证边界：** 代码已提交但尚未执行完整仓库 Python unittest 或 Windows 11 原生 kill/power-loss/文件锁/junction/并发竞态演练。恢复依赖本地受信任的日志摘要，不把日志当作签名证据；仍需对磁盘损坏、恶意进程并发修改和强制断电进行人工验收。未运行 Actions，不合并、不修改 main/Release/YOLO。
+
 ## 2026-11-05：候选 ZIP 清单 JSON 限制实际解压大小
 
 - full-stable-transfer.py 之前只限制 ZIP 项总数和候选 payload 的大小，却直接以 `ZipFile.read('manifest.json')` 一次性完整解压元数据；恶意压缩比很高的清单可能在 JSON/schema、文件状态和哈希检查前占用大量内存。
