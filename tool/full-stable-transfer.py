@@ -174,9 +174,35 @@ def diff_sha() -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def checked_candidate_archive(path: Path, *, output: bool = False) -> Path:
+    """Accept verified candidate ZIPs only beneath this checkout's owned tmp.
+
+    Neither pack nor apply may read/write a host path by selecting a different
+    CLI --archive; reject linked parents, linked files and pre-existing output.
+    """
+    candidate = Path(path).absolute()
+    scratch = ROOT / "tmp"
+    require(candidate != scratch and candidate.is_relative_to(scratch),
+            "Candidate archive must remain below package tmp")
+    checked_disk(candidate.parent)
+    require(candidate.parent.is_dir(), "Candidate archive parent is not a directory")
+    if output:
+        try:
+            candidate.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError("Candidate archive output must be new and unlinked")
+    else:
+        checked_disk(candidate)
+        require(candidate.is_file(), "Candidate archive input must be an ordinary file")
+    return candidate
+
+
 def pack(output: Path, expected_base: str) -> None:
     require(re.fullmatch(r"[0-9a-f]{40}", expected_base) is not None and
             git("rev-parse", "HEAD") == expected_base, "Unexpected source commit")
+    output = checked_candidate_archive(output, output=True)
     payload = changes()
     manifest = {
         "schema": 1, "sourceCommit": expected_base,
@@ -184,7 +210,6 @@ def pack(output: Path, expected_base: str) -> None:
     }
     encoded = (json.dumps(manifest, sort_keys=True, separators=(",", ":"),
                           ensure_ascii=False) + "\n").encode("utf-8")
-    require(output.parent.is_dir() and not output.exists(), "Unsafe artifact output")
     with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED,
                          compresslevel=1, allowZip64=True) as archive:
         archive.writestr("manifest.json", encoded)
@@ -202,6 +227,7 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
             re.fullmatch(r"[a-f0-9]{64}", expected_diff) is not None and
             re.fullmatch(r"[a-f0-9]{40}", expected_base) is not None,
             "Missing signed-run candidate identity")
+    archive = checked_candidate_archive(archive)
     require(digest_file(archive) == expected_sha,
             "Candidate artifact differs from validated read-only Job")
     require(git("rev-parse", "HEAD") == expected_base,

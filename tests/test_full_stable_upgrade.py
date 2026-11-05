@@ -1699,6 +1699,61 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertLess(code.index('vendor = pip_launch / "bin"'),
                         code.index('replace_tree(staged_python, TOOL / "python", temp)'))
 
+    def test_writer_candidate_archive_path_is_owned_and_not_linked(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "checkout"
+            scratch = root / "tmp"
+            scratch.mkdir(parents=True)
+            foreign = Path(d) / "foreign"
+            foreign.mkdir()
+            external_zip = foreign / "candidate.zip"
+            external_zip.write_bytes(b"outside-preserved")
+            with patch.object(transfer, "ROOT", root):
+                for output in (True, False):
+                    with self.subTest(outside=output):
+                        with self.assertRaisesRegex(ValueError, "below package tmp"):
+                            transfer.checked_candidate_archive(external_zip, output=output)
+                        self.assertEqual(external_zip.read_bytes(), b"outside-preserved")
+                good = scratch / "candidate.zip"
+                self.assertEqual(transfer.checked_candidate_archive(good, output=True), good)
+                good.write_bytes(b"synthetic-archive")
+                self.assertEqual(transfer.checked_candidate_archive(good), good)
+                with self.assertRaisesRegex(ValueError, "new and unlinked"):
+                    transfer.checked_candidate_archive(good, output=True)
+                non_directory = scratch / "regular-file"
+                non_directory.write_bytes(b"preserved")
+                with self.assertRaisesRegex(ValueError, "not a directory"):
+                    transfer.checked_candidate_archive(non_directory / "file.zip", output=True)
+                self.assertEqual(non_directory.read_bytes(), b"preserved")
+                hardlink = scratch / "linked-hard.zip"
+                try:
+                    os.link(good, hardlink)
+                except OSError:
+                    pass  # Some Windows runners disallow hardlinks.
+                else:
+                    with self.assertRaisesRegex(ValueError, "hard-linked"):
+                        transfer.checked_candidate_archive(hardlink)
+                    hardlink.unlink()
+                redirect = scratch / "linked-parent"
+                try:
+                    os.symlink(foreign, redirect, target_is_directory=True)
+                except OSError:
+                    pass
+                else:
+                    with self.assertRaisesRegex(ValueError, "linked input/output"):
+                        transfer.checked_candidate_archive(redirect / "file.zip", output=True)
+                    self.assertFalse((foreign / "file.zip").exists())
+                dangling = scratch / "dangling.zip"
+                try:
+                    os.symlink(foreign / "never-created", dangling)
+                except OSError:
+                    pass
+                else:
+                    with self.assertRaisesRegex(ValueError, "new and unlinked"):
+                        transfer.checked_candidate_archive(dangling, output=True)
+                    with self.assertRaisesRegex(ValueError, "linked input/output"):
+                        transfer.checked_candidate_archive(dangling)
+
     def test_writer_filenames_allow_only_owned_tool_files(self):
         for name in (".github/workflows/02.yml", "codex.exe", "tool/python/../evil",
                      "tool/bin/evil.exe", "tool/bin/other.ps1", "tool/python/x.pyc",

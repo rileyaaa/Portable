@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-05：全量候选 ZIP 的输入与输出限制在包内受控 tmp
+
+- `full-stable-transfer.py pack --archive` 之前只检查输出父目录存在及目标不存在，未确认目标位于当前仓库，也未拒绝指向宿主目录的 junction/symlink；写入任务 `apply --archive` 在读取时也没有对传入 ZIP 的位置及硬链接做完整约束。即使正常 03 workflow 总是使用 checkout/tmp/...，独立 CLI 仍可能读取/写入包外或经链接映射的路径。
+- 新增 `checked_candidate_archive()`，在任何 ZIP 输入读取或输出创建前统一校验：候选路径必须位于当前 ROOT/tmp 下、不能只指向 tmp 根，父目录及路径所有现存祖先必须为普通未链接目录；输出必须是全新、非悬空链接文件，输入必须是普通无硬链接的文件。`pack()` 和 `apply()` 都使用同一入口；原工作流的 `tmp/full-stable-candidate.zip` 与 `tmp/full-writer/full-stable-candidate.zip` 继续被允许。
+- 离线测试覆盖正常 tmp 输入/输出、包外路径、父位置普通文件、硬链接、指向包外的父级符号链接及悬空符号链接，确认拒绝前不触碰外部 sentinel 内容。正常完整 Git 候选打包/应用测试仍然保留。
+- 注意路径与链接检测不等于句柄级不可竞态：具有并发写入权限的其他进程仍可能在验证后替换文件/目录；完整 Windows 句柄级回归依旧待处理。此轮不执行 Actions/真实下载/发布，不改 main、Release、YOLO。
+
 ## 2026-11-05：全量写入候选临时文件在 Windows 上关闭后再清理
 
 - 反向审查 full-stable-transfer.py 第二阶段时发现旧实现 `NamedTemporaryFile(delete=False)` 还处于 `with` 文件句柄打开状态，`except` 就调用 `temp_name.unlink()`。Windows 可能禁止删除正在被本进程打开的文件，导致校验异常被 PermissionError 掩盖并遗留 `.full-candidate-*` 文件。原实现还未覆盖 `os.replace()` 抛错后的临时文件清理。
