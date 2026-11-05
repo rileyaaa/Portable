@@ -1710,14 +1710,14 @@ class FullStableUpgradeTests(unittest.TestCase):
             scratch.mkdir(parents=True)
             source = ROOT / "tool/full-stable-transfer.py"
             child_program = (
-                "import importlib.util, pathlib, sys\\n"
-                "spec = importlib.util.spec_from_file_location('worker', sys.argv[1])\\n"
-                "mod = importlib.util.module_from_spec(spec)\\n"
-                "spec.loader.exec_module(mod)\\n"
-                "mod.ROOT = pathlib.Path(sys.argv[2])\\n"
-                "with mod.exclusive_transfer_lock():\\n"
-                "    print('LOCK_HELD', flush=True)\\n"
-                "    sys.stdin.readline()\\n"
+                "import importlib.util, pathlib, sys\n"
+                "spec = importlib.util.spec_from_file_location('worker', sys.argv[1])\n"
+                "mod = importlib.util.module_from_spec(spec)\n"
+                "spec.loader.exec_module(mod)\n"
+                "mod.ROOT = pathlib.Path(sys.argv[2])\n"
+                "with mod.exclusive_transfer_lock():\n"
+                "    print('LOCK_HELD', flush=True)\n"
+                "    sys.stdin.readline()\n"
             )
             # Python source in -c needs actual linefeed escapes, not a raw
             # backslash followed by the letter n in the resulting program.
