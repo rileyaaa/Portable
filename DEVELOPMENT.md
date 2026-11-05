@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-05：全量写入候选临时文件在 Windows 上关闭后再清理
+
+- 反向审查 full-stable-transfer.py 第二阶段时发现旧实现 `NamedTemporaryFile(delete=False)` 还处于 `with` 文件句柄打开状态，`except` 就调用 `temp_name.unlink()`。Windows 可能禁止删除正在被本进程打开的文件，导致校验异常被 PermissionError 掩盖并遗留 `.full-candidate-*` 文件。原实现还未覆盖 `os.replace()` 抛错后的临时文件清理。
+- 现在将整个写入与替换放进外层 try/except BaseException：在文件句柄关闭后再执行替换，若复制、哈希校验、替换或中断失败，再尝试删除本次创建的临时文件并保留原异常；创建前后检查目标父目录的 reparse/普通目录状态，尽量降低文件在检查后被替换的风险。清理失败仍让 Job 失败，不能宣称没有并发 TOCTOU。
+- 扩充真实 Git 临时仓库的离线回归，分别在写完候选数据但还没有替换时注入 digest 错误、在文件关闭后注入 `os.replace` 错误；两种场景都要求不残留 `.full-candidate-*`，不变更原始基线文件或 Git 工作树。正常混合 A/M/D 候选仍可成功应用。
+- 这些是测试代码与静态审查更新，尚未在 Windows 11 x64 Python 文件句柄机制上实际执行；未触发 AC、未改 main、Release 或 YOLO。
+
 ## 2026-11-05：全量升级写入器校验候选 A/M/D 与 Git 基线一致
 
 - 继续复核两阶段写入器发现：原 `apply()` 虽验证候选 ZIP 的所有哈希后才写文件，却只检验清单中 `A`/`M`/`D` 字样合法，没有确认该状态和写入 Job 当前 Git 基线一致。伪造的 `A` 可能覆盖已跟踪文件，伪造的 `M`/`D` 可能选择从未跟踪的路径；后续 diff SHA 不符虽会拒绝推送，但校验时工作树可能已被改动。

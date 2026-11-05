@@ -282,22 +282,34 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
             require(z.file_size == item["size"] and
                     stat.S_IFMT(z.external_attr >> 16) != stat.S_IFLNK,
                     "Payload size/link status mismatch")
+            # Recheck the parent after mkdir; a reparse point introduced by
+            # another process must not silently redirect the temporary file.
+            checked_disk(dest.parent, missing=True)
             dest.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(
-                    dir=dest.parent, prefix=".full-candidate-", delete=False) as tmp:
-                temp_name = Path(tmp.name)
-                check = hashlib.sha256()
-                try:
+            checked_disk(dest.parent)
+            temp_name: Path | None = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                        dir=dest.parent, prefix=".full-candidate-", delete=False) as tmp:
+                    temp_name = Path(tmp.name)
+                    check = hashlib.sha256()
                     with source.open(z) as src:
                         while data := src.read(1024 * 1024):
                             check.update(data)
                             tmp.write(data)
                     require(check.hexdigest() == item["sha256"],
                             "Payload failed per-file SHA-256 check")
-                except Exception:
-                    temp_name.unlink(missing_ok=True)
-                    raise
-            os.replace(temp_name, dest)
+                # On Windows unlinking an open NamedTemporaryFile(delete=False)
+                # may fail with PermissionError. Close before replace/cleanup.
+                checked_disk(dest.parent)
+                os.replace(temp_name, dest)
+            except BaseException:
+                if temp_name is not None:
+                    try:
+                        temp_name.unlink(missing_ok=True)
+                    except OSError:
+                        pass  # Preserve the original failure; job fails closed.
+                raise
     git("add", "-A", "--", "tool")
     actual = changes()
     require(actual == planned, "Candidate file identities differ from read-only Job")

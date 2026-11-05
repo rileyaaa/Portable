@@ -1816,6 +1816,33 @@ class FullStableUpgradeTests(unittest.TestCase):
                                          b"original-binary-baseline\x00")
                         self.assertEqual(base_deleted.read_bytes(),
                                          b"original-deleted-baseline\x00")
+                # Windows cannot reliably unlink a NamedTemporaryFile while
+                # the writer still holds its handle. Simulate a digest fault
+                # DURING copy, and a replace fault AFTER the handle closes.
+                normal_require = transfer.require
+                def fail_during_staged_copy(condition, message):
+                    if message == "Payload failed per-file SHA-256 check":
+                        raise ValueError("synthetic staged copy fault")
+                    return normal_require(condition, message)
+                with patch.object(transfer, "require",
+                                  side_effect=fail_during_staged_copy):
+                    with self.assertRaisesRegex(ValueError, "synthetic staged copy fault"):
+                        transfer.apply(archive, archived_sha, diff, base)
+                self.assertEqual(list((tmp / "tool").rglob(".full-candidate-*")), [],
+                                 "Failed copy must close and unlink its temporary file")
+                with patch.object(transfer.os, "replace",
+                                  side_effect=OSError("synthetic replace fault")):
+                    with self.assertRaisesRegex(OSError, "synthetic replace fault"):
+                        transfer.apply(archive, archived_sha, diff, base)
+                self.assertEqual(list((tmp / "tool").rglob(".full-candidate-*")), [],
+                                 "Failed replace must not leave a temporary payload")
+                self.assertEqual(subprocess.check_output(
+                    ["git", "-C", str(tmp), "status", "--porcelain"],
+                    text=True).strip(), "")
+                self.assertEqual(base_modified.read_bytes(),
+                                 b"original-binary-baseline\x00")
+                self.assertEqual(base_deleted.read_bytes(),
+                                 b"original-deleted-baseline\x00")
                 # The genuine candidate must still support ADD/MODIFY/DELETE.
                 transfer.apply(archive, archived_sha, diff, base)
                 self.assertEqual(base_modified.read_bytes(), b"payload 0\n")
