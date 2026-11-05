@@ -495,7 +495,10 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
             # backup names before replacing/deleting them. A failed later
             # replace, staged Git comparison or LFS pointer check rolls back
             # earlier changes. This is not power-loss/kill-safe or TOCTOU-free.
-            journal: list[tuple[str, Path, Path | None]] = []
+            # Record each intended rename before touching the original, so
+            # an exception immediately after the OS rename cannot orphan the
+            # only baseline copy and let finally remove the journal.
+            journal: list[tuple[int, str, Path, Path | None]] = []
             created_dirs: set[Path] = set()
             try:
                 for index, item in enumerate(planned):
@@ -526,13 +529,13 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
                         require(digest_file(dest) == recovery_files[index]["baseSHA256"],
                                 "Original changed after recovery snapshot: " + name)
                         saved = transaction / ("original-" + str(index))
+                        journal.append((index, status, dest, saved))
                         os.replace(dest, saved)
-                        journal.append((status, dest, saved))
                     else:
                         # Record a potential addition BEFORE replace: an
                         # exception immediately after the rename must also
                         # remove its untracked result during rollback.
-                        journal.append((status, dest, None))
+                        journal.append((index, status, dest, None))
                     if status != "D":
                         os.replace(staged[name], dest)
 
@@ -554,18 +557,21 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
                                 "Chromium LFS pointer missing or mismatched")
             except BaseException as failure:
                 errors: list[str] = []
-                for status, dest, original in reversed(journal):
+                for index, status, dest, original in reversed(journal):
                     try:
                         checked_disk(dest.parent)
+                        # A second process may have changed a candidate after
+                        # our replace. Refuse to overwrite or unlink foreign
+                        # bytes; retain the original journal for inspection.
+                        _, _, has_saved = checked_recovery_state(
+                            transaction, recovery_files[index])
                         if original is not None:
-                            checked_disk(original)
-                            os.replace(original, dest)
-                        else:
-                            # A path was absent in the clean checkout. Never
-                            # follow a link or delete unexpected host data.
-                            checked_disk(dest, missing=True)
-                            if dest.exists():
-                                dest.unlink()
+                            if has_saved:
+                                os.replace(original, dest)
+                            # Otherwise rename failed before moving the base;
+                            # checked_recovery_state proved it is still intact.
+                        elif dest.exists():
+                            dest.unlink()
                     except BaseException as rollback_error:
                         errors.append(str(dest) + ": " + str(rollback_error))
                 for directory in sorted(created_dirs, key=lambda p: len(p.parts),
@@ -581,6 +587,24 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
                     git("reset", "--quiet", "HEAD", "--", "tool")
                 except BaseException as rollback_error:
                     errors.append("Git index: " + str(rollback_error))
+                if not errors:
+                    try:
+                        # Do not report "rolled back" without checking every
+                        # original byte and the full worktree/index state.
+                        for record in recovery_files:
+                            dest = ROOT / record["path"]
+                            checked_disk(dest, missing=True)
+                            if record["status"] == "A":
+                                require(not dest.exists(),
+                                        "Rollback left an added file: " + str(dest))
+                            else:
+                                require(dest.is_file() and
+                                        digest_file(dest) == record["baseSHA256"],
+                                        "Rollback did not restore baseline: " + str(dest))
+                        require(not git("status", "--porcelain"),
+                                "Rollback left Git checkout changes")
+                    except BaseException as rollback_error:
+                        errors.append("Final rollback verification: " + str(rollback_error))
                 if errors:
                     # On a failed restore, NEVER destroy the only surviving
                     # originals in the transaction journal. Keep an auditable

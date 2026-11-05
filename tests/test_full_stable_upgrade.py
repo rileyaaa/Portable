@@ -2064,6 +2064,77 @@ class FullStableUpgradeTests(unittest.TestCase):
                     ["git", "-C", str(tmp), "status", "--porcelain"],
                     text=True).strip(), "")
 
+                # An OS rename can succeed and a later Python callback can
+                # still raise before the next statement. The intended move
+                # must already be journaled, or the backup is lost in finally.
+                after_rename = {"hit": False}
+                def raise_after_moving_original(src, dest):
+                    moved = original_replace(src, dest)
+                    if (Path(src) == base_modified and
+                            Path(dest).name == "original-" + str(modified_index)
+                            and not after_rename["hit"]):
+                        after_rename["hit"] = True
+                        raise OSError("synthetic post-rename exception")
+                    return moved
+                with patch.object(transfer.os, "replace",
+                                  side_effect=raise_after_moving_original):
+                    with self.assertRaisesRegex(OSError, "post-rename exception"):
+                        transfer.apply(archive, archived_sha, diff, base)
+                self.assertTrue(after_rename["hit"])
+                self.assertEqual(base_modified.read_bytes(),
+                                 b"original-binary-baseline\x00")
+                self.assertEqual(base_deleted.read_bytes(),
+                                 b"original-deleted-baseline\x00")
+                self.assertEqual(list((tmp / "tmp").glob("full-writer-journal-*")), [])
+                self.assertEqual(subprocess.check_output(
+                    ["git", "-C", str(tmp), "status", "--porcelain"],
+                    text=True).strip(), "")
+
+                # Concurrent edits must not be silently overwritten during
+                # rollback. A changed candidate is neither our payload nor
+                # a valid original, even when it occupies the expected path.
+                foreign_edit = b"third-party-data-must-survive"
+                modified_candidate = next(x for x in written
+                                          if x["path"] == "tool/python/python315.dll")
+                with zipfile.ZipFile(archive) as source:
+                    candidate_bytes = source.read("payload/" + modified_candidate["path"])
+                poisoned = {"hit": False}
+                def rewrite_candidate_after_replace(src, dest):
+                    moved = original_replace(src, dest)
+                    if (Path(src).name == "payload-" + str(modified_index)
+                            and Path(dest) == base_modified
+                            and not poisoned["hit"]):
+                        poisoned["hit"] = True
+                        base_modified.write_bytes(foreign_edit)
+                        raise OSError("synthetic concurrent edit")
+                    return moved
+                with patch.object(transfer.os, "replace",
+                                  side_effect=rewrite_candidate_after_replace):
+                    with self.assertRaisesRegex(RuntimeError, "rollback was incomplete"):
+                        transfer.apply(archive, archived_sha, diff, base)
+                self.assertTrue(poisoned["hit"])
+                self.assertEqual(base_modified.read_bytes(), foreign_edit)
+                stranded = list((tmp / "tmp").glob("full-writer-journal-*"))
+                self.assertEqual(len(stranded), 1)
+                self.assertEqual(
+                    (stranded[0] / ("original-" + str(modified_index))).read_bytes(),
+                    b"original-binary-baseline\x00")
+                with self.assertRaisesRegex(ValueError, "Recovery destination changed"):
+                    transfer.recover(stranded[0], restore=True)
+                self.assertEqual(base_modified.read_bytes(), foreign_edit)
+                # Simulate an explicit human decision to discard this foreign
+                # edit; only then can the guarded recovery finish.
+                base_modified.write_bytes(candidate_bytes)
+                transfer.recover(stranded[0], restore=True)
+                self.assertFalse(stranded[0].exists())
+                self.assertEqual(base_modified.read_bytes(),
+                                 b"original-binary-baseline\x00")
+                self.assertEqual(base_deleted.read_bytes(),
+                                 b"original-deleted-baseline\x00")
+                self.assertEqual(subprocess.check_output(
+                    ["git", "-C", str(tmp), "status", "--porcelain"],
+                    text=True).strip(), "")
+
                 # The final staged Git diff check occurs AFTER all files
                 # have been replaced. An incorrect diff must still restore
                 # A, M and D, including the index changed by git add -A.
