@@ -1751,6 +1751,32 @@ class FullStableUpgradeTests(unittest.TestCase):
                 diff = transfer.diff_sha()
                 subprocess.run(["git", "-C", str(tmp), "reset", "--hard", "HEAD"],
                                check=True, capture_output=True)
+                # Re-sign the outer ZIP digest but corrupt the *last* payload.
+                # The former writer would already have copied earlier files
+                # into the Git worktree before discovering this hash mismatch.
+                bad_archive = tmp / "tmp/candidate-corrupt-final.zip"
+                with zipfile.ZipFile(archive) as source:
+                    filenames = [entry.filename for entry in source.infolist()
+                                 if entry.filename.startswith("payload/")]
+                    self.assertGreaterEqual(len(filenames), 10)
+                    last = filenames[-1]
+                    with zipfile.ZipFile(bad_archive, "w") as damaged:
+                        for entry in source.infolist():
+                            contents = source.read(entry)
+                            if entry.filename == last:
+                                self.assertGreater(len(contents), 0)
+                                contents = bytes([contents[0] ^ 1]) + contents[1:]
+                            damaged.writestr(entry, contents)
+                with self.assertRaisesRegex(ValueError, "pre-apply SHA-256"):
+                    transfer.apply(bad_archive, transfer.digest_file(bad_archive),
+                                   diff, base)
+                self.assertEqual(subprocess.check_output(
+                    ["git", "-C", str(tmp), "status", "--porcelain"],
+                    text=True).strip(), "")
+                for name in paths:
+                    self.assertFalse((tmp / name).exists(),
+                                     "No tracked payload may be created before full validation")
+                # A complete official candidate still applies unchanged.
                 transfer.apply(archive, archived_sha, diff, base)
                 self.assertEqual(transfer.diff_sha(), diff)
                 self.assertEqual(len(transfer.changes()), len(paths))

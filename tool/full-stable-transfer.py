@@ -192,6 +192,39 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
         require(len(entries) == len(expected_entries) and
                 {x.filename for x in entries} == expected_entries and
                 all(not x.is_dir() for x in entries), "Unexpected archive file scope")
+        # Phase 1: validate *all* payload digests and deletions without
+        # touching the writer's tracked worktree. The previous single loop
+        # could overwrite/delete early files before a later bad hash failed.
+        verified_total = 0
+        for item in planned:
+            name = checked_name(item["path"])
+            status = item.get("status")
+            require(status in ("A", "M", "D"), "Unknown candidate file status")
+            dest = ROOT / name
+            checked_disk(dest, missing=True)
+            if status == "D":
+                require(dest.is_file(), "Deleted path missing from base")
+                continue
+            require(type(item.get("size")) is int and
+                    0 <= item["size"] <= MAX_FILE and
+                    re.fullmatch(r"[a-f0-9]{64}", item.get("sha256", "")),
+                    "Invalid payload digest/length")
+            verified_total += item["size"]
+            require(verified_total <= MAX_TOTAL, "Candidate archive exceeds bounded scope")
+            member = source.getinfo("payload/" + name)
+            require(member.file_size == item["size"] and
+                    stat.S_IFMT(member.external_attr >> 16) != stat.S_IFLNK,
+                    "Payload size/link status mismatch")
+            verified_sha = hashlib.sha256()
+            with source.open(member) as verified_stream:
+                while chunk := verified_stream.read(1024 * 1024):
+                    verified_sha.update(chunk)
+            require(verified_sha.hexdigest() == item["sha256"],
+                    "Payload failed pre-apply SHA-256 verification: " + name)
+
+        # Phase 2: apply only after the entire candidate has been validated.
+        # Rehash each file during the copy as defense against changed ZIP
+        # contents; filesystem failures can still leave a partial checkout.
         total = 0
         for item in planned:
             name = checked_name(item["path"])
