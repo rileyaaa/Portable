@@ -1876,21 +1876,21 @@ class FullStableUpgradeTests(unittest.TestCase):
                 # DURING copy, and a replace fault AFTER the handle closes.
                 normal_require = transfer.require
                 def fail_during_staged_copy(condition, message):
-                    if message == "Payload failed per-file SHA-256 check":
+                    if message == "Prepared candidate payload changed since validation":
                         raise ValueError("synthetic staged copy fault")
                     return normal_require(condition, message)
                 with patch.object(transfer, "require",
                                   side_effect=fail_during_staged_copy):
                     with self.assertRaisesRegex(ValueError, "synthetic staged copy fault"):
                         transfer.apply(archive, archived_sha, diff, base)
-                self.assertEqual(list((tmp / "tool").rglob(".full-candidate-*")), [],
-                                 "Failed copy must close and unlink its temporary file")
+                self.assertEqual(list((tmp / "tmp").glob("full-writer-journal-*")), [],
+                                 "Failed staging must clean its private transaction directory")
                 with patch.object(transfer.os, "replace",
                                   side_effect=OSError("synthetic replace fault")):
                     with self.assertRaisesRegex(OSError, "synthetic replace fault"):
                         transfer.apply(archive, archived_sha, diff, base)
-                self.assertEqual(list((tmp / "tool").rglob(".full-candidate-*")), [],
-                                 "Failed replace must not leave a temporary payload")
+                self.assertEqual(list((tmp / "tmp").glob("full-writer-journal-*")), [],
+                                 "Failed replace must restore and remove the journal")
                 self.assertEqual(subprocess.check_output(
                     ["git", "-C", str(tmp), "status", "--porcelain"],
                     text=True).strip(), "")
@@ -1898,6 +1898,79 @@ class FullStableUpgradeTests(unittest.TestCase):
                                  b"original-binary-baseline\x00")
                 self.assertEqual(base_deleted.read_bytes(),
                                  b"original-deleted-baseline\x00")
+                # Fail on the THIRD rename: the first modified file is
+                # already backed up and replaced, but the first add fails.
+                # The rollback must restore that first modified file exactly.
+                original_replace = os.replace
+                moves = [0]
+                def fail_later_replace(src, dest):
+                    moves[0] += 1
+                    if moves[0] == 3:
+                        raise OSError("synthetic third-rename failure")
+                    return original_replace(src, dest)
+                with patch.object(transfer.os, "replace",
+                                  side_effect=fail_later_replace):
+                    with self.assertRaisesRegex(OSError, "third-rename failure"):
+                        transfer.apply(archive, archived_sha, diff, base)
+                self.assertGreaterEqual(moves[0], 4,
+                    "A rollback must actually rename the original back")
+                self.assertEqual(base_modified.read_bytes(),
+                                 b"original-binary-baseline\x00")
+                self.assertEqual(base_deleted.read_bytes(),
+                                 b"original-deleted-baseline\x00")
+                self.assertEqual(list((tmp / "tmp").glob("full-writer-journal-*")), [])
+                self.assertEqual(subprocess.check_output(
+                    ["git", "-C", str(tmp), "status", "--porcelain"],
+                    text=True).strip(), "")
+
+                # The final staged Git diff check occurs AFTER all files
+                # have been replaced. An incorrect diff must still restore
+                # A, M and D, including the index changed by git add -A.
+                with patch.object(transfer, "diff_sha", return_value="0" * 64):
+                    with self.assertRaisesRegex(ValueError, "Trusted writer Git patch differs"):
+                        transfer.apply(archive, archived_sha, diff, base)
+                self.assertEqual(base_modified.read_bytes(),
+                                 b"original-binary-baseline\x00")
+                self.assertEqual(base_deleted.read_bytes(),
+                                 b"original-deleted-baseline\x00")
+                for name in paths:
+                    if name != "tool/python/python315.dll":
+                        self.assertFalse((tmp / name).exists())
+                self.assertEqual(subprocess.check_output(
+                    ["git", "-C", str(tmp), "status", "--porcelain"],
+                    text=True).strip(), "")
+                self.assertEqual(list((tmp / "tmp").glob("full-writer-journal-*")), [])
+                self.assertFalse((tmp / "tool/node").exists(),
+                                 "Rollback must also remove new empty directories")
+                self.assertFalse((tmp / "tool/bin").exists())
+
+                # Simulate a second error DURING rollback: unlike an unsafe
+                # TemporaryDirectory teardown, the original backup must be
+                # retained for manual recovery, not deleted with the journal.
+                moves = [0]
+                def fail_rollback_replace(src, dest):
+                    moves[0] += 1
+                    if moves[0] in (3, 4):
+                        raise OSError("synthetic move/rollback fault")
+                    return original_replace(src, dest)
+                with patch.object(transfer.os, "replace",
+                                  side_effect=fail_rollback_replace):
+                    with self.assertRaisesRegex(RuntimeError, "originals preserved at"):
+                        transfer.apply(archive, archived_sha, diff, base)
+                preserved = list((tmp / "tmp").glob("full-writer-journal-*"))
+                self.assertEqual(len(preserved), 1)
+                original_backup = preserved[0] / "original-0"
+                self.assertTrue(original_backup.is_file(),
+                    "A failed rollback must preserve exact base bytes")
+                self.assertEqual(original_backup.read_bytes(),
+                                 b"original-binary-baseline\x00")
+                original_replace(original_backup, base_modified)
+                import shutil
+                shutil.rmtree(preserved[0])
+                self.assertEqual(subprocess.check_output(
+                    ["git", "-C", str(tmp), "status", "--porcelain"],
+                    text=True).strip(), "")
+
                 # The genuine candidate must still support ADD/MODIFY/DELETE.
                 transfer.apply(archive, archived_sha, diff, base)
                 self.assertEqual(base_modified.read_bytes(), b"payload 0\n")

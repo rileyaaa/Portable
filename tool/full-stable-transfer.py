@@ -283,72 +283,138 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
             require(verified_sha.hexdigest() == item["sha256"],
                     "Payload failed pre-apply SHA-256 verification: " + name)
 
-        # Phase 2: apply only after the entire candidate has been validated.
-        # Rehash each file during the copy as defense against changed ZIP
-        # contents; filesystem failures can still leave a partial checkout.
-        total = 0
-        for item in planned:
-            name = checked_name(item["path"])
-            status = item.get("status")
-            require(status in ("A", "M", "D"), "Unknown candidate file status")
-            dest = ROOT / name
-            checked_disk(dest, missing=True)
-            check_candidate_base_status(name, status, dest, tracked, tracked_folded)
-            if status == "D":
-                require(dest.is_file(), "Deleted path missing from base")
-                dest.unlink()
-                continue
-            require(isinstance(item.get("size"), int) and
-                    0 <= item["size"] <= MAX_FILE and
-                    re.fullmatch(r"[a-f0-9]{64}", item.get("sha256", "")),
-                    "Invalid payload digest/length")
-            total += item["size"]
-            require(total <= MAX_TOTAL, "Candidate archive exceeds bounded scope")
-            z = source.getinfo("payload/" + name)
-            require(z.file_size == item["size"] and
-                    stat.S_IFMT(z.external_attr >> 16) != stat.S_IFLNK,
-                    "Payload size/link status mismatch")
-            # Recheck the parent after mkdir; a reparse point introduced by
-            # another process must not silently redirect the temporary file.
-            checked_disk(dest.parent, missing=True)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            checked_disk(dest.parent)
-            temp_name: Path | None = None
+        # Phase 2a: stage ALL replacements in the package's ignored tmp
+        # before moving a single base file. The archive is read and hashed
+        # again, so a late decompression/disk failure leaves the base intact.
+        scratch = ROOT / "tmp"
+        checked_disk(scratch)
+        require(scratch.is_dir(), "Owned candidate transaction tmp is missing")
+        transaction = Path(tempfile.mkdtemp(prefix="full-writer-journal-", dir=scratch))
+        preserve_transaction = False
+        try:
+            checked_disk(transaction)
+            staged: dict[str, Path] = {}
+            total = 0
+            for index, item in enumerate(planned):
+                if item["status"] == "D":
+                    continue
+                name = item["path"]
+                source_info = source.getinfo("payload/" + name)
+                total += item["size"]
+                require(total <= MAX_TOTAL, "Candidate archive exceeds bounded scope")
+                pending = transaction / ("payload-" + str(index))
+                check = hashlib.sha256()
+                with pending.open("xb") as output, source.open(source_info) as payload:
+                    while block := payload.read(1024 * 1024):
+                        check.update(block)
+                        output.write(block)
+                require(check.hexdigest() == item["sha256"] and
+                        pending.stat().st_size == item["size"],
+                        "Prepared candidate payload changed since validation")
+                staged[name] = pending
+
+            # Phase 2b: original file bytes are moved to same-volume private
+            # backup names before replacing/deleting them. A failed later
+            # replace, staged Git comparison or LFS pointer check rolls back
+            # earlier changes. This is not power-loss/kill-safe or TOCTOU-free.
+            journal: list[tuple[str, Path, Path | None]] = []
+            created_dirs: set[Path] = set()
             try:
-                with tempfile.NamedTemporaryFile(
-                        dir=dest.parent, prefix=".full-candidate-", delete=False) as tmp:
-                    temp_name = Path(tmp.name)
-                    check = hashlib.sha256()
-                    with source.open(z) as src:
-                        while data := src.read(1024 * 1024):
-                            check.update(data)
-                            tmp.write(data)
-                    require(check.hexdigest() == item["sha256"],
-                            "Payload failed per-file SHA-256 check")
-                # On Windows unlinking an open NamedTemporaryFile(delete=False)
-                # may fail with PermissionError. Close before replace/cleanup.
-                checked_disk(dest.parent)
-                os.replace(temp_name, dest)
-            except BaseException:
-                if temp_name is not None:
+                for index, item in enumerate(planned):
+                    name = checked_name(item["path"])
+                    status = item["status"]
+                    dest = ROOT / name
+                    checked_disk(dest, missing=True)
+                    check_candidate_base_status(name, status, dest,
+                                                tracked, tracked_folded)
+                    if status != "D":
+                        checked_disk(dest.parent, missing=True)
+                        missing_dirs = []
+                        cursor = dest.parent
+                        while not cursor.exists():
+                            missing_dirs.append(cursor)
+                            cursor = cursor.parent
+                        for directory in reversed(missing_dirs):
+                            checked_disk(directory, missing=True)
+                            directory.mkdir()
+                            created_dirs.add(directory)
+                        checked_disk(dest.parent)
+
+                    if status != "A":
+                        # Moving the original (rather than copying it) retains
+                        # exact binary bytes and is an atomic rename on the
+                        # normal package volume. Keep it until all Git gates
+                        # have succeeded.
+                        saved = transaction / ("original-" + str(index))
+                        os.replace(dest, saved)
+                        journal.append((status, dest, saved))
+                    else:
+                        # Record a potential addition BEFORE replace: an
+                        # exception immediately after the rename must also
+                        # remove its untracked result during rollback.
+                        journal.append((status, dest, None))
+                    if status != "D":
+                        os.replace(staged[name], dest)
+
+                git("add", "-A", "--", "tool")
+                actual = changes()
+                require(actual == planned,
+                        "Candidate file identities differ from read-only Job")
+                require(diff_sha() == expected_diff,
+                        "Trusted writer Git patch differs")
+                # Existing .gitattributes creates Git LFS pointer objects for
+                # Chromium binaries; verify those before discarding backups.
+                for item in planned:
+                    name = item["path"]
+                    if name.startswith("tool/automation/browsers/") and item["status"] != "D":
+                        blob = git("show", ":" + name)
+                        match = re.search(r"(?m)^oid sha256:([0-9a-f]{64})$", blob)
+                        require("version https://git-lfs.github.com/spec/v1" in blob and
+                                match and match.group(1) == item["sha256"],
+                                "Chromium LFS pointer missing or mismatched")
+            except BaseException as failure:
+                errors: list[str] = []
+                for status, dest, original in reversed(journal):
                     try:
-                        temp_name.unlink(missing_ok=True)
-                    except OSError:
-                        pass  # Preserve the original failure; job fails closed.
+                        checked_disk(dest.parent)
+                        if original is not None:
+                            checked_disk(original)
+                            os.replace(original, dest)
+                        else:
+                            # A path was absent in the clean checkout. Never
+                            # follow a link or delete unexpected host data.
+                            checked_disk(dest, missing=True)
+                            if dest.exists():
+                                dest.unlink()
+                    except BaseException as rollback_error:
+                        errors.append(str(dest) + ": " + str(rollback_error))
+                for directory in sorted(created_dirs, key=lambda p: len(p.parts),
+                                        reverse=True):
+                    try:
+                        checked_disk(directory)
+                        directory.rmdir()  # Only our own empty new directories
+                    except BaseException as rollback_error:
+                        errors.append(str(directory) + ": " + str(rollback_error))
+                try:
+                    # git add may have staged part of the tree before failing;
+                    # restore the clean base index, not the candidate index.
+                    git("reset", "--quiet", "HEAD", "--", "tool")
+                except BaseException as rollback_error:
+                    errors.append("Git index: " + str(rollback_error))
+                if errors:
+                    # On a failed restore, NEVER destroy the only surviving
+                    # originals in the transaction journal. Keep an auditable
+                    # path in tmp so a maintainer can recover them manually.
+                    preserve_transaction = True
+                    raise RuntimeError(
+                        "Candidate apply failed and rollback was incomplete; " +
+                        "originals preserved at " + str(transaction) + ": " +
+                        "; ".join(errors)) from failure
                 raise
-    git("add", "-A", "--", "tool")
-    actual = changes()
-    require(actual == planned, "Candidate file identities differ from read-only Job")
-    require(diff_sha() == expected_diff, "Trusted writer Git patch differs")
-    # Existing .gitattributes makes bundled Chromium paths Git LFS pointers.
-    for item in planned:
-        name = item["path"]
-        if name.startswith("tool/automation/browsers/") and item["status"] != "D":
-            blob = git("show", ":" + name)
-            match = re.search(r"(?m)^oid sha256:([0-9a-f]{64})$", blob)
-            require("version https://git-lfs.github.com/spec/v1" in blob and
-                    match and match.group(1) == item["sha256"],
-                    "Chromium LFS pointer missing or mismatched")
+        finally:
+            if not preserve_transaction:
+                checked_disk(transaction)
+                shutil.rmtree(transaction)
     print("FULL_STABLE_WRITER_MATCH=PASS")
     print("FULL_STABLE_DIFF_SHA256=" + expected_diff)
 
@@ -374,6 +440,6 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except (ValueError, OSError, KeyError, zipfile.BadZipFile,
+    except (ValueError, OSError, KeyError, RuntimeError, zipfile.BadZipFile,
             subprocess.CalledProcessError) as error:
         raise SystemExit("FULL_STABLE_TRANSFER_FAILED: " + str(error))

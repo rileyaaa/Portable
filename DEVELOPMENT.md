@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-05：候选工具写入器增加可恢复事务与中途失败回滚
+
+- 原 full-stable-transfer.py 已做整包预验证，但在第二阶段逐项 os.replace/unlink 时，若后续复制、替换、Git diff 或 Chromium LFS pointer 验证失败，之前更新的文件仍停留在工作树。GitHub Action 不再推送并不等于文件系统已恢复。特别是简单调用 git restore 可能触发 LFS smudge/网络及其他 Git 过滤程序，不适合当作无条件的原始字节恢复措施。
+- 写入流程进一步拆分为先在 ROOT/tmp 的私有 `full-writer-journal-*` 目录完整准备**所有**候选文件，重新核验逐文件 SHA-256 与大小，再开始第一次修改 tool/。对 M/D，将原文件用同卷 os.replace 原样移动到事务备份；A 在替换前记入日志。应用全部文件后才执行 git add、精确 changed-files/Git binary diff SHA 与 Chromium LFS pointer 审查；若任一阶段失败，按相反顺序删除本次新增文件、把 M/D 原始字节移回，并 reset 受控 Git 索引。对本次创建的空目录也做撤销。
+- 必须区分**回滚完整**与**回滚失败**：回滚完整时清理私有事务目录；如备份恢复失败，绝不销毁仍保存原始文件的事务目录，而是报告 `originals preserved at` 的具体包内 tmp 路径、明确要求人工介入，不把失败伪装成成功回滚。
+- 离线 Git 临时仓库测试覆盖混合新增/修改/删除，候选第三次重命名失败（首个旧文件已被替换）、全部文件写入后 staged diff 校验失败、备份重命名本身失败及**回滚时再次失败**。预期完整回滚时原始字节、Git 索引、文件/临时目录均恢复；再次失败时故意保留可恢复原始备份，测试人工恢复后状态正常。仍保持既有恶意候选 ZIP/伪造状态/符号链接拒绝的测试。
+- 此方案改善普通 Python/Windows 可捕获异常的补偿恢复，**不是多个文件的原子提交**：断电、kill -9/TerminateProcess、文件句柄占用、恶意并发修改或跨卷/文件系统限制仍可能造成部分结果；需另外设计启动时未完成事务的恢复，以及 Windows 11 x64 原生强制终止/文件锁/长路径测试。未运行 AC、未改 main/Release/YOLO。
+
 ## 2026-11-05：全量候选 ZIP 的输入与输出限制在包内受控 tmp
 
 - `full-stable-transfer.py pack --archive` 之前只检查输出父目录存在及目标不存在，未确认目标位于当前仓库，也未拒绝指向宿主目录的 junction/symlink；写入任务 `apply --archive` 在读取时也没有对传入 ZIP 的位置及硬链接做完整约束。即使正常 03 workflow 总是使用 checkout/tmp/...，独立 CLI 仍可能读取/写入包外或经链接映射的路径。
