@@ -39,8 +39,8 @@ PREFIXES = (
 )
 BAD = re.compile(r'[<>:"\\|?*\x00-\x1f]')
 WINDOWS_RESERVED = re.compile(
-    r"(?i)(?:CON|PRN|AUX|NUL|CONIN\\$|CONOUT\\$|CLOCK\\$|"
-    r"COM[1-9¹²³]|LPT[1-9¹²³])(?:\\..*)?"
+    r"(?i)(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|CLOCK\$|"
+    r"COM[1-9¹²³]|LPT[1-9¹²³])(?:\..*)?"
 )
 
 
