@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-05：修复 dangling NTFS junction 对“路径不存在”检查的绕过（PR #31）
+
+- 审核发现 `full-stable-transfer.py` 的 `checked_disk()` 先用 `exists()` / `is_symlink()` 判断路径是否存在；`tool/update-tools.py` 的 `bounded()` 和 Node/npm 目标目录检查也采用类似模式。在指向已不存在目标的 NTFS junction 等重解析点情况下，两者可能同时返回 False，但 `lstat()` 仍能看到重解析点本身。把它当作允许创建的空目录，无法保证候选数据局限在包内。
+- 以上入口改为 **先 `lstat()`，仅捕获 `FileNotFoundError` 视为真正不存在**；读取条目后继续检查符号链接、Windows `FILE_ATTRIBUTE_REPARSE_POINT`、文件类型和硬链接，拒绝重解析路径。Node/npm 候选目标存在性检查亦直接 `lstat()`，避免漏掉失效 junction；普通尚未创建的包内目录仍可正常使用。
+- 通过隔离的 Python 3.13 临时目录实验模拟重解析点元数据：旧检查会错误放行，新检查能拒绝，并确认普通缺失路径兼容。新增完整仓库 `test_full_stable_upgrade.py` / `test_tool_updates.py` 的可重复、无需管理员权限的合成回归。
+- 本轮没有运行 GitHub Actions 或完整仓库单测，也没有执行 Windows 11 原生 NTFS junction、目录替换竞态、文件锁或断电验收。剩余 OS 句柄级 TOCTOU 风险仍未解除；`main`、正式 Release、二进制、YOLO 不变。
+
 ## 2026-11-05：候选 ZIP 的 `..` 路径穿越与 Windows 设备路径拒绝（PR #31）
 
 - 复核发现 `Path.absolute()` 默认并不消除 `..`，而 `Path.is_relative_to()` 仅按路径构造进行词法判断。原先 `tmp/../../outside.zip` 可被误认为处于包内 `tmp/`，`checked_disk()` 也会因为相同的词法前缀漏洞接受 `ROOT/tmp/../../...`。本地 Python 3.13 临时目录实验已证明同一路径确实命中包外文件。

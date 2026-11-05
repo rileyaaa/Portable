@@ -1699,6 +1699,33 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertLess(code.index('vendor = pip_launch / "bin"'),
                         code.index('replace_tree(staged_python, TOOL / "python", temp)'))
 
+    def test_writer_rejects_dangling_windows_junction_metadata(self):
+        # Simulate a Windows junction whose target is missing. On Windows,
+        # Path.exists() and is_symlink() can both report False even though
+        # lstat() still exposes the reparse directory entry. No admin rights
+        # or real NTFS junction are required to exercise this fail-closed path.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "checkout"
+            (root / "tmp").mkdir(parents=True)
+            fake = root / "tmp/dangling-junction"
+            original_lstat = Path.lstat
+            synthetic_reparse = Mock(
+                st_mode=transfer.stat.S_IFDIR, st_file_attributes=0x400,
+                st_nlink=1)
+            def controlled_lstat(path, *args, **kwargs):
+                if path == fake:
+                    return synthetic_reparse
+                return original_lstat(path, *args, **kwargs)
+            with patch.object(transfer, "ROOT", root), \
+                 patch.object(Path, "lstat", new=controlled_lstat):
+                self.assertFalse(fake.exists())
+                self.assertFalse(fake.is_symlink())
+                with self.assertRaisesRegex(ValueError, "Refuse linked input/output"):
+                    transfer.checked_disk(fake / "payload.zip", missing=True)
+                # A genuinely missing, package-owned directory is still
+                # allowed when the caller explicitly requests missing=True.
+                transfer.checked_disk(root / "tmp/new-dir/payload.zip", missing=True)
+
     def test_writer_candidate_archive_path_is_owned_and_not_linked(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d) / "checkout"

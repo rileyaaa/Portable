@@ -64,6 +64,31 @@ class ToolUpdateTests(unittest.TestCase):
         pinned.start()
         self.addCleanup(pinned.stop)
 
+    def test_bounded_rejects_dangling_windows_reparse_metadata(self):
+        # A target-less junction can evade exists()/is_symlink(). Prove
+        # bounded() lstat's the entry itself before approving missing paths.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / 'checkout'
+            (root / 'tmp').mkdir(parents=True)
+            fake = root / 'tmp/dangling-junction'
+            original_lstat = Path.lstat
+            synthetic_reparse = type('WindowsReparse', (), {
+                'st_mode': stat.S_IFDIR, 'st_file_attributes': 0x400,
+                'st_nlink': 1,
+            })()
+            def controlled_lstat(path, *args, **kwargs):
+                if path == fake:
+                    return synthetic_reparse
+                return original_lstat(path, *args, **kwargs)
+            with patch.object(tools, 'ROOT', root), \
+                 patch.object(Path, 'lstat', new=controlled_lstat):
+                self.assertFalse(fake.exists())
+                self.assertFalse(fake.is_symlink())
+                with self.assertRaisesRegex(ValueError, 'Reparse/symlink refused'):
+                    tools.bounded(fake / 'payload.zip')
+                good = root / 'tmp/legitimate-new/payload.zip'
+                self.assertEqual(tools.bounded(good), good)
+
     def test_update_download_redirects_are_checked_before_any_request(self):
         good = (
             ('https://github.com/owner/repo/releases/download/v1/release.zip',

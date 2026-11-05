@@ -104,8 +104,13 @@ def bounded(path: Path) -> Path:
     cursor = ROOT
     for segment in relative.parts:
         cursor /= segment
-        if cursor.exists() or cursor.is_symlink():
-            ordinary(cursor, directory=cursor.is_dir())
+        # exists()/is_symlink() can both be false for a dangling Windows
+        # junction. lstat() inspects the reparse entry without following it.
+        try:
+            info = cursor.lstat()
+        except FileNotFoundError:
+            continue
+        ordinary(cursor, directory=stat.S_ISDIR(info.st_mode))
     return actual
 
 
@@ -580,7 +585,11 @@ def prepare_row(row: dict, temp: Path) -> None:
                                 relative)
                     require(count > 0, 'Existing pinned Node dependency is empty: ' + relative)
                     target_dir = staging.joinpath(*PurePosixPath(relative).parts)
-                    if target_dir.exists() or target_dir.is_symlink():
+                    try:
+                        target_dir.lstat()
+                    except FileNotFoundError:
+                        pass
+                    else:
                         require(relative == 'node_modules/npm',
                                 'Unexpected upstream Corepack conflict')
                         # The official Node ZIP can bundle npm 11.x. Its file

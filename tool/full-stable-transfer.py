@@ -87,10 +87,14 @@ def checked_disk(path: Path, *, missing: bool = False) -> None:
     cursor = ROOT
     for component in path.relative_to(ROOT).parts:
         cursor /= component
-        if not cursor.exists() and not cursor.is_symlink():
+        # A dangling Windows junction can report exists()==False and
+        # is_symlink()==False while lstat() still exposes FILE_ATTRIBUTE_REPARSE_POINT.
+        # Inspect the directory entry itself before treating it as missing.
+        try:
+            st = cursor.lstat()
+        except FileNotFoundError:
             require(missing, "Missing candidate payload: " + str(cursor))
             continue
-        st = cursor.lstat()
         require(not stat.S_ISLNK(st.st_mode) and
                 not (getattr(st, "st_file_attributes", 0) & 0x400),
                 "Refuse linked input/output: " + str(cursor))
