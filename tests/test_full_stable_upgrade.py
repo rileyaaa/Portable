@@ -1702,7 +1702,13 @@ class FullStableUpgradeTests(unittest.TestCase):
     def test_writer_filenames_allow_only_owned_tool_files(self):
         for name in (".github/workflows/02.yml", "codex.exe", "tool/python/../evil",
                      "tool/bin/evil.exe", "tool/bin/other.ps1", "tool/python/x.pyc",
-                     "tool/automation/browsers/../../evil", "tool/foo.json"):
+                     "tool/automation/browsers/../../evil", "tool/foo.json",
+                     "tool/python/CON/report.txt", "tool/python/nul.py",
+                     "tool/node/node_modules/npm/aux.txt",
+                     "tool/node/node_modules/npm/COM1.js",
+                     "tool/node/node_modules/npm/lpt³.log",
+                     "tool/python/CONOUT$/data", "tool/python/CLOCK$",
+                     "tool/python/.git/config", "tool/node/node_modules/npm/.GIT/HEAD"):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 transfer.checked_name(name)
         self.assertEqual(transfer.checked_name("tool/python/python315.dll"),

@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：全量升级候选文件名拒绝 Windows 设备名与嵌套 Git 元数据
+
+- full-stable-transfer.py 的 checked_name() 原来限制 `tool/` 范围及特殊符号，但缺少对路径**每一段**的 Windows 设备名检查和嵌套 `.git` 的拒绝。只读 Linux/Git 侧可能允许候选 ZIP 中包含 `CON`、`NUL`、`COM1`、`LPT³`、`.git` 等名字，最终 Windows 写入端解析这些名字可能触发设备流或 Git 工作树语义歧义。
+- 在既有范围和安全字符限制之后逐段拒绝 DOS 保留设备名（包括带扩展名的大小写变种、COM/LPT 的 Unicode 上标数字）、CONIN$/CONOUT$/CLOCK$ 及大小写不敏感 `.git`，防止生产者与写入端因操作系统差异形成绕过；不改变正常 Python/npm/Chromium 文件内容。测试覆盖正向既有台账文件及多种保留名/嵌套 Git 目录的拒绝。
+- 仅提交源码和离线测试合同；未对用户仓库执行真实候选打包或应用，也未启动 Windows Actions、修改 main、YOLO、正式 Release。
+
 ## 2026-11-05：官方下载目标在网络请求前防御目录链接与失败残留
 
 - 继 ZIP/TAR 解压前阻断 symlink/junction 后复核 `full-stable-prepare.py`，发现共用 `download()` 仍在未经安全验证的 `target.parent` 上执行 `mkdir(parents=True)`，随后以 `target.open('xb')` 写入。若目的父目录本身是指向包外的链接，网络内容可能在 SHA-256/integrity 校验之前被写出；此外文件过大、摘要不符或中途异常时，之前创建的目标文件可能残留。

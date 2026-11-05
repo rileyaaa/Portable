@@ -57,6 +57,16 @@ def checked_name(path: str) -> str:
             "Unexpected tool change scope: " + path)
     require(not path.endswith((".pyc", ".pyo")) and
             "__pycache__/" not in path, "Generated Python cache must not be tracked")
+    # The producer can stage on a different OS, but the writer checks out on
+    # Windows. Reserved DOS device basenames can address device streams, and
+    # an embedded .git component can change Git's meaning of a candidate tree.
+    # Validate each component, not only the complete slash-delimited filename.
+    for part in path.split("/"):
+        require(part.casefold() != ".git" and
+                re.fullmatch(
+                    r"(?i)(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|CLOCK\$|"
+                    r"COM[1-9¹²³]|LPT[1-9¹²³])(?:\..*)?", part) is None,
+                "Windows reserved candidate component: " + part)
     return path
 
 
