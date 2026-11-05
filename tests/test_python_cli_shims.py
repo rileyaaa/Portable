@@ -204,6 +204,29 @@ class PythonCliShimTests(unittest.TestCase):
         self.assertLess(source.index("os.environ.update(clean)"),
                         source.index('if requested == "vba_extract":'))
 
+    def test_generated_cmd_scrubs_clr_profiler_injection_before_powershell(self):
+        # Microsoft documents that COR_ENABLE_PROFILING=1 can cause native
+        # profiler code to load while Windows PowerShell initializes the CLR,
+        # before any -Command preflight runs.
+        generated = self.module.render_cmd("pip").decode("ascii")
+        controls = (
+            'set "COR_ENABLE_PROFILING=0"',
+            'set "COR_PROFILER="', 'set "COR_PROFILER_PATH="',
+            'set "CORECLR_ENABLE_PROFILING=0"',
+            'set "CORECLR_PROFILER="',
+            'set "DOTNET_ENABLE_PROFILING=0"',
+            'set "DOTNET_STARTUP_HOOKS="',
+            'set "DOTNET_ADDITIONAL_DEPS="',
+            'set "DOTNET_SHARED_STORE="',
+        )
+        for control in controls:
+            self.assertIn(control + "\r\n", generated)
+            self.assertLess(generated.index(control),
+                            generated.index('"%_CODEX_NATIVE_POWERSHELL%" -NoLogo'))
+        self.assertIn('if not "%_CODEX_SYSTEM_BIN:~1,2%"==":\\" exit /b 3', generated)
+        self.assertLess(generated.index('if not "%_CODEX_SYSTEM_BIN:~1,2%"'),
+                        generated.index('"%_CODEX_NATIVE_POWERSHELL%" -NoLogo'))
+
     def test_generated_python_cmds_use_native_system_dir_before_powershell(self):
         # CMD's __APPDIR__ fallback is evaluated only after removing an
         # inherited value with the same name. Fail closed unless the running
@@ -215,7 +238,11 @@ class PythonCliShimTests(unittest.TestCase):
             'set "__APPDIR__="\r\n'
             'set "_CODEX_SYSTEM_BIN=%__APPDIR__%"\r\n'))
         for required in (
+            'if not "%_CODEX_SYSTEM_BIN:~1,2%"==":\\" exit /b 3',
             'if /i not "%_CODEX_SYSTEM_BIN:~-10%"=="\\System32\\" exit /b 3',
+            'set "COR_ENABLE_PROFILING=0"',
+            'set "CORECLR_ENABLE_PROFILING=0"',
+            'set "DOTNET_ENABLE_PROFILING=0"',
             'if not exist "%_CODEX_NATIVE_POWERSHELL%" exit /b 3',
             'for %%I in ("%_CODEX_SYSTEM_BIN%..") do set "SystemRoot=%%~fI"',
             'set "ComSpec=%_CODEX_SYSTEM_BIN%cmd.exe"',
@@ -248,6 +275,7 @@ class PythonCliShimTests(unittest.TestCase):
             '@echo off\r\nsetlocal DisableDelayedExpansion\r\n'
             'set "__APPDIR__="\r\n'
             'set "_CODEX_SYSTEM_BIN=%__APPDIR__%"\r\n'
+            'if not "%_CODEX_SYSTEM_BIN:~1,2%"==":\\" exit /b 3\r\n'
             'if /i not "%_CODEX_SYSTEM_BIN:~-10%"=="\\System32\\" exit /b 3\r\n'
         )
         self.assertTrue(generated.startswith(expected))
