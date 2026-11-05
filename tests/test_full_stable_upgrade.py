@@ -1401,6 +1401,52 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertEqual(stage.safe_path("chrome-win64/x64/chrome.exe"),
                          ("chrome-win64", "x64", "chrome.exe"))
 
+    def test_archive_extraction_rejects_redirected_destination_before_writing(self):
+        # The old extractors checked plain_tree only after writing payloads.
+        # An existing junction or symlink to a host directory could therefore
+        # receive bytes before the final safety check raised an exception.
+        with tempfile.TemporaryDirectory() as directory:
+            scratch = Path(directory)
+            foreign = scratch / "host-outside"
+            foreign.mkdir()
+            z = scratch / "payload.zip"
+            with zipfile.ZipFile(z, "w") as archive:
+                archive.writestr("escaped.txt", b"sentinel")
+            tgz = scratch / "payload.tgz"
+            with tarfile.open(tgz, "w:gz") as archive:
+                member = tarfile.TarInfo("package/escaped.txt")
+                member.size = len(b"sentinel")
+                archive.addfile(member, io.BytesIO(b"sentinel"))
+            blocked = scratch / "not-a-directory"
+            blocked.write_text("unchanged", encoding="utf-8")
+            for extractor, archive in ((stage.unzip_checked, z),
+                                       (stage.untar_checked, tgz)):
+                with self.subTest(kind=extractor.__name__, destination="regular-file"):
+                    with self.assertRaisesRegex(ValueError, "non-directory ancestor"):
+                        extractor(archive, blocked)
+                    self.assertEqual(blocked.read_text(encoding="utf-8"), "unchanged")
+            link = scratch / "redirected"
+            try:
+                os.symlink(foreign, link, target_is_directory=True)
+            except OSError:
+                pass  # Windows runners may disallow symlink creation.
+            else:
+                for extractor, archive in ((stage.unzip_checked, z),
+                                           (stage.untar_checked, tgz)):
+                    with self.subTest(kind=extractor.__name__, destination="symlink"):
+                        with self.assertRaisesRegex(ValueError, "symlink or reparse"):
+                            extractor(archive, link)
+                        self.assertFalse((foreign / "escaped.txt").exists(),
+                                         "Refuse redirected destinations BEFORE any file write")
+                nested = scratch / "nested"
+                nested.mkdir()
+                (nested / "inner").symlink_to(foreign, target_is_directory=True)
+                with zipfile.ZipFile(z, "w") as archive:
+                    archive.writestr("inner/escaped.txt", b"sentinel")
+                with self.assertRaisesRegex(ValueError, "symlink|reparse"):
+                    stage.unzip_checked(z, nested)
+                self.assertFalse((foreign / "escaped.txt").exists())
+
     def test_unzip_rejects_traversal_symlink_and_colliding_case(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

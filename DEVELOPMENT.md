@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-05：ZIP/TAR 解压拒绝在链接目标目录写入前越界
+
+- 复核 full-stable-prepare.py 的 unzip_checked() / untar_checked() 发现：原代码先 destination.mkdir()，再往各项 target.open('xb') 写入，最后才 plain_tree(destination) 拒绝 reparse/symlink。若目的目录或其祖先原本已经是符号链接/junction，包外目录可能在事后检查之前被修改，即使最终抛错也无法撤销写入。
+- 增加 guard_archive_destination()：解压前逐层 lstat 验证目标目录及祖先，只接受普通目录，拒绝符号链接、Windows ReparsePoint 与文件型祖先；在目标目录创建后及每个成员的父目录创建前后重复检查，且提前 plain_tree(destination) 拒绝已有链接文件。ZIP/TAR 仍保留原成员名、特殊文件/大小、重复名称、硬链接和解压后整树检查。
+- 离线回归包括目标路径占用普通文件、链接指向外部目录、包内嵌套链接目录，确认在拒绝后外部 sentinel 文件尚未产生。注意这些都是**运行前和写入前的最佳努力检查**，无法对有权限的并发恶意进程提供原子性的无 TOCTOU 安全承诺；最终严格隔离仍需 Windows 原生句柄级设计和真实文件系统回归。
+- 未执行浏览器/设备、实际外部解压、联网下载和 GitHub Actions；未修改 YOLO、main、Release。
+
 ## 2026-11-05：全量更新器 Windows HOME、ADS 和测试兼容性补正
 
 - 候选 npm 环境原来按 ROOT 导出 Windows HOMEDRIVE/HOMEPATH，然而 npm_env(temp) 会将 HOME/USERPROFILE 重新指向 ROOT/tmp 中的临时 npm-home。子进程由不同变量看到不同用户目录，可能发生无意的配置或缓存回退。改为在所有受控环境覆盖后，从最终 HOME 重新生成 HOMEDRIVE/HOMEPATH。

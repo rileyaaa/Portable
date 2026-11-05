@@ -185,9 +185,33 @@ def download(url: str, target: Path, *, expected: str | None = None,
     return {"url": url, "sha256": digest, "size": total}
 
 
+def guard_archive_destination(directory: Path) -> None:
+    """Reject redirecting directory ancestors before any extraction write.
+
+    A post-extraction plain_tree check is too late if the destination is a
+    junction/symlink to a host directory. Concurrent replacement still needs
+    native handle-based extraction, so do not treat this as a TOCTOU fix.
+    """
+    directory = Path(directory).absolute()
+    require(".." not in directory.parts, "Archive destination contains traversal")
+    for ancestor in (*reversed(directory.parents), directory):
+        try:
+            info = ancestor.lstat()
+        except FileNotFoundError:
+            continue
+        require(not stat.S_ISLNK(info.st_mode) and
+                not (getattr(info, "st_file_attributes", 0) & 0x400),
+                "Unsafe archive destination symlink or reparse point")
+        require(stat.S_ISDIR(info.st_mode),
+                "Archive destination contains non-directory ancestor")
+
+
 def unzip_checked(source: Path, destination: Path, *, prefix: str = "",
                   max_total: int = MAX_BYTES) -> None:
+    guard_archive_destination(destination)
     destination.mkdir(parents=True, exist_ok=True)
+    guard_archive_destination(destination)
+    plain_tree(destination)
     names: set[str] = set()
     total = 0
     with zipfile.ZipFile(source) as archive:
@@ -212,7 +236,9 @@ def unzip_checked(source: Path, destination: Path, *, prefix: str = "",
             entries.append((item, parts))
         for item, parts in entries:
             target = destination.joinpath(*parts)
+            guard_archive_destination(target.parent)
             target.parent.mkdir(parents=True, exist_ok=True)
+            guard_archive_destination(target.parent)
             with archive.open(item) as incoming, target.open("xb") as outgoing:
                 shutil.copyfileobj(incoming, outgoing, 1024 * 1024)
     plain_tree(destination)
@@ -220,7 +246,10 @@ def unzip_checked(source: Path, destination: Path, *, prefix: str = "",
 
 def untar_checked(source: Path, destination: Path, *, prefix: str = "package",
                   max_total: int = 300 * 1024 * 1024) -> None:
+    guard_archive_destination(destination)
     destination.mkdir(parents=True, exist_ok=True)
+    guard_archive_destination(destination)
+    plain_tree(destination)
     total = 0
     names: set[str] = set()
     with tarfile.open(source, "r:gz") as archive:
@@ -245,7 +274,9 @@ def untar_checked(source: Path, destination: Path, *, prefix: str = "package",
             entries.append((member, rest))
         for member, parts in entries:
             target = destination.joinpath(*parts)
+            guard_archive_destination(target.parent)
             target.parent.mkdir(parents=True, exist_ok=True)
+            guard_archive_destination(target.parent)
             with archive.extractfile(member) as incoming, target.open("xb") as out:
                 require(incoming is not None, "Missing tar stream")
                 shutil.copyfileobj(incoming, out, 1024 * 1024)
