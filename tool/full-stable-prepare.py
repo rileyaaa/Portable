@@ -66,6 +66,22 @@ def require(value: bool, why: str) -> None:
         raise ValueError(why)
 
 
+def shared_upgrade_lock():
+    """Reuse the full-transfer kernel lock, including the same lock file.
+
+    Load an exact reviewed sibling, not a module from host PYTHONPATH.
+    ROOT is passed at call time to preserve isolation of multiple checkouts.
+    """
+    source = Path(__file__).resolve().with_name("full-stable-transfer.py")
+    spec = importlib.util.spec_from_file_location("portable_shared_transfer_lock", source)
+    require(spec is not None and spec.loader is not None,
+            "Missing reviewed full-transfer lock implementation")
+    transfer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(transfer)
+    transfer.ROOT = ROOT
+    return transfer.exclusive_transfer_lock()
+
+
 class InvalidJsonPayload(ValueError):
     """A downloaded/configured JSON file could not be decoded safely."""
 
@@ -1590,61 +1606,62 @@ def prepare(plan: dict) -> None:
     scratch = ROOT / "tmp"
     require(not scratch.is_symlink(), "Refuse linked update scratch")
     scratch.mkdir(exist_ok=True)
-    evidence: dict = {
-        "schema": 1,
-        "platform": "win32-x64",
-        "source": "trusted official HTTPS release and package archives",
-        "candidatePolicy": "latest stable across supported major versions",
-        "plan_sha256": sha(PLAN)
-    }
-    with tempfile.TemporaryDirectory(prefix="full-stable-", dir=scratch) as name:
-        temp = Path(name)
-        # PyMuPDF 2.x requires ONNX Runtime: check CPython 3.15 official wheel
-        # compatibility before downloading npm, browsers or Python archives.
-        preflight_python315_onnxruntime(temp, evidence)
-        verify_pdf_compatibility_exception(plan, evidence)
-        # Detect npm/Playwright configuration and lock errors before redoing
-        # three minutes of already native-verified CPython 3.15 wheel work.
-        # Defer the large Chromium ZIP until all smaller candidates pass.
-        print("FULL_STABLE_PHASE_BEGIN=node_npm_corepack", flush=True)
-        stage_npm(plan, temp, evidence)
-        print("FULL_STABLE_PHASE_END=node_npm_corepack;status=PASS", flush=True)
-        # Run the same real test that follows the full upgraded Node runtime,
-        # before Playwright, CPython and the large Chromium ZIP are downloaded.
-        print("FULL_STABLE_PHASE_BEGIN=npm12_portable_regressions", flush=True)
-        verify_staged_portable_npm(ROOT)
-        print("FULL_STABLE_PHASE_END=npm12_portable_regressions;status=PASS", flush=True)
-        print("FULL_STABLE_PHASE_BEGIN=playwright_mcp", flush=True)
-        version, revision = stage_playwright(plan, temp, evidence)
-        print("FULL_STABLE_PHASE_END=playwright_mcp;status=PASS", flush=True)
-        print("FULL_STABLE_PHASE_BEGIN=python315_dependencies", flush=True)
-        staged_python, resolved = stage_python(plan, temp, evidence)
-        print("FULL_STABLE_PHASE_END=python315_dependencies;status=PASS", flush=True)
-        print("FULL_STABLE_PHASE_BEGIN=optional_python_manifests", flush=True)
-        python_manifests(temp, resolved, evidence,
-                         staged_site=staged_python / "Lib/site-packages")
-        print("FULL_STABLE_PHASE_END=optional_python_manifests;status=PASS", flush=True)
-        print("FULL_STABLE_PHASE_BEGIN=staged_python_smoke", flush=True)
-        smoke_staged_python(staged_python, evidence["pdf_compatibility"])
-        print("FULL_STABLE_PHASE_END=staged_python_smoke;status=PASS", flush=True)
-        print("FULL_STABLE_PHASE_BEGIN=7zip", flush=True)
-        stage_7zip(plan, temp, evidence)
-        print("FULL_STABLE_PHASE_END=7zip;status=PASS", flush=True)
-        print("FULL_STABLE_PHASE_BEGIN=chromium_payload", flush=True)
-        stage_browser(temp, version, revision, evidence)
-        print("FULL_STABLE_PHASE_END=chromium_payload;status=PASS", flush=True)
-        replace_tree(staged_python, TOOL / "python", temp)
-        # Never load DLLs for the replaced Python from the trusted orchestrator.
-        new_python = TOOL / "python/python.exe"
-        run(new_python, "-E", "-s", "-B", "-m", "pip", "--version")
-        run(new_python, "-E", "-s", "-B", "-m", "PyInstaller", "--version")
-        run(new_python, "-E", "-s", "-B", TOOL / "refresh-python-cli-shims.py")
-    update_version_inventory(plan, evidence)
-    write_json(TOOL / "full-stable-evidence.json", evidence)
-    print("FULL_STABLE_CANDIDATE_STAGED=PASS")
-    print("FULL_STABLE_PYTHON=3.15.2")
-    print("FULL_STABLE_NODE=" + target(plan, "node")["latestStable"])
-    print("FULL_STABLE_BROWSER=" + evidence["playwright"]["chromiumVersion"])
+    with shared_upgrade_lock():
+        evidence: dict = {
+            "schema": 1,
+            "platform": "win32-x64",
+            "source": "trusted official HTTPS release and package archives",
+            "candidatePolicy": "latest stable across supported major versions",
+            "plan_sha256": sha(PLAN)
+        }
+        with tempfile.TemporaryDirectory(prefix="full-stable-", dir=scratch) as name:
+            temp = Path(name)
+            # PyMuPDF 2.x requires ONNX Runtime: check CPython 3.15 official wheel
+            # compatibility before downloading npm, browsers or Python archives.
+            preflight_python315_onnxruntime(temp, evidence)
+            verify_pdf_compatibility_exception(plan, evidence)
+            # Detect npm/Playwright configuration and lock errors before redoing
+            # three minutes of already native-verified CPython 3.15 wheel work.
+            # Defer the large Chromium ZIP until all smaller candidates pass.
+            print("FULL_STABLE_PHASE_BEGIN=node_npm_corepack", flush=True)
+            stage_npm(plan, temp, evidence)
+            print("FULL_STABLE_PHASE_END=node_npm_corepack;status=PASS", flush=True)
+            # Run the same real test that follows the full upgraded Node runtime,
+            # before Playwright, CPython and the large Chromium ZIP are downloaded.
+            print("FULL_STABLE_PHASE_BEGIN=npm12_portable_regressions", flush=True)
+            verify_staged_portable_npm(ROOT)
+            print("FULL_STABLE_PHASE_END=npm12_portable_regressions;status=PASS", flush=True)
+            print("FULL_STABLE_PHASE_BEGIN=playwright_mcp", flush=True)
+            version, revision = stage_playwright(plan, temp, evidence)
+            print("FULL_STABLE_PHASE_END=playwright_mcp;status=PASS", flush=True)
+            print("FULL_STABLE_PHASE_BEGIN=python315_dependencies", flush=True)
+            staged_python, resolved = stage_python(plan, temp, evidence)
+            print("FULL_STABLE_PHASE_END=python315_dependencies;status=PASS", flush=True)
+            print("FULL_STABLE_PHASE_BEGIN=optional_python_manifests", flush=True)
+            python_manifests(temp, resolved, evidence,
+                             staged_site=staged_python / "Lib/site-packages")
+            print("FULL_STABLE_PHASE_END=optional_python_manifests;status=PASS", flush=True)
+            print("FULL_STABLE_PHASE_BEGIN=staged_python_smoke", flush=True)
+            smoke_staged_python(staged_python, evidence["pdf_compatibility"])
+            print("FULL_STABLE_PHASE_END=staged_python_smoke;status=PASS", flush=True)
+            print("FULL_STABLE_PHASE_BEGIN=7zip", flush=True)
+            stage_7zip(plan, temp, evidence)
+            print("FULL_STABLE_PHASE_END=7zip;status=PASS", flush=True)
+            print("FULL_STABLE_PHASE_BEGIN=chromium_payload", flush=True)
+            stage_browser(temp, version, revision, evidence)
+            print("FULL_STABLE_PHASE_END=chromium_payload;status=PASS", flush=True)
+            replace_tree(staged_python, TOOL / "python", temp)
+            # Never load DLLs for the replaced Python from the trusted orchestrator.
+            new_python = TOOL / "python/python.exe"
+            run(new_python, "-E", "-s", "-B", "-m", "pip", "--version")
+            run(new_python, "-E", "-s", "-B", "-m", "PyInstaller", "--version")
+            run(new_python, "-E", "-s", "-B", TOOL / "refresh-python-cli-shims.py")
+        update_version_inventory(plan, evidence)
+        write_json(TOOL / "full-stable-evidence.json", evidence)
+        print("FULL_STABLE_CANDIDATE_STAGED=PASS")
+        print("FULL_STABLE_PYTHON=3.15.2")
+        print("FULL_STABLE_NODE=" + target(plan, "node")["latestStable"])
+        print("FULL_STABLE_BROWSER=" + evidence["playwright"]["chromiumVersion"])
 
 
 def main() -> int:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -77,6 +78,22 @@ REPO_BY_TOOL = {'ripgrep': 'BurntSushi/ripgrep', 'fd': 'sharkdp/fd',
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ValueError(message)
+
+
+def shared_upgrade_lock():
+    """Reuse the full-transfer kernel lock, including the same lock file.
+
+    Load an exact reviewed sibling, not a module from host PYTHONPATH.
+    ROOT is passed at call time to preserve isolation of multiple checkouts.
+    """
+    source = Path(__file__).resolve().with_name("full-stable-transfer.py")
+    spec = importlib.util.spec_from_file_location("portable_shared_transfer_lock", source)
+    require(spec is not None and spec.loader is not None,
+            "Missing reviewed full-transfer lock implementation")
+    transfer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(transfer)
+    transfer.ROOT = ROOT
+    return transfer.exclusive_transfer_lock()
 
 
 def ordinary(path: Path, *, directory: bool = False) -> None:
@@ -755,21 +772,22 @@ def prepare(group: str, *, day: str, writer: bool = False) -> None:
     require(selected or ssh, 'No reviewed pinned tool candidates')
     scratch = bounded(ROOT / 'tmp')
     scratch.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='tool-updates-', dir=scratch) as dirname:
-        temp = Path(dirname)
-        for row in selected:
-            prepare_row(row, temp)
-    if ssh:
-        # SSH installation performs its own wheel-only hash verification and import tests.
-        args = [str(TOOL / 'python/python.exe'), '-E', '-s', '-B',
-                str(TOOL / 'prepare-ssh.py'), 'install', '--new-lock']
-        if writer:
-            args.append('--skip-runtime-test')
-        subprocess.run(args, cwd=ROOT, timeout=600, check=True)
-    if any(row['tool'] == 'node' for row in selected):
-        enable_node_lfs()
-    record_updates(selected, ssh=ssh, day=day)
-    print('TOOL_CANDIDATE_STAGED=PASS')
+    with shared_upgrade_lock():
+        with tempfile.TemporaryDirectory(prefix='tool-updates-', dir=scratch) as dirname:
+            temp = Path(dirname)
+            for row in selected:
+                prepare_row(row, temp)
+        if ssh:
+            # SSH installation performs its own wheel-only hash verification and import tests.
+            args = [str(TOOL / 'python/python.exe'), '-E', '-s', '-B',
+                    str(TOOL / 'prepare-ssh.py'), 'install', '--new-lock']
+            if writer:
+                args.append('--skip-runtime-test')
+            subprocess.run(args, cwd=ROOT, timeout=600, check=True)
+        if any(row['tool'] == 'node' for row in selected):
+            enable_node_lfs()
+        record_updates(selected, ssh=ssh, day=day)
+        print('TOOL_CANDIDATE_STAGED=PASS')
 
 
 def diff_digest(group: str) -> str:
