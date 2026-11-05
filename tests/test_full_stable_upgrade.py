@@ -1771,6 +1771,100 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertEqual(transfer.checked_name("tool/bin/pip3.15.cmd"),
                          "tool/bin/pip3.15.cmd")
 
+    def test_recovery_is_retryable_and_refuses_linked_backups(self):
+        if not shutil_which_git():
+            self.skipTest("Git command missing")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "checkout"
+            root.mkdir()
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / ".gitignore").write_text("/tmp/\n", encoding="utf-8")
+            modified = root / "tool/python/python315.dll"
+            deleted = root / "tool/python/obsolete.txt"
+            added = root / "tool/bin/probe.cmd"
+            modified.parent.mkdir(parents=True)
+            modified.write_bytes(b"base-DLL\x00")
+            deleted.write_bytes(b"base-deleted\x00")
+            subprocess.run(["git", "-C", str(root), "add", ".gitignore", "tool"],
+                           check=True)
+            subprocess.run(["git", "-C", str(root), "-c", "user.name=test",
+                            "-c", "user.email=test@example.invalid",
+                            "commit", "-qm", "base"], check=True)
+            base = subprocess.check_output(
+                ["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+            journal = root / "tmp/full-writer-journal-retry"
+            journal.mkdir(parents=True)
+            records = [
+                {"index": 0, "path": "tool/bin/probe.cmd", "status": "A",
+                 "candidateSHA256": hashlib.sha256(b"new-CMD\n").hexdigest()},
+                {"index": 1, "path": "tool/python/obsolete.txt", "status": "D",
+                 "baseSHA256": hashlib.sha256(b"base-deleted\x00").hexdigest()},
+                {"index": 2, "path": "tool/python/python315.dll", "status": "M",
+                 "baseSHA256": hashlib.sha256(b"base-DLL\x00").hexdigest(),
+                 "candidateSHA256": hashlib.sha256(b"new-DLL\x00").hexdigest()}
+            ]
+            (journal / "recovery-map.json").write_text(
+                json.dumps({"schema": 2, "sourceCommit": base, "files": records}),
+                encoding="utf-8")
+            os.replace(modified, journal / "original-2")
+            os.replace(deleted, journal / "original-1")
+            modified.write_bytes(b"new-DLL\x00")
+            added.parent.mkdir(parents=True)
+            added.write_bytes(b"new-CMD\n")
+            subprocess.run(["git", "-C", str(root), "add", "-A", "--", "tool"],
+                           check=True)
+            original_replace = os.replace
+            with patch.object(transfer, "ROOT", root):
+                transfer.recover(journal)  # Audit must not alter candidate bytes.
+                self.assertEqual(modified.read_bytes(), b"new-DLL\x00")
+                self.assertTrue((journal / "original-2").exists())
+                extra_link = Path(d) / "linked-backup"
+                try:
+                    os.link(journal / "original-2", extra_link)
+                except OSError:
+                    pass
+                else:
+                    with self.assertRaisesRegex(ValueError, "hard-linked"):
+                        transfer.recover(journal, restore=True)
+                    extra_link.unlink()
+                foreign = Path(d) / "foreign"
+                foreign.mkdir()
+                linked_journal = root / "tmp/full-writer-journal-redirect"
+                try:
+                    os.symlink(foreign, linked_journal, target_is_directory=True)
+                except OSError:
+                    pass
+                else:
+                    with self.assertRaisesRegex(ValueError, "linked input/output"):
+                        transfer.recover(linked_journal, restore=True)
+                    linked_journal.unlink()
+                    self.assertEqual(list(foreign.iterdir()), [])
+                faults = [0]
+                def fail_once_second_original(src, dest):
+                    if Path(src).name == "original-1" and faults[0] == 0:
+                        faults[0] += 1
+                        raise OSError("synthetic second original fault")
+                    return original_replace(src, dest)
+                with patch.object(transfer.os, "replace",
+                                  side_effect=fail_once_second_original):
+                    with self.assertRaisesRegex(RuntimeError, "journal retained"):
+                        transfer.recover(journal, restore=True)
+                self.assertEqual(faults[0], 1)
+                self.assertEqual(modified.read_bytes(), b"base-DLL\x00")
+                self.assertFalse((journal / "original-2").exists())
+                self.assertTrue((journal / "original-1").exists())
+                self.assertFalse(deleted.exists())
+                self.assertTrue(added.is_file())
+                transfer.recover(journal)  # Re-audit a partially restored journal.
+                transfer.recover(journal, restore=True)
+                self.assertFalse(journal.exists())
+                self.assertEqual(modified.read_bytes(), b"base-DLL\x00")
+                self.assertEqual(deleted.read_bytes(), b"base-deleted\x00")
+                self.assertFalse(added.exists())
+                self.assertEqual(subprocess.check_output(
+                    ["git", "-C", str(root), "status", "--porcelain"],
+                    text=True).strip(), "")
+
     def test_readonly_git_patch_and_writer_reconstruct_identical_bytes(self):
         if not shutil_which_git():
             self.skipTest("Git command missing")
