@@ -7,6 +7,8 @@ accepts only same-run SHA-256 checked files plus an identical staged Git diff.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
+from functools import wraps
 import hashlib
 import json
 import os
@@ -102,6 +104,67 @@ def checked_disk(path: Path, *, missing: bool = False) -> None:
             require(st.st_nlink == 1, "Refuse hard-linked payload")
         else:
             require(stat.S_ISDIR(st.st_mode), "Refuse special file")
+
+
+@contextmanager
+def exclusive_transfer_lock():
+    """Serialize cooperating pack/apply/recover processes in one checkout.
+
+    The file is deliberately persistent: unlinking it after unlocking can
+    create a second lock inode while another process is entering. The OS
+    releases this advisory lock when the process dies; unresolved recovery
+    journals are separately retained and still block future applies.
+    """
+    scratch = ROOT / "tmp"
+    checked_disk(scratch)
+    require(scratch.is_dir(), "Owned full-transfer tmp is missing")
+    lock_path = scratch / ".full-stable-transfer.lock"
+    checked_disk(lock_path, missing=True)
+    flags = (os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0) |
+             getattr(os, "O_NOINHERIT", 0) |
+             getattr(os, "O_CLOEXEC", 0) |
+             getattr(os, "O_NOFOLLOW", 0))
+    descriptor = os.open(lock_path, flags, 0o600)
+    with os.fdopen(descriptor, "r+b") as lock_file:
+        checked_disk(lock_path)
+        opened = os.fstat(lock_file.fileno())
+        named = lock_path.lstat()
+        require(stat.S_ISREG(opened.st_mode) and opened.st_nlink == 1 and
+                opened.st_ino and opened.st_ino == named.st_ino and
+                opened.st_dev == named.st_dev,
+                "Full-transfer lock path changed or is not an ordinary unique file")
+        # Windows msvcrt.locking locks one byte starting at the current
+        # file offset, even beyond EOF; it never needs a lock-file payload.
+        lock_file.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            raise ValueError(
+                "Concurrent full-stable transfer is active or its lock is unavailable"
+            ) from error
+        try:
+            yield
+        finally:
+            lock_file.seek(0)
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def under_transfer_lock(function):
+    @wraps(function)
+    def locked(*args, **kwargs):
+        with exclusive_transfer_lock():
+            return function(*args, **kwargs)
+    return locked
 
 
 def git(*args: str, binary: bool = False):
@@ -220,6 +283,7 @@ def checked_candidate_archive(path: Path, *, output: bool = False) -> Path:
     return candidate
 
 
+@under_transfer_lock
 def pack(output: Path, expected_base: str) -> None:
     require(re.fullmatch(r"[0-9a-f]{40}", expected_base) is not None and
             git("rev-parse", "HEAD") == expected_base, "Unexpected source commit")
@@ -343,6 +407,7 @@ def recovery_plan(directory: Path) -> tuple[Path, list[dict]]:
     return journal, records
 
 
+@under_transfer_lock
 def recover(directory: Path, *, restore: bool = False) -> None:
     """Explicit opt-in recovery; default invocation is validation only.
 
@@ -375,6 +440,7 @@ def recover(directory: Path, *, restore: bool = False) -> None:
     shutil.rmtree(journal)
     print("FULL_STABLE_RECOVERY=PASS")
 
+@under_transfer_lock
 def apply(archive: Path, expected_sha: str, expected_diff: str,
           expected_base: str) -> None:
     require(re.fullmatch(r"[a-f0-9]{64}", expected_sha) is not None and

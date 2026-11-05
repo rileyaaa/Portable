@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-05：全量候选打包、写入与显式恢复的跨进程互斥（PR #31）
+
+- 发现旧的 `apply` 仅在预验证完成后通过 `glob(full-writer-journal-*)` 检查旧事务；两个进程可能同时看到“无事务”，分别创建备份目录并更新同一个工作树。只靠 GitHub workflow 的 `concurrency` 也无法保护手动在同一工作目录执行的进程。
+- 在 `tool/full-stable-transfer.py` 给 `pack`、`apply`、`recover` 三个公开入口统一增加 `exclusive_transfer_lock()`：操作之前先在受控 `tmp/.full-stable-transfer.lock` 取得 OS 非阻塞排他锁；Windows 使用 `msvcrt.LK_NBLCK` 锁定文件起始 1 字节，POSIX 使用 `fcntl.flock(LOCK_EX | LOCK_NB)`。若有其他实例持锁，直接拒绝，不继续读写候选或 Git 索引。
+- 锁文件不在解锁时删除，以免两个进程分别锁住旧/新 inode。首次创建和打开后验证路径、常规文件、唯一硬链接及打开句柄与目录项的 inode/dev 一致性；Windows 文件锁可在进程异常退出后由 OS 释放。残留的 `full-writer-journal-*` 仍需经过原有恢复/审查，不能把释放锁等价成自动恢复。
+- 增加原生 Python 子进程离线回归：第二进程持锁时三个公开入口都安全拒绝；强制终止持锁子进程后可以重新获得锁；锁文件保留，硬链接被拒绝。本地 Linux/Python 3.13 仅验证了相同的独立锁算法（包括子进程终止与重入），**尚未运行完整仓库 unittest 或 Windows 11 原生 msvcrt/NTFS 验收**。
+- 此锁仅保证配合该全量传输器的进程之间互斥，不保证同权限恶意程序、其他非配合工具更新器（如 `update-tools.py`、`full-stable-prepare.py`）不会改写同一工作树；不能视为句柄级 TOCTOU 防御。继续禁止合并/发布，main、二进制、YOLO 和 Actions 不受影响。
+
 ## 2026-11-05：修复 dangling NTFS junction 对“路径不存在”检查的绕过（PR #31）
 
 - 审核发现 `full-stable-transfer.py` 的 `checked_disk()` 先用 `exists()` / `is_symlink()` 判断路径是否存在；`tool/update-tools.py` 的 `bounded()` 和 Node/npm 目标目录检查也采用类似模式。在指向已不存在目标的 NTFS junction 等重解析点情况下，两者可能同时返回 False，但 `lstat()` 仍能看到重解析点本身。把它当作允许创建的空目录，无法保证候选数据局限在包内。

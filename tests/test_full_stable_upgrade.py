@@ -14,6 +14,7 @@ import os
 import re
 from pathlib import Path
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -1698,6 +1699,70 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertIn('TOOL / "refresh-python-cli-shims.py"', code)
         self.assertLess(code.index('vendor = pip_launch / "bin"'),
                         code.index('replace_tree(staged_python, TOOL / "python", temp)'))
+
+    def test_full_transfer_process_lock_rejects_overlap_and_recovers_after_kill(self):
+        # Do not mock the lock: a second real Python process must be denied,
+        # then a forcibly killed holder must release the kernel lock. This
+        # uses only a tiny isolated checkout, with no real tool binaries.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "checkout"
+            scratch = root / "tmp"
+            scratch.mkdir(parents=True)
+            source = ROOT / "tool/full-stable-transfer.py"
+            child_program = (
+                "import importlib.util, pathlib, sys\\n"
+                "spec = importlib.util.spec_from_file_location('worker', sys.argv[1])\\n"
+                "mod = importlib.util.module_from_spec(spec)\\n"
+                "spec.loader.exec_module(mod)\\n"
+                "mod.ROOT = pathlib.Path(sys.argv[2])\\n"
+                "with mod.exclusive_transfer_lock():\\n"
+                "    print('LOCK_HELD', flush=True)\\n"
+                "    sys.stdin.readline()\\n"
+            )
+            # Python source in -c needs actual linefeed escapes, not a raw
+            # backslash followed by the letter n in the resulting program.
+            with patch.object(transfer, "ROOT", root):
+                worker = subprocess.Popen(
+                    [sys.executable, "-E", "-s", "-B", "-c",
+                     child_program, str(source), str(root)],
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, text=True, encoding="utf-8")
+                try:
+                    self.assertEqual(worker.stdout.readline().strip(), "LOCK_HELD")
+                    for operation in (
+                        lambda: transfer.pack(scratch / "candidate.zip", "invalid"),
+                        lambda: transfer.apply(scratch / "candidate.zip",
+                                               "invalid", "invalid", "invalid"),
+                        lambda: transfer.recover(scratch / "full-writer-journal-x"),
+                    ):
+                        with self.assertRaisesRegex(
+                                ValueError, "Concurrent full-stable transfer"):
+                            operation()
+                finally:
+                    if worker.poll() is None:
+                        worker.kill()
+                    worker.communicate(timeout=10)
+
+                # A crash releases the OS lock, but the lock FILE remains
+                # to prevent a second inode / split-brain lock race.
+                with transfer.exclusive_transfer_lock():
+                    pass
+                lock_file = scratch / ".full-stable-transfer.lock"
+                self.assertTrue(lock_file.is_file())
+                self.assertEqual(lock_file.read_bytes(), b"")
+
+                outsider = Path(d) / "outside-hardlink"
+                try:
+                    os.link(lock_file, outsider)
+                except OSError:
+                    pass
+                else:
+                    with self.assertRaisesRegex(ValueError, "hard-linked"):
+                        with transfer.exclusive_transfer_lock():
+                            pass
+                    outsider.unlink()
+                with transfer.exclusive_transfer_lock():
+                    pass
 
     def test_writer_rejects_dangling_windows_junction_metadata(self):
         # Simulate a Windows junction whose target is missing. On Windows,
