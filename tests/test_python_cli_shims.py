@@ -146,12 +146,51 @@ class PythonCliShimTests(unittest.TestCase):
             self.assertNotIn("Z:\\HostModules", clean["PSModulePath"])
             self.assertEqual(clean["HOMEDRIVE"], os.path.splitdrive(clean["HOME"])[0])
 
+    def test_generated_python_cmds_use_native_system_dir_before_powershell(self):
+        # CMD's __APPDIR__ fallback is evaluated only after removing an
+        # inherited value with the same name. Fail closed unless the running
+        # CMD process is the x64 System32 copy; never use host SystemRoot to
+        # locate the PowerShell bootstrap binary.
+        generated = self.module.render_cmd("pip").decode("ascii")
+        self.assertTrue(generated.startswith(
+            '@echo off\r\nsetlocal DisableDelayedExpansion\r\n'
+            'set "__APPDIR__="\r\n'
+            'set "_CODEX_SYSTEM_BIN=%__APPDIR__%"\r\n'))
+        for required in (
+            'if /i not "%_CODEX_SYSTEM_BIN:~-10%"=="\\System32\\" exit /b 3',
+            'if not exist "%_CODEX_NATIVE_POWERSHELL%" exit /b 3',
+            'for %%I in ("%_CODEX_SYSTEM_BIN%..") do set "SystemRoot=%%~fI"',
+            'set "ComSpec=%_CODEX_SYSTEM_BIN%cmd.exe"',
+            'set "PSModulePath=%_CODEX_SYSTEM_BIN%WindowsPowerShell\\v1.0\\Modules"',
+            'set "PSModuleAnalysisCachePath=NUL"',
+            '"%_CODEX_NATIVE_POWERSHELL%" -NoLogo -NoProfile',
+        ):
+            self.assertIn(required, generated)
+        self.assertNotIn('"%SystemRoot%\\System32\\WindowsPowerShell', generated)
+        self.assertLess(generated.index('set "__APPDIR__="'),
+                        generated.index('"%_CODEX_NATIVE_POWERSHELL%" -NoLogo'))
+        for path in sorted((ROOT / "tool/bin").glob("*.cmd")):
+            with self.subTest(path=path.name):
+                source = path.read_bytes()
+                self.assertTrue(source.startswith((
+                    '@echo off\r\nsetlocal DisableDelayedExpansion\r\n'
+                    'set "__APPDIR__="\r\n').encode("ascii")))
+                self.assertNotIn(b"\n", source.replace(b"\r\n", b""))
+                self.assertNotIn(b'"%SystemRoot%\\System32\\WindowsPowerShell', source)
+                if path.stem != "vba_extract":
+                    canonical = "pip" if path.stem == "pip3.15" else path.stem
+                    self.assertEqual(source, self.module.render_cmd(canonical))
+                else:
+                    # XlsxWriter provides a legacy script, not console_script.
+                    self.assertIn(b'vba_extract.py', source)
+
     def test_generated_shims_disable_host_powershell_bootstrap_cache(self):
         generated = self.module.render_cmd("synthetic").decode("ascii")
         expected = (
             '@echo off\r\nsetlocal DisableDelayedExpansion\r\n'
-            'set "POWERSHELL_TELEMETRY_OPTOUT=1"\r\n'
-            'set "PSModuleAnalysisCachePath=NUL"\r\n'
+            'set "__APPDIR__="\r\n'
+            'set "_CODEX_SYSTEM_BIN=%__APPDIR__%"\r\n'
+            'if /i not "%_CODEX_SYSTEM_BIN:~-10%"=="\\System32\\" exit /b 3\r\n'
         )
         self.assertTrue(generated.startswith(expected))
         for path in (ROOT / "tool/bin").glob("*.cmd"):

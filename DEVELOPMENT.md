@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-05：19 个 Python 独立 CLI 的 pre-bootstrap Windows 入口加固
+
+- 先前 19 个 tool/bin/*.cmd 在执行路径/文件硬链接安全预检前直接从继承的 %SystemRoot% 选择 PowerShell。Windows 11 CMD 的 %__APPDIR__% 伪环境变量可以返回当前 cmd.exe 所在的实际目录，但该机制未正式文档化，且同名普通变量可覆盖，因此新方案先显式清除同名继承值。
+- 所有 19 个 Python CMD（18 个自动生成 console_script + 独立的 XlsxWriter vba_extract.cmd）都先获取重新计算的 %__APPDIR__%，只允许以 \System32\ 结尾的原生 64 位 CMD 路径；否则返回安全退出码 3 而不回退 host PATH/SystemRoot。从同一 OS 路径生成 PowerShell.exe 绝对路径，检查存在后才执行。引导阶段提前重建 SystemRoot/WINDIR/SystemDrive/ComSpec/PATHEXT，并将 PATH 与 PSModulePath 改为仅 Windows 本身必需目录，避免主进程环境在 PowerShell 启动前污染预检。
+- 同步修订 refresh-python-cli-shims.py 模板，避免今后重建旧的危险 CMD；新增回归要求生成结果逐字匹配当前 18 个 console_script、全部 19 入口不再直接以 %SystemRoot% 启动 PowerShell，保留 XlsxWriter 的实际脚本文件预检及原有 ASCII CRLF。注意未文档化的 CMD 伪变量未来可能变化，32 位 SysWOW64/复制到其他目录的 CMD 入口主动拒绝；若上级 CMD 进程本身已被恶意替换，这不是 OS 级强制防护。
+- 仅完成代码层和文件格式检查；Windows 11 x64 原生 CMD、由宿主伪造 SystemRoot/ComSpec/__APPDIR__ 的恶意输入、实安装 pip/HTTPX 正向启动与原先 ZIP 打包回归尚未执行。YOLO、main、Release 不变，也未启动 GitHub Actions。
+
 ## 2026-11-05：工具安装与 JSON 登录入口重建可信系统路径
 
 - 发现 setup-tools.ps1 和 login-json.ps1 的 PATH 系统段仍从宿主 SystemRoot 拼接 System32/PowerShell/Wbem，两者的受控子进程也重新导入外层系统环境。这是主 run-codex.ps1 修复之外的同类遗漏。
