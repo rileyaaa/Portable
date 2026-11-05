@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-05：官方下载目标在网络请求前防御目录链接与失败残留
+
+- 继 ZIP/TAR 解压前阻断 symlink/junction 后复核 `full-stable-prepare.py`，发现共用 `download()` 仍在未经安全验证的 `target.parent` 上执行 `mkdir(parents=True)`，随后以 `target.open('xb')` 写入。若目的父目录本身是指向包外的链接，网络内容可能在 SHA-256/integrity 校验之前被写出；此外文件过大、摘要不符或中途异常时，之前创建的目标文件可能残留。
+- 本轮在任何目录创建或网络请求前执行 `guard_archive_destination(target.parent)`，创建目录后再次核对，并对目标使用 `lstat` 拒绝现存文件、符号链接或悬空链接；只有目标明确不存在才允许排他创建。记录本次是否实际成功创建文件，下载大小、SHA-256 或 SHA-512 integrity 检查失败、网络/读取异常时清除本次不完整的下载文件，不触碰已有目标。仍采用官方 HTTPS URL 主机白名单、逐跳重定向审批、显式禁用隐式宿主代理、既有最大下载尺寸和摘要校验。
+- 新增完全不联网的真实 `download()` 回归：正确下载及同时匹配两种摘要、拒绝覆盖、SHA-256/integrity 不符、大小超限后不留半成品、父目录为普通文件、外部指向的 symlink/junction、悬空目标 symlink，并核对被拒绝的路径不触发 HTTP opener、包外文件不改变。
+- 这仍是 Python 层检查，无法阻止拥有同等文件权限的并发进程在验证后、写入前替换父目录；若要声称严格 TOCTOU 安全仍需 Windows 原生句柄级防护与真实 Runner 验证。未运行 GitHub Actions/下载/安装或触碰设备，main、正式 Release、YOLO 维持原状。
+
 ## 2026-11-05：ZIP/TAR 解压拒绝在链接目标目录写入前越界
 
 - 复核 full-stable-prepare.py 的 unzip_checked() / untar_checked() 发现：原代码先 destination.mkdir()，再往各项 target.open('xb') 写入，最后才 plain_tree(destination) 拒绝 reparse/symlink。若目的目录或其祖先原本已经是符号链接/junction，包外目录可能在事后检查之前被修改，即使最终抛错也无法撤销写入。

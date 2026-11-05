@@ -150,8 +150,18 @@ def download(url: str, target: Path, *, expected: str | None = None,
     require(u.scheme == "https" and u.hostname in ALLOWED_HOSTS and
             u.username is None and u.password is None and u.port in (None, 443) and
             not u.fragment, "Unapproved artifact URL: " + url)
+    # The same redirected-directory problem applies to downloads as to ZIP/TAR
+    # extraction: a post-download hash check cannot undo writes through a
+    # pre-existing symlink/junction in target.parent.
+    guard_archive_destination(target.parent)
     target.parent.mkdir(parents=True, exist_ok=True)
-    require(not target.exists(), "Download target must be new: " + str(target))
+    guard_archive_destination(target.parent)
+    try:
+        target.lstat()
+    except FileNotFoundError:
+        pass
+    else:
+        raise ValueError("Download target must be new and unlinked: " + str(target))
     h256, h512 = hashlib.sha256(), hashlib.sha512()
     total = 0
     # An explicit empty ProxyHandler prevents urllib from consulting Windows
@@ -159,30 +169,42 @@ def download(url: str, target: Path, *, expected: str | None = None,
     # locked-candidate downloads. No automatic host proxy is permitted.
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({}), _ApprovedDownloadRedirect())
-    with opener.open(urllib.request.Request(
-            url, headers={"User-Agent": "Codex-Portable-full-stable/1",
-                          "Accept": accept}), timeout=timeout) as response:
-        # Defense in depth for a mocked/custom opener: the normal redirect
-        # policy above already rejected unapproved hosts before connecting.
-        approve_download_redirect(url, response.url)
-        with target.open("xb") as out:
-            while True:
-                block = response.read(1024 * 1024)
-                if not block:
-                    break
-                total += len(block)
-                require(total <= limit, "Artifact exceeds permitted size: " + url)
-                h256.update(block)
-                h512.update(block)
-                out.write(block)
-    digest = h256.hexdigest()
-    if expected is not None:
-        require(re.fullmatch(r"[a-f0-9]{64}", expected) is not None and digest == expected,
-                "Pinned upstream SHA-256 mismatch: " + url)
-    if integrity is not None:
-        require(integrity == "sha512-" + base64.b64encode(h512.digest()).decode("ascii"),
-                "npm package registry integrity mismatch")
-    return {"url": url, "sha256": digest, "size": total}
+    created = False
+    try:
+        with opener.open(urllib.request.Request(
+                url, headers={"User-Agent": "Codex-Portable-full-stable/1",
+                              "Accept": accept}), timeout=timeout) as response:
+            # Defense in depth for a mocked/custom opener: the normal redirect
+            # policy above already rejected unapproved hosts before connecting.
+            approve_download_redirect(url, response.url)
+            with target.open("xb") as out:
+                created = True
+                while True:
+                    block = response.read(1024 * 1024)
+                    if not block:
+                        break
+                    total += len(block)
+                    require(total <= limit, "Artifact exceeds permitted size: " + url)
+                    h256.update(block)
+                    h512.update(block)
+                    out.write(block)
+        digest = h256.hexdigest()
+        if expected is not None:
+            require(re.fullmatch(r"[a-f0-9]{64}", expected) is not None and digest == expected,
+                    "Pinned upstream SHA-256 mismatch: " + url)
+        if integrity is not None:
+            require(integrity == "sha512-" + base64.b64encode(h512.digest()).decode("ascii"),
+                    "npm package registry integrity mismatch")
+        return {"url": url, "sha256": digest, "size": total}
+    except BaseException:
+        # Only unlink a file actually created by this invocation; never
+        # remove a pre-existing target after a hostile reparse/path failure.
+        if created:
+            try:
+                target.unlink()
+            except FileNotFoundError:
+                pass
+        raise
 
 
 def guard_archive_destination(directory: Path) -> None:

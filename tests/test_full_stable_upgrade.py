@@ -1310,6 +1310,75 @@ class FullStableUpgradeTests(unittest.TestCase):
             self.assertEqual(recorded[0][1], "application/json")
             self.assertEqual(recorded[0][3], 20)
 
+    def test_official_download_guards_parent_before_network_and_cleans_failures(self):
+        """Use the real download function with a synthetic, never-network opener."""
+        url = "https://registry.npmjs.org/npm/12.2.1"
+        payload = b"synthetic pinned upstream bytes"
+        sha256 = hashlib.sha256(payload).hexdigest()
+        import base64
+        integrity = "sha512-" + base64.b64encode(
+            hashlib.sha512(payload).digest()).decode("ascii")
+        calls = []
+        def fake_open(request, timeout):
+            calls.append(request.full_url)
+            response = io.BytesIO(payload)
+            response.url = url
+            return response
+        with tempfile.TemporaryDirectory() as folder, \
+             patch.object(stage.urllib.request, "build_opener") as factory:
+            factory.return_value.open.side_effect = fake_open
+            base = Path(folder)
+            good = base / "owned" / "payload.tgz"
+            result = stage.download(url, good, expected=sha256, integrity=integrity,
+                                    limit=1024)
+            self.assertEqual(good.read_bytes(), payload)
+            self.assertEqual(result["sha256"], sha256)
+            with self.assertRaisesRegex(ValueError, "must be new"):
+                stage.download(url, good, expected=sha256)
+            self.assertEqual(good.read_bytes(), payload)
+            for filename, options, failure in (
+                ("wrong-sha.tgz", {"expected": "0" * 64}, "SHA-256 mismatch"),
+                ("wrong-integrity.tgz", {"integrity": "sha512-" + "x" * 88},
+                 "registry integrity mismatch"),
+                ("oversize.tgz", {"limit": 4}, "exceeds permitted size"),
+            ):
+                with self.subTest(failure=filename):
+                    dest = base / "owned" / filename
+                    with self.assertRaisesRegex(ValueError, failure):
+                        stage.download(url, dest, **options)
+                    self.assertFalse(dest.exists(),
+                                     "Failed download must not leave unverified payloads")
+            # A file in the parent position must fail before the HTTP opener.
+            parent_file = base / "parent-file"
+            parent_file.write_bytes(b"preserved")
+            number_before = len(calls)
+            with self.assertRaisesRegex(ValueError, "non-directory ancestor"):
+                stage.download(url, parent_file / "artifact.tgz")
+            self.assertEqual(len(calls), number_before)
+            self.assertEqual(parent_file.read_bytes(), b"preserved")
+            foreign = base / "foreign"
+            foreign.mkdir()
+            redirected = base / "linked-download"
+            try:
+                os.symlink(foreign, redirected, target_is_directory=True)
+            except OSError:
+                pass  # Symlink creation is not always available on Windows.
+            else:
+                with self.assertRaisesRegex(ValueError, "symlink or reparse"):
+                    stage.download(url, redirected / "artifact.tgz")
+                self.assertEqual(len(calls), number_before)
+                self.assertFalse((foreign / "artifact.tgz").exists())
+            dangling = base / "dangling-download"
+            try:
+                dangling.symlink_to(base / "missing-payload.tgz")
+            except OSError:
+                pass
+            else:
+                with self.assertRaisesRegex(ValueError, "must be new and unlinked"):
+                    stage.download(url, dangling)
+                self.assertTrue(dangling.is_symlink())
+                self.assertEqual(len(calls), number_before)
+
     def test_npm_preflight_cli_is_metadata_only_and_cannot_stage_tools(self):
         with tempfile.TemporaryDirectory() as directory:
             plan = {"schema": 1, "platform": "win32-x64",
