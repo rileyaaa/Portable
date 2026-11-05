@@ -1,5 +1,10 @@
 # 开发与维护记录
 
+## 2026-11-05：npm/npx/Corepack 独立 CMD 的系统 PowerShell 引导信任边界
+
+- 对三个 Node 入口重复应用 Python CMD 的前置路径重建：移除继承的 __APPDIR__ 遮蔽值，仅接受正在运行的 Windows x64 System32 cmd.exe；由其自身目录推导系统 PowerShell 与 SystemRoot/WINDIR/ComSpec，严格固定预检用 PATH 与 PSModulePath。没有替换或执行全局 Node/npm，也没有更改现有 Node 注入参数清理顺序。
+- 新增维护契约覆盖 npm.cmd、npx.cmd、corepack.cmd 三个文件的前置检查、no-host-PowerShell 与 ASCII CRLF、原先的 Node 注入变量清理和先预检再执行策略。原生 Windows 11 x64 cmd.exe、双击启动/重定向 I/O 和真实 npm 12/Corepack 0.36 兼容性仍待验证；该 Windows CMD 伪变量并非官方保证的长期 API，未来 Win11 版本失效时选择安全拒绝、不回退宿主路径。
+
 ## 2026-11-05：19 个 Python 独立 CLI 的 pre-bootstrap Windows 入口加固
 
 - 先前 19 个 tool/bin/*.cmd 在执行路径/文件硬链接安全预检前直接从继承的 %SystemRoot% 选择 PowerShell。Windows 11 CMD 的 %__APPDIR__% 伪环境变量可以返回当前 cmd.exe 所在的实际目录，但该机制未正式文档化，且同名普通变量可覆盖，因此新方案先显式清除同名继承值。

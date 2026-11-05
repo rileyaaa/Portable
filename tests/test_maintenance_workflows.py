@@ -251,6 +251,28 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertTrue((ROOT / "tool/python/ssh-packages/paramiko").is_dir())
         self.assertTrue((ROOT / "tool/python/ssh-packages/cryptography").is_dir())
 
+    def test_node_command_shims_use_system32_cmd_anchor_not_host_systemroot(self):
+        for name in ('npm', 'npx', 'corepack'):
+            source = (ROOT / 'tool/node' / (name + '.cmd')).read_bytes()
+            self.assertTrue(source.startswith(
+                b'@echo off\r\nsetlocal DisableDelayedExpansion\r\n'
+                b'set "__APPDIR__="\r\n'
+                b'set "_CODEX_SYSTEM_BIN=%__APPDIR__%"\r\n'))
+            for required in (
+                b'if /i not "%_CODEX_SYSTEM_BIN:~-10%"=="\\System32\\" exit /b 3',
+                b'if not exist "%_CODEX_NATIVE_POWERSHELL%" exit /b 3',
+                b'set "ComSpec=%_CODEX_SYSTEM_BIN%cmd.exe"',
+                b'set "PSModulePath=%_CODEX_SYSTEM_BIN%WindowsPowerShell\\v1.0\\Modules"',
+                b'"%_CODEX_NATIVE_POWERSHELL%" -NoLogo -NoProfile',
+                b'if errorlevel 1 exit /b 3',
+                b'NODE_OPTIONS=',
+            ):
+                self.assertIn(required, source)
+            self.assertNotIn(b'"%SystemRoot%\\System32\\WindowsPowerShell', source)
+            self.assertNotIn(b'\n', source.replace(b'\r\n', b''))
+            self.assertLess(source.index(b'set "__APPDIR__="'),
+                            source.index(b'"%_CODEX_NATIVE_POWERSHELL%" -NoLogo'))
+
     def test_corepack_entry_uses_package_guard_and_does_not_restore_upstream_shim(self):
         cmd = (ROOT / 'tool/node/corepack.cmd').read_text(encoding='ascii')
         self.assertIn('PSModuleAnalysisCachePath=NUL', cmd)
