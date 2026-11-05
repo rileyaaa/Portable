@@ -20,6 +20,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_FILES = 40000
+MAX_MANIFEST = 32 * 1024 * 1024  # Bound decompression before JSON parsing
 MAX_FILE = 900 * 1024 * 1024
 MAX_TOTAL = 2200 * 1024 * 1024
 SINGLES = {
@@ -237,7 +238,17 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
         entries = source.infolist()
         require(entries and entries[0].filename == "manifest.json" and
                 len(entries) <= MAX_FILES + 1, "Unexpected artifact structure")
-        manifest = json.loads(source.read("manifest.json"))
+        # The ZIP central directory lists a size, but also cap the actual
+        # decompressed bytes before json.loads allocates parser objects.
+        member = entries[0]
+        require(member.file_size <= MAX_MANIFEST,
+                "Candidate manifest exceeds bounded size")
+        with source.open(member) as manifest_reader:
+            encoded_manifest = manifest_reader.read(MAX_MANIFEST + 1)
+            require(len(encoded_manifest) <= MAX_MANIFEST,
+                    "Candidate manifest exceeds bounded size")
+        manifest = json.loads(encoded_manifest)
+        require(isinstance(manifest, dict), "Candidate manifest must be an object")
         require(manifest.get("schema") == 1 and
                 manifest.get("sourceCommit") == expected_base and
                 manifest.get("diffSHA256") == expected_diff and

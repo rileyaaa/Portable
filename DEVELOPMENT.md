@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-05：候选 ZIP 清单 JSON 限制实际解压大小
+
+- full-stable-transfer.py 之前只限制 ZIP 项总数和候选 payload 的大小，却直接以 `ZipFile.read('manifest.json')` 一次性完整解压元数据；恶意压缩比很高的清单可能在 JSON/schema、文件状态和哈希检查前占用大量内存。
+- 新增独立 `MAX_MANIFEST = 32 MiB` 上限，先核对 ZIP 中 manifest 条目的未压缩长度，再按 `MAX_MANIFEST + 1` 有界读取并再次核对实际读到的字节数；JSON 解析后还要求清单根类型必须是对象。后续身份、A/M/D、所有文件 SHA、大小和 Git diff SHA 检查保持不变。
+- 扩展离线真实 ZIP 负向测试，分别放入一个压缩后很小但解压后超过 32 MiB 的 manifest，以及根类型为 JSON 数组的 manifest；必须在修改工作树之前拒绝，且 Git 基线文件仍保持原始字节。Windows 本机 ZIP/Python 兼容性尚待实际运行验证，未触发 Actions、不动 main、正式 Release 或 YOLO。
+
 ## 2026-11-05：恢复映射落盘失败时禁止开始修改原始文件
 
 - 在上述 private transaction journal 的 recovery-map.json 写入后，明确调用 `flush()` 与 `os.fsync()`，确保在首次 M/D 原件重命名之前完成一次文件系统同步请求。若映射写入或 fsync 失败，在尚未修改工作树时直接失败并清理本次临时目录，不允许执行下一阶段 os.replace。

@@ -1813,6 +1813,28 @@ class FullStableUpgradeTests(unittest.TestCase):
                 diff = transfer.diff_sha()
                 subprocess.run(["git", "-C", str(tmp), "reset", "--hard", "HEAD"],
                                check=True, capture_output=True)
+                # A compressed JSON bomb must be rejected before unbounded
+                # decompression or any worktree changes; malformed JSON types
+                # must also fail closed instead of entering status handling.
+                huge_manifest = tmp / "tmp/candidate-oversize-manifest.zip"
+                with zipfile.ZipFile(huge_manifest, "w",
+                                     compression=zipfile.ZIP_DEFLATED) as writer:
+                    writer.writestr("manifest.json",
+                                    b" " * (transfer.MAX_MANIFEST + 1))
+                with self.assertRaisesRegex(ValueError, "manifest exceeds bounded size"):
+                    transfer.apply(huge_manifest, transfer.digest_file(huge_manifest),
+                                   diff, base)
+                non_object = tmp / "tmp/candidate-array-manifest.zip"
+                with zipfile.ZipFile(non_object, "w") as writer:
+                    writer.writestr("manifest.json", b"[]")
+                with self.assertRaisesRegex(ValueError, "manifest must be an object"):
+                    transfer.apply(non_object, transfer.digest_file(non_object),
+                                   diff, base)
+                self.assertEqual(subprocess.check_output(
+                    ["git", "-C", str(tmp), "status", "--porcelain"],
+                    text=True).strip(), "")
+                self.assertEqual(base_modified.read_bytes(),
+                                 b"original-binary-baseline\x00")
                 # Re-sign the outer ZIP digest but corrupt the *last* payload.
                 # The former writer would already have copied earlier files
                 # into the Git worktree before discovering this hash mismatch.
