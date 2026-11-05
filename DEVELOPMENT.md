@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-05：候选 ZIP 的 `..` 路径穿越与 Windows 设备路径拒绝（PR #31）
+
+- 复核发现 `Path.absolute()` 默认并不消除 `..`，而 `Path.is_relative_to()` 仅按路径构造进行词法判断。原先 `tmp/../../outside.zip` 可被误认为处于包内 `tmp/`，`checked_disk()` 也会因为相同的词法前缀漏洞接受 `ROOT/tmp/../../...`。本地 Python 3.13 临时目录实验已证明同一路径确实命中包外文件。
+- 对 `checked_candidate_archive()` 在任何 `lstat`、哈希、打开 ZIP 前禁止所有 `..` 组件；`checked_disk()` 同样增加路径穿越检查作为第二道独立保护。候选归档名称仅接受包内 tmp 下正常层级的 `.zip`，拒绝 Windows 保留设备名、NTFS ADS 冒号、异常控制字符和末尾空格/点；与工具文件路径共用 Windows 保留名称规则。
+- 增补离线测试：包内根目录穿越、越出仓库的 ZIP 输入/输出、包外文件原字节不变、非法 Windows 文件名拒绝，以及普通嵌套 ZIP 正向兼容性。
+- **验证边界：** 本次已确认原路径构造漏洞的真实本地复现，新增仓库测试已提交但完整 unittest 与 Windows 原生验收尚未执行。禁止同权限攻击者并发替换目录仍需要 OS 层文件句柄/权限隔离。未触发 Actions，不改 main、Release、Codex 二进制或 YOLO。
+
 ## 2026-11-05：修复回滚遗漏原件与并发覆盖风险（PR #31）
 
 - `full-stable-transfer.py` 中 A/M/D 的回滚意向现在都先写入内存 journal，**再**调用 `os.replace`：即使源文件已成功改名、下一条 Python 语句却异常，回滚也知道该找哪份 `original-N`，不会因为记录缺口将唯一原件随事务目录删除。

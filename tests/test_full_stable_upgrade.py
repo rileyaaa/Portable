@@ -1714,6 +1714,38 @@ class FullStableUpgradeTests(unittest.TestCase):
                         with self.assertRaisesRegex(ValueError, "below package tmp"):
                             transfer.checked_candidate_archive(external_zip, output=output)
                         self.assertEqual(external_zip.read_bytes(), b"outside-preserved")
+                # Path.absolute()/is_relative_to() preserve '..' lexically:
+                # these paths point outside tmp (including outside ROOT)
+                # despite passing the former prefix-only containment test.
+                disguised_foreign = scratch / ".." / ".." / "foreign" / "candidate.zip"
+                disguised_within_root = scratch / ".." / "tool" / "candidate.zip"
+                for escaped in (disguised_foreign, disguised_within_root):
+                    with self.subTest(escaped=str(escaped)):
+                        with self.assertRaisesRegex(ValueError, "traversal"):
+                            transfer.checked_candidate_archive(escaped, output=False)
+                        with self.assertRaisesRegex(ValueError, "traversal"):
+                            transfer.checked_candidate_archive(escaped, output=True)
+                        with self.assertRaisesRegex(ValueError, "traversal"):
+                            transfer.checked_disk(escaped, missing=True)
+                never_created = scratch / ".." / ".." / "foreign" / "never-created.zip"
+                with self.assertRaisesRegex(ValueError, "traversal"):
+                    transfer.checked_candidate_archive(never_created, output=True)
+                self.assertFalse((foreign / "never-created.zip").exists())
+                self.assertEqual(external_zip.read_bytes(), b"outside-preserved")
+
+                # Windows reserved devices, ADS streams and ambiguous
+                # archive names are not valid even under an owned tmp.
+                for unsafe in ("CON.zip", "nul.bak.zip", "LPT¹.zip",
+                               "candidate.zip:alternate", "bad?.zip",
+                               "trailing.zip ", "not-a-zip.bin"):
+                    with self.subTest(unsafe=unsafe):
+                        with self.assertRaisesRegex(ValueError, "Unsafe candidate archive"):
+                            transfer.checked_candidate_archive(scratch / unsafe, output=True)
+                nested = scratch / "owned-subdir"
+                nested.mkdir()
+                self.assertEqual(transfer.checked_candidate_archive(
+                    nested / "candidate.zip", output=True),
+                    nested / "candidate.zip")
                 good = scratch / "candidate.zip"
                 self.assertEqual(transfer.checked_candidate_archive(good, output=True), good)
                 good.write_bytes(b"synthetic-archive")

@@ -38,6 +38,10 @@ PREFIXES = (
     "tool/automation/browsers/"
 )
 BAD = re.compile(r'[<>:"\\|?*\x00-\x1f]')
+WINDOWS_RESERVED = re.compile(
+    r"(?i)(?:CON|PRN|AUX|NUL|CONIN\\$|CONOUT\\$|CLOCK\\$|"
+    r"COM[1-9¹²³]|LPT[1-9¹²³])(?:\\..*)?"
+)
 
 
 def require(condition: bool, message: str) -> None:
@@ -64,9 +68,7 @@ def checked_name(path: str) -> str:
     # Validate each component, not only the complete slash-delimited filename.
     for part in path.split("/"):
         require(part.casefold() != ".git" and
-                re.fullmatch(
-                    r"(?i)(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|CLOCK\$|"
-                    r"COM[1-9¹²³]|LPT[1-9¹²³])(?:\..*)?", part) is None,
+                WINDOWS_RESERVED.fullmatch(part) is None,
                 "Windows reserved candidate component: " + part)
     return path
 
@@ -77,7 +79,11 @@ def digest_file(path: Path) -> str:
 
 
 def checked_disk(path: Path, *, missing: bool = False) -> None:
-    require(path.is_relative_to(ROOT), "Candidate escaped repository")
+    # Path.is_relative_to() is lexical: ROOT/tmp/../../outside still
+    # appears beneath ROOT until the OS resolves '..'. Never lstat or open
+    # any candidate using a path containing parent traversal components.
+    require(path.is_relative_to(ROOT) and ".." not in path.parts,
+            "Candidate escaped repository or contains path traversal")
     cursor = ROOT
     for component in path.relative_to(ROOT).parts:
         cursor /= component
@@ -183,8 +189,18 @@ def checked_candidate_archive(path: Path, *, output: bool = False) -> Path:
     """
     candidate = Path(path).absolute()
     scratch = ROOT / "tmp"
+    # Path.absolute() preserves '..'; Path.is_relative_to() does not
+    # resolve it. Reject dot-dot BEFORE checking containment or disk paths.
+    require(".." not in candidate.parts, "Candidate archive path traversal")
     require(candidate != scratch and candidate.is_relative_to(scratch),
             "Candidate archive must remain below package tmp")
+    relative_parts = candidate.relative_to(scratch).parts
+    require(all(part and part not in (".", "..") and
+                not BAD.search(part) and not part.endswith((" ", ".")) and
+                WINDOWS_RESERVED.fullmatch(part) is None
+                for part in relative_parts) and
+            relative_parts[-1].lower().endswith(".zip"),
+            "Unsafe candidate archive path component")
     checked_disk(candidate.parent)
     require(candidate.parent.is_dir(), "Candidate archive parent is not a directory")
     if output:
