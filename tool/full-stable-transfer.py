@@ -133,6 +133,40 @@ def changes() -> list[dict]:
     return found
 
 
+def indexed_base_paths() -> tuple[set[str], set[str]]:
+    """Read Git's base index once without changing the working tree.
+
+    Candidate A/M/D statuses must reflect the real Git index. Checking only
+    the final Git diff is too late when an invalid status overwrites a file.
+    """
+    raw = git("-c", "core.quotepath=false", "ls-files",
+              "-z", "--", "tool", binary=True)
+    fields = raw.split(b"\0")
+    require(bool(fields) and fields[-1] == b"", "Malformed tracked Git index")
+    fields.pop()
+    names = [field.decode("utf-8", "strict") for field in fields]
+    folded = {name.casefold() for name in names}
+    require(len(folded) == len(names), "Case-colliding tracked Git paths")
+    return set(names), folded
+
+
+def check_candidate_base_status(name: str, status: str, dest: Path,
+                                tracked: set[str], folded: set[str]) -> None:
+    """Refuse forged A/M/D statuses before writing or deleting anything."""
+    if status == "A":
+        require(name.casefold() not in folded,
+                "Added candidate path already exists in Git base")
+        try:
+            dest.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError("Added candidate destination already exists")
+    else:
+        require(name in tracked and dest.is_file(),
+                "Modified/deleted candidate must be an existing base file")
+
+
 def diff_sha() -> str:
     value = git("-c", "core.quotepath=false", "diff", "--cached",
                 "--binary", "--no-ext-diff", binary=True)
@@ -192,9 +226,9 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
         require(len(entries) == len(expected_entries) and
                 {x.filename for x in entries} == expected_entries and
                 all(not x.is_dir() for x in entries), "Unexpected archive file scope")
-        # Phase 1: validate *all* payload digests and deletions without
-        # touching the writer's tracked worktree. The previous single loop
-        # could overwrite/delete early files before a later bad hash failed.
+        # Phase 1: validate *all* payload digests, Git base statuses and
+        # deletions without touching any tracked working-tree files.
+        tracked, tracked_folded = indexed_base_paths()
         verified_total = 0
         for item in planned:
             name = checked_name(item["path"])
@@ -202,6 +236,7 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
             require(status in ("A", "M", "D"), "Unknown candidate file status")
             dest = ROOT / name
             checked_disk(dest, missing=True)
+            check_candidate_base_status(name, status, dest, tracked, tracked_folded)
             if status == "D":
                 require(dest.is_file(), "Deleted path missing from base")
                 continue
@@ -232,6 +267,7 @@ def apply(archive: Path, expected_sha: str, expected_diff: str,
             require(status in ("A", "M", "D"), "Unknown candidate file status")
             dest = ROOT / name
             checked_disk(dest, missing=True)
+            check_candidate_base_status(name, status, dest, tracked, tracked_folded)
             if status == "D":
                 require(dest.is_file(), "Deleted path missing from base")
                 dest.unlink()

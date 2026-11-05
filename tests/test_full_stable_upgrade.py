@@ -1731,7 +1731,13 @@ class FullStableUpgradeTests(unittest.TestCase):
             tmp = Path(d)
             subprocess.run(["git", "init", "-q", str(tmp)], check=True)
             (tmp / ".gitignore").write_text("/tmp/\n", encoding="utf-8")
-            subprocess.run(["git", "-C", str(tmp), "add", ".gitignore"], check=True)
+            base_modified = tmp / "tool/python/python315.dll"
+            base_deleted = tmp / "tool/python/obsolete-base.txt"
+            base_modified.parent.mkdir(parents=True, exist_ok=True)
+            base_modified.write_bytes(b"original-binary-baseline\x00")
+            base_deleted.write_bytes(b"original-deleted-baseline\x00")
+            subprocess.run(["git", "-C", str(tmp), "add", ".gitignore", "tool"],
+                           check=True)
             subprocess.run(["git", "-C", str(tmp), "-c", "user.name=test",
                             "-c", "user.email=test@example.invalid",
                             "commit", "-qm", "base"], check=True)
@@ -1741,6 +1747,7 @@ class FullStableUpgradeTests(unittest.TestCase):
                 target = tmp / path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(("payload " + str(i) + "\n").encode("utf-8"))
+            base_deleted.unlink()
             subprocess.run(["git", "-C", str(tmp), "add", "-A", "--", "tool"],
                            check=True)
             (tmp / "tmp").mkdir()
@@ -1773,13 +1780,48 @@ class FullStableUpgradeTests(unittest.TestCase):
                 self.assertEqual(subprocess.check_output(
                     ["git", "-C", str(tmp), "status", "--porcelain"],
                     text=True).strip(), "")
+                self.assertEqual(base_modified.read_bytes(),
+                                 b"original-binary-baseline\x00")
+                self.assertEqual(base_deleted.read_bytes(),
+                                 b"original-deleted-baseline\x00")
                 for name in paths:
-                    self.assertFalse((tmp / name).exists(),
-                                     "No tracked payload may be created before full validation")
-                # A complete official candidate still applies unchanged.
+                    if name != "tool/python/python315.dll":
+                        self.assertFalse((tmp / name).exists(),
+                                         "No added payload may appear before full validation")
+                # A forged M->A or A->M status must also fail *before* file I/O.
+                for index, (file_name, wrong_status, expected_error) in enumerate((
+                    ("tool/python/python315.dll", "A", "already exists in Git base"),
+                    ("tool/python/python315.zip", "M", "existing base file"),
+                )):
+                    with self.subTest(wrong_status=wrong_status):
+                        poisoned = tmp / ("tmp/incorrect-status-" + str(index) + ".zip")
+                        with zipfile.ZipFile(archive) as source:
+                            manifest = json.loads(source.read("manifest.json"))
+                            change = next(x for x in manifest["files"] if x["path"] == file_name)
+                            self.assertNotEqual(change["status"], wrong_status)
+                            change["status"] = wrong_status
+                            with zipfile.ZipFile(poisoned, "w") as writer:
+                                for entry in source.infolist():
+                                    body = (json.dumps(manifest).encode("utf-8")
+                                            if entry.filename == "manifest.json"
+                                            else source.read(entry))
+                                    writer.writestr(entry, body)
+                        with self.assertRaisesRegex(ValueError, expected_error):
+                            transfer.apply(poisoned, transfer.digest_file(poisoned),
+                                           diff, base)
+                        self.assertEqual(subprocess.check_output(
+                            ["git", "-C", str(tmp), "status", "--porcelain"],
+                            text=True).strip(), "")
+                        self.assertEqual(base_modified.read_bytes(),
+                                         b"original-binary-baseline\x00")
+                        self.assertEqual(base_deleted.read_bytes(),
+                                         b"original-deleted-baseline\x00")
+                # The genuine candidate must still support ADD/MODIFY/DELETE.
                 transfer.apply(archive, archived_sha, diff, base)
+                self.assertEqual(base_modified.read_bytes(), b"payload 0\n")
+                self.assertFalse(base_deleted.exists())
                 self.assertEqual(transfer.diff_sha(), diff)
-                self.assertEqual(len(transfer.changes()), len(paths))
+                self.assertEqual(len(transfer.changes()), len(paths) + 1)
                 archive.touch()
                 with self.assertRaisesRegex(ValueError, "differs"):
                     transfer.apply(archive, "0" * 64, diff, base)
