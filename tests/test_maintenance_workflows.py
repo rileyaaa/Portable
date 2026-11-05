@@ -251,6 +251,15 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertTrue((ROOT / "tool/python/ssh-packages/paramiko").is_dir())
         self.assertTrue((ROOT / "tool/python/ssh-packages/cryptography").is_dir())
 
+    def test_windows_tool_gate_exercises_legacy_vba_cli_without_real_xlsm(self):
+        source = read(ROOT / '.github/maintenance/02-tool-compatibility.ps1')
+        self.assertIn("Join-Path $Root 'tool\\bin\\vba_extract.cmd'", source)
+        self.assertIn("'Usage:\\s+vba_extract file\\.xlsm'", source)
+        self.assertIn("02_TOOL_VBA_SHIM=PASS", source)
+        self.assertLess(source.index("02_TOOL_VBA_SHIM=PASS"),
+                        source.index("02_TOOL_NATIVE_AND_BROWSER_COMPATIBILITY=PASS"))
+        self.assertEqual(source.count('02_TOOL_VBA_SHIM=PASS'), 1)
+
     def test_windows_tool_gate_runs_real_cmd_under_forged_os_environment(self):
         script = read(ROOT / '.github/maintenance/02-tool-compatibility.ps1')
         for required in (

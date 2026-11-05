@@ -155,6 +155,15 @@ try {
     }
 }
 '02_TOOL_PYTHON_SHIMS=PASS; real pip/httpx CMD under hostile host environment' | Write-Output
+# XlsxWriter's legacy vba_extract.cmd is not a console_script, so check
+# that the special guarded dispatch prints its genuine bundled help without
+# opening any XLSM file, making network requests or writing extracted macros.
+$VbaShim = Join-Path $Root 'tool\bin\vba_extract.cmd'
+$VbaOutput = (& $VbaShim 2>&1) -join [Environment]::NewLine
+if ($LASTEXITCODE -ne 0 -or $VbaOutput -notmatch 'Usage:\s+vba_extract file\.xlsm') {
+    throw 'Legacy VBA CLI failed its direct guarded no-argument help check.'
+}
+'02_TOOL_VBA_SHIM=PASS; guarded vba_extract.cmd usage; no XLSM touched' | Write-Output
 Assert-NativeVersion 'node' $Inventory.tools.node.version $Node @('--version')
 Assert-NativeVersion 'npm' $Inventory.tools.npm.version $Node @((Join-Path $Root 'tool\node\node_modules\npm\bin\npm-cli.js'),'--version')
 Assert-NativeVersion 'corepack' $Inventory.tools.corepack.version $Node @((Join-Path $Root 'tool\node\node_modules\corepack\dist\corepack.js'),'--version')

@@ -1,5 +1,10 @@
 # 开发与维护记录
 
+## 2026-11-05：Windows Tool 原生门槛补 VBA CLI 无参调用
+
+- 为上轮补齐的 legacy vba_extract.cmd 增加真正的 Windows 原生 Tool 正向检查：调用该包内 CMD **不传 XLSM 参数**，只验证 XlsxWriter 官方脚本的 Usage 输出和退出码。此检查能验证 CMD -> portable-python-cli.py -> runpy -> vendor vba_extract.py 的完整启动和离线兼容路径，而不读取或写出用户 Excel 文件。
+- 将测试加入 02/03 共用的 Tool compatibility PS1 以及 maintenance 源码合同；尚未运行 Windows 原生 Runner/Actions，任何测试 PASS 文案都只是预期运行时输出，不代表已执行成功。main、Release、YOLO 未改。
+
 ## 2026-11-05：补齐 XlsxWriter legacy vba_extract.cmd 的环境隔离
 
 - 复核 19 个 Python CLI 时发现独立的 tool/bin/vba_extract.cmd 没有经过 portable-python-cli.py 的运行时白名单：它直接以 -E -s -B 执行 XlsxWriter 附带的 site-packages/bin/vba_extract.py。虽已有 Windows CMD/PowerShell 路径预检，但脚本本身和下游模块仍可能读取未知宿主凭证或第三方环境。18 个生成的 console_script 不存在这条旁路。
