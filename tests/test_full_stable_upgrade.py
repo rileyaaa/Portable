@@ -202,7 +202,8 @@ class FullStableUpgradeTests(unittest.TestCase):
             ast.parse((ROOT / path).read_text(encoding="utf-8"), filename=path)
         source = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
-        self.assertIn("options: [diagnose, check, update]", source)
+        self.assertIn("\n  workflow_dispatch:\n", source)
+        self.assertNotIn("inputs.operation", source)
         self.assertIn("needs.auto_check.outputs.updates == 'true'", source)
         self.assertIn("name: Full tool stable refresh - Windows read-only verifier", source)
         self.assertIn("name: Full tool trusted writer", source)
@@ -262,21 +263,10 @@ class FullStableUpgradeTests(unittest.TestCase):
     def test_fast_batch_diagnostics_no_full_action_artifacts_and_aggregate_errors(self):
         workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
-        self.assertIn("options: [diagnose, check, update]", workflow)
+        self.assertNotIn("\n  fast_diagnose:", workflow)
+        self.assertNotIn("\n  native_diagnose:", workflow)
+        self.assertNotIn("inputs.operation", workflow)
         self.assertIn("needs.auto_check.outputs.full_plan_changes == 'true'", workflow)
-        quick = workflow.split("\n  fast_diagnose:", 1)[1]
-        self.assertIn("inputs.operation == 'diagnose'", quick)
-        self.assertNotIn("endsWith(inputs.operation, '-pr')", quick)
-        self.assertIn("permissions:\n      contents: read", quick)
-        self.assertNotIn("contents: write", quick)
-        self.assertNotIn("actions: write", quick)
-        self.assertIn("runs-on: ubuntu-latest", quick)
-        self.assertIn("lfs: false", quick)
-        self.assertIn("persist-credentials: false", quick)
-        self.assertIn("tool/full-stable-diagnose.py --network", quick)
-        for forbidden in ("upload-artifact", "download-artifact",
-                          "gh release create", "git push", "stage_npm"):
-            self.assertNotIn(forbidden, quick)
         program = (ROOT / "tool/full-stable-diagnose.py").read_text(encoding="utf-8")
         ast.parse(program)
         self.assertNotIn("stage.prepare(", program)
@@ -319,22 +309,8 @@ class FullStableUpgradeTests(unittest.TestCase):
     def test_native_diagnose_reuses_real_stagers_not_weak_registry_mocks(self):
         workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
-        nativejob = workflow.split("\n  native_diagnose:", 1)[1]
-        self.assertIn("needs: fast_diagnose", nativejob)
-        self.assertIn("needs.fast_diagnose.result == 'success'", nativejob)
-        self.assertIn("inputs.operation == 'diagnose'", nativejob)
-        self.assertNotIn("endsWith(inputs.operation, '-pr')", nativejob)
-        self.assertIn("runs-on: windows-latest", nativejob)
-        self.assertIn("permissions:\n      contents: read", nativejob)
-        self.assertIn("node-version: '26.13.0'", nativejob)
-        self.assertIn("python-version: '3.14'", nativejob)
-        self.assertIn("lfs: false", nativejob)
-        self.assertIn("persist-credentials: false", nativejob)
-        self.assertIn("full-stable-native-diagnose.py", nativejob)
-        for forbidden in ("upload-artifact", "download-artifact", "git push",
-                          "contents: write", "actions: write", "gh release create"):
-            self.assertNotIn(forbidden, nativejob)
-        self.assertIn("timeout-minutes: 15", nativejob)
+        self.assertNotIn("\n  native_diagnose:", workflow)
+        self.assertNotIn("inputs.operation", workflow)
         source = (ROOT / "tool/full-stable-native-diagnose.py").read_text(
             encoding="utf-8")
         ast.parse(source)
@@ -621,7 +597,7 @@ class FullStableUpgradeTests(unittest.TestCase):
         self.assertIn("needs.full_verify.result == 'success'", cleanup)
         self.assertIn("needs.full_propose.result == 'success'", cleanup)
         self.assertIn("needs.full_propose.result == 'skipped'", cleanup)
-        self.assertIn("inputs.operation == 'update'", cleanup)
+        self.assertNotIn("inputs.operation", cleanup)
         self.assertIn("permissions:\n      actions: write", cleanup)
         self.assertNotIn("contents: write", cleanup)
         self.assertNotIn("pull-requests: write", cleanup)

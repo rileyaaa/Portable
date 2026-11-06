@@ -198,7 +198,8 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         self.assertIn("\non:\n  workflow_dispatch:", workflow)
         self.assertNotIn("\n  push:", workflow)
         self.assertNotIn("\n  schedule:", workflow)
-        self.assertIn("default: check", workflow)
+        self.assertIn("\n  workflow_dispatch:\n", workflow)
+        self.assertNotIn("    inputs:", workflow)
         self.assertNotIn("      create_pr:", workflow)
         self.assertIn("needs: verify", workflow)
         self.assertNotIn("gh release create", workflow)
@@ -546,16 +547,14 @@ class ManualMaintenanceWorkflowTests(unittest.TestCase):
         workflow = read(ROOT / ".github/workflows/03-update-tools.yml")
         auto = workflow.split("\n  verify:\n", 1)[1].split("\n  propose:\n", 1)[0]
         full = workflow.split("\n  full_verify:\n", 1)[1].split("\n  full_propose:\n", 1)[0]
-        self.assertEqual(auto.count("02-tool-compatibility.ps1"), 2)
+        self.assertEqual(auto.count("02-tool-compatibility.ps1"), 1)
         self.assertEqual(full.count("02-tool-compatibility.ps1"), 1)
-        installed = auto.split("      - name: Check real installed Tool and SSH runtimes", 1)[1].split("      - name:", 1)[0]
-        self.assertIn("if: ${{ inputs.operation == 'check' }}", installed)
-        self.assertIn("02-tool-compatibility.ps1", installed)
+        self.assertIn("Inspect tracked versions, official upstream metadata", auto)
+        self.assertNotIn("Check real installed Tool and SSH runtimes plus effective environment mappings", auto)
         candidates = (
             (auto, "Verify effective Tool PATH and native versions after staging",
              "Run complete Python and Node regression suites",
-             "Check Windows PowerShell 5.1 regressions",
-             "if: ${{ inputs.operation == 'update' }}"),
+             "Check Windows PowerShell 5.1 regressions", None),
             (full, "Verify staged full-tool PATH and native versions before committing",
              "Full Python Node and converter regression suites",
              "Bound candidate paths and SHA-256", None),
