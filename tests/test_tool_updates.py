@@ -229,6 +229,44 @@ class ToolUpdateTests(unittest.TestCase):
             self.assertIn('except SSHRollbackIncomplete:', implementation)
             self.assertIn('preserve = True', implementation)
 
+    def test_ssh_publish_success_and_new_sidecar_install(self):
+        # Exercise success too: the lock file must match the new wheel lock
+        # and the old directory must remain in the journal until the caller
+        # has finished publishing and deliberately removes its transaction.
+        for had_original in (True, False):
+            with self.subTest(had_original=had_original), \
+                 tempfile.TemporaryDirectory() as d:
+                root = Path(d) / 'checkout'
+                parent = root / 'tool/python'
+                parent.mkdir(parents=True)
+                dest = parent / 'ssh-packages'
+                resolver = root / 'tool/python-ssh-packages.lock.txt'
+                if had_original:
+                    dest.mkdir()
+                    (dest / 'old.py').write_bytes(b'before')
+                    resolver.write_bytes(b'old-lock')
+                temp = root / 'tmp/ssh-maintenance-fixture'
+                staged = temp / 'ssh-packages'
+                staged.mkdir(parents=True)
+                (staged / 'new.py').write_bytes(b'after')
+                staged_lock = temp / 'ssh.lock'
+                staged_lock.write_bytes(b'new-lock')
+                with (patch.object(ssh, 'ROOT', root),
+                      patch.object(ssh, 'DEST', dest),
+                      patch.object(ssh, 'LOCK', resolver)):
+                    ssh._publish_ssh_sidecar(temp, staged_lock)
+                self.assertEqual((dest / 'new.py').read_bytes(), b'after')
+                self.assertFalse((dest / 'old.py').exists())
+                self.assertEqual(resolver.read_bytes(), b'new-lock')
+                self.assertTrue((temp / 'publish-recovery.json').is_file())
+                self.assertEqual((temp / 'previous-ssh').exists(), had_original)
+                if had_original:
+                    self.assertEqual((temp / 'previous-ssh/old.py').read_bytes(),
+                                     b'before')
+                # A successful outer install removes this private temp only
+                # after sidecar/lock verification. There is no automatic
+                # recovery cleanup in this helper, by design.
+
     def test_ssh_publish_detects_journal_flush_errors_before_original_rename(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d) / 'checkout'
