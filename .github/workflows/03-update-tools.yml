@@ -1,16 +1,9 @@
-name: "03 - 工具维护（诊断 / 检查安装 / 更新）"
+name: "03 - 一键更新工具（自动检查，无需选择）"
 
-# Three user-facing operations only. Update never bypasses official
-# SHA-256, Windows release gates, independent writer, PR review or locks.
+# No user-facing switches; read-only version discovery gates all updates.
+# Successful native verification opens a review PR; no release is published.
 on:
   workflow_dispatch:
-    inputs:
-      operation:
-        description: "diagnose=故障诊断；check=检查已安装工具；update=一键受控工具更新（含SSH；通过验收后创建候选PR）"
-        required: true
-        type: choice
-        options: [diagnose, check, update]
-        default: check
 
 permissions:
   contents: read
@@ -22,7 +15,7 @@ concurrency:
 jobs:
   auto_check:
     name: Official latest stable Node and CLI discovery - metadata only
-    if: ${{ github.ref == 'refs/heads/main' && inputs.operation == 'update' }}
+    if: ${{ github.ref == 'refs/heads/main' }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -66,7 +59,7 @@ jobs:
 
   verify:
     needs: auto_check
-    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (inputs.operation == 'check' || (inputs.operation == 'update' && needs.auto_check.result == 'success' && needs.auto_check.outputs.updates == 'true' && needs.auto_check.outputs.full_plan_changes == 'false')) }}
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && needs.auto_check.result == 'success' && needs.auto_check.outputs.updates == 'true' && needs.auto_check.outputs.full_plan_changes == 'false' }}
     permissions:
       contents: read
     runs-on: windows-latest
@@ -96,7 +89,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'actionlint failed.' }
 
       - name: Prepare isolated package-local test state for Windows candidates
-        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Stop'
@@ -123,7 +115,6 @@ jobs:
             Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Run tool-maintenance tests before downloading any candidate
-        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Stop'
@@ -138,7 +129,6 @@ jobs:
 
 
       - name: Preflight real launcher and relocation before downloading large candidates
-        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 8
         run: |
           $ErrorActionPreference = 'Stop'
@@ -156,16 +146,7 @@ jobs:
           & .\tool\python\python.exe -E -s -B .\tool\prepare-ssh.py check
           if ($LASTEXITCODE -ne 0) { throw 'SSH installed-state audit failed.' }
 
-      - name: Check real installed Tool and SSH runtimes plus effective environment mappings
-        if: ${{ inputs.operation == 'check' }}
-        timeout-minutes: 8
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\02-tool-compatibility.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Bundled Tool installation or environment mapping failed.' }
-
       - name: Regenerate exact official Windows auto candidates in the read-only verifier
-        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 5
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -177,7 +158,6 @@ jobs:
 
       - name: Stage checked wheel or SHA256-pinned archive candidates in the checkout
         id: candidate
-        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 24
         env:
           TOOL_GROUP: tools
@@ -209,7 +189,6 @@ jobs:
           "Candidate diff digest: $($digestMatch.Groups[1].Value)" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
       - name: Verify pinned base Python closure and native Paramiko import
-        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 6
         env:
           TOOL_GROUP: tools
@@ -225,7 +204,6 @@ jobs:
           }
 
       - name: Check converter compatibility on candidate Node before long regressions
-        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 7
         run: |
           $ErrorActionPreference = 'Stop'
@@ -235,7 +213,6 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Candidate Node converter regression failed: $script" }
           }
       - name: Run complete Python and Node regression suites
-        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 18
         run: |
           $ErrorActionPreference = 'Stop'
@@ -256,7 +233,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Portable compatibility audit failed.' }
 
       - name: Verify effective Tool PATH and native versions after staging, before expensive Windows regressions
-        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 8
         run: |
           $ErrorActionPreference = 'Stop'
@@ -264,7 +240,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Updated Tool PATH, inventory or native version check failed.' }
 
       - name: Check Windows PowerShell 5.1 regressions
-        if: ${{ inputs.operation == 'update' }}
         # Previous successful 19-test suite took ~22 minutes; run #41555463345
         # reached npm/npx tests at minute 25 and was killed before completion.
         # Retain all 19 checks; allow bounded Windows runner timing variance.
@@ -298,7 +273,6 @@ jobs:
           }
 
       - name: Verify unchanged staged digest, ten Windows audit rounds and real customer ZIP
-        if: ${{ inputs.operation == 'update' }}
         timeout-minutes: 55
         env:
           EXPECTED_DIGEST: ${{ steps.candidate.outputs.digest }}
@@ -351,7 +325,7 @@ jobs:
   propose:
     name: Propose verified tools without running downloaded binaries in a write-token job
     needs: verify
-    if: ${{ needs.verify.result == 'success' && (inputs.operation == 'update') && github.ref == 'refs/heads/main' }}
+    if: ${{ needs.verify.result == 'success' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: write
       pull-requests: write
@@ -456,7 +430,7 @@ jobs:
   full_verify:
     name: Full tool stable refresh - Windows read-only verifier
     needs: auto_check
-    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && inputs.operation == 'update' && needs.auto_check.result == 'success' && needs.auto_check.outputs.updates == 'false' && needs.auto_check.outputs.full_plan_changes == 'true' }}
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && needs.auto_check.result == 'success' && needs.auto_check.outputs.updates == 'false' && needs.auto_check.outputs.full_plan_changes == 'true' }}
     permissions:
       contents: read
     runs-on: windows-latest
@@ -757,7 +731,7 @@ jobs:
   full_propose:
     name: Full tool trusted writer - SHA-checked file copy only; no candidate EXE execution
     needs: full_verify
-    if: ${{ needs.full_verify.result == 'success' && inputs.operation == 'update' && github.ref == 'refs/heads/main' }}
+    if: ${{ needs.full_verify.result == 'success' && github.ref == 'refs/heads/main' }}
     permissions:
       contents: write
       pull-requests: write
@@ -828,7 +802,7 @@ jobs:
   full_artifact_cleanup:
     name: Remove consumed full-tool candidate artifact - own run only
     needs: [full_verify, full_propose]
-    if: ${{ always() && github.ref == 'refs/heads/main' && inputs.operation == 'update' && needs.full_verify.result == 'success' && needs.full_propose.result == 'success' }}
+    if: ${{ always() && github.ref == 'refs/heads/main' && needs.full_verify.result == 'success' && needs.full_propose.result == 'success' }}
     permissions:
       actions: write
     runs-on: ubuntu-latest
@@ -860,63 +834,4 @@ jobs:
           fi
           gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id" >/dev/null
           echo "FULL_STABLE_ARTIFACT_CLEANUP=PASS; $ARTIFACT_NAME deleted after use" >> "$GITHUB_STEP_SUMMARY"
-
-  fast_diagnose:
-    name: Fast batch diagnostics - official JSON only, no installers or artifacts
-    if: ${{ github.ref == 'refs/heads/main' && inputs.operation == 'diagnose' }}
-    permissions:
-      contents: read
-    runs-on: ubuntu-latest
-    timeout-minutes: 9
-    steps:
-      - name: Checkout source only without LFS or write credentials
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          lfs: false
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Trusted host Python for lightweight metadata checks
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.14'
-      - name: Collect independent small checks before deciding PASS or FAIL
-        timeout-minutes: 7
-        run: python -E -s -B tool/full-stable-diagnose.py --network
-
-  native_diagnose:
-    name: Windows integration diagnostics - staged npm Python PDF Playwright and 7-Zip
-    needs: fast_diagnose
-    if: ${{ github.ref == 'refs/heads/main' && inputs.operation == 'diagnose' && needs.fast_diagnose.result == 'success' }}
-    permissions:
-      contents: read
-    runs-on: windows-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        shell: powershell
-    steps:
-      - name: Checkout source only without LFS payloads or write credentials
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          lfs: false
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Set up trusted Windows host Python 3.14
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.14'
-          architecture: x64
-      - name: Set up exact official Windows Node 26 matching bundled major/version
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '26.13.0'
-          architecture: x64
-      - name: Probe real isolated tool staging and aggregate independent failures
-        timeout-minutes: 13
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & python -E -s -B .\tool\full-stable-native-diagnose.py
-          if ($LASTEXITCODE -ne 0) { throw 'Windows native integration diagnostics failed; inspect all NATIVE_DIAGNOSE_* records.' }
 
