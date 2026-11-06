@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-06：SSH 目录发布回滚修复与原件保护（PR #31）
+
+- 代码复核发现旧的 SSH `install` 在 `DEST.rename(backup)` **尚未成功**时，一旦抛出 Windows 文件锁异常，`except` 就可能无条件 `shutil.rmtree(DEST)`，误删未备份的旧 SSH 依赖目录；而原件已移动后若恢复失败，旧的 `TemporaryDirectory` 退出也可能清除唯一备份。
+- 已把真正的 SSH 目录发布移到独立 `_publish_ssh_sidecar()`：先计算候选/原有目录的 SHA-256 树摘要、保存原有锁文件内容并写入同步落盘的 `publish-recovery.json`，再移动旧目录、升级候选及 resolver lock；每一步失败后按实际磁盘状态而非不可靠的成功标志判断该恢复什么。**仅当新目录的全部文件指纹仍与候选相符时才允许删除它**；若旧目录改名尚未发生，则保持旧目录不动。
+- 恢复同时核对原有 resolver lock 的字节内容；写锁文件成功但紧接着抛异常时也可回滚。成功发布之前再验证最终候选与锁文件字节。任何回滚不完整（例如外部修改候选、原始备份或还原重命名失败）都保留 `tmp/ssh-maintenance-*` 下原始备份与映射，禁止新的 SSH 安装覆盖该残留。进程强制终止也可能留下仅供人工恢复的目录；目前没有自动 SSH 恢复命令。
+- 新增无需 Windows、网络、下载和真实 wheel 的离线故障注入测试：旧目录重命名前失败、重命名后抛异常、候选发布后抛异常、resolver lock 更新前后异常，以及并发改写候选与 journal fsync 失败。**这些仓库测试已提交但尚未实际运行；需要后续 Win11 原生文件锁/强制终止验收**。不合并、不发布，不触发 Actions，main、旧 Release 和 YOLO 不变。
+
 ## 2026-11-06：SSH 独立安装接入统一锁，同时避免增量更新父子进程互锁（PR #31）
 
 - 复核 `update-tools.py prepare` 已全程持有 `tmp/.full-stable-transfer.lock`，但旧的 SSH 安装作为一个独立 Python 子进程执行。若直接给 `prepare-ssh.py install` 加同一把排他锁，子进程会被父进程挡住，导致错误或死锁。

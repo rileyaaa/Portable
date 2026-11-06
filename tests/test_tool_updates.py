@@ -119,6 +119,143 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertIn("Installation requires Windows x64", ssh_script)
         self.assertIn("installed version ledger", ssh_script)
 
+    def test_ssh_publish_rolls_back_file_lock_and_directory_rename_faults(self):
+        # No Windows runtime, network, real wheels or Git credentials needed:
+        # exercise exactly the sidecar publish helper with synthetic byte trees.
+        original_rename = Path.rename
+        original_replace = os.replace
+        modes = ('old-rename-before', 'old-rename-after',
+                 'candidate-rename-after', 'lock-replace-before',
+                 'lock-replace-after')
+        for mode in modes:
+            with self.subTest(fault=mode), tempfile.TemporaryDirectory() as d:
+                root = Path(d) / 'checkout'
+                parent = root / 'tool/python'
+                parent.mkdir(parents=True)
+                dest = parent / 'ssh-packages'
+                dest.mkdir()
+                (dest / 'old.py').write_bytes(b'original-user-data')
+                resolver = root / 'tool/python-ssh-packages.lock.txt'
+                resolver.write_bytes(b'old-resolver-lock')
+                temp = root / 'tmp/ssh-maintenance-fixture'
+                staged = temp / 'ssh-packages'
+                staged.mkdir(parents=True)
+                (staged / 'new.py').write_bytes(b'verified-wheel-payload')
+                staged_lock = temp / 'ssh.lock'
+                staged_lock.write_bytes(b'new-resolver-lock')
+                candidate = temp / 'publish.lock'
+
+                def fault_rename(self, target):
+                    if mode == 'old-rename-before' and self == dest:
+                        raise OSError('synthetic SSH first rename fault')
+                    result = original_rename(self, target)
+                    if ((mode == 'old-rename-after' and self == dest) or
+                            (mode == 'candidate-rename-after' and self == staged)):
+                        raise OSError('synthetic SSH post-rename fault')
+                    return result
+
+                def fault_replace(src, target):
+                    if mode == 'lock-replace-before' and Path(src) == candidate:
+                        raise OSError('synthetic SSH lock replacement fault')
+                    result = original_replace(src, target)
+                    if mode == 'lock-replace-after' and Path(src) == candidate:
+                        raise OSError('synthetic SSH post-lock replacement fault')
+                    return result
+
+                with (patch.object(ssh, 'ROOT', root),
+                      patch.object(ssh, 'DEST', dest),
+                      patch.object(ssh, 'LOCK', resolver),
+                      patch.object(Path, 'rename', new=fault_rename),
+                      patch.object(ssh.os, 'replace', side_effect=fault_replace)):
+                    with self.assertRaisesRegex(OSError, 'synthetic SSH'):
+                        ssh._publish_ssh_sidecar(temp, staged_lock)
+                self.assertEqual((dest / 'old.py').read_bytes(), b'original-user-data')
+                self.assertFalse((dest / 'new.py').exists())
+                self.assertEqual(resolver.read_bytes(), b'old-resolver-lock')
+                self.assertFalse((temp / 'previous-ssh').exists())
+                journal = json.loads((temp / 'publish-recovery.json').read_text(
+                    encoding='utf-8'))
+                self.assertTrue(journal['oldSidecar'])
+                self.assertEqual(journal['schema'], 1)
+                self.assertEqual(journal['oldLockSHA256'],
+                                 hashlib.sha256(b'old-resolver-lock').hexdigest())
+
+    def test_ssh_publish_preserves_backup_on_foreign_edit_and_refuses_stale_map(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / 'checkout'
+            parent = root / 'tool/python'
+            parent.mkdir(parents=True)
+            dest = parent / 'ssh-packages'
+            dest.mkdir()
+            (dest / 'old.py').write_bytes(b'preserved-old-sidecar')
+            resolver = root / 'tool/python-ssh-packages.lock.txt'
+            resolver.write_bytes(b'old-lock')
+            temp = root / 'tmp/ssh-maintenance-fixture'
+            staged = temp / 'ssh-packages'
+            staged.mkdir(parents=True)
+            (staged / 'new.py').write_bytes(b'new-sidecar')
+            staged_lock = temp / 'ssh.lock'
+            staged_lock.write_bytes(b'new-lock')
+            original_rename = Path.rename
+            poison = {'triggered': False}
+
+            def concurrent_edit(self, target):
+                result = original_rename(self, target)
+                if self == staged and not poison['triggered']:
+                    poison['triggered'] = True
+                    (dest / 'new.py').write_bytes(b'FOREIGN-EDIT-DO-NOT-DELETE')
+                    raise OSError('synthetic foreign edit after candidate rename')
+                return result
+
+            with (patch.object(ssh, 'ROOT', root),
+                  patch.object(ssh, 'DEST', dest),
+                  patch.object(ssh, 'LOCK', resolver),
+                  patch.object(Path, 'rename', new=concurrent_edit)):
+                with self.assertRaisesRegex(
+                        ssh.SSHRollbackIncomplete, 'original backups at'):
+                    ssh._publish_ssh_sidecar(temp, staged_lock)
+            self.assertTrue(poison['triggered'])
+            self.assertEqual((dest / 'new.py').read_bytes(),
+                             b'FOREIGN-EDIT-DO-NOT-DELETE')
+            self.assertEqual((temp / 'previous-ssh/old.py').read_bytes(),
+                             b'preserved-old-sidecar')
+            self.assertEqual(resolver.read_bytes(), b'old-lock')
+            self.assertTrue((temp / 'publish-recovery.json').exists())
+            # Failed SSH recovery is intentionally NOT an automatic
+            # reset/hard-delete. The preserved temp blocks another install.
+            implementation = (ROOT / 'tool/prepare-ssh.py').read_text(
+                encoding='utf-8')
+            self.assertIn("if any(scratch.glob('ssh-maintenance-*')):", implementation)
+            self.assertIn('except SSHRollbackIncomplete:', implementation)
+            self.assertIn('preserve = True', implementation)
+
+    def test_ssh_publish_detects_journal_flush_errors_before_original_rename(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / 'checkout'
+            parent = root / 'tool/python'
+            parent.mkdir(parents=True)
+            dest = parent / 'ssh-packages'
+            dest.mkdir()
+            (dest / 'old.py').write_bytes(b'keep-me')
+            resolver = root / 'tool/python-ssh-packages.lock.txt'
+            resolver.write_bytes(b'keep-lock')
+            temp = root / 'tmp/ssh-maintenance-fixture'
+            staged = temp / 'ssh-packages'
+            staged.mkdir(parents=True)
+            (staged / 'new.py').write_bytes(b'candidate')
+            staged_lock = temp / 'ssh.lock'
+            staged_lock.write_bytes(b'candidate-lock')
+            with (patch.object(ssh, 'ROOT', root),
+                  patch.object(ssh, 'DEST', dest),
+                  patch.object(ssh, 'LOCK', resolver),
+                  patch.object(ssh.os, 'fsync',
+                               side_effect=OSError('synthetic journal flush fault'))):
+                with self.assertRaisesRegex(OSError, 'journal flush fault'):
+                    ssh._publish_ssh_sidecar(temp, staged_lock)
+            self.assertEqual((dest / 'old.py').read_bytes(), b'keep-me')
+            self.assertEqual(resolver.read_bytes(), b'keep-lock')
+            self.assertFalse((temp / 'previous-ssh').exists())
+
     def test_ssh_rejects_dangling_junction_including_installed_sidecar_probe(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d) / 'checkout'
