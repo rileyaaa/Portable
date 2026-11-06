@@ -37,6 +37,22 @@ def fail(message: str) -> None:
     raise RuntimeError(message)
 
 
+def shared_upgrade_lock():
+    """Use the same kernel lock as full-stable-transfer and update-tools.
+
+    Only standalone SSH installation takes this lock. update-tools.prepare
+    already holds it when invoking _install_under_parent_lock in-process.
+    """
+    source = Path(__file__).resolve().with_name("full-stable-transfer.py")
+    spec = importlib.util.spec_from_file_location("portable_shared_transfer_lock", source)
+    if spec is None or spec.loader is None:
+        fail("Missing reviewed full-transfer lock implementation")
+    transfer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(transfer)
+    transfer.ROOT = ROOT
+    return transfer.exclusive_transfer_lock()
+
+
 def ordinary(path: Path, directory: bool = False) -> None:
     info = path.lstat()
     if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
@@ -62,8 +78,13 @@ def inside(path: Path) -> Path:
     current = ROOT
     for part in full.relative_to(ROOT).parts:
         current /= part
-        if current.exists() or current.is_symlink():
-            ordinary(current, current.is_dir())
+        # A dangling Windows junction can report exists()/is_symlink()
+        # as false while lstat() still exposes its reparse directory entry.
+        try:
+            info = current.lstat()
+        except FileNotFoundError:
+            continue
+        ordinary(current, stat.S_ISDIR(info.st_mode))
     return full
 
 
@@ -88,7 +109,10 @@ def pins() -> dict[str, str]:
 
 
 def installed(site: Path, expected: dict[str, str]) -> bool:
-    if not site.exists():
+    # Do not mistake a dangling reparse point for an absent sidecar.
+    try:
+        site.lstat()
+    except FileNotFoundError:
         return False
     inside(site)
     for member in site.rglob('*'):
@@ -203,6 +227,7 @@ def stage_install(temp: Path, expected: dict[str, str], env: dict[str, str], *, 
     helper = importlib.util.module_from_spec(helper_spec)
     helper_spec.loader.exec_module(helper)
     source = INPUT.read_bytes()
+    inside(LOCK)  # Reject dangling junctions and links before lock read/write.
     if LOCK.exists():
         ordinary(LOCK)
         lock_bytes = LOCK.read_bytes()
@@ -242,6 +267,18 @@ def stage_install(temp: Path, expected: dict[str, str], env: dict[str, str], *, 
 
 
 def install(*, new_lock: bool, runtime_test: bool) -> None:
+    """Standalone public installation always takes the shared OS lock."""
+    with shared_upgrade_lock():
+        _install_under_parent_lock(new_lock=new_lock, runtime_test=runtime_test)
+
+
+def _install_under_parent_lock(*, new_lock: bool, runtime_test: bool) -> None:
+    """Internal only: update-tools.prepare MUST hold shared_upgrade_lock.
+
+    Keeping the actual SSH wheel staging in the already-running bundled
+    Python process prevents a child from trying to acquire its parent's lock.
+    This private helper is not exposed as a command-line escape hatch.
+    """
     if os.name != 'nt' or sys.platform != 'win32' or sys.maxsize <= 2**32:
         fail('Installation requires Windows x64')
     installed_python = json.loads((TOOL / 'installed-tools.json').read_text(encoding='utf-8'))['tools']['python']['version']

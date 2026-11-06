@@ -778,12 +778,21 @@ def prepare(group: str, *, day: str, writer: bool = False) -> None:
             for row in selected:
                 prepare_row(row, temp)
         if ssh:
-            # SSH installation performs its own wheel-only hash verification and import tests.
-            args = [str(TOOL / 'python/python.exe'), '-E', '-s', '-B',
-                    str(TOOL / 'prepare-ssh.py'), 'install', '--new-lock']
-            if writer:
-                args.append('--skip-runtime-test')
-            subprocess.run(args, cwd=ROOT, timeout=600, check=True)
+            # The parent holds the shared kernel lock for the *entire* update.
+            # Spawning prepare-ssh.py install would try to lock the same file
+            # from a second process and fail. Run its trusted staging logic
+            # in this bundled Python process, still with sanitized pip children.
+            source = Path(__file__).resolve().with_name("prepare-ssh.py")
+            bounded(source)
+            ordinary(source)
+            spec = importlib.util.spec_from_file_location(
+                "portable_ssh_install_under_parent_lock", source)
+            require(spec is not None and spec.loader is not None,
+                    "Missing reviewed portable SSH installer")
+            ssh_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(ssh_module)
+            ssh_module._install_under_parent_lock(
+                new_lock=True, runtime_test=not writer)
         if any(row['tool'] == 'node' for row in selected):
             enable_node_lfs()
         record_updates(selected, ssh=ssh, day=day)
