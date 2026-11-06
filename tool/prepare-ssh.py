@@ -266,6 +266,153 @@ def stage_install(temp: Path, expected: dict[str, str], env: dict[str, str], *, 
     return staged_lock
 
 
+class SSHRollbackIncomplete(RuntimeError):
+    """A failed SSH publish retained its original backups for manual recovery."""
+
+
+def _exists_entry(path: Path) -> bool:
+    """lstat the directory entry even if a Windows junction target is missing."""
+    inside(path)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _sidecar_digest(root: Path) -> str:
+    """Snapshot all filenames, types and bytes before a risky rename."""
+    inside(root)
+    ordinary(root, True)
+    result = hashlib.sha256()
+    for entry in sorted(root.rglob('*'),
+                        key=lambda child: child.relative_to(root).as_posix().casefold()):
+        inside(entry)
+        info = entry.lstat()
+        name = entry.relative_to(root).as_posix()
+        if stat.S_ISDIR(info.st_mode):
+            ordinary(entry, True)
+            record = ['D', name]
+        elif stat.S_ISREG(info.st_mode):
+            ordinary(entry)
+            with entry.open('rb') as source:
+                digest = hashlib.file_digest(source, 'sha256').hexdigest()
+            record = ['F', name, digest]
+        else:
+            fail('Special SSH sidecar path refused: ' + str(entry))
+        result.update(json.dumps(record, ensure_ascii=False,
+                                 separators=(',', ':')).encode('utf-8'))
+        result.update(bytes([0]))
+    return result.hexdigest()
+
+
+def _current_ssh_lock() -> bytes | None:
+    if not _exists_entry(LOCK):
+        return None
+    ordinary(LOCK)
+    return LOCK.read_bytes()
+
+
+def _restore_failed_ssh_publish(temp: Path, *, had_old: bool,
+                                old_digest: str | None, new_digest: str,
+                                old_lock: bytes | None, new_lock: bytes) -> None:
+    """Never delete an original sidecar or overwrite unrelated changes."""
+    backup = temp / 'previous-ssh'
+    backup_exists = _exists_entry(backup)
+    dest_exists = _exists_entry(DEST)
+    if had_old:
+        if backup_exists:
+            if _sidecar_digest(backup) != old_digest:
+                fail('SSH original backup changed during failed publication')
+            if dest_exists:
+                if _sidecar_digest(DEST) != new_digest:
+                    fail('SSH candidate destination changed outside publication')
+                shutil.rmtree(DEST)
+            backup.rename(DEST)
+        elif not dest_exists or _sidecar_digest(DEST) != old_digest:
+            fail('Original SSH sidecar missing or changed before backup')
+    else:
+        if backup_exists:
+            fail('Unexpected original SSH backup for an added sidecar')
+        if dest_exists:
+            if _sidecar_digest(DEST) != new_digest:
+                fail('SSH candidate destination changed outside publication')
+            shutil.rmtree(DEST)
+    current_lock = _current_ssh_lock()
+    if current_lock != old_lock:
+        if current_lock != new_lock:
+            fail('SSH resolver lock changed outside publication')
+        if old_lock is None:
+            inside(LOCK)
+            ordinary(LOCK)
+            LOCK.unlink()
+        else:
+            saved_lock = temp / 'previous-ssh.lock'
+            inside(saved_lock)
+            ordinary(saved_lock)
+            if saved_lock.read_bytes() != old_lock:
+                fail('Saved original SSH resolver lock has changed')
+            os.replace(saved_lock, LOCK)
+    if had_old:
+        if _sidecar_digest(DEST) != old_digest:
+            fail('SSH sidecar failed final rollback verification')
+    elif _exists_entry(DEST):
+        fail('SSH added sidecar survived rollback')
+    if _current_ssh_lock() != old_lock:
+        fail('SSH resolver lock failed final rollback verification')
+
+
+def _publish_ssh_sidecar(temp: Path, staged_lock: Path) -> None:
+    """Move the original only after writing a verifiable recovery map.
+
+    Any unsuccessful rollback leaves the transaction outside automatic
+    TemporaryDirectory cleanup so the last surviving original is not lost.
+    """
+    staged = temp / 'ssh-packages'
+    inside(staged)
+    new_digest = _sidecar_digest(staged)
+    had_old = _exists_entry(DEST)
+    old_digest = _sidecar_digest(DEST) if had_old else None
+    old_lock = _current_ssh_lock()
+    inside(staged_lock)
+    ordinary(staged_lock)
+    new_lock = staged_lock.read_bytes()
+    candidate = temp / 'publish.lock'
+    candidate.write_bytes(new_lock)
+    if old_lock is not None:
+        (temp / 'previous-ssh.lock').write_bytes(old_lock)
+    # Both the original tree and old lock are recoverable even if the
+    # process terminates just after its first successful rename.
+    mapping = temp / 'publish-recovery.json'
+    with mapping.open('x', encoding='utf-8') as journal:
+        json.dump({'schema': 1, 'oldSidecar': had_old,
+                   'oldTreeSHA256': old_digest, 'newTreeSHA256': new_digest,
+                   'oldLockSHA256': (hashlib.sha256(old_lock).hexdigest()
+                                    if old_lock is not None else None),
+                   'newLockSHA256': hashlib.sha256(new_lock).hexdigest()},
+                  journal, sort_keys=True)
+        journal.write('\n')
+        journal.flush()
+        os.fsync(journal.fileno())
+    backup = temp / 'previous-ssh'
+    try:
+        if had_old:
+            DEST.rename(backup)
+        staged.rename(DEST)
+        os.replace(candidate, LOCK)
+    except BaseException as error:
+        try:
+            _restore_failed_ssh_publish(
+                temp, had_old=had_old, old_digest=old_digest,
+                new_digest=new_digest, old_lock=old_lock, new_lock=new_lock)
+        except BaseException as rollback_error:
+            raise SSHRollbackIncomplete(
+                'SSH publish failed and rollback is incomplete; preserve '
+                'original backups at ' + str(temp) + ': ' +
+                str(rollback_error)) from error
+        raise
+
+
 def install(*, new_lock: bool, runtime_test: bool) -> None:
     """Standalone public installation always takes the shared OS lock."""
     with shared_upgrade_lock():
@@ -297,30 +444,26 @@ def _install_under_parent_lock(*, new_lock: bool, runtime_test: bool) -> None:
     scratch = ROOT / 'tmp'
     inside(scratch)
     scratch.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='ssh-maintenance-', dir=scratch) as folder:
-        temp = Path(folder)
+    # A stale transaction can contain the only surviving old SSH sidecar.
+    # Never overwrite it with a second update; require manual recovery.
+    if any(scratch.glob('ssh-maintenance-*')):
+        fail('Unresolved SSH maintenance transaction; inspect preserved backup first')
+    temp = Path(tempfile.mkdtemp(prefix='ssh-maintenance-', dir=scratch))
+    preserve = False
+    try:
         env = child_env(temp)
         staged_lock = stage_install(temp, expected, env, new_lock=new_lock,
                                     runtime_test=runtime_test)
-        if DEST.exists():
+        if _exists_entry(DEST):
             installed(DEST, expected) if not new_lock else inside(DEST)
-        backup = temp / 'previous-ssh'
-        had_old = DEST.exists()
-        try:
-            if had_old:
-                DEST.rename(backup)
-            (temp / 'ssh-packages').rename(DEST)
-            # Never publish an unverified resolver lock before the sidecar is installed.
-            candidate = temp / 'publish.lock'
-            candidate.write_bytes(staged_lock.read_bytes())
-            os.replace(candidate, LOCK)
-        except Exception:
-            if DEST.exists():
-                # Only remove the freshly staged path; never delete user SSH state.
-                shutil.rmtree(DEST)
-            if had_old and backup.exists():
-                backup.rename(DEST)
-            raise
+        _publish_ssh_sidecar(temp, staged_lock)
+    except SSHRollbackIncomplete:
+        preserve = True
+        raise
+    finally:
+        if not preserve:
+            inside(temp)
+            shutil.rmtree(temp)
     print('SSH_INSTALLED=PASS paramiko=' + expected['paramiko'])
 
 
