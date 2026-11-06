@@ -1790,6 +1790,52 @@ class FullStableUpgradeTests(unittest.TestCase):
                 with transfer.exclusive_transfer_lock():
                     pass
 
+    def test_unresolved_journals_block_cross_tool_writes_but_allow_recovery_lock(self):
+        # The OS releases its lock after a crash, but its journal remains:
+        # no other *kind* of tool update may overwrite potentially unique
+        # originals. Recovery can still take the raw lock and audit evidence.
+        updater = load("tool/update-tools.py", "portable_updater_pending_probe")
+        ssh_probe = load("tool/prepare-ssh.py", "portable_ssh_pending_probe")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "checkout"
+            scratch = root / "tmp"
+            scratch.mkdir(parents=True)
+            for family, marker in (
+                ("ssh-maintenance-stale", "Unresolved SSH maintenance"),
+                ("full-writer-journal-stale", "Unresolved full-writer"),
+            ):
+                journal = scratch / family
+                journal.mkdir()
+                with (patch.object(transfer, "ROOT", root),
+                      patch.object(stage, "ROOT", root),
+                      patch.object(updater, "ROOT", root),
+                      patch.object(ssh_probe, "ROOT", root)):
+                    for factory in (stage.shared_upgrade_lock,
+                                    updater.shared_upgrade_lock,
+                                    ssh_probe.shared_upgrade_lock):
+                        with self.subTest(journal=family, factory=factory.__module__):
+                            with self.assertRaisesRegex(ValueError, marker):
+                                with factory():
+                                    self.fail("New tool writer bypassed crash journal")
+                    with self.assertRaisesRegex(ValueError, marker):
+                        transfer.pack(scratch / "candidate.zip", "invalid")
+                    with self.assertRaisesRegex(ValueError, marker):
+                        transfer.apply(scratch / "candidate.zip",
+                                       "invalid", "invalid", "invalid")
+                    # Only the journal's own recovery route may inspect
+                    # preserved state without being blocked by itself.
+                    if family.startswith("ssh-maintenance"):
+                        with ssh_probe.shared_upgrade_lock(recovery=True):
+                            pass
+                        with self.assertRaisesRegex(ValueError, marker):
+                            transfer.recover(scratch / "full-writer-journal-any")
+                    else:
+                        with transfer.exclusive_transfer_lock():
+                            pass
+                        with self.assertRaisesRegex(RuntimeError, marker):
+                            ssh_probe.recover_ssh(scratch / "ssh-maintenance-any")
+                journal.rmdir()
+
     def test_writer_rejects_dangling_windows_junction_metadata(self):
         # Simulate a Windows junction whose target is missing. On Windows,
         # Path.exists() and is_symlink() can both report False even though

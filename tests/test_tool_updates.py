@@ -73,7 +73,7 @@ class ToolUpdateTests(unittest.TestCase):
         for script in (updater, stager):
             self.assertIn(entry, script)
             self.assertIn('transfer.ROOT = ROOT', script)
-            self.assertIn('return transfer.exclusive_transfer_lock()', script)
+            self.assertIn('return transfer.exclusive_preparation_lock()', script)
         updating = updater.split(
             'def prepare(group: str, *, day: str, writer: bool = False) -> None:',
             1)[1].split('\ndef diff_digest(', 1)[0]
@@ -98,6 +98,8 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertIn(
             'source = Path(__file__).resolve().with_name("full-stable-transfer.py")',
             ssh_script)
+        self.assertIn('return transfer.exclusive_preparation_lock()', ssh_script)
+        self.assertIn('if recovery:', ssh_script)
         self.assertIn('return transfer.exclusive_transfer_lock()', ssh_script)
         public = ssh_script.split(
             'def install(*, new_lock: bool, runtime_test: bool) -> None:', 1)[1].split(

@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-06：避免 SSH／全量残留事务被另一路更新覆盖（PR #31）
+
+- 仅有 OS 排他锁仍不够：进程中断时锁会自动释放，但 `tmp/ssh-maintenance-*` 或 `tmp/full-writer-journal-*` 可能保留唯一原件；随后另一路候选 `prepare / pack / apply` 若认为可再次写入，仍可能覆盖回滚证据。
+- 在已有 `full-stable-transfer.py` 共用锁实现之上增加 `reject_unresolved_upgrade_journals()`：`exclusive_preparation_lock()` 在持锁状态中检查 SSH 与全量 writer 两类 journal 后才允许 `full-stable-prepare.py prepare`、`update-tools.py prepare`、独立 `prepare-ssh.py install` 进入写入阶段；`pack`、`apply` 亦独立检查，任何残留都拒绝生成/套用新候选。
+- 两种恢复不得互相覆盖：全量 `recover` 在有 SSH 残留时拒绝，SSH `recover --journal` 在有全量 writer 残留时拒绝；恢复自身则在**同一把原始 OS 锁**下读盘审计或显式恢复，不被本家残留误挡住。不能以删除 journal 作为解除阻塞的快捷手段：必须先核对/恢复原件。
+- 增加离线仓库回归，分别制造 SSH 与全量残留目录，校验两个生产器、SSH 独立安装、全量打包和应用全部 fail-closed；本家的恢复锁仍可获取，交叉恢复拒绝。**本轮仅提交测试，尚未实际运行完整 unittest 或 Win11 原生中断恢复实验**。不合并、不发布、不触发 Actions，不改 main、二进制及 YOLO。
+
 ## 2026-11-06：SSH 残留目录显式审计、选择性恢复及可重试恢复（PR #31）
 
 - `tool/prepare-ssh.py` 新增 `recover --journal tmp/ssh-maintenance-...`：默认只读审计，必须显式传 `--restore` 才会试图撤销本次 SSH 更新。通过现有共享 OS 排他锁序列化操作，不依赖随包 CPython/SSH 的安装版本台账，因此可以由受信任的 host Python 检查中断状态。
