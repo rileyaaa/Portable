@@ -84,13 +84,66 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertLess(updating.index('with shared_upgrade_lock():'),
                         updating.index('prepare_row(row, temp)'))
         self.assertLess(updating.index('with shared_upgrade_lock():'),
-                        updating.index('subprocess.run(args, cwd=ROOT, timeout=600, check=True)'))
+                        updating.index('ssh_module._install_under_parent_lock('))
         self.assertLess(updating.index('with shared_upgrade_lock():'),
                         updating.index('record_updates(selected, ssh=ssh, day=day)'))
         self.assertLess(staging.index('with shared_upgrade_lock():'),
                         staging.index('stage_npm(plan, temp, evidence)'))
         self.assertLess(staging.index('with shared_upgrade_lock():'),
                         staging.index('update_version_inventory(plan, evidence)'))
+
+    def test_ssh_installer_uses_the_shared_lock_without_child_deadlock(self):
+        ssh_script = (ROOT / 'tool/prepare-ssh.py').read_text(encoding='utf-8')
+        updater = (ROOT / 'tool/update-tools.py').read_text(encoding='utf-8')
+        self.assertIn(
+            'source = Path(__file__).resolve().with_name("full-stable-transfer.py")',
+            ssh_script)
+        self.assertIn('return transfer.exclusive_transfer_lock()', ssh_script)
+        public = ssh_script.split(
+            'def install(*, new_lock: bool, runtime_test: bool) -> None:', 1)[1].split(
+            '\ndef _install_under_parent_lock(', 1)[0]
+        self.assertIn('with shared_upgrade_lock():', public)
+        self.assertIn('_install_under_parent_lock(', public)
+        self.assertIn('def _install_under_parent_lock(', ssh_script)
+        self.assertNotIn('--skip-lock', ssh_script)
+        updating = updater.split(
+            'def prepare(group: str, *, day: str, writer: bool = False) -> None:',
+            1)[1].split('\ndef diff_digest(', 1)[0]
+        self.assertLess(updating.index('with shared_upgrade_lock():'),
+                        updating.index('ssh_module._install_under_parent_lock('))
+        self.assertIn('new_lock=True, runtime_test=not writer', updating)
+        self.assertNotIn("str(TOOL / 'prepare-ssh.py'), 'install'", updating)
+        # The private in-process path must preserve the sanitized pip child
+        # environment and the installed CPython/ledger version checks.
+        self.assertIn("env=env, timeout=360, check=False", ssh_script)
+        self.assertIn("Installation requires Windows x64", ssh_script)
+        self.assertIn("installed version ledger", ssh_script)
+
+    def test_ssh_rejects_dangling_junction_including_installed_sidecar_probe(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / 'checkout'
+            (root / 'tmp').mkdir(parents=True)
+            fake = root / 'tmp/dangling-junction'
+            original_lstat = Path.lstat
+            synthetic_reparse = type('WindowsReparse', (), {
+                'st_mode': stat.S_IFDIR, 'st_file_attributes': 0x400,
+                'st_nlink': 1,
+            })()
+            def controlled_lstat(path, *args, **kwargs):
+                if path == fake:
+                    return synthetic_reparse
+                return original_lstat(path, *args, **kwargs)
+            with (patch.object(ssh, 'ROOT', root),
+                  patch.object(Path, 'lstat', new=controlled_lstat)):
+                self.assertFalse(fake.exists())
+                self.assertFalse(fake.is_symlink())
+                with self.assertRaisesRegex(RuntimeError, 'Reparse/symlink path refused'):
+                    ssh.inside(fake / 'payload.whl')
+                with self.assertRaisesRegex(RuntimeError, 'Reparse/symlink path refused'):
+                    ssh.installed(fake, {})
+                self.assertEqual(ssh.inside(root / 'tmp/new-regular-path'),
+                                 root / 'tmp/new-regular-path')
+                self.assertFalse(ssh.installed(root / 'tmp/absent-sidecar', {}))
 
     def test_bounded_rejects_dangling_windows_reparse_metadata(self):
         # A target-less junction can evade exists()/is_symlink(). Prove

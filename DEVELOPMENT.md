@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-06：SSH 独立安装接入统一锁，同时避免增量更新父子进程互锁（PR #31）
+
+- 复核 `update-tools.py prepare` 已全程持有 `tmp/.full-stable-transfer.lock`，但旧的 SSH 安装作为一个独立 Python 子进程执行。若直接给 `prepare-ssh.py install` 加同一把排他锁，子进程会被父进程挡住，导致错误或死锁。
+- 现在 `prepare-ssh.py install`（独立 CLI）自动申请相同的操作系统排他锁；真实安装逻辑移入明确标记的私有 `_install_under_parent_lock()`。`update-tools.py prepare` 不再启动 SSH 安装脚本子进程，而是在已经持锁的**同一个随包 CPython 进程**中从固定兄弟文件加载该私有函数，覆盖工具准备、SSH 安装与最终台账写入的全过程。不会新增公开的 `--skip-lock` 绕过参数。
+- 原来的 SSH 安装子进程总超时 600 秒不再单独适用；SSH 内部用于 pip 操作的每条子命令仍自带 360 秒超时、受隔离的子进程环境和原有 wheel SHA-256 验证。GitHub Actions Job 仍有整体时间限制。**这是运行超时边界的变更，Windows 原生验证前不能宣称等价于旧模式。**
+- 同时修复 `prepare-ssh.py inside()` 和 `installed()` 对失效 Windows junction 的 `exists()`/ `is_symlink()` 漏检，并核查锁文件路径不会接受指向不存在目标的重解析点。
+- 添加离线回归：真实另一个 Python 进程持锁时，独立 SSH `install` 必须先拒绝而不执行安装体；静态检查上层持锁范围、私有无二次加锁入口、保留 pip 环境和安全审查；合成失效 junction 应在 `inside`、`installed` 阶段被拒绝。尚未运行完整仓库 unittest、Windows 11 原生 SSH/NTFS/文件锁测试，不合并、不运行 Actions、不发布。
+
 ## 2026-11-05：两条工具候选生产路线共用全量事务排他锁（PR #31）
 
 - 核查 `full-stable-prepare.py prepare` 会替换 Python、npm/Corepack、7-Zip、Chromium 等候选文件；`update-tools.py prepare` 会更新工具、安装 SSH 子进程并写入版本台账。此前仅 `full-stable-transfer.py pack/apply/recover` 获取排他文件锁，无法阻止不同维护路线同时在同一个工作树写入。

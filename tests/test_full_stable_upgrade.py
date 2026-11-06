@@ -1710,6 +1710,7 @@ class FullStableUpgradeTests(unittest.TestCase):
             scratch.mkdir(parents=True)
             source = ROOT / "tool/full-stable-transfer.py"
             updater = load("tool/update-tools.py", "portable_updater_shared_lock_probe")
+            ssh_probe = load("tool/prepare-ssh.py", "portable_ssh_shared_lock_probe")
             child_program = (
                 "import importlib.util, pathlib, sys\n"
                 "spec = importlib.util.spec_from_file_location('worker', sys.argv[1])\n"
@@ -1724,7 +1725,8 @@ class FullStableUpgradeTests(unittest.TestCase):
             # backslash followed by the letter n in the resulting program.
             with (patch.object(transfer, "ROOT", root),
                   patch.object(stage, "ROOT", root),
-                  patch.object(updater, "ROOT", root)):
+                  patch.object(updater, "ROOT", root),
+                  patch.object(ssh_probe, "ROOT", root)):
                 worker = subprocess.Popen(
                     [sys.executable, "-E", "-s", "-B", "-c",
                      child_program, str(source), str(root)],
@@ -1751,6 +1753,13 @@ class FullStableUpgradeTests(unittest.TestCase):
                                     ValueError, "Concurrent full-stable transfer"):
                                 with factory():
                                     self.fail("Concurrent writer acquired a busy lock")
+                    # Standalone SSH installation must take the SAME lock
+                    # before reaching any OS/runtime/network installation gate.
+                    with patch.object(ssh_probe, "_install_under_parent_lock") as work:
+                        with self.assertRaisesRegex(
+                                ValueError, "Concurrent full-stable transfer"):
+                            ssh_probe.install(new_lock=True, runtime_test=False)
+                        work.assert_not_called()
                 finally:
                     if worker.poll() is None:
                         worker.kill()
