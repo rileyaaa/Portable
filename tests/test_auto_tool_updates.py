@@ -250,7 +250,6 @@ class AutoToolTests(unittest.TestCase):
         self.assertIn("needs.auto_check.outputs.updates == 'true'", workflow)
         self.assertIn("TOOL_AUTO_UPDATE_PLAN=1", workflow)
         self.assertIn("TOOL_AUTO_UPDATE_PLAN = '1'", workflow)
-        self.assertIn("needs.auto_check.outputs.updates == 'true'", workflow)
         self.assertIn("WINDOWS_PS_TEST_END=", workflow)
         self.assertIn("release-audit.py --release", workflow)
         self.assertIn("release-audit.py --verify", workflow)

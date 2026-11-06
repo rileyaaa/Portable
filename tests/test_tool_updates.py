@@ -696,13 +696,12 @@ class ToolUpdateTests(unittest.TestCase):
         self.assertIn('tool/installed-tools.json',
                       (ROOT / 'DEVELOPMENT.md').read_text(encoding='utf-8'))
 
-    def test_hand_triggered_three_workflows_and_split_permissions(self):
+    def test_one_click_tool_workflow_and_split_permissions(self):
         workflow = (ROOT / '.github/workflows/03-update-tools.yml').read_text(encoding='utf-8')
         self.assertIn('\non:\n  workflow_dispatch:\n', workflow)
         for forbidden in ('\n  push:', '\n  schedule:', '\n  pull_request:',
                           '\n  workflow_run:'):
             self.assertNotIn(forbidden, workflow)
-        self.assertIn('\n  workflow_dispatch:\n', workflow)
         self.assertNotIn('    inputs:', workflow)
         self.assertNotIn('inputs.operation', workflow)
         self.assertNotIn('      group:', workflow)
