@@ -93,7 +93,7 @@ def shared_upgrade_lock():
     transfer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(transfer)
     transfer.ROOT = ROOT
-    return transfer.exclusive_transfer_lock()
+    return transfer.exclusive_preparation_lock()
 
 
 def ordinary(path: Path, *, directory: bool = False) -> None:

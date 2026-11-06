@@ -159,6 +159,30 @@ def exclusive_transfer_lock():
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
+def reject_unresolved_upgrade_journals() -> None:
+    """Preflight all tool writers against crash-recovery evidence.
+
+    An interrupted SSH sidecar may sit inside tool/python and overlap a full
+    refresh. No new candidate may be written while either transaction family
+    could still hold the only original bytes.
+    """
+    scratch = ROOT / "tmp"
+    checked_disk(scratch)
+    require(scratch.is_dir(), "Tool upgrade tmp directory is missing")
+    require(not any(scratch.glob("full-writer-journal-*")),
+            "Unresolved full-writer transaction; audit or recover it first")
+    require(not any(scratch.glob("ssh-maintenance-*")),
+            "Unresolved SSH maintenance transaction; audit or recover it first")
+
+
+@contextmanager
+def exclusive_preparation_lock():
+    """Serialize and refuse any unresolved SSH/full-writer backup."""
+    with exclusive_transfer_lock():
+        reject_unresolved_upgrade_journals()
+        yield
+
+
 def under_transfer_lock(function):
     @wraps(function)
     def locked(*args, **kwargs):
@@ -285,6 +309,7 @@ def checked_candidate_archive(path: Path, *, output: bool = False) -> Path:
 
 @under_transfer_lock
 def pack(output: Path, expected_base: str) -> None:
+    reject_unresolved_upgrade_journals()
     require(re.fullmatch(r"[0-9a-f]{40}", expected_base) is not None and
             git("rev-parse", "HEAD") == expected_base, "Unexpected source commit")
     output = checked_candidate_archive(output, output=True)
@@ -415,6 +440,9 @@ def recover(directory: Path, *, restore: bool = False) -> None:
     from an unauthenticated old map. This is not a power-loss-safe transaction
     or a filesystem-handle-level defense against concurrent replacements.
     """
+    checked_disk(ROOT / "tmp")
+    require(not any((ROOT / "tmp").glob("ssh-maintenance-*")),
+            "Unresolved SSH maintenance transaction; recover SSH first")
     journal, records = recovery_plan(directory)
     print("FULL_STABLE_RECOVERY_AUDIT=PASS")
     if not restore:
@@ -443,6 +471,7 @@ def recover(directory: Path, *, restore: bool = False) -> None:
 @under_transfer_lock
 def apply(archive: Path, expected_sha: str, expected_diff: str,
           expected_base: str) -> None:
+    reject_unresolved_upgrade_journals()
     require(re.fullmatch(r"[a-f0-9]{64}", expected_sha) is not None and
             re.fullmatch(r"[a-f0-9]{64}", expected_diff) is not None and
             re.fullmatch(r"[a-f0-9]{40}", expected_base) is not None,

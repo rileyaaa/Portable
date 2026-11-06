@@ -37,11 +37,11 @@ def fail(message: str) -> None:
     raise RuntimeError(message)
 
 
-def shared_upgrade_lock():
-    """Use the same kernel lock as full-stable-transfer and update-tools.
+def shared_upgrade_lock(*, recovery: bool = False):
+    """Take the common OS lock, then gate new writes on unresolved journals.
 
-    Only standalone SSH installation takes this lock. update-tools.prepare
-    already holds it when invoking _install_under_parent_lock in-process.
+    Recovery itself must be allowed to inspect its own preserved SSH journal;
+    both public entrypoints still serialize through the same kernel lock.
     """
     source = Path(__file__).resolve().with_name("full-stable-transfer.py")
     spec = importlib.util.spec_from_file_location("portable_shared_transfer_lock", source)
@@ -50,7 +50,9 @@ def shared_upgrade_lock():
     transfer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(transfer)
     transfer.ROOT = ROOT
-    return transfer.exclusive_transfer_lock()
+    if recovery:
+        return transfer.exclusive_transfer_lock()
+    return transfer.exclusive_preparation_lock()
 
 
 def ordinary(path: Path, directory: bool = False) -> None:
@@ -536,7 +538,11 @@ def _safe_ssh_recovery_cleanup(directory: Path) -> None:
 
 def recover_ssh(directory: Path, *, restore: bool = False) -> None:
     """Default to audit only; explicit --restore is required to change files."""
-    with shared_upgrade_lock():
+    with shared_upgrade_lock(recovery=True):
+        scratch = ROOT / 'tmp'
+        inside(scratch)
+        if any(scratch.glob('full-writer-journal-*')):
+            fail('Unresolved full-writer transaction; recover full writer first')
         journal, record, old_lock, new_lock = ssh_recovery_plan(directory)
         print('SSH_RECOVERY_AUDIT=PASS')
         if not restore:
