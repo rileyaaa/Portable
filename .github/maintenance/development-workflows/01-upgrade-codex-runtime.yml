@@ -1,0 +1,584 @@
+name: "01 - 一键更新便携包（开发验证）"
+
+# Single no-input entry, development-only. Tool changes remain fail-closed until
+# the combined updater is integrated; no Release is published by this workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-portable-development-auto-upgrade
+  cancel-in-progress: false
+
+jobs:
+  upgrade:
+    if: github.ref == 'refs/heads/development/latest-codex-portable-20261106'
+    permissions:
+      contents: read
+    outputs:
+      update_needed: ${{ steps.official.outputs.update_needed }}
+      release_url: ${{ steps.official.outputs.release_url }}
+      version: ${{ steps.official.outputs.version }}
+      archive_sha256: ${{ steps.official.outputs.archive_sha256 }}
+      changelog_date: ${{ steps.official.outputs.changelog_date }}
+      candidate_sha256: ${{ steps.candidate.outputs.sha256 }}
+    runs-on: windows-latest
+    timeout-minutes: 125
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Check out full source and hydrate existing Git LFS binaries
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+        with:
+          lfs: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Lint three official YAMLs with pinned actionlint
+        timeout-minutes: 6
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\check-actionlint.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'actionlint failed.' }
+
+      - name: Run existing maintenance regressions and Windows native path checks
+        timeout-minutes: 14
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($suite in @('test_maintenance_workflows.py','test_mode_copies.py','test_upgrade_roundtrip.py')) {
+            & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p $suite -v
+            if ($LASTEXITCODE -ne 0) { throw "Preflight regression failed: $suite" }
+          }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows NTFS junction and path native checks failed.' }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\02-tool-compatibility.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Tool environment or native compatibility failed.' }
+
+      - name: Discover official Node and CLI tool updates
+        id: tool_auto
+        timeout-minutes: 8
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -E -s -B .\tool\auto-tool-updates.py check
+          if ($LASTEXITCODE -ne 0) { throw 'Official Tool stable discovery failed.' }
+
+      - name: Inspect reviewed full Tool update plan
+        id: tool_reviewed
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -E -s -B .\.github\maintenance\03-update-route.py
+          if ($LASTEXITCODE -ne 0) { throw 'Reviewed full Tool plan failed.' }
+
+      - name: Stop on any Tool changes until combined candidate staging is supported
+        timeout-minutes: 2
+        env:
+          AUTO_UPDATES: ${{ steps.tool_auto.outputs.updates }}
+          FULL_UPDATES: ${{ steps.tool_reviewed.outputs.full_plan_changes }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:AUTO_UPDATES -notin @('true','false') -or $env:FULL_UPDATES -notin @('true','false')) {
+            throw 'Both Tool update routes must return a verified result.'
+          }
+          if ($env:AUTO_UPDATES -eq 'true' -or $env:FULL_UPDATES -eq 'true') {
+            'TOOL_UPGRADE_PENDING=BLOCKED; refusing to commit a partial Codex-only package.' |
+              Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            throw 'Combined Codex + Tool verified updater is still under development.'
+          }
+          'TOOL_REVIEWED_PLAN=UNCHANGED; official Node/CLI updates=NONE' |
+            Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Discover latest official Codex stable and verify upstream SHA256
+        id: official
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tmp = Join-Path $env:GITHUB_WORKSPACE 'tmp/codex-portable-manual-upgrade'
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          $plan = Join-Path $tmp 'verified-upstream.json'
+          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --metadata --repo . --plan $plan
+          if ($LASTEXITCODE -ne 0) { throw 'Official stable discovery or metadata verification failed.' }
+          if (-not (Test-Path -LiteralPath $plan -PathType Leaf)) {
+            'update_needed=false' | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            'CODEX_ALREADY_CURRENT=PASS; no candidate, push, or Release required.' |
+              Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            return
+          }
+          $approved = Get-Content -LiteralPath $plan -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($approved.prerelease -or $approved.release_url -notmatch '^https://github\.com/openai/codex/releases/tag/rust-v[0-9]+\.[0-9]+\.[0-9]+$') {
+            throw 'Automatic Codex upgrade requires an official stable release.'
+          }
+          'update_needed=true' | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "release_url=$($approved.release_url)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "UPGRADE_PLAN=$plan" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_TEMP=$tmp" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_VERSION=$($approved.version)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_TAG=$($approved.tag)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "version=$($approved.version)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "archive_sha256=$($approved.archive.sha256)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $changelogDate = [DateTime]::UtcNow.ToString('yyyy-MM-dd')
+          "UPGRADE_CHANGELOG_DATE=$changelogDate" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "changelog_date=$changelogDate" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "Official Release: $($approved.release_url)" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          'Channel: official stable only' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Download only the official canonical Windows x64 archive
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 12
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & gh release download $env:UPGRADE_TAG --repo openai/codex --pattern 'codex-package-x86_64-pc-windows-msvc.tar.gz' --dir $env:UPGRADE_TEMP
+          if ($LASTEXITCODE -ne 0) { throw 'Official Windows runtime download failed.' }
+          $archive = Join-Path $env:UPGRADE_TEMP 'codex-package-x86_64-pc-windows-msvc.tar.gz'
+          if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw 'Downloaded upstream package is missing.' }
+          "UPGRADE_ARCHIVE=$archive" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Apply verified archive using only the trusted maintenance script
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 9
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --apply --repo . --version $env:UPGRADE_VERSION --plan $env:UPGRADE_PLAN --archive $env:UPGRADE_ARCHIVE
+          if ($LASTEXITCODE -ne 0) { throw 'Unsupported upstream layout or code adaptation. No commit or release will be made.' }
+
+      - name: Inspect candidate native runtime without a repository write token
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $reported = & .\codex.exe --version
+          if ($LASTEXITCODE -ne 0 -or (($reported -join [Environment]::NewLine).Trim() -cne ('codex-cli ' + $env:UPGRADE_VERSION))) {
+            throw 'Native Codex version did not match the target.'
+          }
+          [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+          $models = & .\codex.exe debug models --bundled
+          if ($LASTEXITCODE -ne 0) { throw 'Official model catalog export failed.' }
+          $json = ($models -join [Environment]::NewLine)
+          $null = $json | ConvertFrom-Json
+          $catalog = Join-Path $env:UPGRADE_TEMP 'bundled-models.json'
+          [IO.File]::WriteAllText($catalog, $json, (New-Object Text.UTF8Encoding($true)))
+          "UPGRADE_MODELS=$catalog" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Fail-closed compatibility, Windows preflight and packaging checks
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 19
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($test in @('test_runtime_package.py','test_mode_copies.py','test_tui_fullscreen.py','test_release_package.py','test_upgrade_roundtrip.py')) {
+            & .\tool\python\python.exe -B -m unittest discover -s tests -p $test -v
+            if ($LASTEXITCODE -ne 0) { throw "Runtime upgrade regression failed: $test" }
+          }
+          & .\tool\python\python.exe -B .\.github\maintenance\02-compatibility.py --repo . --native
+          if ($LASTEXITCODE -ne 0) { throw 'Updated variable/schema audit failed. Nothing will be committed.' }
+          $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          & $ps -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_config.ps1 -BundledModelsPath $env:UPGRADE_MODELS
+          if ($LASTEXITCODE -ne 0) { throw 'Model/launcher compatibility regression failed.' }
+          & $ps -NoProfile -ExecutionPolicy Bypass -File .\tests\test_runtime_preflight.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows native preflight regression failed.' }
+          & $ps -NoProfile -ExecutionPolicy Bypass -File .\tests\test_cli_model_options.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'CLI option compatibility regression failed.' }
+
+      - name: Stage only allowlisted source updates and real Git LFS pointers
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        id: candidate
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & git lfs install --local
+          if ($LASTEXITCODE -ne 0) { throw 'Git LFS is required.' }
+          # Stage tracked files without passing non-ASCII names through PowerShell 5.1 argv.
+          & git add -u
+          if ($LASTEXITCODE -ne 0) { throw 'Upgrade staging failed.' }
+          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --check-index --repo .
+          if ($LASTEXITCODE -ne 0) { throw 'Unexpected file scope or non-LFS binary.' }
+          & git -c core.whitespace=cr-at-eol diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Malformed staged diff.' }
+          $fingerprint = (& .\tool\python\python.exe -B -c "import hashlib,subprocess; print(hashlib.sha256(subprocess.check_output(['git','-c','core.quotepath=false','diff','--cached','--binary','--no-ext-diff'])).hexdigest())") -join ''
+          if ($LASTEXITCODE -ne 0 -or $fingerprint -cnotmatch '^[0-9a-f]{64}$') { throw 'Cannot hash validated candidate diff.' }
+          "sha256=$fingerprint" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Make an unpushed local stable candidate checkpoint before Windows parity tests
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:UPGRADE_VERSION -match '-') { throw 'Prereleases are never committed.' }
+          & git config user.name 'github-actions[bot]'
+          & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          & git commit -m ('test(runtime): unpushed Windows candidate ' + $env:UPGRADE_VERSION)
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot commit local candidate for full precommit tests.' }
+          $checkpoint = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $checkpoint -cnotmatch '^[a-f0-9]{40}$') { throw 'Invalid local candidate SHA.' }
+          'CANDIDATE_LOCAL_SHA=' + $checkpoint | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare isolated environment for stable-only precommit Windows tests
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = Join-Path $env:GITHUB_WORKSPACE 'tmp/windows-release-state'
+          $state = @{
+            HOME = 'home'; USERPROFILE = 'home'; APPDATA = 'appdata'; LOCALAPPDATA = 'localappdata';
+            PROGRAMDATA = 'programdata'; ALLUSERSPROFILE = 'programdata';
+            TEMP = 'temp'; TMP = 'temp'; TMPDIR = 'temp';
+            XDG_CACHE_HOME = 'cache'; XDG_CONFIG_HOME = 'config'; XDG_DATA_HOME = 'data'; XDG_STATE_HOME = 'state';
+            CODEX_HOME = 'codex-home'; CODEX_SQLITE_HOME = 'sqlite'; GH_CONFIG_DIR = 'gh'
+          }
+          foreach ($name in $state.Keys) {
+            $path = Join-Path $base $state[$name]
+            New-Item -ItemType Directory -Force -Path $path | Out-Null
+            "$name=$path" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+          'PIP_CONFIG_FILE=nul' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'PYTHONDONTWRITEBYTECODE=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          'POWERSHELL_TELEMETRY_OPTOUT=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PSModuleAnalysisCachePath=$base\cache\ModuleAnalysisCache" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          $modules = Join-Path $base 'cache/modules'
+          New-Item -ItemType Directory -Force -Path $modules | Out-Null
+          "PSModulePath=$modules;$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          $modelCatalog = Join-Path $base 'bundled-models.json'
+          if (-not (Test-Path -LiteralPath $env:UPGRADE_MODELS -PathType Leaf)) { throw 'Candidate model catalog is missing.' }
+          Copy-Item -LiteralPath $env:UPGRADE_MODELS -Destination $modelCatalog -Force
+
+      - name: Windows PowerShell 5.1 - test_portable_config
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_config.ps1 -BundledModelsPath .\tmp\windows-release-state\bundled-models.json
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_portable_config' }
+
+      - name: Windows PowerShell 5.1 - test_portable_paths
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_portable_paths' }
+
+      - name: Windows PowerShell 5.1 - test_instruction_paths
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_instruction_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_instruction_paths' }
+
+      - name: Windows PowerShell 5.1 - test_bootstrap_paths
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_bootstrap_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_bootstrap_paths' }
+
+      - name: Windows PowerShell 5.1 - test_extension_policy
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_extension_policy.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_extension_policy' }
+
+      - name: Windows PowerShell 5.1 - test_extension_migration
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_extension_migration.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_extension_migration' }
+
+      - name: Windows PowerShell 5.1 - test_permission_display
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_permission_display.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_permission_display' }
+
+      - name: Windows PowerShell 5.1 - test_cli_model_options
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_cli_model_options.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_cli_model_options' }
+
+      - name: Windows PowerShell 5.1 - test_runtime_preflight
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_runtime_preflight.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_runtime_preflight' }
+
+      - name: Windows PowerShell 5.1 - test_python_setup
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_python_setup.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_python_setup' }
+
+      - name: Windows PowerShell 5.1 - test_automation_paths
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_automation_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_automation_paths' }
+
+      - name: Windows PowerShell 5.1 - test_automation_process
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_automation_process.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_automation_process' }
+
+      - name: Windows PowerShell 5.1 - test_login_input_errors
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_login_input_errors.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_login_input_errors' }
+
+      - name: Windows PowerShell 5.1 - test_browser_login_flow
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_login_flow.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_browser_login_flow' }
+
+      - name: Windows PowerShell 5.1 - test_npm_entrypoints
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_npm_entrypoints.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_npm_entrypoints' }
+
+      - name: Windows PowerShell 5.1 - test_system_policy
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_system_policy.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_system_policy' }
+
+      - name: Windows PowerShell 5.1 - test_launcher_smoke
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 10
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_launcher_smoke' }
+
+      - name: Windows PowerShell 5.1 - test_browser_smoke
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows regression failure: test_browser_smoke' }
+
+      - name: Pre-commit complete Windows audit and real ZIP trial without repository write access
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 42
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:UPGRADE_VERSION -match '-') { throw 'Only stable releases may be committed.' }
+          # All Windows parity tests saw this same unpushed, fully committed checkout.
+          $candidate = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $candidate -cne $env:CANDIDATE_LOCAL_SHA) {
+            throw 'Candidate changed during Windows parity tests; do not publish or push.'
+          }
+          $tag = "v$env:UPGRADE_VERSION-portable.1"
+          & .\tool\python\python.exe -B -c "import pymupdf, pymupdf4llm"
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled PDF Python dependencies are unavailable.' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Complete Python regression failed before stable commit.' }
+          & .\tool\python\python.exe -B .\tool\python-lock.py validate-runtime --requirements .\tool\python-packages.in.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Python dependency verification failed.' }
+          & .\tool\python\python.exe -B .\tool\automation\install-browser.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Browser payload validation failed before stable commit.' }
+          foreach ($entry in @('test_automation.js','test_portable_npm.js')) {
+            & .\tool\node\node.exe --test (Join-Path '.\tests' $entry)
+            if ($LASTEXITCODE -ne 0) { throw "Node regression failed before stable commit: $entry" }
+          }
+          foreach ($script in @('smoke.js', 'static-audit.js')) {
+            & .\tool\node\node.exe (Join-Path '.\Version_History\AI account format conversion\test' $script)
+            if ($LASTEXITCODE -ne 0) { throw "Converter regression failed: $script" }
+          }
+          & .\tool\python\python.exe -B .\.github\scripts\release-audit.py --release
+          if ($LASTEXITCODE -ne 0) { throw 'Ten seeded Windows rounds failed; main remains unchanged.' }
+          & .\tool\python\python.exe -B .\.github\scripts\release-audit.py --verify
+          if ($LASTEXITCODE -ne 0) { throw 'Source changed during Windows audit; main remains unchanged.' }
+          $result = & .\tool\python\python.exe -B .\tool\package-release.py --version $tag
+          if ($LASTEXITCODE -ne 0) { throw 'Customer ZIP trial failed; main remains unchanged.' }
+          $package = ($result -join [Environment]::NewLine) | ConvertFrom-Json
+          $trial = [IO.Path]::GetFullPath($package.output_dir)
+          $root = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE 'tmp'))
+          if ([IO.Path]::GetDirectoryName($trial) -cne $root -or [IO.Path]::GetFileName($trial) -notlike 'release-*') {
+            throw 'Unsafe trial ZIP output path.'
+          }
+          try {
+            if ($package.source_commit -cne $candidate -or $package.archive_sha256 -cnotmatch '^[0-9a-f]{64}$' -or
+                $package.file_count -le 0) { throw 'Candidate trial ZIP did not match the verified local commit.' }
+            if ((Get-FileHash -LiteralPath $package.archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $package.archive_sha256) {
+              throw 'Trial ZIP checksum differs from the package builder.'
+            }
+            "PRECOMMIT_FULL_WINDOWS_AUDIT_AND_ZIP=PASS candidate=$candidate SHA256=$($package.archive_sha256)" |
+              Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          } finally {
+            if (Test-Path -LiteralPath $trial) { Remove-Item -LiteralPath $trial -Recurse -Force }
+          }
+
+      - name: Report validation and optional separate write job
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        run: |
+          'Read-only native validation passed; the trusted writer will independently reproduce the development candidate.' |
+            Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Clean only this run's downloaded upstream and model data
+        if: always()
+        run: |
+          $tmp = Join-Path $env:GITHUB_WORKSPACE 'tmp/codex-portable-manual-upgrade'
+          if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
+
+  commit:
+    name: Commit verified stable Codex to development without running downloaded binaries
+    needs: upgrade
+    if: ${{ needs.upgrade.result == 'success' && needs.upgrade.outputs.update_needed == 'true' && github.ref == 'refs/heads/development/latest-codex-portable-20261106' }}
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Check out the same source SHA with no persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, Node 24
+        with:
+          ref: ${{ github.sha }}
+          lfs: true
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Re-check development and the same official stable version
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_URL: ${{ needs.upgrade.outputs.release_url }}
+          EXPECTED_VERSION: ${{ needs.upgrade.outputs.version }}
+          EXPECTED_ARCHIVE_SHA256: ${{ needs.upgrade.outputs.archive_sha256 }}
+          UPGRADE_CHANGELOG_DATE: ${{ needs.upgrade.outputs.changelog_date }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $remote = (& gh api "repos/$env:GITHUB_REPOSITORY/branches/development/latest-codex-portable-20261106" --jq '.commit.sha') -join [Environment]::NewLine
+          if ($LASTEXITCODE -ne 0 -or $remote.Trim() -cne $env:GITHUB_SHA) {
+            throw 'Development moved since read-only validation; refusing to commit.'
+          }
+          $tmp = Join-Path $env:GITHUB_WORKSPACE 'tmp/codex-portable-trusted-commit'
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          $plan = Join-Path $tmp 'verified-upstream.json'
+          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --metadata --repo . --release-url $env:RELEASE_URL --plan $plan
+          if ($LASTEXITCODE -ne 0) { throw 'Official release re-verification failed.' }
+          $approved = Get-Content -LiteralPath $plan -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($approved.prerelease -or $approved.version -cne $env:EXPECTED_VERSION -or
+              $approved.archive.sha256 -cne $env:EXPECTED_ARCHIVE_SHA256) {
+            throw 'The stable release identity differs from the read-only validation job.'
+          }
+          "UPGRADE_PLAN=$plan" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_TEMP=$tmp" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_TAG=$($approved.tag)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_VERSION=$($approved.version)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_CHANGELOG_DATE=$env:UPGRADE_CHANGELOG_DATE" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Download the same official archive and verify its exact digest
+        timeout-minutes: 12
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & gh release download $env:UPGRADE_TAG --repo openai/codex --pattern 'codex-package-x86_64-pc-windows-msvc.tar.gz' --dir $env:UPGRADE_TEMP
+          if ($LASTEXITCODE -ne 0) { throw 'Official stable archive download failed.' }
+          $archive = Join-Path $env:UPGRADE_TEMP 'codex-package-x86_64-pc-windows-msvc.tar.gz'
+          if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw 'Archive missing.' }
+          "UPGRADE_ARCHIVE=$archive" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Regenerate and verify the allowlisted Git LFS candidate without running Codex
+        timeout-minutes: 10
+        env:
+          EXPECTED_CANDIDATE_SHA256: ${{ needs.upgrade.outputs.candidate_sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --apply --repo . --version $env:UPGRADE_VERSION --plan $env:UPGRADE_PLAN --archive $env:UPGRADE_ARCHIVE
+          if ($LASTEXITCODE -ne 0) { throw 'Independent trusted candidate regeneration failed.' }
+          & git lfs install --local
+          if ($LASTEXITCODE -ne 0) { throw 'Git LFS unavailable.' }
+          & git add -u
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot stage candidate.' }
+          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --check-index --repo .
+          if ($LASTEXITCODE -ne 0) { throw 'Binary LFS or staged allowlist verification failed.' }
+          & git -c core.whitespace=cr-at-eol diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace validation failed.' }
+          $fingerprint = (& .\tool\python\python.exe -B -c "import hashlib,subprocess; print(hashlib.sha256(subprocess.check_output(['git','-c','core.quotepath=false','diff','--cached','--binary','--no-ext-diff'])).hexdigest())") -join ''
+          if ($LASTEXITCODE -ne 0 -or $env:EXPECTED_CANDIDATE_SHA256 -cnotmatch '^[0-9a-f]{64}$' -or
+              $fingerprint -cne $env:EXPECTED_CANDIDATE_SHA256) {
+            throw 'Candidate differs from the exact source diff that passed read-only native checks.'
+          }
+
+      - name: Authenticated fast-forward push (no downloaded EXE is executed)
+        timeout-minutes: 8
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $remote = (& gh api "repos/$env:GITHUB_REPOSITORY/branches/development/latest-codex-portable-20261106" --jq '.commit.sha') -join [Environment]::NewLine
+          if ($LASTEXITCODE -ne 0 -or $remote.Trim() -cne $env:GITHUB_SHA) {
+            throw 'Development changed; no validated source will be overwritten.'
+          }
+          & gh auth setup-git
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot configure scoped GitHub credentials.' }
+          & git config user.name 'github-actions[bot]'
+          & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          & git commit -m ("chore(runtime): upgrade verified Codex stable to " + $env:UPGRADE_VERSION)
+          if ($LASTEXITCODE -ne 0) { throw 'Upgrade commit failed.' }
+          $commit = (& git rev-parse HEAD).Trim()
+          & git lfs push origin HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'LFS upload failed.' }
+          & git push origin HEAD:refs/heads/development/latest-codex-portable-20261106
+          if ($LASTEXITCODE -ne 0) { throw 'Development rejected a non-fast-forward upgrade.' }
+          $after = (& gh api "repos/$env:GITHUB_REPOSITORY/branches/development/latest-codex-portable-20261106" --jq '.commit.sha') -join [Environment]::NewLine
+          if ($LASTEXITCODE -ne 0 -or $after.Trim() -cne $commit) { throw 'Remote commit verification failed.' }
+          Write-Output ("UPGRADED_SOURCE_COMMIT=" + $commit)
+          "Stable source candidate committed: $env:UPGRADE_VERSION" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "Commit: $commit" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "Original stable baseline: $env:GITHUB_SHA" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          'Safe recovery: revert the development candidate normally if a later audit fails; never force reset main.' |
+            Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          'DEVELOPMENT_ONLY=PASS; main and existing official Release remain unchanged.' |
+            Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Remove the trusted job's own temporary download
+        if: always()
+        run: |
+          $tmp = Join-Path $env:GITHUB_WORKSPACE 'tmp/codex-portable-trusted-commit'
+          if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }

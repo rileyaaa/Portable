@@ -1,0 +1,42 @@
+name: "03 - Tool 版本检查（开发分支只读）"
+
+# Safe default-branch entry only; the actual workflow resides in development.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: codex-portable-main-entry-03
+  cancel-in-progress: false
+
+jobs:
+  route:
+    name: Dispatch development workflow; do not modify main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check development ref and dispatch exact workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_BRANCH: development/latest-codex-portable-20261106
+          WORKFLOW_FILE: 03-update-tools.yml
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::Only main may route a development run"; exit 1; }
+          head="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$TARGET_BRANCH" --jq '.object.sha')"
+          [[ "$head" =~ ^[a-f0-9]{40}$ ]] || { echo "::error::Development branch head unavailable"; exit 1; }
+          file_sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/$WORKFLOW_FILE?ref=$TARGET_BRANCH" --jq '.sha')"
+          [[ "$file_sha" =~ ^[a-f0-9]{40}$ ]] || { echo "::error::Development workflow file unavailable"; exit 1; }
+          # Tool check is read-only on development.
+          gh workflow run "$WORKFLOW_FILE" --repo "$GITHUB_REPOSITORY" --ref "$TARGET_BRANCH" 
+          {
+            echo '## Development workflow dispatch requested'
+            echo "Development head: \`$head\`"
+            echo "Workflow: \`$WORKFLOW_FILE\`"
+            echo 'This routing job never checks out the main runtime or creates a Release.'
+            echo 'Follow the new development run in GitHub Actions for the actual result.'
+          } >> "$GITHUB_STEP_SUMMARY"

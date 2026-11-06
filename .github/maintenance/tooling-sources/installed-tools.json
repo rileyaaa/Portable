@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "platform": "win32-x64",
+  "lastSuccessfulToolUpdate": "2026-11-03",
+  "tools": {
+    "python": {
+      "version": "3.15.2",
+      "status": "bundled",
+      "path": "tool/python/python.exe"
+    },
+    "pip": {
+      "version": "26.3",
+      "status": "bundled",
+      "path": "tool/python/Lib/site-packages/pip"
+    },
+    "paramiko": {
+      "version": "5.1.0",
+      "status": "bundled",
+      "path": "tool/python/ssh-packages"
+    },
+    "node": {
+      "version": "26.13.0",
+      "status": "bundled",
+      "path": "tool/node/node.exe"
+    },
+    "npm": {
+      "version": "12.2.1",
+      "status": "bundled",
+      "path": "tool/node/node_modules/npm"
+    },
+    "corepack": {
+      "version": "0.36.0",
+      "status": "bundled",
+      "path": "tool/node/node_modules/corepack"
+    },
+    "playwright-mcp": {
+      "version": "0.0.84",
+      "status": "bundled",
+      "path": "tool/automation/playwright"
+    },
+    "chromium": {
+      "version": "157.0.8103.15",
+      "status": "bundled",
+      "path": "tool/automation/browsers"
+    },
+    "adb": {
+      "version": "37.0.1",
+      "status": "bundled",
+      "path": "tool/android/platform-tools"
+    },
+    "7zip": {
+      "version": "26.05",
+      "status": "bundled",
+      "path": "tool/bin/7z.exe"
+    },
+    "ripgrep": {
+      "version": "15.2.0",
+      "status": "bundled",
+      "path": "tool/bin/rg.exe"
+    },
+    "fd": {
+      "version": "10.5.0",
+      "status": "bundled",
+      "path": "tool/bin/fd.exe"
+    },
+    "jq": {
+      "version": "1.8.2",
+      "status": "bundled",
+      "path": "tool/bin/jq.exe"
+    },
+    "git": {
+      "version": null,
+      "status": "not-installed",
+      "path": "tool/git"
+    }
+  },
+  "lastObservedWindowsAudit": "2026-11-02 run 41422353149"
+}

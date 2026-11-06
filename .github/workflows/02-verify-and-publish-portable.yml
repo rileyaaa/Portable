@@ -1,0 +1,61 @@
+name: "02 - 候选包验证（发布功能关闭）"
+
+# Safe default-branch entry only; the actual workflow resides in development.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '候选版本标签，例如 v0.167.0-portable.1'
+        required: true
+        type: string
+      publish_release:
+        description: '安全入口只允许 false；正式发布未开放'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: codex-portable-main-entry-02
+  cancel-in-progress: false
+
+jobs:
+  route:
+    name: Dispatch development workflow; do not modify main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check development ref and dispatch exact workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_BRANCH: development/latest-codex-portable-20261106
+          WORKFLOW_FILE: 02-verify-and-publish-portable.yml
+          RELEASE_VERSION: ${{ inputs.version }}
+          PUBLISH_REQUESTED: ${{ inputs.publish_release }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::Only main may route a development run"; exit 1; }
+          head="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$TARGET_BRANCH" --jq '.object.sha')"
+          [[ "$head" =~ ^[a-f0-9]{40}$ ]] || { echo "::error::Development branch head unavailable"; exit 1; }
+          file_sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/$WORKFLOW_FILE?ref=$TARGET_BRANCH" --jq '.sha')"
+          [[ "$file_sha" =~ ^[a-f0-9]{40}$ ]] || { echo "::error::Development workflow file unavailable"; exit 1; }
+          if [[ "$PUBLISH_REQUESTED" == "true" ]]; then
+            echo "::error::Publication remains disabled. Use false for read-only verification."
+            exit 1
+          fi
+          [[ "$RELEASE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-portable\.[1-9][0-9]*$ ]] || {
+            echo "::error::Invalid version tag; expected vX.Y.Z-portable.N"
+            exit 1
+          }
+          gh workflow run "$WORKFLOW_FILE" --repo "$GITHUB_REPOSITORY" --ref "$TARGET_BRANCH" -f "version=$RELEASE_VERSION" -f publish_release=false
+          {
+            echo '## Development workflow dispatch requested'
+            echo "Development head: \`$head\`"
+            echo "Workflow: \`$WORKFLOW_FILE\`"
+            echo 'This routing job never checks out the main runtime or creates a Release.'
+            echo 'Follow the new development run in GitHub Actions for the actual result.'
+          } >> "$GITHUB_STEP_SUMMARY"

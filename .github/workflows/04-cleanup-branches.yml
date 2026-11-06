@@ -1,0 +1,62 @@
+name: "04 - 仅清理已合并的维护 PR 来源分支"
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-portable-pr-branch-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup_closed_pr:
+    name: Remove a same-repository PR branch when its PR closes
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository && (startsWith(github.event.pull_request.head.ref, 'maintenance/tools-') || startsWith(github.event.pull_request.head.ref, 'maintenance/full-tools-')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Verify exact closed PR head and remove its branch only
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Never delete main, development or manually created branches.
+          [[ "$BRANCH" =~ ^maintenance/(tools|full-tools)-[0-9]+$ ]] || exit 0
+          state="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.state')"
+          merged_at="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.merged_at // ""')"
+          if [[ "$state" != "closed" || -z "$merged_at" ]]; then
+            echo 'PR is unmerged or reopened; keeping its branch.'
+            exit 0
+          fi
+          owner="${GITHUB_REPOSITORY%%/*}"
+          query="$(BRANCH_NAME="$BRANCH" python3 -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["BRANCH_NAME"],safe=""))')"
+          open_uses="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=1&head=$owner%3A$query" --jq 'length')"
+          if [[ "$open_uses" != "0" ]]; then
+            echo 'Another open PR uses this branch; keeping it.'
+            exit 0
+          fi
+          encoded="$(BRANCH_NAME="$BRANCH" python3 -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["BRANCH_NAME"],safe="/"))')"
+          if ! current="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$encoded" --jq '.object.sha' 2>&1)"; then
+            if [[ "$current" == *"404"* ]]; then
+              echo 'PR branch was already deleted.'
+              exit 0
+            fi
+            echo 'Cannot verify PR branch; refusing deletion.' >&2
+            exit 1
+          fi
+          if [[ "$current" != "$EXPECTED_HEAD_SHA" ]]; then
+            echo 'PR head moved since closure; keeping the branch.'
+            exit 0
+          fi
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$encoded" > /dev/null
+          echo "BRANCH_CLEANUP_RESULT=PASS;deleted=$BRANCH"
