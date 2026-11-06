@@ -229,7 +229,8 @@ class AutoToolTests(unittest.TestCase):
     def test_workflow_auto_is_manual_and_preserves_release_gates(self):
         workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
             encoding="utf-8")
-        self.assertIn("options: [diagnose, check, update]", workflow)
+        self.assertIn("\n  workflow_dispatch:\n", workflow)
+        self.assertNotIn("inputs.operation", workflow)
         self.assertIn("tool/auto-tool-updates.py check", workflow)
         # Ubuntu uses POSIX paths; the Windows verifier and writer use native
         # PowerShell paths. Check each job, not just a global string occurrence.
@@ -249,50 +250,40 @@ class AutoToolTests(unittest.TestCase):
         self.assertIn("needs.auto_check.outputs.updates == 'true'", workflow)
         self.assertIn("TOOL_AUTO_UPDATE_PLAN=1", workflow)
         self.assertIn("TOOL_AUTO_UPDATE_PLAN = '1'", workflow)
-        self.assertIn("inputs.operation == 'update'", workflow)
+        self.assertIn("needs.auto_check.outputs.updates == 'true'", workflow)
         self.assertIn("WINDOWS_PS_TEST_END=", workflow)
         self.assertIn("release-audit.py --release", workflow)
         self.assertIn("release-audit.py --verify", workflow)
         self.assertNotIn("gh release create", workflow)
 
 
-    def test_three_operations_keep_writers_behind_windows_validation(self):
-        workflow = (ROOT / ".github/workflows/03-update-tools.yml").read_text(
-            encoding="utf-8")
-        dispatch = workflow.split("\npermissions:", 1)[0]
-        choices = re.search(r"(?m)^        options: \[(.+)\]$", dispatch)
-        self.assertIsNotNone(choices)
-        self.assertEqual(choices.group(1).split(", "), ["diagnose", "check", "update"])
-        self.assertEqual(dispatch.count("      operation:"), 1)
-        self.assertIn("default: check", dispatch)
-        for old in ("      mode:", "      group:", "      create_pr:"):
-            self.assertNotIn(old, dispatch)
-        for old in ("inputs.mode", "inputs.group", "inputs.create_pr",
-                    "auto-pr", "full-pr", "prepare-tools-pr"):
-            self.assertNotIn(old, workflow)
-        checker = workflow.split("\n  auto_check:", 1)[1].split("\n  verify:", 1)[0]
-        verifier = workflow.split("\n  verify:", 1)[1].split("\n  propose:", 1)[0]
-        writer = workflow.split("\n  propose:", 1)[1].split("\n  full_verify:", 1)[0]
-        full_verifier = workflow.split("\n  full_verify:", 1)[1].split(
-            "\n  full_propose:", 1)[0]
-        full_writer = workflow.split("\n  full_propose:", 1)[1].split(
-            "\n  full_artifact_cleanup:", 1)[0]
-        self.assertIn("inputs.operation == 'update'", checker)
-        self.assertIn("03-update-route.py", checker)
-        self.assertIn("full_plan_changes:", checker)
-        self.assertIn("inputs.operation == 'check'", verifier)
-        self.assertIn("02-tool-compatibility.ps1", verifier)
-        self.assertIn("Bundled Tool installation or environment mapping failed.", verifier)
+    def test_one_click_tool_update_preserves_verification_and_candidate_pr_gates(self):
+        workflow = (ROOT / '.github/workflows/03-update-tools.yml').read_text(
+            encoding='utf-8')
+        dispatch = workflow.split('\npermissions:', 1)[0]
+        self.assertIn('\n  workflow_dispatch:\n', dispatch)
+        self.assertNotIn('    inputs:', dispatch)
+        self.assertNotIn('inputs.operation', workflow)
+        self.assertNotIn('\n  fast_diagnose:', workflow)
+        self.assertNotIn('\n  native_diagnose:', workflow)
+        checker = workflow.split('\n  auto_check:', 1)[1].split('\n  verify:', 1)[0]
+        verifier = workflow.split('\n  verify:', 1)[1].split('\n  propose:', 1)[0]
+        writer = workflow.split('\n  propose:', 1)[1].split('\n  full_verify:', 1)[0]
+        full_verifier = workflow.split('\n  full_verify:', 1)[1].split('\n  full_propose:', 1)[0]
+        full_writer = workflow.split('\n  full_propose:', 1)[1].split('\n  full_artifact_cleanup:', 1)[0]
+        self.assertIn("github.ref == 'refs/heads/main'", checker)
+        self.assertIn('03-update-route.py', checker)
+        self.assertIn('full_plan_changes:', checker)
         self.assertIn("needs.auto_check.outputs.updates == 'true'", verifier)
+        self.assertIn("needs.auto_check.outputs.full_plan_changes == 'false'", verifier)
+        self.assertIn('02-tool-compatibility.ps1', verifier)
         self.assertIn("needs.verify.result == 'success'", writer)
-        self.assertIn("inputs.operation == 'update'", writer)
         self.assertIn("needs.auto_check.outputs.full_plan_changes == 'true'", full_verifier)
         self.assertIn("needs.full_verify.result == 'success'", full_writer)
-        self.assertIn("inputs.operation == 'update'", full_writer)
-        self.assertEqual(workflow.count("TOOL_GROUP: tools"), 4)
-        for gate in ("release-audit.py --release", "release-audit.py --verify"):
-            self.assertIn(gate, workflow)
-        self.assertNotIn("gh release create", workflow)
+        self.assertEqual(workflow.count('TOOL_GROUP: tools'), 4)
+        for name in ('release-audit.py --release', 'release-audit.py --verify'):
+            self.assertIn(name, workflow)
+        self.assertNotIn('gh release create', workflow)
 
     def test_approved_full_tool_router_includes_ssh_and_rejects_downgrades(self):
         loader = importlib.util.spec_from_file_location(
