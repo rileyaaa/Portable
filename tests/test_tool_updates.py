@@ -328,6 +328,48 @@ class ToolUpdateTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, 'direct package tmp child'):
                         ssh.ssh_recovery_plan(root / 'tmp/../ssh-maintenance-fixture')
 
+    def test_ssh_recovery_refuses_unknown_journal_contents_before_modifying_files(self):
+        # Unrelated regular files dropped into a preserved journal must
+        # not be silently deleted by --restore cleanup.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / 'checkout'
+            parent = root / 'tool/python'
+            parent.mkdir(parents=True)
+            dest = parent / 'ssh-packages'
+            dest.mkdir()
+            (dest / 'old.py').write_bytes(b'original')
+            resolver = root / 'tool/python-ssh-packages.lock.txt'
+            resolver.write_bytes(b'old-resolver')
+            journal = root / 'tmp/ssh-maintenance-fixture'
+            staged = journal / 'ssh-packages'
+            staged.mkdir(parents=True)
+            (staged / 'new.py').write_bytes(b'new-candidate')
+            staged_lock = journal / 'ssh.lock'
+            staged_lock.write_bytes(b'new-resolver')
+            with (patch.object(ssh, 'ROOT', root),
+                  patch.object(ssh, 'DEST', dest),
+                  patch.object(ssh, 'LOCK', resolver)):
+                ssh._publish_ssh_sidecar(journal, staged_lock)
+                foreign = journal / 'personal-notes.txt'
+                foreign.write_bytes(b'preserve-this-unrelated-file')
+                for restore in (False, True):
+                    with self.subTest(restore=restore):
+                        with self.assertRaisesRegex(
+                                RuntimeError, 'Unexpected SSH recovery entry'):
+                            ssh.recover_ssh(journal, restore=restore)
+                        self.assertEqual(foreign.read_bytes(),
+                                         b'preserve-this-unrelated-file')
+                        self.assertEqual((dest / 'new.py').read_bytes(),
+                                         b'new-candidate')
+                        self.assertEqual((journal / 'previous-ssh/old.py').read_bytes(),
+                                         b'original')
+                        self.assertEqual(resolver.read_bytes(), b'new-resolver')
+                foreign.unlink()
+                ssh.recover_ssh(journal, restore=True)
+                self.assertFalse(journal.exists())
+                self.assertEqual((dest / 'old.py').read_bytes(), b'original')
+                self.assertEqual(resolver.read_bytes(), b'old-resolver')
+
     def test_ssh_recovery_retry_after_a_windows_rename_failure(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d) / 'checkout'
