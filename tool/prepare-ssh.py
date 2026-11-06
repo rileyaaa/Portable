@@ -419,6 +419,144 @@ def _publish_ssh_sidecar(temp: Path, staged_lock: Path) -> None:
         raise
 
 
+def _journal_sha(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r'[0-9a-f]{64}', value) is not None
+
+
+def ssh_recovery_plan(directory: Path) -> tuple[Path, dict, bytes | None, bytes]:
+    """Read-only validation of an interrupted SSH directory publication.
+
+    The journal is locally supplied evidence, not a signed authenticity
+    proof. Validate all original, candidate and resolver-lock identities
+    before any restoration or cleanup. This does not defend OS path races.
+    """
+    scratch = ROOT / 'tmp'
+    inside(scratch)
+    ordinary(scratch, True)
+    journal = Path(directory).absolute()
+    if ('..' in journal.parts or journal.parent != scratch or
+            re.fullmatch(r'ssh-maintenance-[A-Za-z0-9_-]+', journal.name) is None):
+        fail('SSH recovery journal must be a direct package tmp child')
+    inside(journal)
+    ordinary(journal, True)
+    others = [p for p in scratch.glob('ssh-maintenance-*') if p != journal]
+    if others:
+        fail('Multiple unresolved SSH maintenance journals; inspect manually')
+
+    mapping = journal / 'publish-recovery.json'
+    inside(mapping)
+    ordinary(mapping)
+    if mapping.stat().st_size > 4096:
+        fail('Oversized SSH recovery mapping')
+    data = json.loads(mapping.read_text(encoding='utf-8'))
+    required = {'schema', 'oldSidecar', 'oldTreeSHA256', 'newTreeSHA256',
+                'oldLockSHA256', 'newLockSHA256'}
+    if (not isinstance(data, dict) or set(data) != required or
+            type(data.get('schema')) is not int or data['schema'] != 1 or
+            type(data.get('oldSidecar')) is not bool or
+            not _journal_sha(data.get('newTreeSHA256')) or
+            not _journal_sha(data.get('newLockSHA256')) or
+            (not _journal_sha(data.get('oldTreeSHA256'))
+             if data['oldSidecar'] else data.get('oldTreeSHA256') is not None) or
+            (data.get('oldLockSHA256') is not None and
+             not _journal_sha(data.get('oldLockSHA256')))):
+        fail('Invalid SSH recovery journal schema or hashes')
+
+    old_tree = data['oldTreeSHA256']
+    new_tree = data['newTreeSHA256']
+    backup = journal / 'previous-ssh'
+    saved = _exists_entry(backup)
+    destination = _exists_entry(DEST)
+    if data['oldSidecar']:
+        if saved:
+            if _sidecar_digest(backup) != old_tree:
+                fail('SSH recovery original backup digest mismatch')
+            if destination and _sidecar_digest(DEST) != new_tree:
+                fail('SSH recovery destination changed outside candidate')
+        elif not destination or _sidecar_digest(DEST) != old_tree:
+            fail('SSH recovery original is missing or modified')
+    elif saved:
+        fail('SSH recovery contains an unexpected original sidecar')
+    elif destination and _sidecar_digest(DEST) != new_tree:
+        fail('SSH recovery destination changed outside candidate')
+
+    staged = journal / 'ssh-packages'
+    if _exists_entry(staged) and _sidecar_digest(staged) != new_tree:
+        fail('SSH recovery staged candidate digest mismatch')
+
+    current = _current_ssh_lock()
+    current_hash = hashlib.sha256(current).hexdigest() if current is not None else None
+    old_hash = data['oldLockSHA256']
+    new_hash = data['newLockSHA256']
+    old_copy = journal / 'previous-ssh.lock'
+    if old_hash is None:
+        if _exists_entry(old_copy):
+            fail('SSH recovery unexpected old resolver lock backup')
+        old_bytes = None
+    elif _exists_entry(old_copy):
+        ordinary(old_copy)
+        old_bytes = old_copy.read_bytes()
+        if hashlib.sha256(old_bytes).hexdigest() != old_hash:
+            fail('SSH recovery original resolver lock backup digest mismatch')
+    elif current_hash == old_hash:
+        # Earlier recovery may already have restored this lock.
+        old_bytes = current
+    else:
+        fail('SSH recovery original resolver lock cannot be reconstructed')
+
+    for relative in ('ssh.lock', 'publish.lock'):
+        entry = journal / relative
+        if _exists_entry(entry):
+            ordinary(entry)
+            if hashlib.sha256(entry.read_bytes()).hexdigest() != new_hash:
+                fail('SSH recovery staged resolver lock digest mismatch')
+    new_copy = journal / 'ssh.lock'
+    if not _exists_entry(new_copy):
+        fail('SSH recovery staged resolver lock missing')
+    ordinary(new_copy)
+    new_bytes = new_copy.read_bytes()
+    if current_hash not in (old_hash, new_hash):
+        fail('SSH recovery resolver lock changed outside publication')
+    return journal, data, old_bytes, new_bytes
+
+
+def _safe_ssh_recovery_cleanup(directory: Path) -> None:
+    """Refuse linked, special, hard-linked or unbounded journal contents."""
+    inside(directory)
+    ordinary(directory, True)
+    scanned = 0
+    for entry in directory.rglob('*'):
+        scanned += 1
+        if scanned > 120000:
+            fail('SSH recovery directory contains too many entries for cleanup')
+        inside(entry)
+        mode = entry.lstat().st_mode
+        ordinary(entry, stat.S_ISDIR(mode))
+
+
+def recover_ssh(directory: Path, *, restore: bool = False) -> None:
+    """Default to audit only; explicit --restore is required to change files."""
+    with shared_upgrade_lock():
+        journal, record, old_lock, new_lock = ssh_recovery_plan(directory)
+        print('SSH_RECOVERY_AUDIT=PASS')
+        if not restore:
+            return
+        try:
+            _restore_failed_ssh_publish(
+                journal, had_old=record['oldSidecar'],
+                old_digest=record['oldTreeSHA256'],
+                new_digest=record['newTreeSHA256'],
+                old_lock=old_lock, new_lock=new_lock)
+            ssh_recovery_plan(journal)
+            _safe_ssh_recovery_cleanup(journal)
+            shutil.rmtree(journal)
+        except BaseException as error:
+            raise SSHRollbackIncomplete(
+                'SSH recovery incomplete; journal retained for review at ' +
+                str(journal) + ': ' + str(error)) from error
+        print('SSH_RECOVERY_RESTORED=PASS')
+
+
 def install(*, new_lock: bool, runtime_test: bool) -> None:
     """Standalone public installation always takes the shared OS lock."""
     with shared_upgrade_lock():
@@ -475,11 +613,21 @@ def _install_under_parent_lock(*, new_lock: bool, runtime_test: bool) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('action', choices=['check', 'install'])
+    ap.add_argument('action', choices=['check', 'install', 'recover'])
+    ap.add_argument('--journal', type=Path, help='Preserved SSH transaction in tmp')
+    ap.add_argument('--restore', action='store_true',
+                    help='Restore exact SSH originals only after read-only audit')
     ap.add_argument('--new-lock', action='store_true')
     ap.add_argument('--skip-runtime-test', action='store_true',
                     help='Only for the separate no-execution writer job after matching a verified digest')
     args = ap.parse_args()
+    if args.action == 'recover':
+        if args.journal is None or args.new_lock or args.skip_runtime_test:
+            ap.error('recover requires --journal, and excludes install-only options')
+        recover_ssh(args.journal, restore=args.restore)
+        return
+    if args.journal is not None or args.restore:
+        ap.error('--journal and --restore apply only to recover')
     expected = pins()
     if args.action == 'check':
         print('SSH_STATUS=' + ('installed' if installed(DEST, expected) else 'missing'))
