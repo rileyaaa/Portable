@@ -1,5 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-06：SSH 残留目录显式审计、选择性恢复及可重试恢复（PR #31）
+
+- `tool/prepare-ssh.py` 新增 `recover --journal tmp/ssh-maintenance-...`：默认只读审计，必须显式传 `--restore` 才会试图撤销本次 SSH 更新。通过现有共享 OS 排他锁序列化操作，不依赖随包 CPython/SSH 的安装版本台账，因此可以由受信任的 host Python 检查中断状态。
+- 恢复前严格验证 journal 是 `ROOT/tmp` 下的单层独有目录、无路径穿越/重解析点、`publish-recovery.json` 小于 4 KiB 且字段类型与 schema 精确匹配，原始目录 SHA-256 树摘要、候选摘要、新旧锁文件 SHA-256、正在使用的 resolver lock 的身份；拒绝多份冲突 journal、用户修改候选、备份篡改或不明锁文件，不执行 `git reset --hard`，也不猜测丢失的原始锁内容。
+- `--restore` 经过只读预检后才撤销候选目录/恢复旧目录和 resolver lock，随后重新核对恢复状态；成功后验证 journal 树里没有特殊/硬链接/重解析点且数量受限，才尝试清理临时目录。恢复中又发生异常，保留 journal 并允许下次重新预检重试。这个机制不等于 OS 原子事务，不能避免恶意并发路径替换或突然断电。
+- 新增仓库级离线回归：旧 SSH 已存在/首次安装两种成功回滚、默认只读、候选被外部改写、原始备份被修改、resolver lock 被篡改、非法 map/路径与双 journal 拒绝、Windows 重命名失败后第二次恢复，以及 CLI 无需正常安装态 pin 的恢复分流。**完整仓库 unittest 与 Windows 11 原生测试仍未运行**。旧版正式 Release、main、YOLO 不变；未触发 GitHub Actions。
+
 ## 2026-11-06：SSH 目录发布回滚修复与原件保护（PR #31）
 
 - 代码复核发现旧的 SSH `install` 在 `DEST.rename(backup)` **尚未成功**时，一旦抛出 Windows 文件锁异常，`except` 就可能无条件 `shutil.rmtree(DEST)`，误删未备份的旧 SSH 依赖目录；而原件已移动后若恢复失败，旧的 `TemporaryDirectory` 退出也可能清除唯一备份。

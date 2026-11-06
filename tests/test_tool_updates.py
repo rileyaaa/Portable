@@ -229,6 +229,158 @@ class ToolUpdateTests(unittest.TestCase):
             self.assertIn('except SSHRollbackIncomplete:', implementation)
             self.assertIn('preserve = True', implementation)
 
+    def test_ssh_explicit_recovery_audit_then_restore_old_or_absent_sidecar(self):
+        # A successful publish helper intentionally leaves its local journal
+        # until outer installation cleanup. Reuse that exact evidence as a
+        # synthetic process-death checkpoint, with no downloaded wheel.
+        for had_original in (True, False):
+            with self.subTest(had_original=had_original), \
+                 tempfile.TemporaryDirectory() as d:
+                root = Path(d) / 'checkout'
+                parent = root / 'tool/python'
+                parent.mkdir(parents=True)
+                dest = parent / 'ssh-packages'
+                lock_file = root / 'tool/python-ssh-packages.lock.txt'
+                if had_original:
+                    dest.mkdir()
+                    (dest / 'old.py').write_bytes(b'original SSH content')
+                    lock_file.write_bytes(b'original lock')
+                journal = root / 'tmp/ssh-maintenance-fixture'
+                staged = journal / 'ssh-packages'
+                staged.mkdir(parents=True)
+                (staged / 'new.py').write_bytes(b'new SSH wheel content')
+                staged_lock = journal / 'ssh.lock'
+                staged_lock.write_bytes(b'new lock')
+                with (patch.object(ssh, 'ROOT', root),
+                      patch.object(ssh, 'DEST', dest),
+                      patch.object(ssh, 'LOCK', lock_file)):
+                    ssh._publish_ssh_sidecar(journal, staged_lock)
+                    # Default recovery is a strict READ-ONLY audit.
+                    ssh.recover_ssh(journal)
+                    self.assertEqual((dest / 'new.py').read_bytes(),
+                                     b'new SSH wheel content')
+                    self.assertEqual(lock_file.read_bytes(), b'new lock')
+                    self.assertTrue(journal.is_dir())
+                    # Only explicit restore may delete the candidate and
+                    # restore the previous sidecar and resolver lock.
+                    ssh.recover_ssh(journal, restore=True)
+                    self.assertFalse(journal.exists())
+                    if had_original:
+                        self.assertEqual((dest / 'old.py').read_bytes(),
+                                         b'original SSH content')
+                        self.assertEqual(lock_file.read_bytes(), b'original lock')
+                    else:
+                        self.assertFalse(dest.exists())
+                        self.assertFalse(lock_file.exists())
+
+    def test_ssh_recovery_rejects_foreign_and_malformed_journal_before_changes(self):
+        for damage in ('candidate', 'original', 'resolver', 'map', 'second-journal'):
+            with self.subTest(damage=damage), tempfile.TemporaryDirectory() as d:
+                root = Path(d) / 'checkout'
+                parent = root / 'tool/python'
+                parent.mkdir(parents=True)
+                dest = parent / 'ssh-packages'
+                dest.mkdir()
+                (dest / 'old.py').write_bytes(b'unchanged-base')
+                lock_file = root / 'tool/python-ssh-packages.lock.txt'
+                lock_file.write_bytes(b'old-lock')
+                journal = root / 'tmp/ssh-maintenance-fixture'
+                staged = journal / 'ssh-packages'
+                staged.mkdir(parents=True)
+                (staged / 'new.py').write_bytes(b'candidate')
+                staged_lock = journal / 'ssh.lock'
+                staged_lock.write_bytes(b'new-lock')
+                with (patch.object(ssh, 'ROOT', root),
+                      patch.object(ssh, 'DEST', dest),
+                      patch.object(ssh, 'LOCK', lock_file)):
+                    ssh._publish_ssh_sidecar(journal, staged_lock)
+                    if damage == 'candidate':
+                        (dest / 'new.py').write_bytes(b'FOREIGN-CANDIDATE')
+                        failure = 'destination changed outside candidate'
+                    elif damage == 'original':
+                        (journal / 'previous-ssh/old.py').write_bytes(b'FOREIGN-BACKUP')
+                        failure = 'original backup digest mismatch'
+                    elif damage == 'resolver':
+                        lock_file.write_bytes(b'FOREIGN-LOCK')
+                        failure = 'resolver lock changed outside publication'
+                    elif damage == 'map':
+                        mapping = journal / 'publish-recovery.json'
+                        data = json.loads(mapping.read_text(encoding='utf-8'))
+                        data['oldSidecar'] = 'yes'
+                        mapping.write_text(json.dumps(data), encoding='utf-8')
+                        failure = 'Invalid SSH recovery journal schema'
+                    else:
+                        (root / 'tmp/ssh-maintenance-another').mkdir()
+                        failure = 'Multiple unresolved SSH maintenance journals'
+                    with self.assertRaisesRegex(RuntimeError, failure):
+                        ssh.recover_ssh(journal, restore=True)
+                    self.assertTrue(journal.exists())
+                    self.assertTrue((journal / 'previous-ssh').is_dir())
+                    if damage == 'candidate':
+                        self.assertEqual((dest / 'new.py').read_bytes(),
+                                         b'FOREIGN-CANDIDATE')
+                    if damage == 'resolver':
+                        self.assertEqual(lock_file.read_bytes(), b'FOREIGN-LOCK')
+                # Attempted traversal must not read or write a host journal.
+                with patch.object(ssh, 'ROOT', root):
+                    with self.assertRaisesRegex(RuntimeError, 'direct package tmp child'):
+                        ssh.ssh_recovery_plan(root / 'tmp/../ssh-maintenance-fixture')
+
+    def test_ssh_recovery_retry_after_a_windows_rename_failure(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / 'checkout'
+            parent = root / 'tool/python'
+            parent.mkdir(parents=True)
+            dest = parent / 'ssh-packages'
+            dest.mkdir()
+            (dest / 'old.py').write_bytes(b'base-bytes')
+            lock_file = root / 'tool/python-ssh-packages.lock.txt'
+            lock_file.write_bytes(b'base-lock')
+            journal = root / 'tmp/ssh-maintenance-fixture'
+            staged = journal / 'ssh-packages'
+            staged.mkdir(parents=True)
+            (staged / 'new.py').write_bytes(b'candidate')
+            staged_lock = journal / 'ssh.lock'
+            staged_lock.write_bytes(b'candidate-lock')
+            with (patch.object(ssh, 'ROOT', root),
+                  patch.object(ssh, 'DEST', dest),
+                  patch.object(ssh, 'LOCK', lock_file)):
+                ssh._publish_ssh_sidecar(journal, staged_lock)
+                original_rename = Path.rename
+                def fail_backup_rename(self, target):
+                    if self == journal / 'previous-ssh':
+                        raise OSError('synthetic Windows rename locked original')
+                    return original_rename(self, target)
+                with patch.object(Path, 'rename', new=fail_backup_rename):
+                    with self.assertRaisesRegex(
+                            ssh.SSHRollbackIncomplete, 'journal retained'):
+                        ssh.recover_ssh(journal, restore=True)
+                self.assertTrue((journal / 'previous-ssh/old.py').is_file())
+                self.assertFalse(dest.exists())
+                self.assertEqual(lock_file.read_bytes(), b'candidate-lock')
+                # No force overwrite: the next explicit invocation audits
+                # the partially restored state and completes the recovery.
+                ssh.recover_ssh(journal)
+                ssh.recover_ssh(journal, restore=True)
+                self.assertFalse(journal.exists())
+                self.assertEqual((dest / 'old.py').read_bytes(), b'base-bytes')
+                self.assertEqual(lock_file.read_bytes(), b'base-lock')
+
+    def test_ssh_recovery_cli_is_readonly_by_default_without_installed_pins(self):
+        archive = Path('tmp/ssh-maintenance-example')
+        with (patch.object(ssh.sys, 'argv', [
+                'prepare-ssh.py', 'recover', '--journal', str(archive)]),
+              patch.object(ssh, 'pins', side_effect=AssertionError(
+                  'SSH recovery must not depend on the installed pin closure')),
+              patch.object(ssh, 'recover_ssh') as recovery):
+            ssh.main()
+            recovery.assert_called_once_with(archive, restore=False)
+        with (patch.object(ssh.sys, 'argv', [
+                'prepare-ssh.py', 'recover', '--journal', str(archive), '--restore']),
+              patch.object(ssh, 'recover_ssh') as recovery):
+            ssh.main()
+            recovery.assert_called_once_with(archive, restore=True)
+
     def test_ssh_publish_success_and_new_sidecar_install(self):
         # Exercise success too: the lock file must match the new wheel lock
         # and the old directory must remain in the journal until the caller
