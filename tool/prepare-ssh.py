@@ -400,6 +400,12 @@ def _publish_ssh_sidecar(temp: Path, staged_lock: Path) -> None:
             DEST.rename(backup)
         staged.rename(DEST)
         os.replace(candidate, LOCK)
+        # A successful rename is not itself proof that the final path still
+        # refers to the candidate. Reject late changes before discarding the
+        # original sidecar and resolver lock backup.
+        if (_sidecar_digest(DEST) != new_digest or
+                _current_ssh_lock() != new_lock):
+            fail('SSH final publication digest changed')
     except BaseException as error:
         try:
             _restore_failed_ssh_publish(
