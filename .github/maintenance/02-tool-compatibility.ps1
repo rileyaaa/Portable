@@ -92,7 +92,12 @@ foreach ($RelativeDir in $RequiredLauncherDirs) {
         throw "Codex launcher does not declare the real tool PATH entry: $RelativeDir"
     }
 }
-foreach ($Bat in @('启动Codex.bat', '启动Codex-维护模式.bat', '检查login_json.bat')) {
+# Windows PowerShell 5.1 reads BOM-less .ps1 text using the host ANSI codepage.
+# Construct exact Unicode BAT names from ASCII-only source on every locale.
+$BatStart = -join @([char]0x542F, [char]0x52A8, 'Codex.bat')
+$BatMaintenance = -join @([char]0x542F, [char]0x52A8, 'Codex-', [char]0x7EF4, [char]0x62A4, [char]0x6A21, [char]0x5F0F, '.bat')
+$BatLoginCheck = -join @([char]0x68C0, [char]0x67E5, 'login_json.bat')
+foreach ($Bat in @($BatStart, $BatMaintenance, $BatLoginCheck)) {
     $Source = Get-Content -LiteralPath (Join-Path $Root $Bat) -Raw -Encoding UTF8
     if (-not $Source.Contains('%~dp0tool\android\platform-tools;')) {
         throw "Windows batch entry misses bundled ADB: $Bat"

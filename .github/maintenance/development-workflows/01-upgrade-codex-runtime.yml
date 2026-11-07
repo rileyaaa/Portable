@@ -13,8 +13,62 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  metadata_gate:
+    name: Inspect current official Tool versions before using Windows
+    if: ${{ github.ref == 'refs/heads/development/latest-codex-portable-20261106' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout only trusted read-only version inventory
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          lfs: false
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/maintenance/03-update-route.py
+            /tool/auto-tool-updates.py
+            /tool/installed-tools.json
+            /tool/full-stable-upgrade-plan.json
+            /tool/python-build-manifest.json
+            /tool/automation/versions.json
+      - name: Use pinned metadata-only Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - name: Discover authenticated official Tool updates and reviewed full plan
+        id: versions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -E -s -B tool/auto-tool-updates.py check
+          python -E -s -B .github/maintenance/03-update-route.py
+      - name: Refuse an incomplete Codex-only update before Windows checkout
+        env:
+          AUTO_CHANGES: ${{ steps.versions.outputs.updates }}
+          REVIEWED_CHANGES: ${{ steps.versions.outputs.full_plan_changes }}
+        run: |
+          set -euo pipefail
+          if [[ "$AUTO_CHANGES" != "false" || "$REVIEWED_CHANGES" != "false" ]]; then
+            {
+              echo '## Codex + Tool combined update is not ready'
+              echo "Auto-managed Tool updates: $AUTO_CHANGES"
+              echo "Reviewed full-plan Tool updates: $REVIEWED_CHANGES"
+              echo 'BLOCKED_BEFORE_WINDOWS=PASS; no LFS checkout, Windows test, Codex update or Release'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Tool changes must be integrated into a single verified Codex + Tool candidate."
+            exit 1
+          fi
+          echo 'TOOL_METADATA_GATE=PASS; Windows validation permitted' >> "$GITHUB_STEP_SUMMARY"
+
   upgrade:
-    if: github.ref == 'refs/heads/development/latest-codex-portable-20261106'
+    needs: metadata_gate
+    if: ${{ needs.metadata_gate.result == 'success' && github.ref == 'refs/heads/development/latest-codex-portable-20261106' }}
     permissions:
       contents: read
     outputs:
@@ -46,16 +100,16 @@ jobs:
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\check-actionlint.ps1
           if ($LASTEXITCODE -ne 0) { throw 'actionlint failed.' }
 
-      - name: Run existing maintenance regressions and Windows native path checks
-        timeout-minutes: 14
+      - name: Fast preflight - maintenance contracts and real bundled Tool audit
+        timeout-minutes: 9
         run: |
           $ErrorActionPreference = 'Stop'
           foreach ($suite in @('test_maintenance_workflows.py','test_mode_copies.py','test_upgrade_roundtrip.py')) {
             & .\tool\python\python.exe -E -s -B -m unittest discover -s tests -p $suite -v
             if ($LASTEXITCODE -ne 0) { throw "Preflight regression failed: $suite" }
           }
-          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_paths.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Windows NTFS junction and path native checks failed.' }
+          # Check installed Tool/Windows support first, before expensive
+          # repeated disposable child processes or downloading any candidate.
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\02-tool-compatibility.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Tool environment or native compatibility failed.' }
 
@@ -130,6 +184,14 @@ jobs:
           "changelog_date=$changelogDate" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "Official Release: $($approved.release_url)" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           'Channel: official stable only' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Windows PowerShell 5.1 - pre-upgrade portable paths
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        timeout-minutes: 9
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows NTFS junction and path native checks failed.' }
 
       - name: Download only the official canonical Windows x64 archive
         if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
