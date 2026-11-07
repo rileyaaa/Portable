@@ -15,13 +15,13 @@ GitHub Actions 的 `workflow_dispatch` 必須先出現在預設分支 `main` 才
 
 ## 同步原始碼與備份
 
-- `.github/maintenance/01-upgrade-runtime.py`、`02-compatibility.py`、`02-tool-compatibility.ps1`、`03-update-route.py`、`check-actionlint.ps1` 為 development 維護程式鏡像，僅供追溯審閱。
+- `.github/maintenance/01-upgrade-runtime.py`、`01-check-codex-stable.py`、`01-combined-candidate.py`、`02-compatibility.py`、`02-tool-compatibility.ps1`、`03-update-route.py`、`check-actionlint.ps1` 為 development 維護程式鏡像，僅供追溯審閱。
 - `development-workflows/` 備份 development 完整的 01～04 YAML。放在 `.github/workflows/` 外，不是有效的工作流。
 - `tooling-sources/` 備份 development 的 Tool 升級 Python 程式碼；不寫入 main 的 `tool/` 目錄，亦不能單獨在舊 runtime 上執行。
 - `legacy-main-workflows/` 完整備份本次整理前的四份 main YAML，包括舊發布、一次性 r1/r2 和瀏覽器下載流程。
 
 ## 當前限制
 
-01 如果發現 Tool 也需更新，會安全中止，避免只更新 Codex 而假稱整包完成。03 是唯讀更新需求偵測；完整 Tool 更新和正式發布需另行整合與 Windows 驗證。**main 上的路由與鏡像不表示這些功能已經通過驗證或獲准發布。**
+01 的開發流程可在同一個 Windows 候選中整合官方 Codex 穩定版與受限的 Node（原主版本內）、ripgrep、fd、jq Tool 更新：依序校驗 Runtime LFS 指標、Tool 官方 SHA-256、個別變更範圍及合併 SHA-256；獨立 Writer 必須重建相同合併摘要，且只能提交 development。**這仍是未驗證的整合候選，尚未經 Windows Actions 驗收，請勿視為已可發佈。** 其他 Python、npm、Playwright、瀏覽器等完整 Tool 升級仍依獨立已審核計畫處理，計畫變更時 01 會拒絕部分更新。版本皆已最新時，01 的 Ubuntu metadata-only 預檢會跳過 Windows Runner。03 繼續只讀檢查，不單獨更新。正式 Release 始終關閉。
 
 舊 0.166.0 正式 Release、標籤與可執行檔不變。需要恢復舊 Actions 時，從 `legacy-main-workflows/` 還原到 `.github/workflows/` 並審核後提交。

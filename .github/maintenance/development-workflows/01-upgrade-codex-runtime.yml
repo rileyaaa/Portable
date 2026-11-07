@@ -1,7 +1,7 @@
 name: "01 - 一键更新便携包（开发验证）"
 
-# Single no-input entry, development-only. Tool changes remain fail-closed until
-# the combined updater is integrated; no Release is published by this workflow.
+# Single no-input entry, development-only. Supported Node/CLI updates join the verified runtime candidate. Unreviewed
+# full-tool plans remain blocked; no Release is published by this workflow.
 on:
   workflow_dispatch:
 
@@ -20,6 +20,9 @@ jobs:
     timeout-minutes: 8
     permissions:
       contents: read
+    outputs:
+      tool_updates: ${{ steps.versions.outputs.updates }}
+      codex_updates: ${{ steps.codex_version.outputs.codex_updates }}
     steps:
       - name: Checkout only trusted read-only version inventory
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,10 +39,25 @@ jobs:
             /tool/full-stable-upgrade-plan.json
             /tool/python-build-manifest.json
             /tool/automation/versions.json
+            /.github/maintenance/01-combined-candidate.py
+            /.github/maintenance/01-check-codex-stable.py
+            /.github/maintenance/01-upgrade-runtime.py
+            /tool/runtime-manifest.json
+            /tests/test_combined_candidate.py
+            /tests/test_codex_metadata_preflight.py
       - name: Use pinned metadata-only Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14'
+      - name: Test combined Git candidate hashing and Codex discovery without Windows
+        run: |
+          python -E -s -B -m unittest discover -s tests -p test_combined_candidate.py -v
+          python -E -s -B -m unittest discover -s tests -p test_codex_metadata_preflight.py -v
+      - name: Check latest published official stable Codex without downloading binaries
+        id: codex_version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -E -s -B .github/maintenance/01-check-codex-stable.py
       - name: Discover authenticated official Tool updates and reviewed full plan
         id: versions
         env:
@@ -48,36 +66,46 @@ jobs:
           set -euo pipefail
           python -E -s -B tool/auto-tool-updates.py check
           python -E -s -B .github/maintenance/03-update-route.py
-      - name: Refuse an incomplete Codex-only update before Windows checkout
+      - name: Reject unreviewed full Tool plan before Windows checkout
         env:
           AUTO_CHANGES: ${{ steps.versions.outputs.updates }}
           REVIEWED_CHANGES: ${{ steps.versions.outputs.full_plan_changes }}
+          CODEX_CHANGES: ${{ steps.codex_version.outputs.codex_updates }}
         run: |
           set -euo pipefail
-          if [[ "$AUTO_CHANGES" != "false" || "$REVIEWED_CHANGES" != "false" ]]; then
-            {
-              echo '## Codex + Tool combined update is not ready'
-              echo "Auto-managed Tool updates: $AUTO_CHANGES"
-              echo "Reviewed full-plan Tool updates: $REVIEWED_CHANGES"
-              echo 'BLOCKED_BEFORE_WINDOWS=PASS; no LFS checkout, Windows test, Codex update or Release'
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::Tool changes must be integrated into a single verified Codex + Tool candidate."
+          if [[ "$AUTO_CHANGES" != "true" && "$AUTO_CHANGES" != "false" ]] ||
+             [[ "$CODEX_CHANGES" != "true" && "$CODEX_CHANGES" != "false" ]] ||
+             [[ "$REVIEWED_CHANGES" != "true" && "$REVIEWED_CHANGES" != "false" ]]; then
+            echo "::error::Tool discovery returned an unverified decision"
             exit 1
           fi
-          echo 'TOOL_METADATA_GATE=PASS; Windows validation permitted' >> "$GITHUB_STEP_SUMMARY"
-
+          if [[ "$REVIEWED_CHANGES" == "true" ]]; then
+            echo 'FULL_TOOL_UPDATE_NOT_IMPLEMENTED=BLOCKED; no Windows or LFS checkout' >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::The reviewed full-tool plan needs a separately checked combined candidate"
+            exit 1
+          fi
+          echo "OFFICIAL_AUTO_TOOL_UPDATES=$AUTO_CHANGES" >> "$GITHUB_STEP_SUMMARY"
+          echo "OFFICIAL_CODEX_UPDATES=$CODEX_CHANGES" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$AUTO_CHANGES" == 'false' && "$CODEX_CHANGES" == 'false' ]]; then
+            echo 'NO_UPDATES_NEEDED=PASS; Windows and LFS checkout skipped.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Reviewed full Tool plan unchanged; candidate can proceed to Windows verification.' >> "$GITHUB_STEP_SUMMARY"
+          fi
   upgrade:
     needs: metadata_gate
-    if: ${{ needs.metadata_gate.result == 'success' && github.ref == 'refs/heads/development/latest-codex-portable-20261106' }}
+    if: ${{ needs.metadata_gate.result == 'success' && (needs.metadata_gate.outputs.codex_updates == 'true' || needs.metadata_gate.outputs.tool_updates == 'true') && github.ref == 'refs/heads/development/latest-codex-portable-20261106' }}
     permissions:
       contents: read
     outputs:
       update_needed: ${{ steps.official.outputs.update_needed }}
+      codex_update_needed: ${{ steps.official.outputs.codex_needed }}
+      tool_update_needed: ${{ needs.metadata_gate.outputs.tool_updates }}
       release_url: ${{ steps.official.outputs.release_url }}
       version: ${{ steps.official.outputs.version }}
       archive_sha256: ${{ steps.official.outputs.archive_sha256 }}
       changelog_date: ${{ steps.official.outputs.changelog_date }}
       candidate_sha256: ${{ steps.candidate.outputs.sha256 }}
+      tool_candidate_sha256: ${{ steps.tool_candidate.outputs.sha256 }}
     runs-on: windows-latest
     timeout-minutes: 125
     defaults:
@@ -131,46 +159,59 @@ jobs:
           & .\tool\python\python.exe -E -s -B .\.github\maintenance\03-update-route.py
           if ($LASTEXITCODE -ne 0) { throw 'Reviewed full Tool plan failed.' }
 
-      - name: Stop on any Tool changes until combined candidate staging is supported
+      - name: Recheck Tool metadata decisions before candidate staging
         timeout-minutes: 2
         env:
           AUTO_UPDATES: ${{ steps.tool_auto.outputs.updates }}
           FULL_UPDATES: ${{ steps.tool_reviewed.outputs.full_plan_changes }}
+          PRECHECK_AUTO_UPDATES: ${{ needs.metadata_gate.outputs.tool_updates }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:AUTO_UPDATES -notin @('true','false') -or $env:FULL_UPDATES -notin @('true','false')) {
-            throw 'Both Tool update routes must return a verified result.'
+          if ($env:AUTO_UPDATES -notin @('true','false') -or
+              $env:FULL_UPDATES -cne 'false' -or
+              $env:AUTO_UPDATES -cne $env:PRECHECK_AUTO_UPDATES) {
+            throw 'Tool update decision changed between the metadata gate and Windows runner.'
           }
-          if ($env:AUTO_UPDATES -eq 'true' -or $env:FULL_UPDATES -eq 'true') {
-            'TOOL_UPGRADE_PENDING=BLOCKED; refusing to commit a partial Codex-only package.' |
-              Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-            throw 'Combined Codex + Tool verified updater is still under development.'
-          }
-          'TOOL_REVIEWED_PLAN=UNCHANGED; official Node/CLI updates=NONE' |
+          'SUPPORTED_TOOL_DISCOVERY=VERIFIED; full Tool plan unchanged' |
             Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-
       - name: Discover latest official Codex stable and verify upstream SHA256
         id: official
         timeout-minutes: 5
         env:
           GH_TOKEN: ${{ github.token }}
+          TOOL_UPDATE_NEEDED: ${{ needs.metadata_gate.outputs.tool_updates }}
         run: |
           $ErrorActionPreference = 'Stop'
+          if ($env:TOOL_UPDATE_NEEDED -notin @('true','false')) { throw 'Missing verified Tool update decision.' }
           $tmp = Join-Path $env:GITHUB_WORKSPACE 'tmp/codex-portable-manual-upgrade'
           New-Item -ItemType Directory -Force -Path $tmp | Out-Null
           $plan = Join-Path $tmp 'verified-upstream.json'
           & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --metadata --repo . --plan $plan
           if ($LASTEXITCODE -ne 0) { throw 'Official stable discovery or metadata verification failed.' }
+          $current = (Get-Content -LiteralPath '.\tool\runtime-manifest.json' -Raw -Encoding UTF8 | ConvertFrom-Json).version
+          $day = [DateTime]::UtcNow.ToString('yyyy-MM-dd')
+          "UPGRADE_CHANGELOG_DATE=$day" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "changelog_date=$day" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "UPGRADE_VERSION=$current" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
           if (-not (Test-Path -LiteralPath $plan -PathType Leaf)) {
-            'update_needed=false' | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            'CODEX_ALREADY_CURRENT=PASS; no candidate, push, or Release required.' |
-              Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            'codex_needed=false' | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "version=$current" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            if ($env:TOOL_UPDATE_NEEDED -eq 'true') {
+              'update_needed=true' | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+              'CODEX_ALREADY_CURRENT=PASS; only supported Tool updates are pending.' |
+                Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            } else {
+              'update_needed=false' | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+              'CODEX_AND_SUPPORTED_TOOLS_CURRENT=PASS; no candidate or Release needed.' |
+                Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+            }
             return
           }
           $approved = Get-Content -LiteralPath $plan -Raw -Encoding UTF8 | ConvertFrom-Json
           if ($approved.prerelease -or $approved.release_url -notmatch '^https://github\.com/openai/codex/releases/tag/rust-v[0-9]+\.[0-9]+\.[0-9]+$') {
             throw 'Automatic Codex upgrade requires an official stable release.'
           }
+          'codex_needed=true' | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           'update_needed=true' | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "release_url=$($approved.release_url)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "UPGRADE_PLAN=$plan" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -179,22 +220,11 @@ jobs:
           "UPGRADE_TAG=$($approved.tag)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
           "version=$($approved.version)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "archive_sha256=$($approved.archive.sha256)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          $changelogDate = [DateTime]::UtcNow.ToString('yyyy-MM-dd')
-          "UPGRADE_CHANGELOG_DATE=$changelogDate" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          "changelog_date=$changelogDate" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "Official Release: $($approved.release_url)" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-          'Channel: official stable only' | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-
-      - name: Windows PowerShell 5.1 - pre-upgrade portable paths
-        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
-        timeout-minutes: 9
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_paths.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Windows NTFS junction and path native checks failed.' }
-
+          'Channel: official stable; Tool candidates require the same combined Windows verification.' |
+            Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
       - name: Download only the official canonical Windows x64 archive
-        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        if: ${{ success() && steps.official.outputs.codex_needed == 'true' }}
         timeout-minutes: 12
         env:
           GH_TOKEN: ${{ github.token }}
@@ -207,7 +237,7 @@ jobs:
           "UPGRADE_ARCHIVE=$archive" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Apply verified archive using only the trusted maintenance script
-        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        if: ${{ success() && steps.official.outputs.codex_needed == 'true' }}
         timeout-minutes: 9
         env:
           GH_TOKEN: ${{ github.token }}
@@ -217,7 +247,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Unsupported upstream layout or code adaptation. No commit or release will be made.' }
 
       - name: Inspect candidate native runtime without a repository write token
-        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        if: ${{ success() && steps.official.outputs.codex_needed == 'true' }}
         timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Stop'
@@ -233,6 +263,87 @@ jobs:
           $catalog = Join-Path $env:UPGRADE_TEMP 'bundled-models.json'
           [IO.File]::WriteAllText($catalog, $json, (New-Object Text.UTF8Encoding($true)))
           "UPGRADE_MODELS=$catalog" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Export existing model catalog only when Codex is already current
+        if: ${{ success() && steps.official.outputs.codex_needed == 'false' && needs.metadata_gate.outputs.tool_updates == 'true' }}
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+          $models = & .\codex.exe debug models --bundled
+          if ($LASTEXITCODE -ne 0) { throw 'Existing official model export failed.' }
+          $json = ($models -join [Environment]::NewLine)
+          $null = $json | ConvertFrom-Json
+          $temp = Join-Path $env:GITHUB_WORKSPACE 'tmp/codex-portable-manual-upgrade'
+          New-Item -ItemType Directory -Force -Path $temp | Out-Null
+          $catalog = Join-Path $temp 'bundled-models.json'
+          [IO.File]::WriteAllText($catalog, $json, (New-Object Text.UTF8Encoding($true)))
+          "UPGRADE_MODELS=$catalog" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Verify and commit runtime-only local checkpoint before staging Tool
+        if: ${{ success() && steps.official.outputs.codex_needed == 'true' }}
+        timeout-minutes: 6
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & git lfs install --local
+          if ($LASTEXITCODE -ne 0) { throw 'Git LFS is required for runtime update.' }
+          & git add -u
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot stage runtime files.' }
+          & .\tool\python\python.exe -E -s -B .\.github\maintenance\01-upgrade-runtime.py --check-index --repo .
+          if ($LASTEXITCODE -ne 0) { throw 'Codex stage exceeds exact runtime allowlist or LFS hash.' }
+          & git -c core.whitespace=cr-at-eol diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Codex stage contains malformed metadata.' }
+          & git -c user.name='runtime-verifier' -c user.email='verifier@users.noreply.github.com' commit -m ('test(runtime): local-only checkpoint ' + $env:UPGRADE_VERSION)
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot checkpoint verified runtime stage locally.' }
+          'CODEX_RUNTIME_CHECKPOINT=PASS; no remote writes' |
+            Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Prepare SHA256 pinned official Tool stage next to the Codex checkpoint
+        if: ${{ success() && needs.metadata_gate.outputs.tool_updates == 'true' }}
+        id: tool_candidate
+        timeout-minutes: 28
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -E -s -B .\tool\auto-tool-updates.py plan
+          if ($LASTEXITCODE -ne 0) { throw 'Official Tool asset discovery failed.' }
+          $plan = Get-Content -LiteralPath '.\tmp\auto-tool-update-plan.json' -Raw -Encoding UTF8 | ConvertFrom-Json
+          if (@($plan.candidates).Count -lt 1) { throw 'Official Tool update plan is unexpectedly empty.' }
+          if (@($plan.candidates | Where-Object { $_.tool -ceq 'node' }).Count -eq 1) {
+            & git lfs install --local
+            if ($LASTEXITCODE -ne 0) { throw 'Node candidate requires LFS.' }
+          }
+          'TOOL_AUTO_UPDATE_PLAN=1' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          $env:TOOL_AUTO_UPDATE_PLAN = '1'
+          & .\tool\python\python.exe -E -s -B .\tool\update-tools.py prepare --group tools --day $env:UPGRADE_CHANGELOG_DATE
+          if ($LASTEXITCODE -ne 0) { throw 'Official SHA-256 Tool payload staging failed.' }
+          & git add -A -- tool .gitattributes
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot stage Tool files.' }
+          & .\tool\python\python.exe -E -s -B .\tool\update-tools.py lint-staged --group tools
+          if ($LASTEXITCODE -ne 0) { throw 'Tool staged scope or first-party metadata rejected.' }
+          $digestLine = (& .\tool\python\python.exe -E -s -B .\tool\update-tools.py digest --group tools) -join ''
+          $shaMatch = [regex]::Match([string]$digestLine, '^TOOL_DIFF_SHA256=([a-f0-9]{64})$')
+          if ($LASTEXITCODE -ne 0 -or -not $shaMatch.Success) { throw 'Tool digest invalid.' }
+          "sha256=$($shaMatch.Groups[1].Value)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          & .\tool\python\python.exe -E -s -B .\tool\update-tools.py verify --group tools
+          if ($LASTEXITCODE -ne 0) { throw 'Native Tool version verification failed.' }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\.github\maintenance\02-tool-compatibility.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Updated Tool native compatibility failed.' }
+
+      - name: Hash exact combined runtime and Tool stage for trusted writer
+        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
+        id: candidate
+        timeout-minutes: 4
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = & .\tool\python\python.exe -E -s -B .\.github\maintenance\01-combined-candidate.py --repo . --base $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot hash combined candidate index.' }
+          $lines = @($output | Where-Object { $_ -match '^COMBINED_CANDIDATE_SHA256=[a-f0-9]{64}$' })
+          if ($lines.Count -ne 1) { throw 'Missing unique verified combined digest.' }
+          $hash = $lines[0].Split('=')[1]
+          "sha256=$hash" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "Combined diff SHA256: $hash" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
       - name: Fail-closed compatibility, Windows preflight and packaging checks
         if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
@@ -253,38 +364,27 @@ jobs:
           & $ps -NoProfile -ExecutionPolicy Bypass -File .\tests\test_cli_model_options.ps1
           if ($LASTEXITCODE -ne 0) { throw 'CLI option compatibility regression failed.' }
 
-      - name: Stage only allowlisted source updates and real Git LFS pointers
-        if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
-        id: candidate
-        timeout-minutes: 5
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & git lfs install --local
-          if ($LASTEXITCODE -ne 0) { throw 'Git LFS is required.' }
-          # Stage tracked files without passing non-ASCII names through PowerShell 5.1 argv.
-          & git add -u
-          if ($LASTEXITCODE -ne 0) { throw 'Upgrade staging failed.' }
-          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --check-index --repo .
-          if ($LASTEXITCODE -ne 0) { throw 'Unexpected file scope or non-LFS binary.' }
-          & git -c core.whitespace=cr-at-eol diff --cached --check
-          if ($LASTEXITCODE -ne 0) { throw 'Malformed staged diff.' }
-          $fingerprint = (& .\tool\python\python.exe -B -c "import hashlib,subprocess; print(hashlib.sha256(subprocess.check_output(['git','-c','core.quotepath=false','diff','--cached','--binary','--no-ext-diff'])).hexdigest())") -join ''
-          if ($LASTEXITCODE -ne 0 -or $fingerprint -cnotmatch '^[0-9a-f]{64}$') { throw 'Cannot hash validated candidate diff.' }
-          "sha256=$fingerprint" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
       - name: Make an unpushed local stable candidate checkpoint before Windows parity tests
         if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
         timeout-minutes: 5
+        env:
+          EXPECTED_COMBINED_SHA256: ${{ steps.candidate.outputs.sha256 }}
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:UPGRADE_VERSION -match '-') { throw 'Prereleases are never committed.' }
           & git config user.name 'github-actions[bot]'
           & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          & git commit -m ('test(runtime): unpushed Windows candidate ' + $env:UPGRADE_VERSION)
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot commit local candidate for full precommit tests.' }
+          $staged = @( & git diff --cached --name-only )
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the local Tool stage.' }
+          if ($staged.Count -gt 0) {
+            & git commit -m ('test(combined): unpushed Windows candidate ' + $env:UPGRADE_VERSION)
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot commit the Tool checkpoint locally.' }
+          }
           $checkpoint = (& git rev-parse HEAD).Trim()
-          if ($LASTEXITCODE -ne 0 -or $checkpoint -cnotmatch '^[a-f0-9]{40}$') { throw 'Invalid local candidate SHA.' }
-          'CANDIDATE_LOCAL_SHA=' + $checkpoint | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          if ($LASTEXITCODE -ne 0 -or $checkpoint -cnotmatch '^[a-f0-9]{40}$') { throw 'Invalid local combined candidate SHA.' }
+          & .\tool\python\python.exe -E -s -B .\.github\maintenance\01-combined-candidate.py --repo . --base $env:GITHUB_SHA --expected $env:EXPECTED_COMBINED_SHA256
+          if ($LASTEXITCODE -ne 0) { throw 'Committed Windows candidate differs from the staged combined digest.' }
+          "CANDIDATE_LOCAL_SHA=$checkpoint" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Prepare isolated environment for stable-only precommit Windows tests
         if: ${{ success() && steps.official.outputs.update_needed == 'true' }}
@@ -524,7 +624,7 @@ jobs:
           if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force }
 
   commit:
-    name: Commit verified stable Codex to development without running downloaded binaries
+    name: Commit verified combined Codex and Tool to development without running vendor EXEs
     needs: upgrade
     if: ${{ needs.upgrade.result == 'success' && needs.upgrade.outputs.update_needed == 'true' && github.ref == 'refs/heads/development/latest-codex-portable-20261106' }}
     permissions:
@@ -543,37 +643,54 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Re-check development and the same official stable version
-        timeout-minutes: 5
+      - name: Re-check development and exact official stable or current Codex
+        timeout-minutes: 6
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_URL: ${{ needs.upgrade.outputs.release_url }}
           EXPECTED_VERSION: ${{ needs.upgrade.outputs.version }}
           EXPECTED_ARCHIVE_SHA256: ${{ needs.upgrade.outputs.archive_sha256 }}
           UPGRADE_CHANGELOG_DATE: ${{ needs.upgrade.outputs.changelog_date }}
+          CODEX_CHANGE_NEEDED: ${{ needs.upgrade.outputs.codex_update_needed }}
+          TOOL_CHANGE_NEEDED: ${{ needs.upgrade.outputs.tool_update_needed }}
         run: |
           $ErrorActionPreference = 'Stop'
           $remote = (& gh api "repos/$env:GITHUB_REPOSITORY/branches/development/latest-codex-portable-20261106" --jq '.commit.sha') -join [Environment]::NewLine
           if ($LASTEXITCODE -ne 0 -or $remote.Trim() -cne $env:GITHUB_SHA) {
-            throw 'Development moved since read-only validation; refusing to commit.'
+            throw 'Development moved since Windows validation; refusing candidate commit.'
+          }
+          if ($env:CODEX_CHANGE_NEEDED -notin @('true','false') -or $env:TOOL_CHANGE_NEEDED -notin @('true','false') -or
+              ($env:CODEX_CHANGE_NEEDED -ne 'true' -and $env:TOOL_CHANGE_NEEDED -ne 'true')) {
+            throw 'No approved candidate update scope.'
           }
           $tmp = Join-Path $env:GITHUB_WORKSPACE 'tmp/codex-portable-trusted-commit'
           New-Item -ItemType Directory -Force -Path $tmp | Out-Null
           $plan = Join-Path $tmp 'verified-upstream.json'
-          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --metadata --repo . --release-url $env:RELEASE_URL --plan $plan
-          if ($LASTEXITCODE -ne 0) { throw 'Official release re-verification failed.' }
-          $approved = Get-Content -LiteralPath $plan -Raw -Encoding UTF8 | ConvertFrom-Json
-          if ($approved.prerelease -or $approved.version -cne $env:EXPECTED_VERSION -or
-              $approved.archive.sha256 -cne $env:EXPECTED_ARCHIVE_SHA256) {
-            throw 'The stable release identity differs from the read-only validation job.'
+          if ($env:CODEX_CHANGE_NEEDED -eq 'true') {
+            & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --metadata --repo . --release-url $env:RELEASE_URL --plan $plan
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $plan -PathType Leaf)) { throw 'Official Codex Release re-verification failed.' }
+            $approved = Get-Content -LiteralPath $plan -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($approved.prerelease -or $approved.version -cne $env:EXPECTED_VERSION -or
+                $approved.archive.sha256 -cne $env:EXPECTED_ARCHIVE_SHA256) {
+              throw 'Official Codex stable identity differs from the Windows verifier.'
+            }
+            "UPGRADE_PLAN=$plan" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+            "UPGRADE_TEMP=$tmp" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+            "UPGRADE_TAG=$($approved.tag)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          } else {
+            & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --metadata --repo . --plan $plan
+            if ($LASTEXITCODE -ne 0 -or (Test-Path -LiteralPath $plan -PathType Leaf)) {
+              throw 'Tool-only candidate requires Codex to already match official stable.'
+            }
+            $installed = (Get-Content -LiteralPath '.\tool\runtime-manifest.json' -Raw -Encoding UTF8 | ConvertFrom-Json).version
+            if ($installed -cne $env:EXPECTED_VERSION -or $env:RELEASE_URL -or $env:EXPECTED_ARCHIVE_SHA256) {
+              throw 'Tool-only baseline runtime changed.'
+            }
           }
-          "UPGRADE_PLAN=$plan" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          "UPGRADE_TEMP=$tmp" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          "UPGRADE_TAG=$($approved.tag)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-          "UPGRADE_VERSION=$($approved.version)" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPGRADE_VERSION=$env:EXPECTED_VERSION" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
           "UPGRADE_CHANGELOG_DATE=$env:UPGRADE_CHANGELOG_DATE" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
-
       - name: Download the same official archive and verify its exact digest
+        if: ${{ success() && needs.upgrade.outputs.codex_update_needed == 'true' }}
         timeout-minutes: 12
         env:
           GH_TOKEN: ${{ github.token }}
@@ -585,58 +702,91 @@ jobs:
           if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) { throw 'Archive missing.' }
           "UPGRADE_ARCHIVE=$archive" | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Regenerate and verify the allowlisted Git LFS candidate without running Codex
-        timeout-minutes: 10
+      - name: Rebuild the exact combined diff without executing downloaded vendor binaries
+        timeout-minutes: 34
         env:
           EXPECTED_CANDIDATE_SHA256: ${{ needs.upgrade.outputs.candidate_sha256 }}
+          EXPECTED_TOOL_SHA256: ${{ needs.upgrade.outputs.tool_candidate_sha256 }}
+          CODEX_CHANGE_NEEDED: ${{ needs.upgrade.outputs.codex_update_needed }}
+          TOOL_CHANGE_NEEDED: ${{ needs.upgrade.outputs.tool_update_needed }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --apply --repo . --version $env:UPGRADE_VERSION --plan $env:UPGRADE_PLAN --archive $env:UPGRADE_ARCHIVE
-          if ($LASTEXITCODE -ne 0) { throw 'Independent trusted candidate regeneration failed.' }
-          & git lfs install --local
-          if ($LASTEXITCODE -ne 0) { throw 'Git LFS unavailable.' }
-          & git add -u
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot stage candidate.' }
-          & .\tool\python\python.exe -B .\.github\maintenance\01-upgrade-runtime.py --check-index --repo .
-          if ($LASTEXITCODE -ne 0) { throw 'Binary LFS or staged allowlist verification failed.' }
-          & git -c core.whitespace=cr-at-eol diff --cached --check
-          if ($LASTEXITCODE -ne 0) { throw 'Whitespace validation failed.' }
-          $fingerprint = (& .\tool\python\python.exe -B -c "import hashlib,subprocess; print(hashlib.sha256(subprocess.check_output(['git','-c','core.quotepath=false','diff','--cached','--binary','--no-ext-diff'])).hexdigest())") -join ''
-          if ($LASTEXITCODE -ne 0 -or $env:EXPECTED_CANDIDATE_SHA256 -cnotmatch '^[0-9a-f]{64}$' -or
-              $fingerprint -cne $env:EXPECTED_CANDIDATE_SHA256) {
-            throw 'Candidate differs from the exact source diff that passed read-only native checks.'
+          if ($env:EXPECTED_CANDIDATE_SHA256 -cnotmatch '^[a-f0-9]{64}$') { throw 'Missing verified combined digest.' }
+          if ($env:CODEX_CHANGE_NEEDED -eq 'true') {
+            & .\tool\python\python.exe -E -s -B .\.github\maintenance\01-upgrade-runtime.py --apply --repo . --version $env:UPGRADE_VERSION --plan $env:UPGRADE_PLAN --archive $env:UPGRADE_ARCHIVE
+            if ($LASTEXITCODE -ne 0) { throw 'Trusted Codex payload regeneration failed.' }
+            & git lfs install --local
+            if ($LASTEXITCODE -ne 0) { throw 'Codex LFS filter missing.' }
+            & git add -u
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot stage generated Codex runtime.' }
+            & .\tool\python\python.exe -E -s -B .\.github\maintenance\01-upgrade-runtime.py --check-index --repo .
+            if ($LASTEXITCODE -ne 0) { throw 'Regenerated runtime paths or LFS pointers rejected.' }
+            & git -c core.whitespace=cr-at-eol diff --cached --check
+            if ($LASTEXITCODE -ne 0) { throw 'Runtime first-party metadata whitespace invalid.' }
+            & git -c user.name='runtime-writer' -c user.email='writer@users.noreply.github.com' commit -m 'test(runtime): local writer checkpoint'
+            if ($LASTEXITCODE -ne 0) { throw 'Local verified runtime checkpoint failed.' }
           }
-
-      - name: Authenticated fast-forward push (no downloaded EXE is executed)
+          if ($env:TOOL_CHANGE_NEEDED -eq 'true') {
+            & .\tool\python\python.exe -E -s -B .\tool\auto-tool-updates.py plan
+            if ($LASTEXITCODE -ne 0) { throw 'Official Tool plan changed or invalid.' }
+            $plan = Get-Content -LiteralPath '.\tmp\auto-tool-update-plan.json' -Raw -Encoding UTF8 | ConvertFrom-Json
+            if (@($plan.candidates).Count -lt 1) { throw 'Missing real Tool candidate for writer.' }
+            if (@($plan.candidates | Where-Object { $_.tool -ceq 'node' }).Count -eq 1) {
+              & git lfs install --local
+              if ($LASTEXITCODE -ne 0) { throw 'Node LFS filter missing.' }
+              'UPGRADE_NODE_LFS_NEEDED=true' | Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+            }
+            $env:TOOL_AUTO_UPDATE_PLAN = '1'
+            & .\tool\python\python.exe -E -s -B .\tool\update-tools.py prepare --group tools --day $env:UPGRADE_CHANGELOG_DATE --writer
+            if ($LASTEXITCODE -ne 0) { throw 'Tool exact SHA-256 bytes cannot be reproduced.' }
+            & git add -A -- tool .gitattributes
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot stage reproduced Tool paths.' }
+            & .\tool\python\python.exe -E -s -B .\tool\update-tools.py lint-staged --group tools
+            if ($LASTEXITCODE -ne 0) { throw 'Tool stage contains unrelated files.' }
+            $digestLine = (& .\tool\python\python.exe -E -s -B .\tool\update-tools.py digest --group tools) -join ''
+            if ($LASTEXITCODE -ne 0 -or $digestLine -cne ('TOOL_DIFF_SHA256=' + $env:EXPECTED_TOOL_SHA256)) {
+              throw 'Tool-stage diff differs from Windows-verified Tool bytes.'
+            }
+          } elseif ($env:EXPECTED_TOOL_SHA256) {
+            throw 'Unexpected Tool stage hash without a Tool candidate.'
+          }
+          & .\tool\python\python.exe -E -s -B .\.github\maintenance\01-combined-candidate.py --repo . --base $env:GITHUB_SHA --expected $env:EXPECTED_CANDIDATE_SHA256
+          if ($LASTEXITCODE -ne 0) { throw 'Writer combined candidate differs from Windows-verified source and Tool diff.' }
+      - name: Push one exact verified combined commit only to development
         timeout-minutes: 8
         env:
           GH_TOKEN: ${{ github.token }}
+          CODEX_CHANGE_NEEDED: ${{ needs.upgrade.outputs.codex_update_needed }}
         run: |
           $ErrorActionPreference = 'Stop'
           $remote = (& gh api "repos/$env:GITHUB_REPOSITORY/branches/development/latest-codex-portable-20261106" --jq '.commit.sha') -join [Environment]::NewLine
           if ($LASTEXITCODE -ne 0 -or $remote.Trim() -cne $env:GITHUB_SHA) {
-            throw 'Development changed; no validated source will be overwritten.'
+            throw 'Development moved; exact combined candidate will not overwrite other changes.'
           }
           & gh auth setup-git
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot configure scoped GitHub credentials.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Scoped Git authentication failed.' }
           & git config user.name 'github-actions[bot]'
           & git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          & git commit -m ("chore(runtime): upgrade verified Codex stable to " + $env:UPGRADE_VERSION)
-          if ($LASTEXITCODE -ne 0) { throw 'Upgrade commit failed.' }
+          # Reader and writer both verified the union of runtime + Tool bytes.
+          # Squash any temporary runtime checkpoint into ONE development commit.
+          & git reset --soft $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot squash local verified checkpoints.' }
+          & git commit -m ("chore(portable): verify Codex and Tool stable updates " + $env:UPGRADE_VERSION)
+          if ($LASTEXITCODE -ne 0) { throw 'Combined candidate commit failed.' }
           $commit = (& git rev-parse HEAD).Trim()
-          & git lfs push origin HEAD
-          if ($LASTEXITCODE -ne 0) { throw 'LFS upload failed.' }
+          if ($env:CODEX_CHANGE_NEEDED -eq 'true' -or $env:UPGRADE_NODE_LFS_NEEDED -eq 'true') {
+            & git lfs push origin HEAD
+            if ($LASTEXITCODE -ne 0) { throw 'Verified new Codex/Node LFS payload upload failed.' }
+          }
           & git push origin HEAD:refs/heads/development/latest-codex-portable-20261106
-          if ($LASTEXITCODE -ne 0) { throw 'Development rejected a non-fast-forward upgrade.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Development rejected the non-fast-forward combined candidate.' }
           $after = (& gh api "repos/$env:GITHUB_REPOSITORY/branches/development/latest-codex-portable-20261106" --jq '.commit.sha') -join [Environment]::NewLine
-          if ($LASTEXITCODE -ne 0 -or $after.Trim() -cne $commit) { throw 'Remote commit verification failed.' }
-          Write-Output ("UPGRADED_SOURCE_COMMIT=" + $commit)
-          "Stable source candidate committed: $env:UPGRADE_VERSION" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-          "Commit: $commit" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-          "Original stable baseline: $env:GITHUB_SHA" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-          'Safe recovery: revert the development candidate normally if a later audit fails; never force reset main.' |
+          if ($LASTEXITCODE -ne 0 -or $after.Trim() -cne $commit) { throw 'Remote combined commit verification failed.' }
+          "VERIFIED_COMBINED_COMMIT=$commit" | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          'Safe recovery: revert the development commit normally if a later audit fails; never force reset main.' |
             Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-          'DEVELOPMENT_ONLY=PASS; main and existing official Release remain unchanged.' |
+          'DEVELOPMENT_ONLY=PASS; main and all formal Releases remain unchanged.' |
             Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
       - name: Remove the trusted job's own temporary download
