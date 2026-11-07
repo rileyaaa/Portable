@@ -1,4 +1,4 @@
-name: "01 - AC 一键更新 Codex（开发分支）"
+name: "01 - AC 一键更新 Codex 与 Tool（开发验证）"
 
 # Safe default-branch entry only; the actual workflow resides in development.
 on:
