@@ -12,8 +12,20 @@ if (-not (Test-Path -LiteralPath $Config -PathType Leaf)) { throw 'Missing porta
 $env:CODEX_INSTALL_DIR = Join-Path $env:TEMP 'untrusted-root'
 $env:CODEX_PYTHON = Join-Path $env:TEMP 'untrusted-python.exe'
 . $Config
-function Assert-Var([string]$Name, [string]$Expected) {
+function Assert-Var([string]$Name, [object]$Expected) {
     $Actual = [Environment]::GetEnvironmentVariable($Name, 'Process')
+    # SDK/JDK are optional. [string] parameters turn PowerShell 5.1's
+    # expected $null into "", which wrongly fails a genuinely unset variable.
+    # Keep $null distinct from "" and reject any unexpected host value.
+    if ($null -eq $Expected) {
+        if ($null -ne $Actual) {
+            throw "Optional tool variable $Name must be absent: $Actual"
+        }
+        return
+    }
+    if ($Expected -isnot [string] -or [string]::IsNullOrEmpty($Expected)) {
+        throw "Invalid required tool variable expectation: $Name"
+    }
     if ($Actual -cne $Expected) {
         throw "Tool variable $Name escaped the portable package: $Actual"
     }
