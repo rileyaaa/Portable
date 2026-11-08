@@ -1,0 +1,5 @@
+GitHub connector write/delete test
+Repository: rileyaaa/Codex-Portable
+Date: 2026-11-08 (Asia/Taipei)
+Purpose: verify write, read, and delete via GitHub connector.
+Temporary file. No project settings or runtime files should change.
