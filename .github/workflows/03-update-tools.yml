@@ -1,8 +1,19 @@
-name: "03 - Tool 版本检查（开发分支只读）"
+name: "03 - Tool 独立版本检查或升级（开发验证入口）"
 
-# Safe default-branch entry only; the actual workflow resides in development.
+# "check" preserves the existing development AC 03 read-only candidate audit.
+# "update" explicitly dispatches Tool-only through the 01 verified writer;
+# Codex is NEVER selected. The route itself does not install or publish.
 on:
   workflow_dispatch:
+    inputs:
+      tool_action:
+        description: '检查版本（只读）或独立升级已审核 Tool 子集'
+        type: choice
+        required: true
+        default: check
+        options:
+          - check
+          - update
 
 permissions:
   contents: read
@@ -14,29 +25,39 @@ concurrency:
 
 jobs:
   route:
-    name: Dispatch development workflow; do not modify main
+    name: Route Tool check or Tool-only update without touching main
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check development ref and dispatch exact workflow
+      - name: Verify explicit Tool operation and dispatch the reviewed development workflow
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_BRANCH: development/latest-codex-portable-20261106
-          WORKFLOW_FILE: 03-update-tools.yml
+          TOOL_ACTION: ${{ inputs.tool_action }}
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::Only main may route a development run"; exit 1; }
+          case "$TOOL_ACTION" in
+            check) WORKFLOW_FILE="03-update-tools.yml" ;;
+            update) WORKFLOW_FILE="01-upgrade-codex-runtime.yml" ;;
+            *) echo "::error::Unapproved Tool action" >&2; exit 1 ;;
+          esac
           head="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$TARGET_BRANCH" --jq '.object.sha')"
           [[ "$head" =~ ^[a-f0-9]{40}$ ]] || { echo "::error::Development branch head unavailable"; exit 1; }
           file_sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/$WORKFLOW_FILE?ref=$TARGET_BRANCH" --jq '.sha')"
-          [[ "$file_sha" =~ ^[a-f0-9]{40}$ ]] || { echo "::error::Development workflow file unavailable"; exit 1; }
-          # Tool check is read-only on development.
-          gh workflow run "$WORKFLOW_FILE" --repo "$GITHUB_REPOSITORY" --ref "$TARGET_BRANCH" 
+          [[ "$file_sha" =~ ^[a-f0-9]{40}$ ]] || { echo "::error::Development workflow unavailable"; exit 1; }
+          if [[ "$TOOL_ACTION" == 'check' ]]; then
+            gh workflow run "$WORKFLOW_FILE" --repo "$GITHUB_REPOSITORY" --ref "$TARGET_BRANCH"
+          else
+            # The Tool-only mode is explicit; Codex upstream is not even queried.
+            gh workflow run "$WORKFLOW_FILE" --repo "$GITHUB_REPOSITORY" --ref "$TARGET_BRANCH" \
+              -f upgrade_codex=false -f upgrade_tools=true
+          fi
           {
-            echo '## Development workflow dispatch requested'
+            echo '## Tool-only development dispatch accepted (not yet verified)'
             echo "Development head: \`$head\`"
-            echo "Workflow: \`$WORKFLOW_FILE\`"
-            echo 'This routing job never checks out the main runtime or creates a Release.'
-            echo 'Follow the new development run in GitHub Actions for the actual result.'
+            echo "Requested operation: $TOOL_ACTION"
+            echo 'Neither branch writer nor any Release is run by this routing job.'
+            echo 'Check the actual development workflow Run for the final result.'
           } >> "$GITHUB_STEP_SUMMARY"

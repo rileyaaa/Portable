@@ -1,8 +1,20 @@
-name: "01 - AC 一键更新 Codex 与 Tool（开发验证）"
+name: "01 - 自选升级 Codex / Tool（开发验证入口）"
 
-# Safe default-branch entry only; the actual workflow resides in development.
+# Default-branch dispatcher only: actual verified updater is on development.
+# Neither checkout nor downloaded vendor executables run in this token job.
 on:
   workflow_dispatch:
+    inputs:
+      upgrade_codex:
+        description: '更新 Codex 官方稳定版（默认勾选）'
+        type: boolean
+        required: true
+        default: true
+      upgrade_tools:
+        description: '更新已审核 Tool 子集（默认关闭；不会自动跟随 Codex）'
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
@@ -14,29 +26,35 @@ concurrency:
 
 jobs:
   route:
-    name: Dispatch development workflow; do not modify main
+    name: Dispatch exact user-selected development upgrade; never modify main
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check development ref and dispatch exact workflow
+      - name: Validate both independent choices and dispatch exact development workflow
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_BRANCH: development/latest-codex-portable-20261106
           WORKFLOW_FILE: 01-upgrade-codex-runtime.yml
+          CODEX_SELECTED: ${{ inputs.upgrade_codex }}
+          TOOLS_SELECTED: ${{ inputs.upgrade_tools }}
         run: |
           set -euo pipefail
           [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::Only main may route a development run"; exit 1; }
+          [[ "$CODEX_SELECTED" == 'true' || "$CODEX_SELECTED" == 'false' ]] || { echo "::error::Invalid Codex selection"; exit 1; }
+          [[ "$TOOLS_SELECTED" == 'true' || "$TOOLS_SELECTED" == 'false' ]] || { echo "::error::Invalid Tool selection"; exit 1; }
+          [[ "$CODEX_SELECTED" == 'true' || "$TOOLS_SELECTED" == 'true' ]] || { echo "::error::Select at least one component"; exit 1; }
           head="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$TARGET_BRANCH" --jq '.object.sha')"
           [[ "$head" =~ ^[a-f0-9]{40}$ ]] || { echo "::error::Development branch head unavailable"; exit 1; }
           file_sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/$WORKFLOW_FILE?ref=$TARGET_BRANCH" --jq '.sha')"
-          [[ "$file_sha" =~ ^[a-f0-9]{40}$ ]] || { echo "::error::Development workflow file unavailable"; exit 1; }
-          # Official stable version selection occurs in the development workflow.
-          gh workflow run "$WORKFLOW_FILE" --repo "$GITHUB_REPOSITORY" --ref "$TARGET_BRANCH" 
+          [[ "$file_sha" =~ ^[a-f0-9]{40}$ ]] || { echo "::error::Development workflow unavailable"; exit 1; }
+          gh workflow run "$WORKFLOW_FILE" --repo "$GITHUB_REPOSITORY" --ref "$TARGET_BRANCH" \
+            -f upgrade_codex="$CODEX_SELECTED" -f upgrade_tools="$TOOLS_SELECTED"
           {
-            echo '## Development workflow dispatch requested'
+            echo '## Development upgrade dispatch accepted (not yet verified)'
             echo "Development head: \`$head\`"
-            echo "Workflow: \`$WORKFLOW_FILE\`"
-            echo 'This routing job never checks out the main runtime or creates a Release.'
-            echo 'Follow the new development run in GitHub Actions for the actual result.'
+            echo "Codex selected: $CODEX_SELECTED"
+            echo "Tool selected: $TOOLS_SELECTED"
+            echo 'The developer job must still pass its own version, scope, SHA and Windows gates.'
+            echo 'No main commit, tag or Release is created by this route.'
           } >> "$GITHUB_STEP_SUMMARY"
