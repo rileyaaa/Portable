@@ -171,6 +171,42 @@ def verify_all(reference):
     print("CUSTOMER_FILES=PASS count=9066", flush=True)
 
 
+
+def restore_verified_git_blob_bytes(reference):
+    """Undo Windows checkout conversions, but only from independently verified Git blobs.
+
+    Git for Windows may emit altered worktree line endings even after
+    core.autocrlf=false and checkout-index --force. The round-12 release
+    inventory is an independent SHA-256 authority. Only restore a file when
+    its original committed blob *exactly* matches that inventory. Never
+    invent or normalize file content, and never replace a missing LFS blob
+    with a pointer string.
+    """
+    root = ROOT.resolve()
+    repaired = 0
+    for name, record in reference["files"].items():
+        path = ROOT / name
+        require(path.is_file() and not path.is_symlink() and
+                path.resolve().is_relative_to(root),
+                "Cannot safely restore missing/non-regular path: " + name)
+        if path.stat().st_size == record["size"] and digest(path) == record["sha256"]:
+            continue
+        raw = subprocess.run(["git", "show", f"{CANDIDATE}:{name}"], cwd=ROOT,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        require(raw.returncode == 0 and len(raw.stdout) == record["size"] and
+                hashlib.sha256(raw.stdout).hexdigest() == record["sha256"],
+                "Worktree differs, and audited original Git blob is not a "
+                "byte-for-byte match: " + name)
+        require(not raw.stdout.startswith(b"version https://git-lfs.github.com/spec/v1"),
+                "Missing real LFS content; never restore a pointer: " + name)
+        path.write_bytes(raw.stdout)
+        verify_one(reference, name)
+        repaired += 1
+        if repaired % 250 == 0:
+            print(f"EXACT_BLOBS_RESTORED={repaired}", flush=True)
+    print(f"AUDITED_WINDOWS_WORKTREE_RESTORED={repaired}", flush=True)
+
+
 def safe_download(url: str, dest: Path, limit: int):
     require(url.startswith("https://nodejs.org/dist/v26.13.1/") or
             url.startswith("https://nodejs.org/download/release/v26.13.1/"),
@@ -298,6 +334,7 @@ def main():
         download_codex(reference, runtime, temp)
         download_node(reference, temp)
         run("git", "lfs", "checkout")
+        restore_verified_git_blob_bytes(reference)
         verify_all(reference)
         run("git", "lfs", "fsck")
         # Merge candidate with the three allowlisted release-automation changes.
@@ -306,6 +343,7 @@ def main():
         # Check the final merged source with the same literal-byte policy.
         run("git", "checkout-index", "--all", "--force", env=isolated)
         run("git", "lfs", "checkout")
+        restore_verified_git_blob_bytes(reference)
         verify_all(reference)
         run("git", "config", "user.name", "github-actions[bot]")
         run("git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
