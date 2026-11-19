@@ -1,6 +1,1 @@
-{
-  "format": 1,
-  "tag": "v0.170.0-portable.2",
-  "candidate_commit": "7fa8e0712ef4b65bc46ce3ed6eafe9636417a04a",
-  "mode": "prerelease"
-}
+{"format":1,"tag":"v0.170.0-portable.2","candidate_commit":"7fa8e0712ef4b65bc46ce3ed6eafe9636417a04a","mode":"prerelease"}
