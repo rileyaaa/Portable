@@ -338,7 +338,12 @@ def main():
         verify_all(reference)
         run("git", "lfs", "fsck")
         # Merge candidate with the three allowlisted release-automation changes.
-        run("git", "checkout", "-B", "automation/import-r12", initial, env=isolated)
+        # The audited Windows worktree contains the real hydrated LFS bytes,
+        # while its index stores small LFS pointers. Git treats those files as
+        # locally modified. All 9066 files and LFS objects have just passed
+        # independent verification; force ONLY this ephemeral runner checkout,
+        # then rehydrate and re-verify before any remote write.
+        run("git", "checkout", "--force", "-B", "automation/import-r12", initial, env=isolated)
         run("git", "merge", "--no-ff", "--no-commit", CANDIDATE, env=isolated)
         # Check the final merged source with the same literal-byte policy.
         run("git", "checkout-index", "--all", "--force", env=isolated)
