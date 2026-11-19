@@ -250,6 +250,10 @@ def main():
             "Source checkout differs from the triggering commit")
     require(run("git", "status", "--porcelain", capture=True).strip() == b"",
             "Import requires a clean source checkout")
+    # Git for Windows often defaults to core.autocrlf=true. The verified ZIP
+    # hashes the original Git blob bytes, not a CRLF-transcoded checkout.
+    # Keep exact tracked bytes, then independently re-check all 9066 hashes.
+    run("git", "config", "--local", "core.autocrlf", "false")
     with tempfile.TemporaryDirectory(prefix="codex-r12-", dir=os.environ.get("RUNNER_TEMP")) as scratch:
         temp = Path(scratch)
         reference = load_transfer(temp)
@@ -261,6 +265,10 @@ def main():
             "--exclude=", "origin", initial)
         isolated = dict(os.environ, GIT_LFS_SKIP_SMUDGE="1")
         run("git", "checkout", "--detach", CANDIDATE, env=isolated)
+        # Force materialization of Git blobs as-is. Existing unchanged files
+        # can otherwise retain CRLF left by the initial Windows checkout.
+        # Keep LFS smudge disabled until verified LFS objects are hydrated.
+        run("git", "checkout-index", "--all", "--force", env=isolated)
         run("git", "lfs", "checkout")
         download_codex(reference, runtime, temp)
         download_node(reference, temp)
@@ -270,6 +278,8 @@ def main():
         # Merge candidate with the three allowlisted release-automation changes.
         run("git", "checkout", "-B", "automation/import-r12", initial, env=isolated)
         run("git", "merge", "--no-ff", "--no-commit", CANDIDATE, env=isolated)
+        # Check the final merged source with the same literal-byte policy.
+        run("git", "checkout-index", "--all", "--force", env=isolated)
         run("git", "lfs", "checkout")
         verify_all(reference)
         run("git", "config", "user.name", "github-actions[bot]")
