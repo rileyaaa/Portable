@@ -300,6 +300,24 @@ def verify_release_worktree() -> None:
         run("git", "lfs", "fsck")
         remaining = run("git", "status", "--porcelain=v1",
                         "--untracked-files=no", capture=True).decode(errors="replace")
+        if remaining:
+            # Read-only diagnostics. Never suppress a real tracked source edit.
+            config = run("git", "config", "--show-origin", "--get-regexp",
+                         r"^core\\.", capture=True, check=False)
+            print("WINDOWS_GIT_CORE_CONFIG=" +
+                  config.decode(errors="replace")[:1500], flush=True)
+            for name in (".gitattributes", "README.md",
+                         "tests/test_portable_ssh.py", "codex.exe"):
+                expected_blob = run("git", "rev-parse", f"HEAD:{name}",
+                                    capture=True).decode().strip()
+                actual_blob = run("git", "hash-object", "--path", name, name,
+                                  capture=True, check=False).decode(errors="replace").strip()
+                diff = run("git", "diff", "--raw", "--", name,
+                           capture=True, check=False).decode(errors="replace").strip()
+                print("DIRTY_GIT_DIAGNOSTIC " + json.dumps({
+                    "path": name, "index_blob": expected_blob,
+                    "clean_filter_blob": actual_blob, "diff": diff
+                }), flush=True)
         require(not remaining, "Git tracks unexpected worktree differences after "
                 "verified byte restoration: " + repr(remaining[:3000]))
     print("AUDITED_WINDOWS_WORKTREE=PASS commit=" + initial +
