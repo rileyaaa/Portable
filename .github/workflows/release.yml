@@ -234,8 +234,26 @@ jobs:
           }
           $present = (& git ls-remote --tags origin "refs/tags/$tag") -join "`n"
           if ($LASTEXITCODE -ne 0 -or $present) { throw 'Tag exists or cannot be safely checked; no overwrite' }
-          $releasePresent = & gh release view $tag --repo $env:GITHUB_REPOSITORY --json id 2>$null
-          if ($LASTEXITCODE -eq 0) { throw 'Release already exists; no overwrite' }
+          # In Windows PowerShell 5.1, an expected "gh release view" 404
+          # writes stderr and becomes a terminating NativeCommandError under
+          # ErrorActionPreference=Stop. Query the authenticated REST endpoint
+          # instead; only an actual HTTP 404 means the tag is unoccupied.
+          $releaseUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$tag"
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          try {
+            [void](Invoke-WebRequest -Uri $releaseUrl -Method Get -Headers $headers -UseBasicParsing -TimeoutSec 30)
+            throw 'Release already exists; no overwrite'
+          } catch {
+            $response = $_.Exception.Response
+            if ($null -eq $response -or [int]$response.StatusCode -ne 404) {
+              throw
+            }
+          }
+          Write-Output "TAG_AND_RELEASE_ABSENT=PASS $tag"
           $notes = Join-Path (Split-Path -Parent $env:FILE_ARCHIVE) 'release-notes.txt'
           @(
             'Windows x64 portable Codex 0.170.0 candidate, built from the tagged Git source.',
