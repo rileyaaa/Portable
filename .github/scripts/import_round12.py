@@ -207,6 +207,55 @@ def restore_verified_git_blob_bytes(reference):
     print(f"AUDITED_WINDOWS_WORKTREE_RESTORED={repaired}", flush=True)
 
 
+
+def verify_release_worktree() -> None:
+    """Restore the exact 9066 audited source bytes before Windows packaging.
+
+    A native Windows Git checkout may transcode mixed line endings despite
+    using the correct Git tree. Independently compare every distributed
+    file against the pinned round-12 manifest. A mismatch may be repaired
+    only from an original Git blob whose bytes match that manifest. LFS
+    payloads must already have been hydrated by authenticated checkout.
+    """
+    require(os.name == "nt" and os.environ.get("GITHUB_ACTIONS") == "true",
+            "Release byte audit must run on the official Windows runner")
+    require(os.environ.get("GITHUB_REF") == GITHUB_REF,
+            "Release byte audit is restricted to main")
+    initial = os.environ.get("GITHUB_SHA", "")
+    require(re.fullmatch(r"[0-9a-f]{40}", initial) is not None and
+            run("git", "rev-parse", "HEAD", capture=True).decode().strip() == initial,
+            "Release checkout is not the triggering source commit")
+    require(run("git", "merge-base", "--is-ancestor", CANDIDATE, "HEAD",
+                check=False) == 0,
+            "Audited candidate commit is not in the source history")
+    run("git", "config", "--local", "core.autocrlf", "false")
+    ref = "refs/remotes/origin/" + SOURCE_BRANCH
+    run("git", "fetch", "--no-tags", "origin",
+        f"refs/heads/{SOURCE_BRANCH}:{ref}")
+    commit = run("git", "rev-parse", ref, capture=True).decode().strip()
+    require(commit == TRANSFER_COMMIT,
+            "Round-12 independent reference manifest changed")
+    with tempfile.TemporaryDirectory(prefix="codex-release-audit-",
+                                     dir=os.environ.get("RUNNER_TEMP")) as tmp:
+        archive = Path(tmp) / "reference.json.gz"
+        git_show(commit,
+                 ".github/release-transfer/round12/release-manifest.json.gz",
+                 archive)
+        require(digest(archive) == REFERENCE_SHA,
+                "Audited manifest archive SHA-256 mismatch")
+        reference = json.loads(gzip.decompress(archive.read_bytes()))
+        require(reference["source_commit"] == CANDIDATE and
+                reference["file_count"] == 9066 and
+                len(reference["files"]) == 9066 and
+                reference["target"] == "x86_64-pc-windows-msvc",
+                "Unexpected independent release inventory")
+        restore_verified_git_blob_bytes(reference)
+        verify_all(reference)
+        run("git", "lfs", "fsck")
+    print("AUDITED_WINDOWS_WORKTREE=PASS commit=" + initial +
+          " files=9066", flush=True)
+
+
 def safe_download(url: str, dest: Path, limit: int):
     require(url.startswith("https://nodejs.org/dist/v26.13.1/") or
             url.startswith("https://nodejs.org/download/release/v26.13.1/"),
@@ -344,6 +393,9 @@ def main():
         # independent verification; force ONLY this ephemeral runner checkout,
         # then rehydrate and re-verify before any remote write.
         run("git", "checkout", "--force", "-B", "automation/import-r12", initial, env=isolated)
+        # A non-committing Git merge still requires a configured author.
+        run("git", "config", "user.name", "github-actions[bot]")
+        run("git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
         run("git", "merge", "--no-ff", "--no-commit", CANDIDATE, env=isolated)
         # Check the final merged source with the same literal-byte policy.
         run("git", "checkout-index", "--all", "--force", env=isolated)
@@ -374,8 +426,14 @@ def main():
 
 
 if __name__ == "__main__":
+    release_audit = len(sys.argv) == 2 and sys.argv[1] == "--verify-release-worktree"
     try:
-        main()
+        if release_audit:
+            verify_release_worktree()
+        else:
+            require(len(sys.argv) == 1, "Unsupported round-12 import mode")
+            main()
     except Exception as exc:
-        print("ROUND12_IMPORT_BLOCKED: " + str(exc), file=sys.stderr, flush=True)
+        prefix = "RELEASE_WORKTREE_BLOCKED" if release_audit else "ROUND12_IMPORT_BLOCKED"
+        print(prefix + ": " + str(exc), file=sys.stderr, flush=True)
         raise SystemExit(1)
