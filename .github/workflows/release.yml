@@ -73,10 +73,17 @@ jobs:
             echo 'BLOCKED: the round-12 candidate is not an ancestor of main.' >&2
             exit 1
           }
+          # Windows-only SSH test-path correction is outside the customer ZIP.
+          # Pin its precise reviewed Git blob; refuse any other test alteration.
+          expected_ssh_test_blob=f2b600719dd317d2d7d53ab0f5922d53cf45bc55
+          if [ "$(git rev-parse HEAD:tests/test_portable_ssh.py)" != "$expected_ssh_test_blob" ]; then
+            echo 'BLOCKED: the reviewed native-Windows SSH regression test was altered.' >&2
+            exit 1
+          fi
           # Allow only the audited release automation/request changes since the original candidate.
           while IFS= read -r changed; do
             case "$changed" in
-              .github/workflows/release.yml|.github/workflows/import-round12.yml|.github/scripts/import_round12.py|.github/release-requests/import-round12.json|.github/release-requests/v0.170.0-portable.2.json|.github/maintenance/02-compatibility.py) ;;
+              .github/workflows/release.yml|.github/workflows/import-round12.yml|.github/scripts/import_round12.py|.github/release-requests/import-round12.json|.github/release-requests/v0.170.0-portable.2.json|.github/maintenance/02-compatibility.py|tests/test_portable_ssh.py) ;;
               *) echo "BLOCKED: unexpected change after verified candidate: $changed" >&2; exit 1 ;;
             esac
           done < <(git diff --name-only "$EXPECTED_CANDIDATE" HEAD)
