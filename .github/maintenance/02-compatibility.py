@@ -200,11 +200,46 @@ def source_check(root: Path) -> dict:
     for name in REQUIRED - {"codex-package.json"}:
         check(name + " filter=lfs diff=lfs merge=lfs -text" in attributes,
               "Native binary not Git LFS-tracked: " + name)
-    release = txt(root, ".github/workflows/02-verify-and-publish-portable.yml")
-    check("  workflow_dispatch:" in release and "\n  push:" not in release and
-          "release-audit.py --release" in release and
-          "release-audit.py --verify" in release,
-          "Existing manual release audit contract was changed")
+    check(not (root / ".github/workflows").exists(),
+          "Retired GitHub Actions workflows must not remain on main")
+
+    # Static checks for the existing tool/browser environment contract. The
+    # native functional tests remain separate, and optional SDK/JDK must not
+    # be mistaken for bundled tools merely because a path variable is set.
+    tool_setup = txt(root, "tool/setup-tools.ps1")
+    automation = txt(root, "tool/automation/portable-automation.ps1")
+    versions = json.loads(txt(root, "tool/automation/versions.json"))
+    browser = versions.get("browser", {})
+    check(versions.get("platform") == "win32-x64" and
+          isinstance(versions.get("playwrightMcp"), str) and
+          isinstance(versions.get("playwright"), str) and
+          browser.get("engine") == "chromium" and
+          browser.get("payloadBundled") is True and
+          browser.get("chromedriverRequired") is False and
+          browser.get("payloadManifest") == "browser-manifest.json",
+          "Pinned Playwright MCP/browser inventory changed")
+    check(isinstance(browser.get("executable"), str) and
+          browser["executable"].startswith("browsers/") and
+          ".." not in browser["executable"].split("/"),
+          "Unsafe Chromium executable path in pinned inventory")
+    for name in ("PLAYWRIGHT_BROWSERS_PATH", "PLAYWRIGHT_SKIP_BROWSER_GC",
+                 "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"):
+        check("$start.EnvironmentVariables['" + name + "']" in automation,
+              "Missing browser child variable: " + name)
+    check("$proxyEnabled" in automation and "if ($proxyEnabled)" in automation,
+          "Explicit browser/desktop proxy gate is missing")
+    for name in ("PIP_CONFIG_FILE", "PSModulePath", "PATH"):
+        check("$env:" + name in tool_setup,
+              "Missing portable setup environment control: " + name)
+    for name in ("ANDROID_HOME", "ANDROID_SDK_ROOT", "JAVA_HOME"):
+        check("$env:" + name in env and "$env:" + name in launcher,
+              "Missing optional Android SDK/JDK environment control: " + name)
+    regular(root / "tool/python/python.exe")
+    regular(root / "tool/node/node.exe")
+    regular(root / "tool/automation/browser-manifest.json")
+    regular(root / "tool/automation" / browser["executable"])
+    print("02_TOOL_BROWSER_ENVIRONMENT_STATIC_REFERENCES=PASS "
+          "mcp=" + versions["playwrightMcp"] + " browser=" + browser["version"])
     check("当前主客户端与 Code Mode Host 均为官方 **" + version + "**" in
           txt(root, "README.md"), "README current runtime version is stale")
     check("已配套安装 " + version + " Windows x64" in
@@ -214,6 +249,7 @@ def source_check(root: Path) -> dict:
     print("02_MANAGED_VARIABLES=PASS count=" + str(len(assigned)) +
           " computed=" + str(len(dynamic)))
     print("02_OFFLINE_PROTOCOL_AND_DEFAULT_POLICY_REFERENCES=PASS")
+    print("02_MANUAL_RELEASE_NO_ACTIONS=PASS")
     return {"version": version, "variables": sorted(assigned)}
 
 

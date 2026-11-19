@@ -2,8 +2,8 @@
 """01: manually upgrade the pinned Windows x64 Codex runtime, fail closed.
 
 No credentials are read from the portable package. This script neither pushes
-commits nor creates releases. The manually dispatched GitHub Actions workflow
-is responsible for validating the index and pushing a reviewed, bounded diff.
+commits nor creates releases. A maintainer must run offline/native checks,
+review the bounded diff, then manually commit Git LFS payloads and publish.
 """
 from __future__ import annotations
 
@@ -497,14 +497,14 @@ def compile_updates(repo: Path, archive: Path, plan: dict) -> dict[str, bytes]:
         raise RuntimeError("Invalid calendar changelog date") from exc
     log = (
         "## " + changelog_date +
-        "：Codex " + plan["version"] + " 官方运行时升级候选（01 自动更新）\n\n"
-        "由手动执行的 01 更新工作流从官方 " + plan["tag"] + " 下载固定 Windows x64 工件，"
+        "：Codex " + plan["version"] + " 官方运行时升级候选（人工维护）\n\n"
+        "在独立检出目录中从官方 " + plan["tag"] + " 准备固定 Windows x64 工件，"
         "核对官方发布摘要与独立程序摘要，替换本地文字/Agent 所需主程序、Host、"
         "搜索和沙箱助手，并同步版本固定值、登录映射、运行清单、相关配置与模式副本。"
         "语音及独立 Exec Server 继续不打包；官方原始程序字节不修改。\n\n"
-        "**状态：候选源码更新，尚不能视为正式版或已确认兼容。** 必须另外手动运行 "
-        "Release 工作流的完整 Windows 兼容性检查，处理新版 schema、请求协议与"
-        "真实功能不兼容项；通过十轮回归、附件回读后方可发布。"
+        "**状态：候选源码更新，尚不能视为正式版或已确认兼容。** 必须在 "
+        "Windows x64 上完成离线与原生兼容性检查、环境变量与工具/浏览器验证，"
+        "处理新版 schema、请求协议与真实功能不兼容项；经 ZIP 解压、移位和哈希复核后方可人工发布。"
         "实际账号、联网 Agent 和用户终端显示须另行实测。\n\n"
     ).encode("utf-8")
     # Git autocrlf on Windows may convert this tracked Markdown to CRLF.
@@ -593,8 +593,8 @@ def main() -> int:
     elif args.metadata:
         require(args.plan and not args.version,
                 "Metadata requires --plan, not a version argument")
-        # No GitHub Actions input or extra user choice is necessary. A URL
-        # remains accepted for historical/manual prerelease dry runs only.
+        # Manual stable releases are selected from official GitHub metadata.
+        # A URL remains accepted for explicitly reviewed prerelease dry runs only.
         url = args.release_url if args.release_url else latest_stable_release_url(root)
         if url is None:
             return 0
