@@ -1,0 +1,56 @@
+name: Import audited round-12 source and official LFS payloads
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/release-requests/import-round12.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: codex-portable-0.170.0-r12-import
+  cancel-in-progress: false
+
+jobs:
+  import-candidate:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout original main and its complete Git history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+      - name: Verify fixed one-time import request and initialize authenticated Git LFS
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = '{"candidate":"7fa8e0712ef4b65bc46ce3ed6eafe9636417a04a","format":1,"transfer_commit":"bf4471039d5a56f9a8e4d5d5c4453aa09feec753"}'
+          $actual = Get-Content -LiteralPath .github/release-requests/import-round12.json -Raw | ConvertFrom-Json
+          if ($actual.candidate -cne '7fa8e0712ef4b65bc46ce3ed6eafe9636417a04a' -or
+              $actual.transfer_commit -cne 'bf4471039d5a56f9a8e4d5d5c4453aa09feec753' -or
+              $actual.format -ne 1) { throw 'Unexpected import request content' }
+          & gh auth setup-git
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot authenticate official Git transport' }
+          & git lfs install --local
+          if ($LASTEXITCODE -ne 0) { throw 'Git LFS is unavailable' }
+          & git --version
+          & git lfs version
+      - name: Import source bundle, verify all 9066 customer files, push LFS, then dispatch release
+        shell: powershell
+        timeout-minutes: 110
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_LFS_SKIP_SMUDGE: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & python -B .github/scripts/import_round12.py
+          if ($LASTEXITCODE -ne 0) { throw 'Audited round-12 import failed. No release is authorized.' }
