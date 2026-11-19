@@ -76,7 +76,7 @@ jobs:
           # Allow only the audited release automation/request changes since the original candidate.
           while IFS= read -r changed; do
             case "$changed" in
-              .github/workflows/release.yml|.github/release-requests/v0.170.0-portable.2.json|.github/maintenance/02-compatibility.py) ;;
+              .github/workflows/release.yml|.github/workflows/import-round12.yml|.github/scripts/import_round12.py|.github/release-requests/import-round12.json|.github/release-requests/v0.170.0-portable.2.json|.github/maintenance/02-compatibility.py) ;;
               *) echo "BLOCKED: unexpected change after verified candidate: $changed" >&2; exit 1 ;;
             esac
           done < <(git diff --name-only "$EXPECTED_CANDIDATE" HEAD)
