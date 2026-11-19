@@ -22,6 +22,8 @@ home/cap_sid
 home/codex-runtime-instructions.generated.md
 
 # Portable process data: never publish caches, session content or sandbox secrets.
+# Includes SSH private keys, pinned hosts and transferred files.
+/work/
 /tmp/
 /cache/
 /logs/

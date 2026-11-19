@@ -203,3 +203,9 @@ Go、uv 系列和可再生 Python 字节码仍不包含在默认包中。已恢�
 | 提示存在宿主系统配置 | 默认拒绝加载；只有确需采用组织系统策略时，才显式设置 `CODEX_ALLOW_HOST_SYSTEM_CONFIG=true`。 |
 
 只维护 `main` 作为稳定版本来源，不启用自动升级工作流。维护者按 [工具文档](tool/工具更新说明.md) 手动准备同版本的 Codex/Host 组件、执行兼容性和 Windows 验证后再打包；用户仍通过完整、已验证的发行包更新，不从开发分支或旧版执行记录推断可用性。维护规则、变量兼容核对、测试命令及更新记录统一见 [开发文档](DEVELOPMENT.md)；账号格式转换器独立说明见 [子项目 README](Version_History/AI%20account%20format%20conversion/README.md)。
+
+## SSH / SFTP 扩展（开发候选）
+
+已在源码中加入 `tool/portable-ssh.py` 与 `home/skills/portable-ssh`，目标是通过包内 Python / Paramiko 操作用户明确授权的远端主机。私钥、固定主机指纹及本地传输文件集中在包内 `work/ssh/`（Git 和客户 ZIP 均排除），默认拒绝读取宿主 `~/.ssh`、SSH Agent，且不会自动信任远端主机。连接、执行命令和传输操作须指定目标并明确授权。完整使用方法见 [SSH 技能说明](home/skills/portable-ssh/SKILL.md)。
+
+**此功能仍是源码开发候选，不代表 Windows Python 已经安装 Paramiko。** Windows Python 3.14 依赖轮子、固定哈希与许可证、原生功能和发行包检查尚待通过后合入正式发布。

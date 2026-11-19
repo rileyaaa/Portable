@@ -1,0 +1,8 @@
+# SSH integration candidate for Codex-Portable, NOT a shipping wheel lock.
+# Pin the upstream library before resolving an exact CPython 3.14 Windows x64
+# wheel-only dependency closure and equivalent Linux runtime test environment.
+# Required direct dependencies include bcrypt, cryptography, invoke and PyNaCl.
+# Record all selected versions, official PyPI wheel hashes and licenses.
+# Only after tests, merge the reviewed complete closure into
+# tool/python-packages.in.txt and bundle verified Windows payloads.
+paramiko==5.1.0
