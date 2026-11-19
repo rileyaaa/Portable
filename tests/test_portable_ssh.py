@@ -259,6 +259,71 @@ class PortableSSHTests(unittest.TestCase):
             SSH._upload(client, self.ws, "partial.dat", "/tmp/demo.log", False)
         self.assertTrue(sftp.removed)
 
+    def test_failed_upload_warns_when_remote_cleanup_is_denied(self):
+        source = self.ws.path("uploads", "partial.dat")
+        source.write_bytes(b"data")
+
+        class FailingFile:
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def write(self, _): raise OSError("synthetic upload interrupted")
+            def flush(self): pass
+
+        class DeniedCleanupSFTP(FakeSFTP):
+            def __init__(self):
+                super().__init__()
+                self.removed = False
+
+            def open(self, remote, mode):
+                self.mode = mode
+                return FailingFile()
+
+            def remove(self, remote):
+                self.removed = True
+                raise PermissionError("synthetic cleanup refused")
+
+        sftp = DeniedCleanupSFTP()
+        client = mock.Mock(open_sftp=lambda: sftp)
+        captured = io.StringIO()
+        with mock.patch.object(SSH.sys, "stderr", captured):
+            with self.assertRaisesRegex(OSError, "synthetic upload interrupted"):
+                SSH._upload(client, self.ws, "partial.dat", "/tmp/demo.log", False)
+        self.assertEqual(sftp.mode, "x+b")
+        self.assertTrue(sftp.removed)
+        self.assertIn("A partial remote file may remain", captured.getvalue())
+
+    def test_failed_overwrite_warns_without_deleting_remote_target(self):
+        source = self.ws.path("uploads", "overwrite.dat")
+        source.write_bytes(b"data")
+
+        class FailingFile:
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def write(self, _): raise OSError("synthetic overwrite interrupted")
+            def flush(self): pass
+
+        class FailingOverwriteSFTP(FakeSFTP):
+            def __init__(self):
+                super().__init__()
+                self.remove_called = False
+
+            def open(self, remote, mode):
+                self.mode = mode
+                return FailingFile()
+
+            def remove(self, remote):
+                self.remove_called = True
+
+        sftp = FailingOverwriteSFTP()
+        client = mock.Mock(open_sftp=lambda: sftp)
+        captured = io.StringIO()
+        with mock.patch.object(SSH.sys, "stderr", captured):
+            with self.assertRaisesRegex(OSError, "synthetic overwrite interrupted"):
+                SSH._upload(client, self.ws, "overwrite.dat", "/tmp/demo.log", True)
+        self.assertEqual(sftp.mode, "wb")
+        self.assertFalse(sftp.remove_called)
+        self.assertIn("Remote file contents may be incomplete", captured.getvalue())
+
     def test_private_key_is_private_at_creation(self):
         try:
             import cryptography  # noqa: F401
