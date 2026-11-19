@@ -40,6 +40,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          if ! git cat-file -e "${EXPECTED_CANDIDATE}^{commit}"; then
+            echo 'BLOCKED: the verified round-12 candidate Git commit is not in this repository.' >&2
+            echo 'The private ChatGPT Library ZIP and Git bundle cannot be read directly by GitHub Actions.' >&2
+            exit 1
+          fi
           python3 - <<'PY'
           import json, pathlib
           p=pathlib.Path('.github/release-requests/v0.170.0-portable.2.json')
