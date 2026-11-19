@@ -142,6 +142,31 @@ def verify_all(reference):
                 errors.append(f"{name}: {exc}")
         if i % 1500 == 0:
             print(f"VERIFIED_FILES={i}/9066", flush=True)
+    if errors:
+        # Diagnose the mismatch without weakening the audited SHA-256 gate.
+        # Compare Git's raw committed blob with the Windows checkout and
+        # the independent original ZIP manifest; no file is modified here.
+        for name in [e.split(": ", 1)[0] for e in errors[:8]]:
+            path = ROOT / name
+            record = reference["files"][name]
+            raw = run("git", "show", f"{CANDIDATE}:{name}", capture=True)
+            disk = path.read_bytes() if path.is_file() else b""
+            def sha(data):
+                return hashlib.sha256(data).hexdigest()
+            print("FILE_DIAGNOSTIC " + json.dumps({
+                "path": name,
+                "expected_size": record["size"],
+                "expected_sha256": record["sha256"],
+                "git_blob_size": len(raw),
+                "git_blob_sha256": sha(raw),
+                "checkout_size": len(disk),
+                "checkout_sha256": sha(disk),
+                "git_lf_sha256": sha(raw.replace(b"\\r\\n", b"\\n")),
+                "git_crlf_sha256": sha(raw.replace(b"\\r\\n", b"\\n").replace(b"\\n", b"\\r\\n")),
+                "checkout_lf_sha256": sha(disk.replace(b"\\r\\n", b"\\n")),
+                "checkout_crlf_sha256": sha(disk.replace(b"\\r\\n", b"\\n").replace(b"\\n", b"\\r\\n")),
+                "attributes": run("git", "check-attr", "-a", "--", name, capture=True).decode(errors="replace").strip(),
+            }, ensure_ascii=True), flush=True)
     require(not errors, "Candidate files differ from verified round-12 ZIP: " + repr(errors))
     print("CUSTOMER_FILES=PASS count=9066", flush=True)
 
