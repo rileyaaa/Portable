@@ -208,6 +208,51 @@ def restore_verified_git_blob_bytes(reference):
 
 
 
+def restore_exact_development_blobs(reference) -> None:
+    """Restore tracked non-distribution files from this exact source commit.
+
+    The independent 9066-file inventory intentionally excludes 63 CI, test,
+    and repository-maintenance files. Those are still Git-tracked and must
+    match the immutable source commit byte-for-byte; Windows checkout can
+    convert their mixed newlines too. Never replace a Git LFS pointer with
+    its text content.
+    """
+    tree = run("git", "ls-tree", "-rz", "--full-tree", "HEAD", capture=True)
+    names = []
+    for entry in tree.split(b"\0"):
+        if not entry:
+            continue
+        header, raw_name = entry.split(b"\t", 1)
+        mode, kind, _ = header.split()
+        require(kind == b"blob" and mode in (b"100644", b"100755"),
+                "Unexpected linked/submodule source entry in release")
+        names.append(raw_name.decode("utf-8"))
+    distribution = set(reference["files"])
+    require(len(names) == 9129 and len(distribution) == 9066 and
+            distribution.issubset(set(names)),
+            "Tracked source tree changed from audited distribution inventory")
+    excluded = sorted(set(names) - distribution)
+    require(len(excluded) == 63, "Unexpected number of development-only files")
+    root = ROOT.resolve()
+    restored = 0
+    for name in excluded:
+        path = ROOT / name
+        require(path.is_file() and not path.is_symlink() and
+                path.resolve().is_relative_to(root),
+                "Missing or unsafe development source: " + name)
+        original = subprocess.run(["git", "show", f"HEAD:{name}"], cwd=ROOT,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        require(original.returncode == 0 and not
+                original.stdout.startswith(b"version https://git-lfs.github.com/spec/v1"),
+                "Development blob missing or is an unhydrated LFS pointer: " + name)
+        if path.read_bytes() != original.stdout:
+            path.write_bytes(original.stdout)
+            require(path.read_bytes() == original.stdout,
+                    "Development source could not be restored: " + name)
+            restored += 1
+    print(f"EXCLUDED_GIT_BLOBS=PASS count={len(excluded)} restored={restored}",
+          flush=True)
+
 def verify_release_worktree() -> None:
     """Restore the exact 9066 audited source bytes before Windows packaging.
 
@@ -250,8 +295,13 @@ def verify_release_worktree() -> None:
                 reference["target"] == "x86_64-pc-windows-msvc",
                 "Unexpected independent release inventory")
         restore_verified_git_blob_bytes(reference)
+        restore_exact_development_blobs(reference)
         verify_all(reference)
         run("git", "lfs", "fsck")
+        remaining = run("git", "status", "--porcelain=v1",
+                        "--untracked-files=no", capture=True).decode(errors="replace")
+        require(not remaining, "Git tracks unexpected worktree differences after "
+                "verified byte restoration: " + repr(remaining[:3000]))
     print("AUDITED_WINDOWS_WORKTREE=PASS commit=" + initial +
           " files=9066", flush=True)
 
