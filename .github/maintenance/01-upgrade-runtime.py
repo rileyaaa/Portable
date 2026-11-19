@@ -149,6 +149,20 @@ class _RejectUpstreamRedirect(urllib.request.HTTPRedirectHandler):
         raise RuntimeError("Official upstream metadata redirected; refusing credentials forwarding")
 
 
+def metadata_proxy_handler() -> urllib.request.ProxyHandler:
+    """Opt-in proxy only for official public metadata and license text."""
+    proxy = os.environ.get("CODEX_PORTABLE_UPGRADE_HTTPS_PROXY", "")
+    if not proxy:
+        return urllib.request.ProxyHandler({})
+    require(not os.environ.get("GH_TOKEN"),
+            "Unset GH_TOKEN before using an explicit official-metadata proxy")
+    require(re.fullmatch(r"http://[A-Za-z0-9._-]+:[0-9]{1,5}", proxy) is not None,
+            "Official-metadata proxy must be an HTTP CONNECT URL without credentials")
+    require(0 < int(proxy.rsplit(":", 1)[1]) <= 65535,
+            "Invalid official-metadata proxy port")
+    return urllib.request.ProxyHandler({"https": proxy})
+
+
 def github_request(url: str) -> bytes:
     require(url == LATEST_STABLE_API or url.startswith((
                 "https://api.github.com/repos/openai/codex/releases/tags/",
@@ -163,9 +177,10 @@ def github_request(url: str) -> bytes:
         headers["Authorization"] = "Bearer " + token
     req = urllib.request.Request(url, headers=headers)
     # Official release metadata and canonical license text need no redirect.
-    # Do not let ambient proxies receive the GitHub Actions bearer token.
+    # Default: no ambient proxy. Explicit proxy: require GH_TOKEN unset.
+    # In both modes HTTPS certificate and final canonical origin remain verified.
     opener = urllib.request.build_opener(
-        urllib.request.ProxyHandler({}), _RejectUpstreamRedirect())
+        metadata_proxy_handler(), _RejectUpstreamRedirect())
     with opener.open(req, timeout=50) as response:
         require(response.status == 200 and response.url == url,
                 "Unapproved official metadata response origin")
