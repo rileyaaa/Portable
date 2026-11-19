@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - .github/release-requests/v0.170.0-portable.2.json
+      - tool/runtime-manifest.json
   workflow_dispatch:
 
 permissions:
