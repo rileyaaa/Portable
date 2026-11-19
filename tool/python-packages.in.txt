@@ -48,3 +48,12 @@ altgraph==0.17.5
 pefile==2024.8.26
 pywin32-ctypes==0.2.3
 setuptools==82.0.1
+
+# SSH candidate versions pending review
+bcrypt==5.0.0
+cffi==2.1.1
+cryptography==50.0.2
+invoke==3.0.3
+paramiko==5.1.0
+pycparser==3.12
+PyNaCl==1.6.2

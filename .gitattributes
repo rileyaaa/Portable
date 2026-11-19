@@ -13,3 +13,4 @@ codex-code-mode-host.exe filter=lfs diff=lfs merge=lfs -text
 codex-command-runner.exe filter=lfs diff=lfs merge=lfs -text
 codex-windows-sandbox-setup.exe filter=lfs diff=lfs merge=lfs -text
 codex-path/rg.exe filter=lfs diff=lfs merge=lfs -text
+tool/node/node.exe filter=lfs diff=lfs merge=lfs -text
