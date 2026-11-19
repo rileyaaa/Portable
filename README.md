@@ -1,6 +1,6 @@
 # Codex Portable（Windows x64）
 
-将 Codex、启动器、包内工具和运行状态放在同一目录的便携项目，面向 **Windows x86-64、Windows PowerShell 5.1、本地 NTFS**，不支持 32 位 Windows。当前主客户端与 Code Mode Host 均为官方 **0.166.0**，用于文字与 Agent 工作，保留配套执行、搜索和沙箱组件，不包含语音聊天资源；来源和摘要见 [运行包清单](tool/runtime-manifest.json)。
+将 Codex、启动器、包内工具和运行状态放在同一目录的便携项目，面向 **Windows x86-64、Windows PowerShell 5.1、本地 NTFS**，不支持 32 位 Windows。当前主客户端与 Code Mode Host 均为官方 **0.170.0**，用于文字与 Agent 工作，保留配套执行、搜索和沙箱组件，不包含语音聊天资源；来源和摘要见 [运行包清单](tool/runtime-manifest.json)。
 
 默认面向 DBA 日常工作、爬虫与数据处理，也保留 Python 开发和调试能力。Python、Node 及已有文档/自动化运行依赖留在包内；Go 编译仍交给独立项目的手动 GitHub Actions，不预装 Go 编译器。Python EXE 打包已按用户授权恢复历史 PyInstaller，由 AI 直接调用包内 Python 的原生模块按任务使用，Windows 实际打包验收尚未执行。
 
@@ -34,7 +34,7 @@
 
 之前只有 Codex 和 Host 也能运行，是因为默认的 `windows.sandbox="unelevated"` 使用客户端内置的受限令牌执行路径。仍保留一对根目录沙箱助手，是因为 TUI 的 `/elevate-sandbox` 入口可达，不能靠普通配置可靠地移除；缺少助手时，上游还可能退回按文件名查找程序。保留包内匹配文件可避免该功能缺件及宿主程序回退。提权沙箱的系统级初始化需要另行明确授权。
 
-已按 0.166.0 核对查找顺序，省略 `codex-resources` 中两份重复助手和语音组件。当前保留六个运行文件（体积及摘要以清单为准）；不含 `tool` 工具和用户状态。0.166.0 新增的独立 `codex-exec-server.exe` 属于可选服务端程序，本地文字/TUI/Agent 不依赖它，本包已将其及 `codex-package.json` 的 `execServer` 字段一并省略；官方 npm 包也采用这种精简布局。`codex.exe` 本身仍内置 `exec-server` 子命令，便携启动器会拒绝直接调用该入口；删除独立 EXE 不等于在二进制级别移除全部网络/远程代码。
+当前为 0.170.0；运行组件的查找顺序须经发布前兼容检查确认，省略 `codex-resources` 中两份重复助手和语音组件。当前保留六个运行文件（体积及摘要以清单为准）；不含 `tool` 工具和用户状态。0.166.0 新增的独立 `codex-exec-server.exe` 属于可选服务端程序，本地文字/TUI/Agent 不依赖它，本包已将其及 `codex-package.json` 的 `execServer` 字段一并省略；官方 npm 包也采用这种精简布局。`codex.exe` 本身仍内置 `exec-server` 子命令，便携启动器会拒绝直接调用该入口；删除独立 EXE 不等于在二进制级别移除全部网络/远程代码。
 
 交互界面、`resume` 和 `fork` 默认附带官方 `--no-daemon`，使用当前进程内的服务。0.166.0 共享后台服务禁止把状态目录放在其 CLI 包内，因此本包采用此模式保留包内 `home`；文字、Agent 和 Code Mode 仍可使用，共享后台服务功能不启用。若使用旧包遇到 `CODEX_HOME must be outside the source CLI package`，API 模式可临时通过 `.\启动Codex.bat --portable-auth api --no-daemon` 启动；沿用此前已保存的认证使用 `--portable-auth last`，它不等同于 API 模式。恢复会话在相同参数后加 `resume --last`。
 

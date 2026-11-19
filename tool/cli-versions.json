@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "scope": "Windows bundled executable byte identity; Linux counterpart tested separately",
+  "tools": [
+    {
+      "name": "fd",
+      "version": "10.5.2",
+      "windows_path": "tool/bin/fd.exe",
+      "windows_sha256": "2fe8ed92c57e0d1b3a84b66cf69ec8fac15330d0012147a64b4be521bbddfa83",
+      "official_windows_asset": "fd-v10.5.2-x86_64-pc-windows-msvc.zip",
+      "official_windows_asset_sha256": "7edac75ef96b7e9a01ebb251a21ee86ea365a09adcfb865f1ec3346a906153b6",
+      "linux_asset": "fd-v10.5.2-x86_64-unknown-linux-musl.tar.gz",
+      "linux_asset_sha256": "7e2d07fa2b8807642aaec67b7e2972a9fbe4db26fcb340a7372392db42b26694",
+      "linux_asset_url": "https://github.com/sharkdp/fd/releases/download/v10.5.2/fd-v10.5.2-x86_64-unknown-linux-musl.tar.gz"
+    },
+    {
+      "name": "rg",
+      "version": "15.2.0",
+      "windows_path": "tool/bin/rg.exe",
+      "windows_sha256": "14231169855ec5205cf5a1b6f1db358ff4aed4247c86b69ce8aae647c77f6680",
+      "official_windows_asset": "ripgrep-15.2.0-x86_64-pc-windows-msvc.zip",
+      "official_windows_asset_sha256": "71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5",
+      "linux_asset": "ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz",
+      "linux_asset_sha256": "33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c",
+      "linux_asset_url": "https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz"
+    },
+    {
+      "name": "jq",
+      "version": "1.8.2",
+      "windows_path": "tool/bin/jq.exe",
+      "windows_sha256": "a6fc67fedaf9128a3309a1e2ebb8b986aeccf70122ee46d2cb4849e423f0c627",
+      "official_windows_asset": "jq-windows-amd64.exe",
+      "official_windows_asset_sha256": "a6fc67fedaf9128a3309a1e2ebb8b986aeccf70122ee46d2cb4849e423f0c627",
+      "linux_asset": "jq-linux-amd64",
+      "linux_asset_sha256": "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f",
+      "linux_asset_url": "https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-amd64"
+    }
+  ]
+}

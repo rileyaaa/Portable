@@ -16,29 +16,29 @@ import zipfile
 
 OFFICIAL = {
     "fd": {
-        "version": "10.4.2",
-        "tag": "v10.4.2",
-        "asset": "fd-v10.4.2-x86_64-pc-windows-msvc.zip",
-        "size": 1525898,
-        "sha256": "b2816e506390a89941c63c9187d58a3cc10e9a55f2ef0685f9ea0eccaf7c98c8",
-        "binary": "fd.exe",
+        "version": "10.5.2",
+        "tag": "v10.5.2",
+        "asset": "fd-v10.5.2-x86_64-pc-windows-msvc.zip",
+        "size": 1564536,
+        "sha256": "7edac75ef96b7e9a01ebb251a21ee86ea365a09adcfb865f1ec3346a906153b6",
+        "binary": "fd.exe"
     },
     "rg": {
-        "version": "15.1.0",
-        "tag": "15.1.0",
-        "asset": "ripgrep-15.1.0-x86_64-pc-windows-msvc.zip",
-        "size": 1810687,
-        "sha256": "124510b94b6baa3380d051fdf4650eaa80a302c876d611e9dba0b2e18d87493a",
-        "binary": "rg.exe",
+        "version": "15.2.0",
+        "tag": "15.2.0",
+        "asset": "ripgrep-15.2.0-x86_64-pc-windows-msvc.zip",
+        "size": 1789611,
+        "sha256": "71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5",
+        "binary": "rg.exe"
     },
     "jq": {
-        "version": "1.8.1",
-        "tag": "jq-1.8.1",
+        "version": "1.8.2",
+        "tag": "jq-1.8.2",
         "asset": "jq-windows-amd64.exe",
-        "size": 1026560,
-        "sha256": "23cb60a1354eed6bcc8d9b9735e8c7b388cd1fdcb75726b93bc299ef22dd9334",
-        "binary": "jq.exe",
-    },
+        "size": 1035264,
+        "sha256": "a6fc67fedaf9128a3309a1e2ebb8b986aeccf70122ee46d2cb4849e423f0c627",
+        "binary": "jq.exe"
+    }
 }
 
 

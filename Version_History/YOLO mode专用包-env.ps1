@@ -14,7 +14,7 @@ $env:CODEX_PORTABLE_PROFILE = "strict"
 # 如真实环境需要新增工具，请把工具放入 Codex\tool 并在检查器/安装脚本中登记。
 
 # 是否允许 Codex 在需要越权时弹窗请求批准。
-# 普通模式默认 on-request；Codex 0.149.0 起已移除旧值 untrusted，0.166.0 会拒绝该值。
+# 普通模式默认 on-request；Codex 0.149.0 起已移除旧值 untrusted，0.170.0 会拒绝该值。
 # Version_History 的 YOLO 预设会把本项与 sandbox/network 三项一起切换。
 $env:CODEX_APPROVAL_POLICY = "never"
 
@@ -45,13 +45,13 @@ $env:CODEX_SANDBOX_NETWORK_ACCESS = "true"
 
 # Fast 服务层开关（与 YOLO、模型、Code Mode 相互独立）。
 # false = 显式生成 service_tier="default"，保持 Standard 并阻止账号资格自动启用 Fast。
-# true  = 生成 Codex 0.166.0 配置拼写 service_tier="priority"（旧值 fast 为兼容别名）。
+# true  = 生成 Codex 0.170.0 配置拼写 service_tier="priority"（旧值 fast 为兼容别名）。
 $env:CODEX_FAST_MODE = "false"
 
 # ------------------------------------------------------------
 # 0.1 自定义 Provider 是否禁用 WebSocket
 # ------------------------------------------------------------
-# Codex 0.166.0 已移除 responses_websockets / responses_websockets_v2 feature；本包使用 provider.supports_websockets；
+# Codex 0.170.0 已移除 responses_websockets / responses_websockets_v2 feature；本包使用 provider.supports_websockets；
 # provider 级 supports_websockets 才是本包的主控制。true=禁用 WS；false=只有在该上游确实支持 Responses WebSocket 时才声明 true。
 # 自定义 Provider 的 supports_websockets 默认值本身就是 false，所以不能靠“省略字段”表达启用。
 # custom_provider 会显式双向写 true/false；local_ollama 固定 HTTP/SSE。
@@ -62,7 +62,7 @@ $env:CODEX_DISABLE_WEBSOCKET = "true"
 # 0.2 模型输入能力：自动优先，手工覆盖只做兼容兜底
 # ------------------------------------------------------------
 # auto（推荐）：如果模型 slug 能匹配当前 codex.exe bundled catalog，就继承官方 input_modalities；
-#               匹配不到的第三方/本地模型不强写该字段，让 Codex 0.166.0 使用自身兼容默认。
+#               匹配不到的第三方/本地模型不强写该字段，让 Codex 0.170.0 使用自身兼容默认。
 # text：       明确强制纯文本；会关闭 image_generation 注册。
 # text_image： 明确强制文字+图片。
 # 正常情况下不要改 auto；只有特殊中转模型兼容异常时再手工覆盖。
@@ -250,7 +250,7 @@ $env:CODEX_WIRE_API = "responses"
 $env:CODEX_MODEL_CATALOG_JSON = "home\model-catalog.custom.json"
 
 # 自定义/本地模型的上下文窗口(token)。默认留空：不显式覆盖匹配到的原生上下文；
-# 手工 modality 覆盖时若仍留空：能匹配 bundled 的模型保留其原 context/max；真正 unknown 才使用 0.166.0 的保守 272000 fallback。
+# 手工 modality 覆盖时若仍留空：能匹配 bundled 的模型保留其原 context/max；真正 unknown 才使用 0.170.0 的保守 272000 fallback。
 $env:CODEX_MODEL_CONTEXT_WINDOW = ""
 
 # 模型思考强度（reasoning effort）。
