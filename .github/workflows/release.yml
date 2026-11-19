@@ -105,6 +105,11 @@ jobs:
       run:
         shell: powershell
     steps:
+      - name: Preserve exact upstream bytes before Git for Windows checkout
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & git config --global core.autocrlf false
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot disable Windows checkout EOL conversion' }
       - name: Checkout exact source and hydrate Git LFS
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -173,6 +178,11 @@ jobs:
       run:
         shell: powershell
     steps:
+      - name: Preserve exact upstream bytes before Git for Windows checkout
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & git config --global core.autocrlf false
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot disable Windows checkout EOL conversion' }
       - name: Checkout exact validated source with LFS and no persistent credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
