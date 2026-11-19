@@ -1,4 +1,0 @@
-Codex-Portable GitHub connector read/write smoke test
-Date: 2026-11-19
-Scope: temporary file on main; delete after verifying readback.
-Contains no credentials or user data.
