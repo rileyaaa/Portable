@@ -200,8 +200,14 @@ def source_check(root: Path) -> dict:
     for name in REQUIRED - {"codex-package.json"}:
         check(name + " filter=lfs diff=lfs merge=lfs -text" in attributes,
               "Native binary not Git LFS-tracked: " + name)
-    check(not (root / ".github/workflows").exists(),
-          "Retired GitHub Actions workflows must not remain on main")
+    # Only the reviewed, fail-closed one-time release workflow may return.
+    # The retired automatic upgrade and tool-update workflows stay removed.
+    workflow_dir = root / ".github/workflows"
+    if workflow_dir.exists():
+        check(workflow_dir.is_dir() and not workflow_dir.is_symlink() and
+              {item.name for item in workflow_dir.iterdir()} == {"release.yml"} and
+              (workflow_dir / "release.yml").is_file(),
+              "Unexpected GitHub Actions workflows on main")
 
     # Static checks for the existing tool/browser environment contract. The
     # native functional tests remain separate, and optional SDK/JDK must not
