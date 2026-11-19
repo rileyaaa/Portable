@@ -2034,19 +2034,6 @@ function Invoke-CodexChildInteractive {
     return (Invoke-PortableProcess -StartInfo $psi -PackageRoot $Root -TimeoutMs 0).ExitCode
 }
 
-# Exact offline CLI identity is valid without API credentials or model setup.
-# Still use the verified portable child launcher, runtime SHA/ACL validation,
-# restricted environment, process supervisor and the outer cleanup paths.
-# No interactive/login/model/API operation is permitted through this shortcut.
-# PowerShell unrolls a generic List[string] returned by the normalizer:
-# a single argument may become a scalar string, whose [0] is only '-'.
-# Materialize the exact CLI argv as an array before matching.
-$ExactVersionArgv = @($CodexLaunchArgs)
-if ($ExactVersionArgv.Count -eq 1 -and [string]$ExactVersionArgv[0] -ceq '--version') {
-    $script:PortableLifecycleExitCode = Invoke-CodexChildInteractive -LaunchArgs @('--version')
-    exit $script:PortableLifecycleExitCode
-}
-
 function Get-ModelReasoningMenuInfo {
     param([string]$ModelSlug)
 

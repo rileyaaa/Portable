@@ -1,4 +1,5 @@
 name: "99 - Temporary Windows 0.166 compatibility audit"
+# Retry without the version shortcut that broke the 0.166 launcher lifecycle
 on:
   push:
     branches: [main]
@@ -30,14 +31,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Release package tests failed.' }
           & .\tool\python\python.exe -B .\tool\package-release.py --check
           if ($LASTEXITCODE -ne 0) { throw 'Customer package preflight failed.' }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Native BAT launcher smoke failed.' }
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_paths.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Portable path tests failed.' }
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_python_setup.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Python installer tests failed.' }
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_automation_process.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Automation child process tests failed.' }
-          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Native BAT launcher smoke failed.' }
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_config.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Portable config tests failed.' }
           & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_login_input_errors.ps1
