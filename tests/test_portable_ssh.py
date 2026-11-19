@@ -194,8 +194,14 @@ class PortableSSHTests(unittest.TestCase):
         self.assertEqual(client.options["look_for_keys"], False)
         self.assertEqual(client.options["gss_kex"], False)
         self.assertEqual(client.options["timeout"], 9)
-        self.assertTrue(client.loaded.endswith("work/ssh/known_hosts"))
-        self.assertTrue(client.options["key_filename"].endswith("work/ssh/keys/id_ed25519"))
+        # Assert the exact package-local paths on both Windows and POSIX.
+        # Forward-slash suffix checks fail on native Windows despite a
+        # correctly isolated host-key file and explicitly selected key.
+        self.assertEqual(Path(client.loaded), self.ws.known_hosts(existing=True))
+        self.assertEqual(
+            Path(client.options["key_filename"]),
+            self.ws.path("keys", "id_ed25519", existing=True),
+        )
 
     def test_sftp_download_no_clobber_and_upload_exclusive(self):
         client = FakeTransferClient()
