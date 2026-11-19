@@ -368,13 +368,26 @@ def _upload(client, ws: Workspace, relative: str, remote: str,
                     shutil.copyfileobj(source_file, destination, length=1024 * 1024)
                     destination.flush()
             except BaseException:
-                # Only remove a partial file after our own exclusive create
-                # succeeded. Do not remove a preexisting remote target.
+                # Never hide the original failure, but do not silently conceal
+                # an incomplete remote target when cleanup is refused.
                 if created_here:
                     try:
                         sftp.remove(remote)
                     except Exception:
-                        pass  # Preserve the original transfer error.
+                        print(
+                            "WARNING: SFTP upload failed and cleanup of the newly "
+                            "created remote file also failed. A partial remote file "
+                            "may remain; inspect the destination before retrying.",
+                            file=sys.stderr,
+                        )
+                elif overwrite:
+                    # An explicitly overwritten remote file is not recoverable
+                    # automatically. Report this even when the transfer failed.
+                    print(
+                        "WARNING: SFTP overwrite failed. Remote file contents may "
+                        "be incomplete; inspect the destination before retrying.",
+                        file=sys.stderr,
+                    )
                 raise
     print("Uploaded from package-local", source)
     return 0
