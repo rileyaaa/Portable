@@ -102,8 +102,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.source-gate.outputs.source_sha }}
+          fetch-depth: 0
           persist-credentials: false
           lfs: true
+      - name: Restore and independently audit all 9066 release input files
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B .\.github\scripts\import_round12.py --verify-release-worktree
+          if ($LASTEXITCODE -ne 0) { throw 'Audited Windows source bytes differ; no release' }
       - name: Check actual LFS objects, runtime, versions and runtime checks
         run: |
           $ErrorActionPreference = 'Stop'
@@ -164,8 +170,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.verify-windows.outputs.source_sha }}
+          fetch-depth: 0
           lfs: true
           persist-credentials: false
+      - name: Restore and independently audit all 9066 release input files
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B .\.github\scripts\import_round12.py --verify-release-worktree
+          if ($LASTEXITCODE -ne 0) { throw 'Publisher source differs from audited bytes' }
       - name: Rebuild and compare against the separate Windows check
         id: package
         env:
