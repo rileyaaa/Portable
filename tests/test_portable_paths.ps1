@@ -135,14 +135,20 @@ try {
     $RejectedVariable = $env:CODEX_TEST_REJECTED_VARIABLE
     if ($env:CODEX_INSTALL_DIR -cne $ExpectedOldRoot) { throw 'Missing inherited stale installation root.' }
     if ((Get-Location).Path -cne $env:CODEX_TEST_UNRELATED_ROOT) { throw 'Unexpected initial working directory.' }
+    # Standalone ADB does not imply the optional full Android SDK/JDK is present.
+    $SdkRoot = Join-Path $ExpectedRoot 'tool\android\sdk'
+    $SdkAvailable = (Test-Path -LiteralPath (Join-Path $SdkRoot 'cmdline-tools\latest\bin\sdkmanager.bat') -PathType Leaf)
+    $JdkRoot = Join-Path $ExpectedRoot 'tool\android\jdk'
+    $JdkAvailable = (Test-Path -LiteralPath (Join-Path $JdkRoot 'bin\java.exe') -PathType Leaf) -and
+                    (Test-Path -LiteralPath (Join-Path $JdkRoot 'bin\javac.exe') -PathType Leaf)
     $ExpectedPaths = [ordered]@{
         CODEX_INSTALL_DIR = ''
         CODEX_PYTHON = 'tool\python\python.exe'
-        ANDROID_HOME = 'tool\android\sdk'
-        ANDROID_SDK_ROOT = 'tool\android\sdk'
+        ANDROID_HOME = $(if ($SdkAvailable) { 'tool\android\sdk' } else { $null })
+        ANDROID_SDK_ROOT = $(if ($SdkAvailable) { 'tool\android\sdk' } else { $null })
         ANDROID_USER_HOME = 'home-runtime\.android'
         ANDROID_SDK_HOME = 'home-runtime'
-        JAVA_HOME = 'tool\android\jdk'
+        JAVA_HOME = $(if ($JdkAvailable) { 'tool\android\jdk' } else { $null })
         ADB_VENDOR_KEYS = 'home-runtime\.android\adbkey'
         APKTOOL_FRAMEWORK_DIR = 'cache\android\apktool-framework'
         FRIDA_CACHE_DIR = 'cache\android\frida'
@@ -169,7 +175,9 @@ try {
     }
     foreach ($Name in $ExpectedPaths.Keys) {
         $Relative = $ExpectedPaths[$Name]
-        $Expected = if ($Relative) { Join-Path $ExpectedRoot $Relative } else { $ExpectedRoot }
+        $Expected = if ($Name -eq 'CODEX_INSTALL_DIR') { $ExpectedRoot } elseif ($null -eq $Relative) {
+            $null
+        } else { Join-Path $ExpectedRoot $Relative }
         $Actual = [Environment]::GetEnvironmentVariable($Name, 'Process')
         if ($Actual -cne $Expected) { throw "$Name did not follow package root: '$Actual' != '$Expected'." }
     }
@@ -185,7 +193,8 @@ try {
         $Tokens = $null; $Errors = $null
         $Ast = [Management.Automation.Language.Parser]::ParseFile($env:CODEX_TEST_LAUNCHER, [ref]$Tokens, [ref]$Errors)
         if ($Errors.Count) { throw 'Launcher parse failure.' }
-        foreach ($Name in @('Reset-PortableInvariantEnvironment','Set-PortableProcessPath',
+        foreach ($Name in @('Get-CodexTrustedWindowsRoot','Reset-CodexTrustedSystemEnvironment',
+                            'Reset-PortableInvariantEnvironment','Set-PortableProcessPath',
                             'Set-CodexChildPortableEnvironment','Set-ProcessEnvironmentValue',
                             'Get-ConfiguredHeaderEnvironmentVariableNames','Append-TomlSet','Convert-ToTomlString')) {
             $Definition = @($Ast.FindAll({param($Node) $Node -is [Management.Automation.Language.FunctionDefinitionAst]}, $true) | Where-Object { $_.Name -eq $Name })
@@ -198,6 +207,7 @@ try {
         $PortableWork = Join-Path $Root 'work'; $PortableAppData = Join-Path $Root 'appdata'
         $PortableLocalData = Join-Path $Root 'localappdata'; $PortableProgramData = Join-Path $Root 'programdata'
         $PortablePsModules = Join-Path $PortableCache 'powershell/modules'
+        $PortableWindowsRoot = Get-CodexTrustedWindowsRoot
         $SystemPaths = @()
         # Path security is covered by dedicated tests; this adapter keeps the
         # environment-mapping test runnable with Linux path separators too.

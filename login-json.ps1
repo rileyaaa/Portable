@@ -279,7 +279,23 @@ function Write-Utf8CsvFileAtomic {
     }
 }
 
+# Windows runtime environment must not be inherited from an arbitrary shell.
+function Set-LoginTrustedWindowsEnvironment {
+    $windows = [IO.Path]::GetFullPath([Environment]::GetFolderPath('Windows')).TrimEnd('\')
+    if ($windows -notmatch '^[A-Za-z]:\\' -or $windows.Substring(2).Contains(':') -or
+        -not [IO.File]::Exists((Join-Path $windows 'System32\cmd.exe'))) {
+        throw 'JSON login requires a real local Windows system directory.'
+    }
+    $env:SystemRoot = $windows
+    $env:WINDIR = $windows
+    $env:SystemDrive = [IO.Path]::GetPathRoot($windows).TrimEnd('\')
+    $env:ComSpec = Join-Path $windows 'System32\cmd.exe'
+    $env:PATHEXT = '.COM;.EXE;.BAT;.CMD'
+    return $windows
+}
+
 function Set-PortableEnvironment {
+    [void](Set-LoginTrustedWindowsEnvironment)
     New-Dir $LoginDir
     New-Dir $HomeDir
     New-Dir $TmpDir
@@ -325,24 +341,24 @@ function Set-PortableEnvironment {
 
 function Set-PortableProcessPath {
     $tool = Join-Path $Root "tool"
+    # Only audited portable command shims and installed runtimes.
+    # Vendor Python bin EXEs can carry stale interpreter launchers, and Go is absent.
     $portableCandidates = @(
         (Join-Path $tool "bin"),
         (Join-Path $tool "python"),
-        (Join-Path $tool "python\Scripts"),
-        (Join-Path $tool "python\Lib\site-packages\bin"),
-        (Join-Path $tool "node"),
-        (Join-Path $tool "go\bin")
+        (Join-Path $tool "node")
     )
     foreach ($candidate in $portableCandidates) {
         if (-not (Test-IsUnderDirectory -Path $candidate -Directory $Root)) {
             throw "Refusing package tool path through outside/reparse path: $candidate"
         }
     }
+    $WindowsRoot = Set-LoginTrustedWindowsEnvironment
     $systemCandidates = @(
-        (Join-Path $env:SystemRoot "System32"),
-        $env:SystemRoot,
-        (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0"),
-        (Join-Path $env:SystemRoot "System32\Wbem")
+        (Join-Path $WindowsRoot "System32"),
+        $WindowsRoot,
+        (Join-Path $WindowsRoot "System32\WindowsPowerShell\v1.0"),
+        (Join-Path $WindowsRoot "System32\Wbem")
     )
     $parts = New-Object System.Collections.Generic.List[string]
     foreach ($candidate in @($portableCandidates + $systemCandidates)) {
@@ -915,6 +931,7 @@ function Protect-LoginChildEnvironment {
     # Windows runtime essentials and package-local HOME/TEMP/PATH. Request credentials
     # are passed in the HTTP request itself, never through inherited variables.
     try { $StartInfo.EnvironmentVariables.Clear() } catch { try { $StartInfo.Environment.Clear() } catch {} }
+    [void](Set-LoginTrustedWindowsEnvironment)
     foreach ($name in @("SystemRoot","WINDIR","SystemDrive","ComSpec","PATHEXT","OS","PROCESSOR_ARCHITECTURE","PROCESSOR_IDENTIFIER","NUMBER_OF_PROCESSORS","USERNAME","COMPUTERNAME","PATH","HOME","USERPROFILE","APPDATA","LOCALAPPDATA","TEMP","TMP","TMPDIR")) {
         Set-LoginChildEnvironmentValue $StartInfo $name ([Environment]::GetEnvironmentVariable($name))
     }

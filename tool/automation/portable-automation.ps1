@@ -141,9 +141,16 @@ function New-AutomationStartInfo {
     )
     [void](Assert-AutomationPath -Root $Root -Path $WorkingDirectory -Directory)
     [void](Assert-AutomationPath -Root $Root -Path $SessionDirectory -Directory)
+    # The real OS Windows directory, not an inherited SystemRoot/ComSpec.
+    $windowsFolder = [IO.Path]::GetFullPath([Environment]::GetFolderPath('Windows')).TrimEnd('\')
+    if ($windowsFolder -notmatch '^[A-Za-z]:\\' -or $windowsFolder.Substring(2).Contains(':')) {
+        throw 'Automation requires a local Windows system directory.'
+    }
+    $systemCmd = Join-Path $windowsFolder 'System32\cmd.exe'
+    if (-not [IO.File]::Exists($systemCmd)) { throw 'Windows command processor is unavailable.' }
     if ($WindowsPowerShell) {
         # Windows PowerShell is an OS facility, not a third-party host fallback.
-        $trusted = Join-Path ([Environment]::GetFolderPath('Windows')) 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $trusted = Join-Path $windowsFolder 'System32\WindowsPowerShell\v1.0\powershell.exe'
         if ($FilePath -cne $trusted -or -not [IO.File]::Exists($trusted)) { throw 'Only built-in Windows PowerShell is permitted.' }
     } else {
         [void](Assert-AutomationPath -Root $Root -Path $FilePath)
@@ -158,11 +165,35 @@ function New-AutomationStartInfo {
     $start.RedirectStandardError = [bool]$CaptureOutput
     $start.RedirectStandardInput = [bool]$CaptureOutput
     $start.EnvironmentVariables.Clear()
-    foreach ($name in @('SystemRoot', 'WINDIR', 'SYSTEMDRIVE', 'COMSPEC', 'NUMBER_OF_PROCESSORS',
-                        'PROCESSOR_ARCHITECTURE', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
-                        'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy')) {
-        $value = [Environment]::GetEnvironmentVariable($name)
-        if ($value) { $start.EnvironmentVariables[$name] = $value }
+    $start.EnvironmentVariables['SystemRoot'] = $windowsFolder
+    $start.EnvironmentVariables['WINDIR'] = $windowsFolder
+    $start.EnvironmentVariables['SYSTEMDRIVE'] = [IO.Path]::GetPathRoot($windowsFolder).TrimEnd('\')
+    $start.EnvironmentVariables['COMSPEC'] = $systemCmd
+    $start.EnvironmentVariables['PATHEXT'] = '.COM;.EXE;.BAT;.CMD'
+    $start.EnvironmentVariables['NUMBER_OF_PROCESSORS'] = [string][Environment]::ProcessorCount
+    $start.EnvironmentVariables['PROCESSOR_ARCHITECTURE'] = 'AMD64'
+
+    # A direct browser or desktop task must not adopt a host proxy. Only the
+    # main launcher's explicit package-local proxy choice may be forwarded.
+    $proxyEnabled = [string]::Equals(
+        [Environment]::GetEnvironmentVariable('CODEX_INSTALL_DIR'), $Root,
+        [StringComparison]::OrdinalIgnoreCase) -and
+        [string]::Equals(
+        [Environment]::GetEnvironmentVariable('CODEX_HOME'), (Join-Path $Root 'home'),
+        [StringComparison]::OrdinalIgnoreCase)
+    foreach ($name in @('CODEX_PROXY_ENABLED', 'CODEX_PROXY_FOR_SUBPROCESS',
+                        'CODEX_SANDBOX_NETWORK_ACCESS')) {
+        $value = [string][Environment]::GetEnvironmentVariable($name)
+        if ($value.Trim() -notmatch '^(?i:1|true|yes|on)$') { $proxyEnabled = $false }
+    }
+    if ($proxyEnabled) {
+        foreach ($name in @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+                            'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy')) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if (-not [string]::IsNullOrWhiteSpace($value)) {
+                $start.EnvironmentVariables[$name] = $value
+            }
+        }
     }
     foreach ($name in @('HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'TMPDIR',
                         'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME')) {

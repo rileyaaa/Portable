@@ -5,7 +5,7 @@ $Root = Split-Path -Parent $PSScriptRoot
 $Tokens = $null; $Errors = $null
 $Ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $Root 'tool/setup-tools.ps1'), [ref]$Tokens, [ref]$Errors)
 if ($Errors.Count) { throw 'Python setup script does not parse.' }
-foreach ($Name in @('Get-SetupPipArguments','Assert-SetupPathAncestors','Set-SetupProcessEnvironmentValue','Set-SetupChildPortableEnvironment')) {
+foreach ($Name in @('Get-SetupTrustedWindowsRoot','Get-SetupPipArguments','Assert-SetupPathAncestors','Set-SetupProcessEnvironmentValue','Set-SetupChildPortableEnvironment')) {
     $Found = @($Ast.FindAll({param($Node) $Node -is [Management.Automation.Language.FunctionDefinitionAst]}, $true) | Where-Object { $_.Name -eq $Name })
     if ($Found.Count -ne 1) { throw ('Missing setup function: ' + $Name) }
     . ([scriptblock]::Create($Found[0].Extent.Text))
@@ -26,6 +26,7 @@ foreach ($Arguments in @($Resolve, $Install)) {
 if ($Resolve -notcontains '--dry-run' -or $Resolve -notcontains '--ignore-installed' -or $Resolve -contains '--upgrade') { throw 'Resolution must not install packages.' }
 if ($Install -notcontains '--require-hashes' -or $Install -notcontains '--upgrade' -or $Install -contains '--dry-run') { throw 'Installation must enforce the selected wheel hashes.' }
 Write-Output 'PASS resolver/install command policy uses wheels, hashes and package-local paths'
+$SetupWindowsRoot = Get-SetupTrustedWindowsRoot
 $StartInfo = New-Object Diagnostics.ProcessStartInfo
 $StartInfo.EnvironmentVariables['UNREVIEWED_SECRET'] = 'synthetic'
 Set-SetupChildPortableEnvironment $StartInfo

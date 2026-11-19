@@ -1,0 +1,46 @@
+name: "99 - Temporary Windows 0.166 compatibility audit"
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/99-portable-audit-once.yml"]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout entire portable package with native LFS payload
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          lfs: true
+          persist-credentials: false
+      - name: Native 0.166 identity, tests, and customer ZIP verification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REPOSITORY -cne 'rileyaaa/Codex-Portable' -or $env:GITHUB_REF -cne 'refs/heads/main') { throw 'Wrong verification repository/branch.' }
+          $version = & .\codex.exe --version
+          if ($LASTEXITCODE -ne 0 -or -not (($version | Out-String) -match '0\.166\.0')) { throw 'Official runtime changed.' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_mode_copies.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Mode copies failed.' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_runtime_package.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Native payload identity failed.' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_release_package.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Release package tests failed.' }
+          & .\tool\python\python.exe -B .\tool\package-release.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Customer package preflight failed.' }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_paths.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Portable path tests failed.' }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_python_setup.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Python installer tests failed.' }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_automation_process.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Automation child process tests failed.' }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Native BAT launcher smoke failed.' }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_portable_config.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Portable config tests failed.' }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_login_input_errors.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Login parser tests failed.' }
+          & .\tool\python\python.exe -B .\tool\package-release.py --version v0.166.0-portable.2
+          if ($LASTEXITCODE -ne 0) { throw 'Customer ZIP verification failed.' }

@@ -72,6 +72,28 @@ if (($RootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
     exit 3
 }
 
+# Environment variables named SystemRoot/WINDIR/ComSpec are caller-controlled.
+# Query the OS instead of trusting them when rebuilding child PATH/system tools.
+# This happens after PowerShell has started; the BAT pre-bootstrap limitation
+# must be audited separately and is NOT a substitute for a native OS sandbox.
+function Get-CodexTrustedWindowsRoot {
+    $windows = [IO.Path]::GetFullPath([Environment]::GetFolderPath('Windows')).TrimEnd('\')
+    if ($windows -notmatch '^[A-Za-z]:\\' -or $windows.Substring(2).Contains(':') -or
+        -not [IO.File]::Exists((Join-Path $windows 'System32\cmd.exe'))) {
+        throw 'Codex Portable requires a real local Windows system directory.'
+    }
+    return $windows
+}
+$PortableWindowsRoot = Get-CodexTrustedWindowsRoot
+function Reset-CodexTrustedSystemEnvironment {
+    $env:SystemRoot = $PortableWindowsRoot
+    $env:WINDIR = $PortableWindowsRoot
+    $env:SystemDrive = [IO.Path]::GetPathRoot($PortableWindowsRoot).TrimEnd('\')
+    $env:ComSpec = Join-Path $PortableWindowsRoot 'System32\cmd.exe'
+    $env:PATHEXT = '.COM;.EXE;.BAT;.CMD'
+}
+Reset-CodexTrustedSystemEnvironment
+
 # Version_History 中的专用启动器自动加载同名前缀的 *-env.ps1；根目录启动器仍使用 env.ps1。
 if ([string]::IsNullOrWhiteSpace($EnvFile)) {
     $scriptLeaf = Split-Path -Leaf $PSCommandPath
@@ -125,9 +147,18 @@ function Test-IsUnderDirectory {
         foreach ($segment in @($relative -split '\\')) {
             if ([string]::IsNullOrWhiteSpace($segment)) { continue }
             $current = Join-Path $current $segment
-            if (Test-Path -LiteralPath $current) {
-                $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop
-                if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+            # A broken NTFS junction can be invisible to Test-Path.
+            # Inspect its directory entry even if its target is missing.
+            try {
+                $attrs = [IO.File]::GetAttributes($current)
+                if (($attrs -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+            } catch [IO.FileNotFoundException] {
+                # A genuinely missing package-local component is permitted.
+            } catch [IO.DirectoryNotFoundException] {
+                # An ordinary missing parent is also permitted.
+            } catch {
+                # Unexpected filesystem errors fail closed.
+                return $false
             }
         }
         return $true
@@ -913,10 +944,10 @@ $ToolPaths = @(
 )
 if (-not [string]::IsNullOrWhiteSpace($AndroidBuildToolsPath)) { $ToolPaths = @($AndroidBuildToolsPath) + $ToolPaths }
 $SystemPaths = @(
-    (Join-Path $env:SystemRoot "System32"),
-    $env:SystemRoot,
-    (Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0"),
-    (Join-Path $env:SystemRoot "System32\Wbem")
+    (Join-Path $PortableWindowsRoot "System32"),
+    $PortableWindowsRoot,
+    (Join-Path $PortableWindowsRoot "System32\WindowsPowerShell\v1.0"),
+    (Join-Path $PortableWindowsRoot "System32\Wbem")
 )
 
 function Set-PortableProcessPath {
@@ -1089,6 +1120,7 @@ $TuiFullscreenTranscript = Convert-ToTomlBool -Value $env:CODEX_TUI_FULLSCREEN_T
 # env.ps1/env.local.ps1 加载后，重新固定所有“便携边界常量”。
 # 用户配置只能改变模型/API/代理等业务值，不能把工具链、用户目录或缓存重新指向宿主机。
 function Reset-PortableInvariantEnvironment {
+    Reset-CodexTrustedSystemEnvironment
     # This edition ships runtime tools only; stale compiler paths must not survive.
     foreach ($name in @('GOPATH','GOCACHE','GOMODCACHE','GOROOT','GOTOOLCHAIN','UV_CACHE_DIR','UV_PYTHON_INSTALL_DIR','UV_TOOL_DIR','UV_TOOL_BIN_DIR')) {
         Remove-Item ("Env:" + $name) -ErrorAction SilentlyContinue
@@ -1140,10 +1172,23 @@ function Reset-PortableInvariantEnvironment {
     $env:GIT_CONFIG_NOSYSTEM = "1"
 
     $env:ANDROID_HOME = Join-Path $PortableTool "android\sdk"
+    $sdkRoot = $env:ANDROID_HOME
+    # Standalone ADB does not imply an installed Android SDK.
+    $sdkPresent = Test-Path -LiteralPath (Join-Path $sdkRoot "cmdline-tools\latest\bin\sdkmanager.bat") -PathType Leaf
+    if (-not $sdkPresent -and (Test-Path -LiteralPath (Join-Path $sdkRoot "build-tools") -PathType Container)) {
+        $sdkPresent = @(Get-ChildItem -LiteralPath (Join-Path $sdkRoot "build-tools") -Directory -ErrorAction Stop | Where-Object {
+            Test-Path -LiteralPath (Join-Path $_.FullName "aapt2.exe") -PathType Leaf
+        }).Count -gt 0
+    }
+    if (-not $sdkPresent) { Remove-Item Env:ANDROID_HOME -ErrorAction SilentlyContinue }
     $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
     $env:ANDROID_USER_HOME = Join-Path $PortableHome ".android"
     $env:ANDROID_SDK_HOME = $PortableHome
     $env:JAVA_HOME = Join-Path $PortableTool "android\jdk"
+    if (-not ((Test-Path -LiteralPath (Join-Path $env:JAVA_HOME "bin\java.exe") -PathType Leaf) -and
+               (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME "bin\javac.exe") -PathType Leaf))) {
+        Remove-Item Env:JAVA_HOME -ErrorAction SilentlyContinue
+    }
     $env:ADB_VENDOR_KEYS = Join-Path $PortableHome ".android\adbkey"
     $env:APKTOOL_FRAMEWORK_DIR = Join-Path $PortableCache "android\apktool-framework"
     $env:FRIDA_CACHE_DIR = Join-Path $PortableCache "android\frida"
@@ -1916,6 +1961,7 @@ function Set-CodexChildPortableEnvironment {
     param([System.Diagnostics.ProcessStartInfo]$ProcessStartInfo)
     try { $ProcessStartInfo.EnvironmentVariables.Clear() } catch { try { $ProcessStartInfo.Environment.Clear() } catch {} }
 
+    Reset-CodexTrustedSystemEnvironment
     foreach ($name in @("SystemRoot","WINDIR","SystemDrive","ComSpec","PATHEXT","OS","PROCESSOR_ARCHITECTURE","PROCESSOR_IDENTIFIER","NUMBER_OF_PROCESSORS","USERNAME","COMPUTERNAME")) {
         Set-ProcessEnvironmentValue $ProcessStartInfo $name ([Environment]::GetEnvironmentVariable($name))
     }
@@ -1935,7 +1981,12 @@ function Set-CodexChildPortableEnvironment {
     # CODEX_/OPENAI_ values were scrubbed before package config loaded, so any value
     # present now is package/dynamic state. Arbitrary host variables are not inherited.
     Get-ChildItem Env: | Where-Object { $_.Name -match '^(?i:CODEX_|OPENAI_)' } | ForEach-Object { [void]$names.Add($_.Name) }
-    foreach ($name in $names) { Set-ProcessEnvironmentValue $ProcessStartInfo $name ([Environment]::GetEnvironmentVariable($name)) }
+    foreach ($name in $names) {
+        $effective = [Environment]::GetEnvironmentVariable($name)
+        if ($name -in @('ANDROID_HOME','ANDROID_SDK_ROOT','JAVA_HOME') -and
+            [string]::IsNullOrWhiteSpace($effective)) { continue }
+        Set-ProcessEnvironmentValue $ProcessStartInfo $name $effective
+    }
 }
 
 function New-CodexChildStartInfo {
@@ -1981,6 +2032,19 @@ function Invoke-CodexChildInteractive {
     $psi = New-CodexChildStartInfo -LaunchArgs $LaunchArgs
     Import-CodexProcessSupervisor
     return (Invoke-PortableProcess -StartInfo $psi -PackageRoot $Root -TimeoutMs 0).ExitCode
+}
+
+# Exact offline CLI identity is valid without API credentials or model setup.
+# Still use the verified portable child launcher, runtime SHA/ACL validation,
+# restricted environment, process supervisor and the outer cleanup paths.
+# No interactive/login/model/API operation is permitted through this shortcut.
+# PowerShell unrolls a generic List[string] returned by the normalizer:
+# a single argument may become a scalar string, whose [0] is only '-'.
+# Materialize the exact CLI argv as an array before matching.
+$ExactVersionArgv = @($CodexLaunchArgs)
+if ($ExactVersionArgv.Count -eq 1 -and [string]$ExactVersionArgv[0] -ceq '--version') {
+    $script:PortableLifecycleExitCode = Invoke-CodexChildInteractive -LaunchArgs @('--version')
+    exit $script:PortableLifecycleExitCode
 }
 
 function Get-ModelReasoningMenuInfo {
@@ -2543,6 +2607,7 @@ function Start-CodexSocksHttpBridge {
         )
         $psi.Arguments = ($bridgeArgs | ForEach-Object { ConvertTo-WindowsCommandLineArgument ([string]$_) }) -join " "
         try { $psi.EnvironmentVariables.Clear() } catch { try { $psi.Environment.Clear() } catch {} }
+        Reset-CodexTrustedSystemEnvironment
         foreach ($name in @("SystemRoot","WINDIR","SystemDrive","ComSpec","PATHEXT","OS","PROCESSOR_ARCHITECTURE","TEMP","TMP","HOME","USERPROFILE","PATH")) {
             Set-ProcessEnvironmentValue $psi $name ([Environment]::GetEnvironmentVariable($name))
         }
@@ -3324,11 +3389,11 @@ Append-TomlSet $Builder "PSModuleAnalysisCachePath" $env:PSModuleAnalysisCachePa
 Append-TomlSet $Builder "PYTHONPYCACHEPREFIX" $env:PYTHONPYCACHEPREFIX
 Append-TomlSet $Builder "CODEX_INSTALL_DIR" $env:CODEX_INSTALL_DIR
 Append-TomlSet $Builder "CODEX_PYTHON" $env:CODEX_PYTHON
-Append-TomlSet $Builder "ANDROID_HOME" $env:ANDROID_HOME
-Append-TomlSet $Builder "ANDROID_SDK_ROOT" $env:ANDROID_SDK_ROOT
+if (-not [string]::IsNullOrWhiteSpace($env:ANDROID_HOME)) { Append-TomlSet $Builder "ANDROID_HOME" $env:ANDROID_HOME }
+if (-not [string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)) { Append-TomlSet $Builder "ANDROID_SDK_ROOT" $env:ANDROID_SDK_ROOT }
 Append-TomlSet $Builder "ANDROID_USER_HOME" $env:ANDROID_USER_HOME
 Append-TomlSet $Builder "ANDROID_SDK_HOME" $env:ANDROID_SDK_HOME
-Append-TomlSet $Builder "JAVA_HOME" $env:JAVA_HOME
+if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) { Append-TomlSet $Builder "JAVA_HOME" $env:JAVA_HOME }
 Append-TomlSet $Builder "ADB_VENDOR_KEYS" $env:ADB_VENDOR_KEYS
 Append-TomlSet $Builder "APKTOOL_FRAMEWORK_DIR" $env:APKTOOL_FRAMEWORK_DIR
 Append-TomlSet $Builder "FRIDA_CACHE_DIR" $env:FRIDA_CACHE_DIR

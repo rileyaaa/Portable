@@ -168,10 +168,23 @@ foreach ($Segment in @($RelativeScriptPath -split '\\')) {
 $env:CODEX_INSTALL_DIR = $Script:CodexPortableRoot
 $env:CODEX_PYTHON = Join-Path $Script:CodexPortableRoot "tool\python\python.exe"
 $env:ANDROID_HOME = Join-Path $Script:CodexPortableRoot "tool\android\sdk"
+$SdkRoot = $env:ANDROID_HOME
+# Platform-tools/adb.exe alone is not proof of a complete SDK.
+$SdkPresent = Test-Path -LiteralPath (Join-Path $SdkRoot "cmdline-tools\latest\bin\sdkmanager.bat") -PathType Leaf
+if (-not $SdkPresent -and (Test-Path -LiteralPath (Join-Path $SdkRoot "build-tools") -PathType Container)) {
+    $SdkPresent = @(Get-ChildItem -LiteralPath (Join-Path $SdkRoot "build-tools") -Directory -ErrorAction Stop | Where-Object {
+        Test-Path -LiteralPath (Join-Path $_.FullName "aapt2.exe") -PathType Leaf
+    }).Count -gt 0
+}
+if (-not $SdkPresent) { Remove-Item Env:ANDROID_HOME -ErrorAction SilentlyContinue }
 $env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
 $env:ANDROID_USER_HOME = Join-Path $Script:CodexPortableRoot "home-runtime\.android"
 $env:ANDROID_SDK_HOME = Join-Path $Script:CodexPortableRoot "home-runtime"
 $env:JAVA_HOME = Join-Path $Script:CodexPortableRoot "tool\android\jdk"
+if (-not ((Test-Path -LiteralPath (Join-Path $env:JAVA_HOME "bin\java.exe") -PathType Leaf) -and
+           (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME "bin\javac.exe") -PathType Leaf))) {
+    Remove-Item Env:JAVA_HOME -ErrorAction SilentlyContinue
+}
 $env:ADB_VENDOR_KEYS = Join-Path $Script:CodexPortableRoot "home-runtime\.android\adbkey"
 $env:APKTOOL_FRAMEWORK_DIR = Join-Path $Script:CodexPortableRoot "cache\android\apktool-framework"
 $env:FRIDA_CACHE_DIR = Join-Path $Script:CodexPortableRoot "cache\android\frida"

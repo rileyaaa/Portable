@@ -77,6 +77,32 @@ try {
     $trace = Join-Path $fixture 'synthetic-child.json'
     $node = Assert-AutomationPath -Root $root -Path (Join-Path $root 'tool\node\node.exe')
     $powershell = Join-Path ([Environment]::GetFolderPath('Windows')) 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    # A direct automation entry must not inherit ambient host proxies;
+    # only an explicitly enabled package-local task may forward them.
+    $saved = @{}
+    foreach ($key in @('HTTP_PROXY','CODEX_INSTALL_DIR','CODEX_HOME','CODEX_PROXY_ENABLED',
+                       'CODEX_PROXY_FOR_SUBPROCESS','CODEX_SANDBOX_NETWORK_ACCESS')) {
+        $saved[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
+    }
+    try {
+        $env:HTTP_PROXY = 'http://127.0.0.1:65432'
+        $env:CODEX_PROXY_ENABLED = 'false'
+        $probeOff = New-AutomationStartInfo -Root $root -FilePath $node -WorkingDirectory $fixture -SessionDirectory $fixture
+        if ($probeOff.EnvironmentVariables.ContainsKey('HTTP_PROXY')) { throw 'Ambient host proxy was inherited by direct automation.' }
+        $env:CODEX_INSTALL_DIR = $root
+        $env:CODEX_HOME = Join-Path $root 'home'
+        $env:CODEX_PROXY_ENABLED = 'true'
+        $env:CODEX_PROXY_FOR_SUBPROCESS = 'true'
+        $env:CODEX_SANDBOX_NETWORK_ACCESS = 'true'
+        $probeOn = New-AutomationStartInfo -Root $root -FilePath $node -WorkingDirectory $fixture -SessionDirectory $fixture
+        if ($probeOn.EnvironmentVariables['HTTP_PROXY'] -cne 'http://127.0.0.1:65432') { throw 'Explicit package proxy did not reach automation.' }
+    } finally {
+        foreach ($key in $saved.Keys) {
+            if ($null -eq $saved[$key]) { Remove-Item ('Env:' + $key) -ErrorAction SilentlyContinue }
+            else { [Environment]::SetEnvironmentVariable($key, $saved[$key], 'Process') }
+        }
+    }
+    Write-Output 'PASS automation proxy inherited only after explicit package-local opt-in'
     function Get-SyntheticIODiagnostic($ExitCode, [string]$StdOut, [string]$StdErr) {
         # This test launches only the fixed synthetic child below. Never use this
         # diagnostic helper for a real browser, account or arbitrary command.
