@@ -1,0 +1,236 @@
+name: Verified one-time Codex Portable 0.170.0 r2 release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/release-requests/v0.170.0-portable.2.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-portable-v0.170.0-portable.2-release
+  cancel-in-progress: false
+
+jobs:
+  source-gate:
+    name: Confirm reviewed candidate is in the complete source tree
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
+    steps:
+      - name: Checkout source with full commit ancestry, without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          lfs: false
+      - name: Deny unimported or altered candidate before spending Windows runner time
+        id: source
+        shell: bash
+        env:
+          EXPECTED_CANDIDATE: 7fa8e0712ef4b65bc46ce3ed6eafe9636417a04a
+          EXPECTED_TAG: v0.170.0-portable.2
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 - <<'PY'
+          import json, pathlib
+          p=pathlib.Path('.github/release-requests/v0.170.0-portable.2.json')
+          request=json.loads(p.read_text(encoding='utf-8'))
+          assert request == {
+              'format':1,
+              'tag':'v0.170.0-portable.2',
+              'candidate_commit':'7fa8e0712ef4b65bc46ce3ed6eafe9636417a04a',
+              'mode':'prerelease',
+          }, 'Release request does not match the approved fixed candidate'
+          runtime=json.loads(pathlib.Path('tool/runtime-manifest.json').read_text(encoding='utf-8'))
+          assert runtime['version']=='0.170.0', 'Original 0.166 runtime is still checked in; release blocked'
+          assert runtime['target']=='x86_64-pc-windows-msvc'
+          versions=json.loads(pathlib.Path('tool/automation/versions.json').read_text(encoding='utf-8'))
+          assert versions['playwrightMcp']=='0.0.83'
+          assert versions['browser']['version']=='155.0.8059.12'
+          for path in ['tool/python/python.exe','tool/node/node.exe','codex.exe','codex-code-mode-host.exe']:
+              assert pathlib.Path(path).is_file(), f'Missing tracked runtime: {path}'
+          PY
+          if ! git cat-file -e "${EXPECTED_CANDIDATE}^{commit}"; then
+            echo 'BLOCKED: round-12 candidate Git commit is not in GitHub. GitHub Actions cannot access the private ChatGPT file library.' >&2
+            echo 'Import the validated source bundle and full LFS payloads before retrying; do not publish the old main.' >&2
+            exit 1
+          fi
+          git merge-base --is-ancestor "$EXPECTED_CANDIDATE" HEAD || {
+            echo 'BLOCKED: the round-12 candidate is not an ancestor of main.' >&2
+            exit 1
+          }
+          # Allow only the audited release automation/request changes since the original candidate.
+          while IFS= read -r changed; do
+            case "$changed" in
+              .github/workflows/release.yml|.github/release-requests/v0.170.0-portable.2.json|.github/maintenance/02-compatibility.py) ;;
+              *) echo "BLOCKED: unexpected change after verified candidate: $changed" >&2; exit 1 ;;
+            esac
+          done < <(git diff --name-only "$EXPECTED_CANDIDATE" HEAD)
+          echo "source_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "SOURCE_GATE=PASS $GITHUB_SHA"
+
+  verify-windows:
+    name: Native Windows checks and reproducible candidate packaging
+    needs: source-gate
+    runs-on: windows-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    outputs:
+      source_sha: ${{ steps.package.outputs.source_sha }}
+      zip_sha256: ${{ steps.package.outputs.zip_sha256 }}
+      file_count: ${{ steps.package.outputs.file_count }}
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Checkout exact source and hydrate Git LFS
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.source-gate.outputs.source_sha }}
+          persist-credentials: false
+          lfs: true
+      - name: Check actual LFS objects, runtime, versions and runtime checks
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((& git rev-parse HEAD).Trim() -cne '${{ needs.source-gate.outputs.source_sha }}') { throw 'Wrong source commit' }
+          & git lfs fsck
+          if ($LASTEXITCODE -ne 0) { throw 'Missing or damaged Git LFS payload' }
+          $version = (& .\codex.exe --version) -join ' '
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '0\.170\.0') { throw 'Codex version mismatch' }
+          $node = (& .\tool\node\node.exe --version) -join ' '
+          if ($LASTEXITCODE -ne 0 -or $node -notmatch 'v26\.13\.1') { throw 'Node version mismatch' }
+          $python = (& .\tool\python\python.exe --version) -join ' '
+          if ($LASTEXITCODE -ne 0 -or $python -notmatch '3\.14\.10') { throw 'Python version mismatch' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_runtime_package.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime regression failed' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_release_package.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Release regression failed' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_portable_ssh.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'SSH regression failed' }
+          & .\tool\python\python.exe -B .\tool\package-release.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Source/runtime/browser pin check failed' }
+      - name: Browser native smoke with synthetic offline fixture
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Real Windows Chromium/browser smoke failed' }
+      - name: Generate exact native Windows release candidate
+        id: package
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $raw = & .\tool\python\python.exe -B .\tool\package-release.py --version v0.170.0-portable.2
+          if ($LASTEXITCODE -ne 0) { throw 'Release ZIP creation failed' }
+          $artifact = ($raw -join "`n") | ConvertFrom-Json
+          if ($artifact.source_commit -cne '${{ needs.source-gate.outputs.source_sha }}') { throw 'Manifest source mismatch' }
+          if ($artifact.file_count -ne 9066) { throw 'Unexpected customer file count' }
+          foreach ($name in @('archive','manifest','checksums')) {
+            if (-not (Test-Path -LiteralPath $artifact.$name -PathType Leaf)) { throw "Missing $name" }
+          }
+          $actual = (Get-FileHash -LiteralPath $artifact.archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -cne $artifact.archive_sha256) { throw 'Local ZIP SHA256 mismatch' }
+          "source_sha=$($artifact.source_commit)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "zip_sha256=$actual" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "file_count=$($artifact.file_count)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Output "NATIVE_WINDOWS_CANDIDATE=PASS sha256=$actual files=$($artifact.file_count)"
+
+  publish:
+    name: Rebuild exact verified commit, upload, read back and publish pre-release
+    needs: [source-gate, verify-windows]
+    if: ${{ needs.source-gate.result == 'success' && needs.verify-windows.result == 'success' && github.ref == 'refs/heads/main' }}
+    runs-on: windows-latest
+    timeout-minutes: 75
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Checkout exact validated source with LFS and no persistent credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify-windows.outputs.source_sha }}
+          lfs: true
+          persist-credentials: false
+      - name: Rebuild and compare against the separate Windows check
+        id: package
+        env:
+          VERIFIED_SHA: ${{ needs.verify-windows.outputs.source_sha }}
+          VERIFIED_ZIP_SHA: ${{ needs.verify-windows.outputs.zip_sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((& git rev-parse HEAD).Trim() -cne $env:VERIFIED_SHA) { throw 'Source moved between verification and publication' }
+          & git lfs fsck
+          if ($LASTEXITCODE -ne 0) { throw 'Publisher LFS payload missing' }
+          $raw = & .\tool\python\python.exe -B .\tool\package-release.py --version v0.170.0-portable.2
+          if ($LASTEXITCODE -ne 0) { throw 'Publisher ZIP build failed' }
+          $artifact = ($raw -join "`n") | ConvertFrom-Json
+          if ($artifact.source_commit -cne $env:VERIFIED_SHA -or $artifact.archive_sha256 -cne $env:VERIFIED_ZIP_SHA) {
+            throw 'Publisher ZIP differs from the exact Windows-validated candidate'
+          }
+          $manifest = Get-Content -LiteralPath $artifact.manifest -Raw | ConvertFrom-Json
+          if ($manifest.source_commit -cne $env:VERIFIED_SHA -or $manifest.file_count -ne 9066) { throw 'Release manifest mismatch' }
+          foreach ($name in @('archive','manifest','checksums')) {
+            "$name=$($artifact.$name)" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          Write-Output "REPRODUCIBLE_ZIP=PASS sha256=$($artifact.archive_sha256)"
+      - name: Draft, upload, download and verify before publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFIED_SHA: ${{ needs.verify-windows.outputs.source_sha }}
+          VERIFIED_ZIP_SHA: ${{ needs.verify-windows.outputs.zip_sha256 }}
+          FILE_ARCHIVE: ${{ steps.package.outputs.archive }}
+          FILE_MANIFEST: ${{ steps.package.outputs.manifest }}
+          FILE_CHECKSUMS: ${{ steps.package.outputs.checksums }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = 'v0.170.0-portable.2'
+          $remoteHead = (& git ls-remote origin refs/heads/main) -join "`n"
+          if ($LASTEXITCODE -ne 0 -or -not $remoteHead.StartsWith($env:VERIFIED_SHA + [char]9)) {
+            throw 'Remote main moved after Windows validation'
+          }
+          $present = (& git ls-remote --tags origin "refs/tags/$tag") -join "`n"
+          if ($LASTEXITCODE -ne 0 -or $present) { throw 'Tag exists or cannot be safely checked; no overwrite' }
+          $releasePresent = & gh release view $tag --repo $env:GITHUB_REPOSITORY --json id 2>$null
+          if ($LASTEXITCODE -eq 0) { throw 'Release already exists; no overwrite' }
+          $notes = Join-Path (Split-Path -Parent $env:FILE_ARCHIVE) 'release-notes.txt'
+          @(
+            'Windows x64 portable Codex 0.170.0 candidate, built from the tagged Git source.',
+            "Commit: $env:VERIFIED_SHA",
+            'Python 3.14.10; Node.js 26.13.1 LTS; npm 11.20.0; 7-Zip 26.06; fd 10.5.2; ripgrep 15.2.0; jq 1.8.2.',
+            'Existing fixed Python dependencies, Paramiko SSH, Chromium 155 and Playwright MCP 0.0.83 are retained.',
+            'MCP upstream still contains an alpha Playwright dependency. Pre-release, not a claim of full stable-stack qualification.',
+            'Native Windows synthetic smoke passed on GitHub Actions. Real-account/login, external servers and devices were not used.',
+            'Check ZIP and release-manifest.json against SHA256SUMS.'
+          ) | Set-Content -LiteralPath $notes -Encoding UTF8
+          & gh release create $tag $env:FILE_ARCHIVE $env:FILE_MANIFEST $env:FILE_CHECKSUMS --repo $env:GITHUB_REPOSITORY --target $env:VERIFIED_SHA --title 'Codex Portable 0.170.0 - Portable r2' --notes-file $notes --draft --prerelease
+          if ($LASTEXITCODE -ne 0) { throw 'Draft creation/upload failed; no published release' }
+          $received = Join-Path (Split-Path -Parent $env:FILE_ARCHIVE) 'github-readback'
+          New-Item -Path $received -ItemType Directory | Out-Null
+          & gh release download $tag --repo $env:GITHUB_REPOSITORY --dir $received
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot download draft assets; draft not published' }
+          foreach ($file in @($env:FILE_ARCHIVE,$env:FILE_MANIFEST,$env:FILE_CHECKSUMS)) {
+            $remote = Join-Path $received (Split-Path -Leaf $file)
+            if (-not (Test-Path -LiteralPath $remote -PathType Leaf)) { throw "Missing remote asset $remote" }
+            if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $remote -Algorithm SHA256).Hash) {
+              throw "Remote asset byte mismatch $remote"
+            }
+          }
+          if (@(Get-ChildItem -LiteralPath $received -File).Count -ne 3) { throw 'Unexpected release asset count' }
+          $metadata = Get-Content -LiteralPath (Join-Path $received 'release-manifest.json') -Raw | ConvertFrom-Json
+          if ($metadata.source_commit -cne $env:VERIFIED_SHA -or $metadata.file_count -ne 9066) { throw 'Remote manifest mismatch' }
+          $zip = Join-Path $received (Split-Path -Leaf $env:FILE_ARCHIVE)
+          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() -cne $env:VERIFIED_ZIP_SHA) { throw 'Remote ZIP checksum mismatch' }
+          $currentHead = (& git ls-remote origin refs/heads/main) -join "`n"
+          if ($LASTEXITCODE -ne 0 -or -not $currentHead.StartsWith($env:VERIFIED_SHA + [char]9)) { throw 'Main changed during upload; leave draft' }
+          & gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --prerelease --latest=false
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot publish verified draft' }
+          Write-Output "PUBLISHED_PRE_RELEASE=$tag source=$env:VERIFIED_SHA sha256=$env:VERIFIED_ZIP_SHA"
