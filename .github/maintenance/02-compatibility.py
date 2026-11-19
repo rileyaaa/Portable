@@ -205,7 +205,7 @@ def source_check(root: Path) -> dict:
     workflow_dir = root / ".github/workflows"
     if workflow_dir.exists():
         check(workflow_dir.is_dir() and not workflow_dir.is_symlink() and
-              {item.name for item in workflow_dir.iterdir()} == {"release.yml"} and
+              {item.name for item in workflow_dir.iterdir()} == {"release.yml", "import-round12.yml"} and
               (workflow_dir / "release.yml").is_file(),
               "Unexpected GitHub Actions workflows on main")
 
