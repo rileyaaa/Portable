@@ -139,22 +139,35 @@ def extract_archive(root, archive, stage, manifest, prefix):
                 raise ValueError("Extracted browser file digest differs")
 
 
+class _RejectBrowserDownloadRedirect(urllib.request.HTTPRedirectHandler):
+    # The manifest pins the exact resolved Google Storage URL, not a release
+    # page requiring a CDN handoff. Refuse any 3xx *before* making a second
+    # HTTP request to an unreviewed host.
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ValueError("Pinned browser download must not redirect")
+
+
 def download_archive(root, session, manifest):
     target = checked(root, session / "chrome-win64.zip", missing=True)
     # Explicit proxy mapping prevents urllib from consulting the host Windows registry.
     proxies = {name: os.environ.get(name + "_proxy") or os.environ.get(name.upper() + "_PROXY")
                for name in ("http", "https", "no")}
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({k: v for k, v in proxies.items() if v}))
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({k: v for k, v in proxies.items() if v}),
+        _RejectBrowserDownloadRedirect())
     metadata = manifest["archive"]
-    with opener.open(metadata["resolvedUrl"], timeout=60) as response, target.open("xb") as outgoing:
+    with opener.open(metadata["resolvedUrl"], timeout=60) as response:
+        # Check the exact locked response location before creating any file.
+        # _RejectBrowserDownloadRedirect already blocked each real 3xx hop.
         if response.url != metadata["resolvedUrl"]:
             raise ValueError("Unexpected browser download redirect")
-        total = 0
-        while block := response.read(1024 * 1024):
-            total += len(block)
-            if total > metadata["size"]:
-                raise ValueError("Browser archive exceeds pinned size")
-            outgoing.write(block)
+        with target.open("xb") as outgoing:
+            total = 0
+            while block := response.read(1024 * 1024):
+                total += len(block)
+                if total > metadata["size"]:
+                    raise ValueError("Browser archive exceeds pinned size")
+                outgoing.write(block)
     return target
 
 

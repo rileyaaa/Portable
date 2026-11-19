@@ -202,4 +202,4 @@ Go、uv 系列和可再生 Python 字节码仍不包含在默认包中。已恢�
 | 移动后仍访问旧位置 | 核对自定义模型指令、MCP、插件和本机配置中的绝对路径。 |
 | 提示存在宿主系统配置 | 默认拒绝加载；只有确需采用组织系统策略时，才显式设置 `CODEX_ALLOW_HOST_SYSTEM_CONFIG=true`。 |
 
-当前仓库没有历史 checker/updater，发行包不提供原地自动升级。升级应按工具文档成对更新并校验，或重新解压经过验证的同版本完整包。维护规则、变量兼容核对、测试命令及更新记录统一见 [开发文档](DEVELOPMENT.md)；账号格式转换器独立说明见 [子项目 README](Version_History/AI%20account%20format%20conversion/README.md)。
+只维护 `main` 作为稳定版本来源，不启用自动升级工作流。维护者按 [工具文档](tool/工具更新说明.md) 手动准备同版本的 Codex/Host 组件、执行兼容性和 Windows 验证后再打包；用户仍通过完整、已验证的发行包更新，不从开发分支或旧版执行记录推断可用性。维护规则、变量兼容核对、测试命令及更新记录统一见 [开发文档](DEVELOPMENT.md)；账号格式转换器独立说明见 [子项目 README](Version_History/AI%20account%20format%20conversion/README.md)。

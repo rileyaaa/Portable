@@ -1,0 +1,84 @@
+name: "99 - One-time final repository cleanup"
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/99-cleanup-once.yml"
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - name: Check out exact committed portable package including LFS
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          lfs: true
+          persist-credentials: false
+      - name: Validate fixed runtime and narrowly patched scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REPOSITORY -cne 'rileyaaa/Codex-Portable' -or $env:GITHUB_REF -cne 'refs/heads/main') { throw 'Wrong cleanup target' }
+          $codex = & .\codex.exe --version
+          if ($LASTEXITCODE -ne 0 -or -not (($codex | Out-String) -match '0\.166\.0')) { throw 'Expected official Codex 0.166.0' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_release_package.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Release package tests failed' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_browser_install.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Browser install tests failed' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_android_guard.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Android guard regression failed' }
+          & .\tool\python\python.exe -B .\tool\automation\install-browser.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Chromium verification failed' }
+          & .\tool\python\python.exe -B .\tool\package-release.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Customer package preflight failed' }
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tests\test_launcher_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Native launcher smoke failed' }
+          & .\tool\python\python.exe -B .\tool\package-release.py --version v0.166.0-portable.2
+          if ($LASTEXITCODE -ne 0) { throw 'Customer ZIP build/verification failed' }
+  cleanup:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Delete only the explicitly retired refs and older run records
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == 'rileyaaa/Codex-Portable' && "$GITHUB_REF" == 'refs/heads/main' ]] || exit 1
+          declare -A expected=()
+          expected["development/latest-codex-portable-20261106"]="56b911c3c0a1756ef1149d52907de38da73a94f8"
+          expected["review/independent-upgrade-ui-20261117"]="d0fdf11c99d9347bbdbf337a0be8f8fc875fd917"
+          expected["test/connector-write-delete-20261108-2316-gcs-handoff"]="c56739a5dc01e18b9e9c0e1d976d4e1fdccd2656"
+          for branch in "${!expected[@]}"; do
+            current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" --jq ".object.sha")
+            [[ "$current" == "${expected[$branch]}" ]] || { echo "Ref moved: $branch" >&2; exit 1; }
+          done
+          for branch in "${!expected[@]}"; do
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch" >/dev/null
+            echo "Deleted branch: $branch"
+          done
+          mapfile -t ids < <(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" --jq ".workflow_runs[].id")
+          deleted=0
+          failed=0
+          for run_id in "${ids[@]}"; do
+            [[ "$run_id" =~ ^[0-9]+$ ]] || continue
+            [[ "$run_id" == "$GITHUB_RUN_ID" ]] && continue
+            if gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" >/dev/null; then
+              deleted=$((deleted+1))
+            else
+              echo "Could not delete Actions run $run_id" >&2
+              failed=$((failed+1))
+            fi
+          done
+          echo "Older workflow runs deleted: $deleted; failed: $failed"
+          [[ "$failed" -eq 0 ]] || exit 1
+          # An in-progress run may not be deletable; attempt once without masking other failures.
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null 2>&1 || true

@@ -123,10 +123,10 @@ class ReleasePackageTests(unittest.TestCase):
         self.commit()
         self.write("env.local.ps1", b"synthetic private value")
         self.write("home/auth.json", b"synthetic credential fixture")
-        first = release.build_release(self.root, "v2026.10.23")
-        second = release.build_release(self.root, "v2026.10.23")
+        first = release.build_release(self.root, "v0.163.0-portable.1")
+        second = release.build_release(self.root, "v0.163.0-portable.1")
         self.assertEqual(first["archive_sha256"], second["archive_sha256"])
-        self.assertEqual(Path(first["archive"]).name, "Codex-Portable-v2026.10.23-windows-x64.zip")
+        self.assertEqual(Path(first["archive"]).name, "Codex-Portable-v0.163.0-portable.1-windows-x64.zip")
         metadata = json.loads(Path(first["manifest"]).read_text(encoding="utf-8"))
         self.assertEqual(metadata["source_commit"], self.git("rev-parse", "HEAD").decode().strip())
         self.assertNotIn("env.local.ps1", metadata["files"])
@@ -160,12 +160,18 @@ class ReleasePackageTests(unittest.TestCase):
             sys.executable, "-B", "-c",
             "import runpy,sys; sys.stdout.reconfigure(encoding='ascii'); "
             "sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')",
-            str(script), "--version", "v2026.10.23",
+            str(script), "--version", "v0.163.0-portable.1",
         ], env=environment, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         output = json.loads(result.stdout.decode("ascii"))
         self.assertTrue(Path(output["archive"]).is_file())
         self.assertEqual(Path(output["output_dir"]).parent, self.root / "tmp")
+
+    def test_release_label_cannot_claim_a_different_codex_version(self):
+        with self.assertRaisesRegex(ValueError, "Release tag must match bundled Codex version"):
+            release.build_release(self.root, "v0.169.0-portable.1")
+        with self.assertRaisesRegex(ValueError, "Release tag must match bundled Codex version"):
+            release.build_release(self.root, "freeform-build")
 
     def test_dirty_checkout_and_lfs_pointer_are_refused(self):
         self.write("README.md", b"uncommitted update\n")

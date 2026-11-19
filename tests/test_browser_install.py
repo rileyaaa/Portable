@@ -62,6 +62,13 @@ class BrowserInstallTests(unittest.TestCase):
             browser.extract_archive(self.root, self.archive, self.stage, manifest, self.prefix)
         self.assertEqual(list(outside.iterdir()), [])
 
+    def test_browser_download_rejects_redirect_before_following_it(self):
+        url = "https://storage.googleapis.com/chrome-for-testing-public/155.0.8059.12/win64/chrome-win64.zip"
+        request = browser.urllib.request.Request(url)
+        with self.assertRaisesRegex(ValueError, "Pinned browser download must not redirect"):
+            browser._RejectBrowserDownloadRedirect().redirect_request(
+                request, None, 302, "Found", {}, "https://example.invalid/browser.zip")
+
     def test_pinned_browser_inventory_matches_installed_official_bytes(self):
         manifest, prefix = browser.load_manifest(ROOT)
         self.assertEqual(prefix, "tool/automation/browsers/chromium-1247/")
