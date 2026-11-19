@@ -1,4 +1,5 @@
 name: "99 - One-time final repository cleanup"
+# Retry after removing obsolete workflow fixture assertion
 on:
   push:
     branches: [main]

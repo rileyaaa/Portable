@@ -263,7 +263,7 @@ class ReleasePackageTests(unittest.TestCase):
                         .issubset(included))
         self.assertTrue({name for name in names if name.endswith(".bat")}.issubset(included))
         self.assertTrue({".gitignore", ".gitattributes", "tool/package-release.py",
-                         "tests/test_release_package.py", ".github/workflows/release.yml",
+                         "tests/test_release_package.py",
                          CONVERTER + "test/smoke.js", CONVERTER + "test/static-audit.js",
                          CONVERTER + "test/multi-array-sample.json"}.issubset(excluded))
         self.assertFalse(any(name.startswith(("tests/", ".github/", CONVERTER + "test/"))
