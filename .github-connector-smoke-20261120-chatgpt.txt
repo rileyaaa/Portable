@@ -1,0 +1,4 @@
+Codex-Portable GitHub connector temporary write test
+Date: 2026-11-20 (Asia/Taipei)
+Purpose: verify create/read/delete permissions. No runtime configuration or release files modified.
+This file is temporary and must be deleted after verification.
