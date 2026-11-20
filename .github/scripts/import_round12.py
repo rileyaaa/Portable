@@ -26,6 +26,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 CANDIDATE = "7fa8e0712ef4b65bc46ce3ed6eafe9636417a04a"
 SOURCE_BRANCH = "automation/r12-source-transfer"
+SOURCE_ARCHIVE_TAG = "archive/r12-source-transfer-2026-11-20"
 TRANSFER_COMMIT = "bf4471039d5a56f9a8e4d5d5c4453aa09feec753"
 BUNDLE_SHA = "c25f543c8784c3213addd48a7e3d37a74c82d3124194409529a5845b2a82956b"
 REFERENCE_SHA = "de4b48e7646943d981a768aa037df2a9ab82b13dce1f146cf3a8165599b33b8b"
@@ -72,11 +73,31 @@ def git_show(rev: str, path: str, dest: Path):
             f"Missing stage object: {path} {process.stderr.decode(errors='replace')[:200]}")
 
 
+def fetch_verified_transfer_commit() -> str:
+    """Prefer an archived immutable SHA-pinned source ref over a live branch.
+
+    During the one-time transition the old branch is an allowed fallback.
+    Either source must match the exact audited 40-byte Git commit identity;
+    a deleted branch alone cannot invalidate later read-only verification.
+    """
+    local_ref = "refs/remotes/origin/verified-round12-source"
+    sources = ("refs/tags/" + SOURCE_ARCHIVE_TAG, "refs/heads/" + SOURCE_BRANCH)
+    for source in sources:
+        response = subprocess.run(
+            ["git", "fetch", "--no-tags", "origin", source + ":" + local_ref],
+            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        if response.returncode != 0:
+            continue
+        commit = run("git", "rev-parse", local_ref, capture=True).decode().strip()
+        require(commit == TRANSFER_COMMIT,
+                "Unexpected Git commit behind round-12 source archive")
+        print("VERIFIED_ROUND12_SOURCE_REF=" + source, flush=True)
+        return commit
+    raise RuntimeError("Both archived tag and legacy branch for round-12 source are missing")
+
+
 def load_transfer(temp: Path):
-    ref = "refs/remotes/origin/" + SOURCE_BRANCH
-    run("git", "fetch", "--no-tags", "origin", f"refs/heads/{SOURCE_BRANCH}:{ref}")
-    commit = run("git", "rev-parse", ref, capture=True).decode().strip()
-    require(commit == TRANSFER_COMMIT, "Unexpected transfer branch commit")
+    commit = fetch_verified_transfer_commit()
     manifest_path = temp / "transfer.json"
     prefix = ".github/release-transfer/round12/"
     git_show(commit, prefix + "manifest.json", manifest_path)
@@ -274,12 +295,7 @@ def verify_release_worktree() -> None:
                 check=False) == 0,
             "Audited candidate commit is not in the source history")
     run("git", "config", "--local", "core.autocrlf", "false")
-    ref = "refs/remotes/origin/" + SOURCE_BRANCH
-    run("git", "fetch", "--no-tags", "origin",
-        f"refs/heads/{SOURCE_BRANCH}:{ref}")
-    commit = run("git", "rev-parse", ref, capture=True).decode().strip()
-    require(commit == TRANSFER_COMMIT,
-            "Round-12 independent reference manifest changed")
+    commit = fetch_verified_transfer_commit()
     with tempfile.TemporaryDirectory(prefix="codex-release-audit-",
                                      dir=os.environ.get("RUNNER_TEMP")) as tmp:
         archive = Path(tmp) / "reference.json.gz"
