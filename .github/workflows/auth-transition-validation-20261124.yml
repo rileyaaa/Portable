@@ -1,0 +1,52 @@
+name: Auth fresh-login transition regression (one time)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/auth-transition-validation-20261124.yml']
+permissions:
+  contents: read
+jobs:
+  native:
+    if: >-
+      startsWith(github.event.head_commit.message, 'fix(auth): commit fresh login only')
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Preserve original bytes
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+          lfs: true
+          persist-credentials: false
+      - name: Reproduce previous transition timing and verify original recovery paths
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_auth_fresh_transition.ps1 -BaselineCommit 9a95a3c953c58288632f84507ea3f06750cdbed2
+          if ($LASTEXITCODE -ne 0) { throw 'Auth baseline reproduction failed' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_auth_fresh_transition.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Fresh transition regression failed' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_auth_snapshot_type.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Auth snapshot regression failed' }
+      - name: Complete original login and launcher regression
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('test_login_scan_state','test_login_cache_replay','test_login_refresh_quota','test_login_result_consistency','test_login_json_containers','test_login_input_errors','test_browser_login_flow','test_launcher_smoke','test_extension_policy','test_extension_migration','test_extension_persistence')) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests' ($name + '.ps1'))
+            if ($LASTEXITCODE -ne 0) { throw ('Regression failed: ' + $name) }
+          }
+      - name: Runtime mode and release input integrity
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git lfs fsck
+          if ($LASTEXITCODE -ne 0) { throw 'LFS integrity failed' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Python regression failed' }
+          & .\tool\python\python.exe -B .\tool\package-release.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Release input check failed' }

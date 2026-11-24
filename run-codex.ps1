@@ -2258,7 +2258,9 @@ if ($ShowStartupMenu) {
     }
     $SelectedAuthMode = if ($UseAccountJsonLogin) { "account_json" } elseif ($UseBrowserLogin) { "browser" } else { "api" }
     Write-CodexAuthMode $SelectedAuthMode
-    Complete-CodexAuthTransition
+    # Fresh official login is not committed until the child succeeds and
+    # its validated credential is durably saved to the browser snapshot.
+    if (-not $BrowserLoginRequired) { Complete-CodexAuthTransition }
 
     $ReasoningMenu = Get-ModelReasoningMenuInfo -ModelSlug $env:CODEX_MODEL
     $ReasoningLevels = @($ReasoningMenu.Levels)
@@ -2391,7 +2393,7 @@ if (-not $ShowStartupMenu) {
     }
     # menu 在带参数时临时使用 API，但不覆盖用户上次明确选择的模式。
     if ($ConfiguredAuthMode -ne "menu") { Write-CodexAuthMode $EffectiveAuthMode }
-    Complete-CodexAuthTransition
+    if (-not $BrowserLoginRequired) { Complete-CodexAuthTransition }
 }
 
 # `-m/--model` is a real Codex override. Mirror its final value back into the
@@ -3448,6 +3450,7 @@ if ($UseBrowserLogin -and $BrowserLoginRequired) {
     }
     Copy-CodexAuthAtomic -Source $ActiveAuthPath -Destination $BrowserAuthPath -FreshLogin
     Clear-CodexLogoutBlockAfterFreshLogin 'browser'
+    Complete-CodexAuthTransition
     Write-Host "官方账号登录凭证已独立保存：$BrowserAuthPath" -ForegroundColor Green
 }
 
