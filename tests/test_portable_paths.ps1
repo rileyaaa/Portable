@@ -282,7 +282,6 @@ try {
         if ($Child.EnvironmentVariables.ContainsKey('MY_HOST_ONLY') -or $Child.EnvironmentVariables.ContainsKey('MY_UNUSED_HOST')) {
             throw 'Host-only header or unrelated value leaked to client.'
         }
-        Write-Output 'PASS explicit package header values and missing host-only header isolation'
         if (Test-Path -LiteralPath $PortableTool) { throw 'Environment setup recreated removed compiler/tool directories.' }
     }
     Write-Output 'worker-ok'
@@ -302,7 +301,7 @@ try {
         Invoke-EnvWorker $MovedRoot
         Assert-Equal $false (Test-Path -LiteralPath $CurrentRoot) 'Original location must no longer exist'
     }
-    Test-Case 'Launcher keeps runtime paths without a Go installation or inherited compiler state' {
+    Test-Case 'Launcher keeps runtime paths and isolates configured headers from host-only values' {
         Invoke-EnvWorker $MovedRoot -RuntimeTools
     }
     foreach ($ProtectedName in @('CODEX_INSTALL_DIR', 'CODEX_PYTHON', 'ANDROID_HOME', 'APK_LAB_TMP_DIR',

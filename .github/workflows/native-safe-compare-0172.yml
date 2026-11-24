@@ -1,4 +1,4 @@
-name: Native safe shell version comparison and header isolation (one time)
+name: Native safe shell CLM-compatible diagnostics and header isolation (one time)
 on:
   push:
     branches: [main]
@@ -58,7 +58,7 @@ jobs:
         run: |
           & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py unknown
           if ($LASTEXITCODE) { throw 'Unknown-model native diagnostic failed' }
-      - name: Real launcher path and header isolation cases
+      - name: Real launcher path and header isolation assertions
         if: always() && matrix.label == 'current-0172'
         working-directory: source
         run: |

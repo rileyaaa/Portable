@@ -58,33 +58,59 @@ print("BUNDLED_PYTHON_IMPORTS_OK", flush=True)
 if different:
     raise SystemExit(9)
 '''
+# This tiny file distinguishes native .ps1 resolution from the work performed
+# by a longer probe. Do not use unrestricted .NET methods under CLM.
+RESOLUTION_PS = "Write-Output 'PORTABLE_SCRIPT_RESOLVED_0172'\n"
 PROBE_PS = r'''
 $ErrorActionPreference = 'Stop'
-$root = [IO.Path]::GetFullPath($env:CODEX_INSTALL_DIR).TrimEnd('\')
-if (-not (Test-Path -LiteralPath (Join-Path $root 'env.ps1'))) { throw 'Package root marker missing' }
+$root = $env:CODEX_INSTALL_DIR
 $prefix = $root + '\'
+$script:ToolProbeFailures = @()
+function Test-BundledCommand([string]$name) {
+    try {
+        $entry = Get-Command -Name $name -CommandType Application -ErrorAction Stop | Select-Object -First 1
+        $source = [string]$entry.Source
+        if ($source.Length -lt $prefix.Length -or $source.Substring(0,$prefix.Length) -ine $prefix) {
+            throw ('Host fallback: ' + $source)
+        }
+        Write-Output ('TOOL_RESOLVED_' + $name + '=' + $source)
+    } catch {
+        $script:ToolProbeFailures += $name
+        Write-Output ('TOOL_RESOLUTION_ERROR_' + $name + '=' + $_.FullyQualifiedErrorId + '; ' + $_.Exception.Message)
+    }
+}
 foreach ($name in @('python.exe','pip.cmd','node.exe','npm.cmd','rg.exe','fd.exe','jq.exe','7z.exe')) {
-    $command = Get-Command -Name $name -CommandType Application -ErrorAction Stop | Select-Object -First 1
-    if (-not $command.Source.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) { throw ('Host fallback: ' + $name) }
+    Test-BundledCommand $name
 }
 function Run-Checked([string]$name, [string[]]$argv) {
-    & $name @argv
-    if ($LASTEXITCODE -ne 0) { throw ('Tool failed: ' + $name + ' exit=' + $LASTEXITCODE) }
+    try {
+        & $name @argv
+        if ($LASTEXITCODE -ne 0) { throw ('Tool exit=' + $LASTEXITCODE) }
+        Write-Output ('TOOL_RAN=' + $name)
+    } catch {
+        $script:ToolProbeFailures += $name
+        Write-Output ('TOOL_RUN_ERROR_' + $name + '=' + $_.FullyQualifiedErrorId + '; ' + $_.Exception.Message)
+    }
 }
-Run-Checked 'node.exe' @('--version')
-Run-Checked 'npm.cmd' @('--version')
-Run-Checked 'pip.cmd' @('--version')
-Run-Checked 'rg.exe' @('--version')
-Run-Checked 'fd.exe' @('--version')
-Run-Checked 'jq.exe' @('--version')
-Run-Checked '7z.exe' @('i')
-# Version only, without discovering devices or starting the ADB daemon.
-Run-Checked (Join-Path $root 'tool/android/platform-tools/adb.exe') @('version')
-Run-Checked 'python.exe' @('-B', (Join-Path $root 'work/tool-probe/probe.py'))
+# Do not invoke a name that has failed package-local resolution.
+if ($script:ToolProbeFailures.Count -eq 0) {
+    Run-Checked 'node.exe' @('--version')
+    Run-Checked 'npm.cmd' @('--version')
+    Run-Checked 'pip.cmd' @('--version')
+    Run-Checked 'rg.exe' @('--version')
+    Run-Checked 'fd.exe' @('--version')
+    Run-Checked 'jq.exe' @('--version')
+    Run-Checked '7z.exe' @('i')
+}
+# These absolute paths are rooted in the already-verified disposable fixture.
+Run-Checked ($root + '\tool\android\platform-tools\adb.exe') @('version')
+Run-Checked ($root + '\tool\python\python.exe') @('-B', ($root + '\work\tool-probe\probe.py'))
+if ($script:ToolProbeFailures.Count -ne 0) { throw ('Tool probe failures: ' + ($script:ToolProbeFailures -join ', ')) }
 Write-Output 'PORTABLE_TOOLS_EXECUTED_0172'
 '''
-# Inspect the *actual* Codex-created restricted shell before executing the
-# pre-existing script. Every diagnostic is bounded to the disposable work tree.
+# Observe the actual restricted shell, not a different unrestricted process.
+# Keep every operation independent; diagnostic failures must never mask later
+# observations. Use CLM-compatible cmdlets, primitive strings and error fields.
 DIAG_PS = r'''
 $ErrorActionPreference = 'Stop'
 Write-Output ('DIAG_CWD=' + (Get-Location).Path)
@@ -93,33 +119,41 @@ Write-Output ('DIAG_PS=' + $PSVersionTable.PSVersion + ';LANG=' + $ExecutionCont
 Write-Output ('DIAG_INSTALL_DIR=' + $env:CODEX_INSTALL_DIR)
 $expectedRoot = '__EXPECTED_ROOT__'
 if ($env:CODEX_INSTALL_DIR -ne $expectedRoot) { throw 'Unexpected package root; stop' }
-$target = Join-Path $expectedRoot 'work/tool-probe/probe.ps1'
-$relative = './tool-probe/probe.ps1'
+$work = $expectedRoot + '\work'
+$target = $work + '\tool-probe\probe.ps1'
+$relative = '.\tool-probe\probe.ps1'
 function Observe([string]$label, [scriptblock]$operation) {
     try {
         $result = & $operation
         Write-Output ('DIAG_' + $label + '=OK ' + ($result -join '; '))
     } catch {
-        Write-Output ('DIAG_' + $label + '=ERROR ' + $_.Exception.GetType().FullName + ' ' + $_.Exception.Message)
+        Write-Output ('DIAG_' + $label + '=ERROR ' + $_.FullyQualifiedErrorId + '; ' + $_.Exception.Message)
     }
 }
-Observe 'WORK' { Test-Path -LiteralPath (Join-Path $expectedRoot 'work') -PathType Container }
-Observe 'TARGET_ABS' { Test-Path -LiteralPath $target -PathType Leaf }
-Observe 'TARGET_REL' { Test-Path -LiteralPath $relative -PathType Leaf }
+Observe 'DRIVES' { Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root }
+Observe 'WORK' { if (-not (Test-Path -LiteralPath $work -PathType Container -ErrorAction Stop)) { throw 'work missing' }; 'present' }
+Observe 'TARGET_ABS' { if (-not (Test-Path -LiteralPath $target -PathType Leaf -ErrorAction Stop)) { throw 'script missing' }; 'present' }
 Observe 'ITEM' { (Get-Item -LiteralPath $target -ErrorAction Stop).FullName }
-Observe 'READ' { (Get-Content -LiteralPath $target -TotalCount 1 -ErrorAction Stop) }
-Observe 'SKILL_READ' { (Get-Content -LiteralPath (Join-Path $expectedRoot 'home/skills/browser-debug/SKILL.md') -TotalCount 2 -ErrorAction Stop) }
+Observe 'READ' { Get-Content -LiteralPath $target -TotalCount 1 -ErrorAction Stop }
+Observe 'SKILL_READ' { Get-Content -LiteralPath ($expectedRoot + '\home\skills\browser-debug\SKILL.md') -TotalCount 2 -ErrorAction Stop }
+Observe 'NATIVE_FILE' {
+    & ($expectedRoot + '\tool\python\python.exe') -B -c 'import os,sys; print("NATIVE_FILE_EXISTS="+str(os.path.isfile(sys.argv[1]))); print("NATIVE_CWD="+ascii(os.getcwd())); sys.exit(0 if os.path.isfile(sys.argv[1]) else 2)' $target
+    if ($LASTEXITCODE -ne 0) { throw ('Python native file check exit=' + $LASTEXITCODE) }
+}
+Observe 'SET_LOCATION' { Set-Location -LiteralPath $work -ErrorAction Stop; (Get-Location).Path }
+Observe 'TARGET_REL' { if (-not (Test-Path -LiteralPath $relative -PathType Leaf -ErrorAction Stop)) { throw 'relative script missing' }; 'present' }
 Observe 'RESOLVE_COMMAND' { (Get-Command -Name $target -ErrorAction Stop).Source }
 Observe 'WORK_WRITE' {
-    $own = Join-Path $expectedRoot 'work/tool-probe/native-created.txt'
+    $own = $work + '\tool-probe\native-created.txt'
     if (Test-Path -LiteralPath $own) { throw 'Unexpected existing test file' }
     Set-Content -LiteralPath $own -Value 'owned-write' -Encoding UTF8 -ErrorAction Stop
     Get-Content -LiteralPath $own -ErrorAction Stop
 }
-Observe 'RELATIVE_SCRIPT' { & $relative; if ($LASTEXITCODE -ne 0) { throw ('Relative script exit=' + $LASTEXITCODE) } }
-Write-Output 'DIAG_BEGIN_ORIGINAL_ABSOLUTE'
-& $target
-if ($LASTEXITCODE -ne 0) { throw ('Absolute script exit=' + $LASTEXITCODE) }
+Observe 'RELATIVE_SCRIPT' { & $relative; if (-not $?) { throw 'relative script failed' } }
+Observe 'ABSOLUTE_SCRIPT' { & $target; if (-not $?) { throw 'absolute script failed' } }
+# Run the real tool probe inline even if .ps1 resolution failed. Passing this
+# probe is not allowed to hide any of the required file/script assertions.
+Write-Output 'DIAG_BEGIN_INLINE_TOOL_PROBE'
 '''
 
 BROWSER_PS = r'''
@@ -154,9 +188,9 @@ def handler_for(fixture, mode):
             assert not any("portable_browser" in (str(ns) + str(t.get("name"))) for ns, t in entries), \
                 "Browser MCP should not be advertised by default"
             command = ("& (Join-Path $env:CODEX_INSTALL_DIR 'work/tool-probe/" + script + "')"
-                       if mode == "browser" else DIAG_PS.replace("__EXPECTED_ROOT__", str(fixture).replace("'", "''")))
+                       if mode == "browser" else DIAG_PS.replace("__EXPECTED_ROOT__", str(fixture).replace("'", "''")) + "\n" + PROBE_PS)
             args = {"cmd": command, "workdir": str(fixture / "work"), "login": False,
-                    "yield_time_ms": 30000, "max_output_tokens": 4500}
+                    "yield_time_ms": 30000, "max_output_tokens": 7000}
             custom = next(((ns, t) for ns, t in entries
                            if t.get("type") == "custom" and t.get("name") == "exec"), None)
             if custom:
@@ -189,13 +223,19 @@ def handler_for(fixture, mode):
         outputs = m.call_output(body, "portable-probe")
         evidence = json.dumps(outputs, ensure_ascii=False)
         print("NATIVE_TOOL_OUTPUT=" + evidence[:26000], flush=True)
-        # The marker is necessary but is not sufficient when the outer shell fails.
         assert expected in evidence, "Real tool output did not contain success marker: " + expected
-        assert "DIAG_BEGIN_ORIGINAL_ABSOLUTE" in evidence or mode == "browser"
-        # Native direct output has an exit line; Code Mode emits JSON exit_code.
-        assert 'Process exited with code 1' not in evidence
-        assert '\\\"exit_code\\\":1' not in evidence and '\\\"exit_code\\\": 1' not in evidence
         assert "ENV_DIFFERENCES=" not in evidence, "Actual child environment differs from generated policy"
+        if mode != "browser":
+            required = (
+                "DIAG_WORK=OK present", "DIAG_TARGET_ABS=OK present",
+                "DIAG_SKILL_READ=OK", "name: browser-debug",
+                "NATIVE_FILE_EXISTS=True", "DIAG_SET_LOCATION=OK",
+                "DIAG_TARGET_REL=OK present", "DIAG_WORK_WRITE=OK owned-write",
+                "DIAG_RELATIVE_SCRIPT=OK PORTABLE_SCRIPT_RESOLVED_0172",
+                "DIAG_ABSOLUTE_SCRIPT=OK PORTABLE_SCRIPT_RESOLVED_0172",
+            )
+            missing = [marker for marker in required if marker not in evidence]
+            assert not missing, "Required native diagnostics failed: " + ", ".join(missing)
         return {"id": "msg_probe", "type": "message", "role": "assistant", "status": "completed",
                 "content": [{"type": "output_text", "text": DONE, "annotations": []}]}
     return handler
@@ -231,7 +271,7 @@ def main():
         probe = fixture / "work/tool-probe"
         probe.mkdir(parents=True)
         (probe / "probe.py").write_text(PROBE_PY, encoding="utf-8")
-        (probe / "probe.ps1").write_text(PROBE_PS, encoding="utf-8-sig")
+        (probe / "probe.ps1").write_text(RESOLUTION_PS, encoding="utf-8-sig")
         (probe / "browser.ps1").write_text(BROWSER_PS, encoding="utf-8-sig")
         (probe / "page.cjs").write_text(BROWSER_JS, encoding="utf-8")
         (fixture / "home/portable-extensions.toml").write_text(
@@ -265,6 +305,20 @@ def main():
                 print(err.decode("utf-8", "replace")[-12000:])
                 raise AssertionError(f"Native fixture failed: {mode}; exit={proc.returncode}; errors={m.MODEL_ERRORS}")
             assert len(m.MODEL_REQUESTS) == 2
+            # CLI --json events record the actual native command exit status,
+            # rather than guessing it from marker text or escaped JSON.
+            exits = []
+            for line in out.decode("utf-8", "replace").splitlines():
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                item = event.get("item", {}) if isinstance(event, dict) else {}
+                if event.get("type") == "item.completed" and item.get("type") == "command_execution":
+                    exits.append(item.get("exit_code"))
+            assert exits and all(code == 0 for code in exits), "Native command exits: " + repr(exits)
+            if mode != "browser":
+                assert (probe / "native-created.txt").read_text(encoding="utf-8-sig").strip() == "owned-write"
             cfg = tomllib.loads((fixture / "home/config.toml").read_text(encoding="utf-8-sig"))
             assert "portable_browser" not in cfg.get("mcp_servers", {})
             assert cfg["model"] == model
