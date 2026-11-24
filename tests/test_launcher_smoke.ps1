@@ -163,6 +163,24 @@ print('PASS full launcher generated configuration: ' + mode)
     }
     if ([IO.File]::ReadAllText($store) -match '\[mcp_servers\.') { throw 'Deleted last MCP entry was resurrected.' }
     Write-Output 'PASS real maintenance MCP add/list/remove and inactive plugin preservation'
+    # The managed browser entry is generated only for a selected runtime session.
+    $browserEntry = Join-Path $fixture 'tool\automation\start-browser.ps1'
+    [void](New-AutomationDirectory -Root $fixture -Path (Split-Path -Parent $browserEntry))
+    Copy-Item -LiteralPath (Join-Path $root 'tool\automation\start-browser.ps1') -Destination $browserEntry
+    $beforeStoreHash = (Get-FileHash -LiteralPath $store -Algorithm SHA256).Hash
+    $start.Arguments = '/d /s /c ""' + (Join-Path $fixture $entry) + '" --portable-browser-mcp --version"'
+    $denied = Invoke-OwnedSmokeProcess -StartInfo $start -ExpectFailure
+    if ($denied -notmatch 'Browser MCP requires') { throw 'Managed browser MCP missing explicit double gate.' }
+    $start.Arguments = '/d /s /c ""' + (Join-Path $fixture $entry) + '" --portable-extensions --portable-browser-mcp --version"'
+    $null = Invoke-OwnedSmokeProcess -StartInfo $start
+    $native.Arguments = 'mcp list --json'
+    $listing = Invoke-OwnedSmokeProcess -StartInfo $native
+    if ($listing -notmatch 'portable_browser' -or $listing -notmatch 'start-browser\.ps1') { throw 'Native MCP configuration did not include managed browser server.' }
+    if ((Get-FileHash -LiteralPath $store -Algorithm SHA256).Hash -cne $beforeStoreHash) { throw 'Managed browser config changed durable user extensions.' }
+    $start.Arguments = '/d /s /c ""' + (Join-Path $fixture $entry) + '" --version"'
+    $null = Invoke-OwnedSmokeProcess -StartInfo $start
+    if ([IO.File]::ReadAllText((Join-Path $fixture 'home/config.toml')) -match 'mcp_servers\.portable_browser') { throw 'Managed browser persisted into unselected session.' }
+    Write-Output 'PASS native MCP configuration accepts selected browser server and preserves default-off sidecar'
     if ([IO.File]::ReadAllText((Join-Path $oldRoot 'env.local.ps1')) -cne 'SENTINEL - obsolete path must not be read') { throw 'Old fixture was modified.' }
 } finally {
     Remove-AutomationSession -Root $root -Path $owned
