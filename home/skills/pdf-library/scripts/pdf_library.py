@@ -646,6 +646,12 @@ def export_library(library: Path, destination: Path) -> dict:
 
 
 def main(argv=None) -> int:
+    # JSON and Markdown are Unicode outputs. The embedded Windows Python may
+    # ignore PYTHONIOENCODING and use the ANSI code page for redirected streams.
+    # Preserve interactive console behavior and do not change library imports.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and not stream.isatty() and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     build = commands.add_parser("build")

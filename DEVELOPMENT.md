@@ -1,5 +1,9 @@
 # 开发与维护记录
 
+## 2026-11-24：Office/PDF 实际业务路径补充验证
+
+[Windows 45398279081](https://github.com/rileyaaa/Portable/actions/runs/45398279081) 已确认常用模式与未知模型核心工具（含临时 PSModulePath 子进程验证）、Unicode 路径及 GPT-6.2 Sol 常用模式浏览器只读入口通过，未创建浏览器锁/profile。原生浏览器与其他余项以运行最终状态为准。此前 Office/PDF 仅证明 Python 导入及旧单元测试通过，不能代替由实际受限 Codex Shell 创建/读取文件。PDF 手册库 CLI 自身输出中文 Markdown/JSON，嵌入式 Python 重定向 CP1252 与前述 pip 同类风险，补非交互 UTF-8 输出并保留原控制台/文件格式/退出码，增加旧编码单元回归。新增 `documents` 模式，以合成 Responses 实际在常用模式的中文搬迁包内生成并读回 DOCX/XLSX/PPTX/PDF、PyMuPDF 页渲染与 PDF 手册库 build/search/read/verify/export；不启动宿主 Office、安装依赖、访问真实资料或扩大权限。公式只验保存与读取，不声称重算；可选 LibreOffice/Poppler/OCR 不在本轮验收范围。新专项 AC 待验证，无发布。
+
 ## 2026-11-24：0.172.0 核心工具验证与现有技能入口补正
 
 [Windows 45395755596](https://github.com/rileyaaa/Portable/actions/runs/45395755596) 截至本次核对，Python CLI 编码/原有 shim 单元、常用模式及未知模型中文路径核心工具、pip/npm 实际配置（本地 prefix 为任务目录、显式 global prefix 为包内配置值）、两类合成受保护文件写入拒绝、Header 隔离、YOLO 无 MCP 浏览器和已启用 MCP 端到端均已成功；启动器及发行输入余项以该运行最终状态为准。ADB 与 PowerShell 启动路径重构仍非全量通过。保留官方 ADB 37.0.1，明确上游 Windows home API 限制；不改 Windows 用户目录或 ACL、不增工具、不换依赖。补 `browser-check` 原生常用模式只读发现（实际 0.172.0、GPT-6.2 Sol、双重扩展开关未开，使用 `-Check` 确认存在，不创建锁或 profile），区分实际任务启动须按既有审批处理；增加现有 shell 的临时 PSModulePath 调整实测，不宣称启动阶段已隔离。同步 desktop、pdf-library、portable-ssh 现有 Skill 示例，避免默认 work 下的根相对路径错误；保留设备授权、PDF 安全路径及 SSH 未集成依赖边界。新一轮专项 AC 尚未取得结果，实际交互批准与真实模型自主判断仍待实测。

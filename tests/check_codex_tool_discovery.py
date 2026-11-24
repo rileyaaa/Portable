@@ -37,6 +37,7 @@ assert "browser-debug" in SKILLS and len(SKILLS) >= 10
 TOOL_MARKER = "PORTABLE_CORE_TOOLS_EXECUTED_0172"
 BROWSER_MARKER = "PORTABLE_TASK_RENDERED_0172"
 BROWSER_CHECK_MARKER = "PORTABLE_BROWSER_CHECK_READ_ONLY_0172"
+DOCUMENT_MARKER = "PORTABLE_DOCUMENT_ROUNDTRIP_0172"
 DONE = "native-tool-discovery-ok"
 
 PROBE_PY = '''
@@ -269,8 +270,124 @@ module.exports = async ({page}) => {
 '''
 
 
+# Real bundled authoring and reading libraries, in the restricted native shell.
+# This does not exercise optional Office renderers, OCR, or formula calculation.
+DOCUMENTS_PY = r'''
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import zipfile
+
+import docx
+import openpyxl
+import pandas
+import pptx
+import pymupdf
+from pptx.util import Inches
+
+root = Path(os.environ["CODEX_INSTALL_DIR"]).resolve()
+assert Path(sys.executable).resolve() == root / "tool/python/python.exe"
+for module in (docx, openpyxl, pandas, pptx, pymupdf):
+    assert Path(module.__file__).resolve().is_relative_to(root / "tool/python"), module.__name__
+work = root / "work/tool-probe"
+output = work / "document-results"
+output.mkdir()
+label = "Portable \u4fbf\u643a 0172"
+
+# Word: write/reopen, Unicode text and path.
+word = output / "\u4fbf\u643a.docx"
+document = docx.Document()
+document.add_paragraph(label)
+table = document.add_table(rows=1, cols=2)
+table.cell(0, 0).text = "value"
+table.cell(0, 1).text = "172"
+document.save(word)
+reopened = docx.Document(word)
+assert reopened.paragraphs[0].text == label
+assert reopened.tables[0].cell(0, 1).text == "172"
+print("NATIVE_DOCX_WRITE_READ=PASS", flush=True)
+
+# Excel: preserve formulas; read ordinary tabular data with pandas.
+book = output / "\u4fbf\u643a.xlsx"
+workbook = openpyxl.Workbook()
+sheet = workbook.active
+sheet.title = "Data"
+sheet.append(["Name", "Amount"])
+sheet.append([label, 172])
+sheet.append(["Second", 3])
+sheet["D2"] = "=SUM(B2:B3)"
+workbook.save(book)
+with_formula = openpyxl.load_workbook(book, data_only=False)
+assert with_formula["Data"]["D2"].value == "=SUM(B2:B3)"
+with_formula.close()
+frame = pandas.read_excel(book, sheet_name="Data", usecols="A:B")
+assert frame["Name"].iloc[0] == label and int(frame["Amount"].sum()) == 175
+print("NATIVE_XLSX_WRITE_READ_FORMULA_PRESERVED=PASS (not recalculated)", flush=True)
+
+# PowerPoint: write and reopen without launching any desktop application.
+deck = output / "\u4fbf\u643a.pptx"
+presentation = pptx.Presentation()
+slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(5), Inches(1))
+box.text_frame.text = label
+presentation.save(deck)
+assert pptx.Presentation(deck).slides[0].shapes[0].text_frame.text == label
+print("NATIVE_PPTX_WRITE_READ=PASS", flush=True)
+
+# PDF: create a synthetic manual with actual selectable text.
+manuals = output / "manuals"
+manuals.mkdir()
+filename = "\u4fbf\u643a-manual.pdf"
+manual = manuals / filename
+marker = "PORTABLE_MANUAL_SYMBOL_0172"
+with pymupdf.open() as pdf:
+    page = pdf.new_page()
+    page.insert_text((50, 70), marker + "\nSELECT * FROM V$DATABASE;", fontname="cour", fontsize=11)
+    pdf.save(manual)
+with pymupdf.open(manual) as pdf:
+    assert len(pdf) == 1 and marker in pdf[0].get_text()
+    assert pdf[0].get_pixmap(matrix=pymupdf.Matrix(0.5, 0.5)).width > 0
+print("NATIVE_PDF_WRITE_READ_RENDER=PASS", flush=True)
+
+# Actual skill entrypoint in a separate process, from the default work cwd.
+# No -X utf8 or PYTHONIOENCODING workaround: test the shipped CLI behavior.
+tool = root / "home/skills/pdf-library/scripts/pdf_library.py"
+library = output / "library"
+archive = output / "manuals.zip"
+def invoke(*args):
+    p = subprocess.run([sys.executable, "-B", str(tool), *map(str, args)],
+                       cwd=root / "work", capture_output=True, timeout=90, check=False)
+    if p.returncode:
+        raise AssertionError("PDF library " + str(args[0]) + " exit=" + str(p.returncode)
+                             + "; " + ascii(p.stderr.decode("utf-8", "replace")[-2500:]))
+    return p.stdout.decode("utf-8", "strict")
+
+summary = json.loads(invoke("build", "--input", manuals, "--library", library, "--strict"))
+assert summary["strict_ok"], summary
+hits = json.loads(invoke("search", "--library", library, "--query", marker))
+assert len(hits) == 1 and hits[0]["document"] == filename and hits[0]["page"] == 1
+text = invoke("read", "--library", library, "--document", filename, "--pages", "1")
+assert marker in text and "## PDF \u7b2c 1 \u9875" in text
+assert json.loads(invoke("verify", "--library", library, "--strict"))["strict_ok"]
+receipt = json.loads(invoke("export", "--library", library, "--output", archive, "--strict"))
+assert receipt["sha256"] == hashlib.sha256(archive.read_bytes()).hexdigest()
+with zipfile.ZipFile(archive) as z:
+    assert z.testzip() is None and all(n.endswith(".md") for n in z.namelist())
+    assert marker in z.read("manuals/" + Path(filename).stem + ".md").decode("utf-8")
+print("NATIVE_PDF_LIBRARY_BUILD_SEARCH_READ_VERIFY_EXPORT=PASS", flush=True)
+
+for path in (word, book, deck):
+    with zipfile.ZipFile(path) as z:
+        assert z.testzip() is None
+print("PORTABLE_DOCUMENT_ROUNDTRIP_0172", flush=True)
+'''
+
 def handler_for(fixture, mode):
-    expected = {"browser": BROWSER_MARKER, "browser-check": BROWSER_CHECK_MARKER}.get(mode, TOOL_MARKER)
+    expected = {"browser": BROWSER_MARKER, "browser-check": BROWSER_CHECK_MARKER,
+                "documents": DOCUMENT_MARKER}.get(mode, TOOL_MARKER)
     script = {"browser": "browser.ps1", "browser-check": "browser-check.ps1"}.get(mode, "probe.ps1")
 
     def handler(body, _):
@@ -286,6 +403,9 @@ def handler_for(fixture, mode):
                 "Browser MCP should not be advertised by default"
             command = ("& (Join-Path $env:CODEX_INSTALL_DIR 'work/tool-probe/" + script + "')"
                        if mode in {"browser", "browser-check"} else DIAG_PS.replace("__EXPECTED_ROOT__", str(fixture).replace("'", "''")) + "\n" + PROBE_PS)
+            if mode == "documents":
+                command = ("& (Join-Path $env:CODEX_INSTALL_DIR 'tool/python/python.exe') -B "
+                           "(Join-Path $env:CODEX_INSTALL_DIR 'work/tool-probe/documents.py'); exit $LASTEXITCODE")
             args = {"cmd": command, "workdir": str(fixture / "work"), "login": False,
                     "yield_time_ms": 30000, "max_output_tokens": 7000}
             custom = next(((ns, t) for ns, t in entries
@@ -385,16 +505,16 @@ def main():
     if os.name != "nt":
         raise SystemExit("Windows x64 required")
     mode = sys.argv[1] if len(sys.argv) == 2 else "normal"
-    assert mode in {"normal", "browser", "browser-check", "unknown"}
+    assert mode in {"normal", "browser", "browser-check", "unknown", "documents"}
     model = {"normal": "gpt-6-sol", "browser": "gpt-6.2-sol", "browser-check": "gpt-6.2-sol",
-             "unknown": "portable-synthetic-model"}[mode]
+             "unknown": "portable-synthetic-model", "documents": "gpt-6.2-sol"}[mode]
     for p in (*reversed(ROOT.parents), ROOT):
         m.ordinary(p)
     scratch = ROOT / "tmp"
     scratch.mkdir(exist_ok=True)
     m.ordinary(scratch)
     with extracted_package_fixture(scratch, mode) as owned:
-        fixture = owned / ("Relocated Portable" if mode != "unknown" else "Relocated \u4fbf\u643a Portable")
+        fixture = owned / ("Relocated \u4fbf\u643a Portable" if mode in {"unknown", "documents"} else "Relocated Portable")
         fixture.mkdir()
         manifest = json.loads((ROOT / "tool/runtime-manifest.json").read_text(encoding="utf-8-sig"))
         bat = "\u542f\u52a8Codex.bat"
@@ -415,6 +535,8 @@ def main():
         (probe / "probe.ps1").write_text(RESOLUTION_PS, encoding="utf-8-sig")
         (probe / "browser.ps1").write_text(BROWSER_PS, encoding="utf-8-sig")
         (probe / "browser-check.ps1").write_text(BROWSER_CHECK_PS, encoding="utf-8-sig")
+        if mode == "documents":
+            (probe / "documents.py").write_text(DOCUMENTS_PY, encoding="utf-8")
         (probe / "page.cjs").write_text(BROWSER_JS, encoding="utf-8")
         for sentinel in (fixture / "protected-audit.txt", owned / "outside-workspace-audit.txt"):
             sentinel.write_bytes(b"unchanged synthetic sentinel")
@@ -474,6 +596,12 @@ def main():
             assert cfg["sandbox_workspace_write"]["network_access"] == (mode == "browser")
             if mode == "browser":
                 assert (fixture / "cache/browser/profile").is_dir()
+            if mode == "documents":
+                outputs = probe / "document-results"
+                for filename in ("\u4fbf\u643a.docx", "\u4fbf\u643a.xlsx", "\u4fbf\u643a.pptx", "manuals.zip"):
+                    assert (outputs / filename).is_file(), "Missing native document output: " + filename
+                assert (outputs / "manuals/\u4fbf\u643a-manual.pdf").is_file()
+                print("NORMAL_MODE_DOCUMENT_ROUNDTRIP=PASS; optional renderers/OCR and formula calculation not tested", flush=True)
             if mode == "browser-check":
                 assert not (fixture / "cache/browser").exists(), "Read-only check created persistent browser state"
                 assert not (fixture / ".codex-browser.instance.lock").exists(), "Read-only check created browser lock"

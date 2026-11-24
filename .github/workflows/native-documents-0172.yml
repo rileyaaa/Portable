@@ -1,0 +1,44 @@
+name: Native 0.172.0 Office PDF task roundtrip (one time)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/native-documents-0172.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  documents:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Preserve tracked bytes
+        run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'git config failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          lfs: true
+          persist-credentials: false
+      - name: PDF library actual CLI and legacy encoding regressions
+        run: |
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_pdf_library*.py' -v
+          if ($LASTEXITCODE) { throw 'PDF library regression failed' }
+      - name: Native Codex normal mode document creation and PDF library task from Unicode path
+        if: always()
+        run: |
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py documents
+          if ($LASTEXITCODE) { throw 'Native document task roundtrip failed' }
+      - name: Existing Office output boundary tests
+        if: always()
+        run: |
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_office_output_boundaries.py' -v
+          if ($LASTEXITCODE) { throw 'Office output boundary regression failed' }
+      - name: Customer package input integrity
+        if: always()
+        run: |
+          & .\tool\python\python.exe -B tool/package-release.py --check
+          if ($LASTEXITCODE) { throw 'Customer input validation failed' }

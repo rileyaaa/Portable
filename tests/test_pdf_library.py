@@ -2,6 +2,7 @@
 import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -134,6 +135,28 @@ class PdfLibraryTests(unittest.TestCase):
             destination.symlink_to(target, target_is_directory=directory)
         except (OSError, NotImplementedError) as error:
             self.skipTest(f"Symlink creation unavailable: {error}")
+
+    def test_cli_read_and_search_on_redirected_legacy_code_page(self):
+        self.create_pdf("manual.pdf", ["PORTABLE_UNICODE_PAGE\nSELECT * FROM V$DATABASE;"])
+        self.module.build_library(self.input, self.library)
+        for args in (
+            ["read", "--library", str(self.library), "--document", "manual.pdf", "--pages", "1"],
+            ["search", "--library", str(self.library), "--query", "PORTABLE_UNICODE_PAGE"],
+        ):
+            with self.subTest(command=args[0]):
+                buffer = io.BytesIO()
+                errors = io.BytesIO()
+                with io.TextIOWrapper(buffer, encoding="cp1252", errors="strict") as stdout, \
+                        io.TextIOWrapper(errors, encoding="cp1252", errors="strict") as stderr:
+                    with mock.patch.object(sys, "stdout", stdout), mock.patch.object(sys, "stderr", stderr):
+                        self.assertEqual(self.module.main(args), 0)
+                    stdout.flush()
+                    self.assertEqual(stdout.encoding, "utf-8")
+                    value = buffer.getvalue().decode("utf-8")
+                    self.assertIn("PORTABLE_UNICODE_PAGE", value)
+                    self.assertIn("\u7b2c", value)
+                    if args[0] == "search":
+                        self.assertEqual(json.loads(value)[0]["page"], 1)
 
     def test_text_symbols_and_page_boundaries_survive_conversion(self):
         self.ordinary_pdf()
