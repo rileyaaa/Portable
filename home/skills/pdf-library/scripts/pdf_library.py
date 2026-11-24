@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import unicodedata
+import uuid
 import zipfile
 
 SCHEMA = 1
@@ -239,6 +240,32 @@ def _portable_name(relative: str) -> None:
             raise ValueError(f"Filename cannot be preserved safely on Windows: {relative}")
 
 
+@contextlib.contextmanager
+def _scratch_directory(parent: Path, prefix: str):
+    """Create an owned scratch child without replacing the Windows parent ACL.
+
+    Python 3.13+ gives mkdir(0o700), including tempfile.TemporaryDirectory,
+    a protected Windows DACL. A restricted Codex process may be denied access
+    to that directory even though its package-local tmp parent is writable.
+    Inherit the existing ACL on Windows; keep mode 0700 on POSIX. This is not
+    a grant of access to any other directory or a privacy guarantee.
+    """
+    parent = _safety.prepare_output_dir(parent)
+    staging = checked(parent / (prefix + uuid.uuid4().hex))
+    staging.mkdir(mode=0o777 if os.name == "nt" else 0o700)
+    identity = staging.lstat()
+    try:
+        checked(staging, exists=True, kind="dir")
+        yield staging
+    finally:
+        # Never follow a replaced directory or delete somebody else's tree.
+        checked(staging, exists=True, kind="dir")
+        current = staging.lstat()
+        if (current.st_dev, current.st_ino) != (identity.st_dev, identity.st_ino):
+            raise RuntimeError("PDF scratch directory identity changed; refusing cleanup")
+        shutil.rmtree(staging)
+
+
 def _database(library: Path, *, create=False):
     library = checked(library)
     db = checked(library / "_index.sqlite3")
@@ -252,9 +279,8 @@ def _database(library: Path, *, create=False):
         library.mkdir(parents=True, exist_ok=True)
     else:
         checked(db, exists=True, kind="file")
-        scratch = _safety.prepare_output_dir(ROOT / "tmp")
-        with tempfile.TemporaryDirectory(prefix="pdf-ownership-", dir=scratch) as staging:
-            snapshot = Path(staging) / "index.sqlite3"
+        with _scratch_directory(ROOT / "tmp", "pdf-ownership-") as staging:
+            snapshot = staging / "index.sqlite3"
             shutil.copyfile(db, snapshot)
             wal = checked(Path(str(db) + "-wal"))
             if wal.exists():
@@ -324,9 +350,7 @@ def _ocr(page, *, language: str, raw: str) -> tuple[str, str, str]:
     for name in language.split("+"):
         if not checked(data / (name + ".traineddata")).is_file():
             return "", "missing", "Requested package-local OCR language data missing"
-    temporary = _safety.prepare_output_dir(ROOT / "tmp/pdf-library-ocr")
-    with tempfile.TemporaryDirectory(prefix="page-", dir=temporary) as dirname:
-        task = Path(dirname)
+    with _scratch_directory(ROOT / "tmp/pdf-library-ocr", "page-") as task:
         image = task / "page.png"
         page.get_pixmap(dpi=200).save(image)
         allowed = ("SystemRoot", "SYSTEMROOT", "WINDIR", "SystemDrive", "ComSpec",

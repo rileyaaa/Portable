@@ -367,16 +367,22 @@ def invoke(*args):
 
 summary = json.loads(invoke("build", "--input", manuals, "--library", library, "--strict"))
 assert summary["strict_ok"], summary
+# Reopen an existing index, exercising the actual ownership snapshot path.
+assert json.loads(invoke("build", "--input", manuals, "--library", library, "--strict"))["reused"] == 1
+database = library / "_index.sqlite3"
+before_read = database.read_bytes()
 hits = json.loads(invoke("search", "--library", library, "--query", marker))
 assert len(hits) == 1 and hits[0]["document"] == filename and hits[0]["page"] == 1
 text = invoke("read", "--library", library, "--document", filename, "--pages", "1")
 assert marker in text and "## PDF \u7b2c 1 \u9875" in text
 assert json.loads(invoke("verify", "--library", library, "--strict"))["strict_ok"]
+assert database.read_bytes() == before_read, "Read-only PDF index changed"
 receipt = json.loads(invoke("export", "--library", library, "--output", archive, "--strict"))
 assert receipt["sha256"] == hashlib.sha256(archive.read_bytes()).hexdigest()
 with zipfile.ZipFile(archive) as z:
     assert z.testzip() is None and all(n.endswith(".md") for n in z.namelist())
     assert marker in z.read("manuals/" + Path(filename).stem + ".md").decode("utf-8")
+assert not list((root / "tmp").glob("pdf-ownership-*")), "PDF ownership staging leaked"
 print("NATIVE_PDF_LIBRARY_BUILD_SEARCH_READ_VERIFY_EXPORT=PASS", flush=True)
 
 for path in (word, book, deck):

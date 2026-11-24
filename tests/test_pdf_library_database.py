@@ -137,6 +137,47 @@ class PdfLibraryDatabaseTests(unittest.TestCase):
         self.assertEqual(self.database.read_bytes(), before)
 
 
+    def test_database_snapshot_uses_owned_inherited_scratch_and_cleans_up(self):
+        self.prepare_database([], application_id=self.module.APPLICATION_ID)
+        scratch = self.package / 'tmp'
+        scratch.mkdir()
+        sentinel = scratch / 'unrelated.txt'
+        sentinel.write_bytes(b'keep')
+        before = self.database.read_bytes()
+        owned = []
+        real_copy = self.module.shutil.copyfile
+
+        def copy(source, target, *args, **kwargs):
+            target = Path(target)
+            self.assertEqual(target.parent.parent, scratch)
+            self.assertTrue(target.parent.name.startswith('pdf-ownership-'))
+            owned.append(target.parent)
+            return real_copy(source, target, *args, **kwargs)
+
+        with mock.patch.object(self.module.tempfile, 'TemporaryDirectory',
+                               side_effect=AssertionError('legacy private ACL directory')), \
+                mock.patch.object(self.module.shutil, 'copyfile', side_effect=copy):
+            with closing(self.module._database(self.library)) as connection:
+                self.assertEqual(connection.execute('PRAGMA query_only').fetchone()[0], 1)
+        self.assertEqual(len(owned), 1)
+        self.assertFalse(owned[0].exists())
+        self.assertEqual(self.database.read_bytes(), before)
+        self.assertEqual(list(scratch.iterdir()), [sentinel])
+        self.assertEqual(sentinel.read_bytes(), b'keep')
+
+    def test_scratch_failure_cleans_only_owned_directory(self):
+        scratch = self.package / 'tmp'
+        scratch.mkdir()
+        sentinel = scratch / 'unrelated.txt'
+        sentinel.write_bytes(b'keep')
+        with self.assertRaisesRegex(OSError, 'synthetic task failure'):
+            with self.module._scratch_directory(scratch, 'pdf-ownership-') as staging:
+                self.assertEqual(staging.parent, scratch)
+                (staging / 'snapshot').write_bytes(b'temporary')
+                raise OSError('synthetic task failure')
+        self.assertEqual(list(scratch.iterdir()), [sentinel])
+        self.assertEqual(sentinel.read_bytes(), b'keep')
+
     def test_atomic_write_stages_only_in_package_tmp(self):
         output = self.library / 'manuals' / 'synthetic.md'
         created = []
