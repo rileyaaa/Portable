@@ -1614,6 +1614,15 @@ function Test-DefinitiveAuthFailure {
     return $false
 }
 
+# Refresh keeps the canonical fields already used by the checker and updates
+# any existing camelCase aliases, so the original import format does not
+# retain a different token alongside the new one.
+function Set-RefreshedTokenProperty {
+    param($Object, [string]$Name, [string]$Alias, [string]$Value)
+    Set-ObjectProperty $Object $Name $Value
+    if ($Object.PSObject.Properties[$Alias]) { Set-ObjectProperty $Object $Alias $Value }
+}
+
 function Refresh-Credential {
     param([string]$Path, $Credential)
 
@@ -1627,6 +1636,7 @@ function Refresh-Credential {
         refresh_token = $Credential.RefreshToken
     }
     $headers = @{ "User-Agent" = "codex-cli" }
+    $refreshStartedAt = [DateTimeOffset]::UtcNow
     $response = Invoke-JsonHttp -Method "POST" -Url "https://auth.openai.com/oauth/token" -Headers $headers -Body $body -TimeoutSec 60
 
     if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300 -and $null -ne $response.Json) {
@@ -1638,21 +1648,40 @@ function Refresh-Credential {
             return [pscustomobject]@{ Success = $false; Permanent = $false; Message = "refresh response did not contain access_token" }
         }
 
-        Set-ObjectProperty $Credential.Json "access_token" $newAccess
+        Set-RefreshedTokenProperty $Credential.Json "access_token" "accessToken" $newAccess
         $Credential.AccessToken = $newAccess
 
         if (-not [string]::IsNullOrWhiteSpace($newRefresh)) {
-            Set-ObjectProperty $Credential.Json "refresh_token" $newRefresh
+            Set-RefreshedTokenProperty $Credential.Json "refresh_token" "refreshToken" $newRefresh
             $Credential.RefreshToken = $newRefresh
         }
         if (-not [string]::IsNullOrWhiteSpace($newId)) {
-            Set-ObjectProperty $Credential.Json "id_token" $newId
+            Set-RefreshedTokenProperty $Credential.Json "id_token" "idToken" $newId
             $Credential.IdToken = $newId
             $Credential.Payload = Decode-JwtPayload $newId
         }
 
         Set-ObjectProperty $Credential.Json "last_refresh" ((Get-Date).ToUniversalTime().ToString("o"))
         Set-ObjectProperty $Credential.Json "expired" $false
+
+        # Imported formats can carry an explicit expiry, including a parent
+        # fallback. A successful refresh with expires_in must not leave that
+        # old timestamp active. Update only this credential; never modify a
+        # shared parent's metadata for its other entries. No inferred expiry
+        # is invented when the server omits a usable lifetime.
+        $expiryNames = @("expires", "expires_at", "expiresAt")
+        $existingExpiry = @($expiryNames | Where-Object { $Credential.Json.PSObject.Properties[$_] })
+        $lifetime = 0L
+        if (($existingExpiry.Count -gt 0 -or -not [string]::IsNullOrWhiteSpace($Credential.Expires)) -and
+            [int64]::TryParse((Get-StringProperty $response.Json @("expires_in")), [ref]$lifetime) -and $lifetime -gt 0) {
+            $newExpiry = ""
+            try { $newExpiry = $refreshStartedAt.AddSeconds($lifetime).UtcDateTime.ToString("o") } catch {}
+            if (-not [string]::IsNullOrWhiteSpace($newExpiry)) {
+                if ($existingExpiry.Count -eq 0) { $existingExpiry = @("expires") }
+                foreach ($name in $existingExpiry) { Set-ObjectProperty $Credential.Json $name $newExpiry }
+                $Credential.Expires = $newExpiry
+            }
+        }
 
         if ([string]::IsNullOrWhiteSpace($Credential.AccountId)) {
             $Credential.AccountId = Get-StringProperty $Credential.Json @("chatgpt_account_id", "account_id", "accountId")
@@ -1711,6 +1740,49 @@ function Get-ModelSlug {
     return $slug
 }
 
+# The pinned Codex backend schema exposes primary_window and secondary_window
+# with used_percent, reset_at (Unix seconds) and reset_after_seconds. Only
+# exhausted windows of the ordinary rate_limit determine its blocked reset.
+# Return null for the legacy schema, empty for a known but indeterminate reset.
+function Get-BlockedRateLimitReset {
+    param($RateLimit)
+    $windows = @()
+    foreach ($name in @("primary_window", "secondary_window")) {
+        $window = Get-ObjectProperty $RateLimit $name
+        if ($null -ne $window) { $windows += $window }
+    }
+    if ($windows.Count -eq 0) { return $null }
+    $latest = [DateTimeOffset]::MinValue
+    $now = [DateTimeOffset]::UtcNow
+    foreach ($window in $windows) {
+        $used = 0.0
+        if (-not [double]::TryParse((Get-StringProperty $window @("used_percent")),
+                [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$used) -or
+            [double]::IsNaN($used) -or [double]::IsInfinity($used) -or $used -lt 0) { return "" }
+        if ($used -lt 100) { continue }
+        $resetAt = [DateTimeOffset]::MinValue
+        $absolute = Get-StringProperty $window @("reset_at", "resets_at", "reset_time", "resetTime")
+        $epoch = 0L
+        if ([int64]::TryParse($absolute, [ref]$epoch)) {
+            try { $resetAt = [DateTimeOffset]::FromUnixTimeSeconds($epoch) } catch {}
+        } elseif (-not [string]::IsNullOrWhiteSpace($absolute)) {
+            $styles = [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal
+            $parsed = [DateTimeOffset]::MinValue
+            if ([DateTimeOffset]::TryParse($absolute, [Globalization.CultureInfo]::InvariantCulture, $styles, [ref]$parsed)) { $resetAt = $parsed }
+        }
+        if ($resetAt -eq [DateTimeOffset]::MinValue) {
+            $seconds = 0L
+            if ([int64]::TryParse((Get-StringProperty $window @("reset_after_seconds", "retry_after")), [ref]$seconds) -and $seconds -ge 0) {
+                try { $resetAt = $now.AddSeconds($seconds) } catch {}
+            }
+        }
+        if ($resetAt -eq [DateTimeOffset]::MinValue) { return "" }
+        if ($resetAt -gt $latest) { $latest = $resetAt }
+    }
+    if ($latest -eq [DateTimeOffset]::MinValue) { return "" }
+    return $latest.UtcDateTime.ToString("o")
+}
+
 function Get-UsageSummary {
     param($UsageResponse)
     if ($null -eq $UsageResponse -or $UsageResponse.StatusCode -lt 200 -or $UsageResponse.StatusCode -ge 300 -or $null -eq $UsageResponse.Json) {
@@ -1762,10 +1834,13 @@ function Get-UsageSummary {
     $rateLimit = Get-ObjectProperty $UsageResponse.Json "rate_limit"
     $allowed = Get-ObjectProperty $rateLimit "allowed"
     $limitReached = Get-ObjectProperty $rateLimit "limit_reached"
+    $blockedReset = Get-BlockedRateLimitReset $rateLimit
+    # Preserve the previous legacy-schema reset interpretation.
+    if ($null -eq $blockedReset) { $blockedReset = $reset }
     if ($null -ne $allowed) {
         $allowedText = ([string]$allowed).Trim().ToLowerInvariant()
         if ($allowedText -eq "false") {
-            return [pscustomobject]@{ Quota = "NO_QUOTA"; Reset = $reset; Detail = "rate_limit.allowed=false" }
+            return [pscustomobject]@{ Quota = "NO_QUOTA"; Reset = $blockedReset; Detail = "rate_limit.allowed=false" }
         }
         if ($allowedText -eq "true" -and $null -eq $limitReached) {
             return [pscustomobject]@{ Quota = "HAS_QUOTA"; Reset = $reset; Detail = "rate_limit.allowed=true" }
@@ -1774,7 +1849,7 @@ function Get-UsageSummary {
     if ($null -ne $limitReached) {
         $limitReachedText = ([string]$limitReached).Trim().ToLowerInvariant()
         if ($limitReachedText -eq "true") {
-            return [pscustomobject]@{ Quota = "NO_QUOTA"; Reset = $reset; Detail = "rate_limit.limit_reached=true" }
+            return [pscustomobject]@{ Quota = "NO_QUOTA"; Reset = $blockedReset; Detail = "rate_limit.limit_reached=true" }
         }
         if ($limitReachedText -eq "false") {
             return [pscustomobject]@{ Quota = "HAS_QUOTA"; Reset = $reset; Detail = "rate_limit.limit_reached=false" }
