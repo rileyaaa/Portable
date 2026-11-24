@@ -1,0 +1,56 @@
+name: Browser and MCP final targeted regression (one time)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/browser-mcp-validation-20261124.yml']
+permissions:
+  contents: read
+jobs:
+  native:
+    if: >-
+      startsWith(github.event.head_commit.message, 'test(browser): final targeted regression')
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Preserve upstream bytes
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          lfs: true
+          persist-credentials: false
+      - name: Fixed runtime integrity and source regressions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git lfs fsck
+          if ($LASTEXITCODE -ne 0) { throw 'LFS verification failed' }
+          & .\tool\node\node.exe --test .\tests\test_automation.js .\tests\test_portable_npm.js
+          if ($LASTEXITCODE -ne 0) { throw 'Node regression failed' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Python regression failed' }
+      - name: Existing automation boundaries and supervisor
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('test_automation_paths','test_automation_process')) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests' ($name + '.ps1'))
+            if ($LASTEXITCODE -ne 0) { throw ('Failed: ' + $name) }
+          }
+      - name: Actual browser and stdio MCP smoke
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Browser smoke failed' }
+          & .\tool\python\python.exe -B .\tests\check_browser_mcp_stdio.py
+          if ($LASTEXITCODE -ne 0) { throw 'MCP stdio failed' }
+      - name: Native Codex browser roundtrip using existing user configuration
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B .\tests\check_codex_browser_mcp.py
+          if ($LASTEXITCODE -ne 0) { throw 'Native MCP roundtrip failed' }
+      - name: Release input integrity only
+        if: always()
+        run: |
+          & .\tool\python\python.exe -B .\tool\package-release.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Package input validation failed' }
