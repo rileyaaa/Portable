@@ -1,13 +1,15 @@
 """Native model-visible skills and actual bundled shell/browser tools, Windows only."""
+import contextlib
 import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 import sys
-import tempfile
 import tomllib
+import uuid
 
 # Embedded Python may ignore PYTHONIOENCODING. Keep the original failure visible.
 for stream in (sys.stdout, sys.stderr):
@@ -241,6 +243,39 @@ def handler_for(fixture, mode):
     return handler
 
 
+@contextlib.contextmanager
+def extracted_package_fixture(parent, label):
+    """Model a normal extracted Windows directory, not a private Python temp.
+
+    CPython 3.13+ creates 0o700 directories with protected SYSTEM/admin/owner
+    ACLs. tempfile.TemporaryDirectory uses that mode, unlike a normal ZIP
+    extraction. An elevated CI token may own it as Administrators, and the
+    unelevated Codex token cannot necessarily read it. Never change the ACL of
+    the parent, checkout, or a user's package to make this test pass.
+    """
+    m.ordinary(parent)
+    owned = parent / ("native-tools-" + label + "-" + uuid.uuid4().hex)
+    owned.mkdir()  # Default 0o777 on Windows: inherit the existing parent ACL.
+    try:
+        m.ordinary(owned)
+        yield owned
+    finally:
+        m.ordinary(owned)
+        shutil.rmtree(owned)
+
+
+def fixture_acl_evidence(owned, fixture):
+    # Only inspect this disposable synthetic fixture, using trusted Windows
+    # system executables. No ACL change, and no user profile/host scan.
+    icacls = Path(os.environ["SystemRoot"]) / "System32/icacls.exe"
+    for p in (owned, fixture, fixture / "work", fixture / "tool/python/python.exe"):
+        result = subprocess.run([str(icacls), str(p)], stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, timeout=20, check=False)
+        print("FIXTURE_ACL=" + ascii(str(p)) + " exit=" + str(result.returncode)
+              + " " + result.stdout.decode("utf-8", "backslashreplace"), flush=True)
+        assert result.returncode == 0, "Cannot inspect synthetic extraction ACL"
+
+
 def main():
     if os.name != "nt":
         raise SystemExit("Windows x64 required")
@@ -253,8 +288,8 @@ def main():
     scratch = ROOT / "tmp"
     scratch.mkdir(exist_ok=True)
     m.ordinary(scratch)
-    with tempfile.TemporaryDirectory(prefix="native-tools-" + mode + "-", dir=scratch) as owned:
-        fixture = Path(owned) / ("Relocated Portable" if mode != "unknown" else "Relocated \u4fbf\u643a Portable")
+    with extracted_package_fixture(scratch, mode) as owned:
+        fixture = owned / ("Relocated Portable" if mode != "unknown" else "Relocated \u4fbf\u643a Portable")
         fixture.mkdir()
         manifest = json.loads((ROOT / "tool/runtime-manifest.json").read_text(encoding="utf-8-sig"))
         bat = "\u542f\u52a8Codex.bat"
@@ -274,6 +309,7 @@ def main():
         (probe / "probe.ps1").write_text(RESOLUTION_PS, encoding="utf-8-sig")
         (probe / "browser.ps1").write_text(BROWSER_PS, encoding="utf-8-sig")
         (probe / "page.cjs").write_text(BROWSER_JS, encoding="utf-8")
+        fixture_acl_evidence(owned, fixture)
         (fixture / "home/portable-extensions.toml").write_text(
             '[mcp_servers.portable_browser]\ncommand = "synthetic-never-executed"\n', encoding="utf-8")
         with m.serving(m.provider("", model=model, handler=handler_for(fixture, mode))) as port:

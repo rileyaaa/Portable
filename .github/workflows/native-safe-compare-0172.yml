@@ -1,4 +1,4 @@
-name: Native safe shell CLM-compatible diagnostics and header isolation (one time)
+name: Native safe shell normal extraction ACL and header null semantics (one time)
 on:
   push:
     branches: [main]
@@ -47,18 +47,18 @@ jobs:
         run: |
           Copy-Item -LiteralPath harness/tests/check_codex_tool_discovery.py -Destination source/tests/check_codex_tool_discovery.py
           Copy-Item -LiteralPath harness/tests/check_codex_browser_mcp.py -Destination source/tests/check_codex_browser_mcp.py
-      - name: Native normal mode model-visible tools and restricted shell diagnostics
+      - name: Native normal mode on inherited extraction ACL
         working-directory: source
         run: |
           & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py normal
           if ($LASTEXITCODE) { throw 'Normal-mode native diagnostic failed' }
-      - name: Native unknown custom model direct shell and Unicode path
+      - name: Native unknown custom model on inherited Unicode extraction ACL
         if: always()
         working-directory: source
         run: |
           & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py unknown
           if ($LASTEXITCODE) { throw 'Unknown-model native diagnostic failed' }
-      - name: Real launcher path and header isolation assertions
+      - name: Real launcher path and missing-versus-empty header assertions
         if: always() && matrix.label == 'current-0172'
         working-directory: source
         run: |
@@ -72,6 +72,14 @@ jobs:
           if ($LASTEXITCODE) { throw 'YOLO browser regression failed' }
           & .\tool\python\python.exe -B tests/check_codex_browser_mcp.py
           if ($LASTEXITCODE) { throw 'Native MCP regression failed' }
+      - name: Existing launcher smoke and runtime preflight
+        if: always() && matrix.label == 'current-0172'
+        working-directory: source
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_launcher_smoke.ps1
+          if ($LASTEXITCODE) { throw 'Launcher smoke failed' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_runtime_preflight.ps1
+          if ($LASTEXITCODE) { throw 'Runtime preflight failed' }
       - name: Current fixed runtime, mode copies and customer input integrity
         if: always() && matrix.label == 'current-0172'
         working-directory: source

@@ -282,8 +282,14 @@ try {
             throw 'Explicit package header assignments did not reach the client environment.'
         }
         if ($Child.EnvironmentVariables.ContainsKey('MY_HOST_ONLY') -or $Child.EnvironmentVariables.ContainsKey('MY_UNUSED_HOST')) {
-            throw 'Host-only header or unrelated value leaked to client.'
+            throw 'Unset host-only header or unrelated environment key is present in the child.'
         }
+        # Missing/null and intentionally empty are different at ProcessStartInfo.
+        Set-ProcessEnvironmentValue $Child 'PORTABLE_TEST_NULL' $null
+        Set-ProcessEnvironmentValue $Child 'PORTABLE_TEST_EMPTY' ''
+        if ($Child.EnvironmentVariables.ContainsKey('PORTABLE_TEST_NULL')) { throw 'Null became an empty environment entry.' }
+        if (-not $Child.EnvironmentVariables.ContainsKey('PORTABLE_TEST_EMPTY') -or
+            $Child.EnvironmentVariables['PORTABLE_TEST_EMPTY'] -cne '') { throw 'Explicit empty environment value not preserved.' }
         if (Test-Path -LiteralPath $PortableTool) { throw 'Environment setup recreated removed compiler/tool directories.' }
     }
     Write-Output 'worker-ok'

@@ -2004,8 +2004,11 @@ function Get-ConfiguredHeaderEnvironmentVariableNames {
 }
 
 function Set-ProcessEnvironmentValue {
-    param([System.Diagnostics.ProcessStartInfo]$ProcessStartInfo,[string]$Name,[string]$Value)
+    param([System.Diagnostics.ProcessStartInfo]$ProcessStartInfo,[string]$Name,[AllowNull()][object]$Value)
+    # A typed string parameter coerces $null to an empty string in PS5.1.
+    # Preserve absence before conversion; an explicitly empty string is distinct.
     if ($null -eq $Value -or [string]::IsNullOrWhiteSpace($Name)) { return }
+    $Value = [string]$Value
     try { $ProcessStartInfo.EnvironmentVariables.Set_Item($Name, $Value) } catch {
         try { $ProcessStartInfo.Environment[$Name] = $Value } catch {}
     }
