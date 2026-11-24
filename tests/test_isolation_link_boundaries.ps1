@@ -99,10 +99,10 @@ with Path(output).open("xb") as target:
     $peer=New-AutomationDirectory -Root $fixture -Path (Join-Path $fixture 'synthetic-peer')
     $externalMarket=Put-Synthetic (Join-Path $peer 'marketplace.json') '{}'
     $externalPlugin=Put-Synthetic (Join-Path $peer 'synthetic-external-plugin\.codex-plugin\plugin.json') '{}'
-    $home=New-AutomationDirectory -Root $package -Path (Join-Path $package 'home')
-    $agents=New-AutomationDirectory -Root $package -Path (Join-Path $home '.agents')
+    $fixtureHome=New-AutomationDirectory -Root $package -Path (Join-Path $package 'home')
+    $agents=New-AutomationDirectory -Root $package -Path (Join-Path $fixtureHome '.agents')
     $marketDir=Join-Path $agents 'plugins'
-    $pluginRoot=Join-Path $home 'plugins'
+    $pluginRoot=Join-Path $fixtureHome 'plugins'
     Add-Junction $marketDir $peer
     Add-Junction $pluginRoot $peer
     $checked=Invoke-Isolation $script

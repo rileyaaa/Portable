@@ -1,12 +1,16 @@
 # 开发与维护记录
 
+## 2026-11-24：依赖与打包维护复核
+
+核对 `tool/工具更新说明.md` 的固定 wheel/hash lock、无源码编译、固定运行依赖修复而非自动升级、客户发行筛选和人工发布规则；源码复核 setup-tools 的路径/互斥、修复范围预检、lock 校验、候选发布时机以及 package-release 的干净索引、链接/私有状态、固定 runtime/browser、ZIP 核验设计。未发现必须调整的生产逻辑。[Windows 45371488924](https://github.com/rileyaaa/Portable/actions/runs/45371488924) 的维护入口和路径步骤、309 项 Python（308 通过、SSH 原生依赖用例 1 项按现有条件跳过）及 `package-release.py --check` 均通过；未实际联网重装依赖、构建正式客户 ZIP 或发布。已核对 GitHub 正式 Release 为 `v0.170.0-portable.2`，保留旧 Release 和固定工具；仅纠正过时文档，不引入 Paramiko 或其它候选依赖。依赖管理与发行输入专项不再做例行源码调整，等待实际问题及明确发布授权。
+
 ## 2026-11-24：隔离检查链接路径边界复核（源码候选）
 
-保留默认仅包内、显式宿主只读扫描授权、报告而不删除宿主内容及 BAT 入口保护。旧直接 PS1 检查仅验证包根自身，未验证入口与祖先；Marketplace 和插件根警告后仍可能读取/枚举链接目标。复用其它入口既有的完整祖先检查，创建运行目录前拒绝 hardlink/reparse/link；Marketplace 读取前检查路径和普通单链接文件，插件根及各插件清单存在性检查前拒绝链接路径，不因诊断警告而继续访问目标。正常包内检查与已授权宿主扫描不变，不增加扫描范围或权限。合成 Windows 夹具使用自建 junction/hardlink 模拟边界，真实生产脚本旧/新对照，无真实宿主残留扫描或凭证。[Windows 45370271251](https://github.com/rileyaaa/Portable/actions/runs/45370271251) 新专项未进入用例（同上 PS5.1 `-c` 引号问题），修正测试入口后单独验证两版，结果另记。
+保留默认仅包内、显式宿主只读扫描授权、报告而不删除宿主内容及 BAT 入口保护。旧直接 PS1 检查仅验证包根自身，未验证入口与祖先；Marketplace 和插件根警告后仍可能读取/枚举链接目标。复用其它入口既有的完整祖先检查，创建运行目录前拒绝 hardlink/reparse/link；Marketplace 读取前检查路径和普通单链接文件，插件根及各插件清单存在性检查前拒绝链接路径，不因诊断警告而继续访问目标。正常包内检查与已授权宿主扫描不变，不增加扫描范围或权限。合成 Windows 夹具使用自建 junction/hardlink 模拟边界，真实生产脚本旧/新对照，无真实宿主残留扫描或凭证。[Windows 45370271251](https://github.com/rileyaaa/Portable/actions/runs/45370271251) 新专项未进入用例（PS5.1 `-c` 引号问题）；[Windows 45371488924](https://github.com/rileyaaa/Portable/actions/runs/45371488924) 已复现旧入口穿越 linked ancestor 并验证新入口拒绝初始化。随后两版夹具均因变量 `$home` 与 PS5.1 内置只读 `$HOME` 冲突而停止，尚未验证 Marketplace 和插件链接用例。仅将夹具变量改名为 `$fixtureHome`，生产脚本不变；继续针对性回归。
 
 ## 2026-11-24：缓存清理单项失败与安全 bootstrap 恢复复核（源码候选）
 
-保留现有清理范围、默认保留 Skills/work/Plugins、显式 CleanAll、预览/确认、包级与浏览器锁、认证及恢复状态保护、路径树校验及安全 bootstrap 策略。旧目录清理遇到占用文件时抛出的异常直接终止整个流程；若已删除生成的 config.toml，则后续 bootstrap 重建和失败统计均被跳过。现只在已批准计划的单项删除循环捕获失败，保留非零退出与现有计数，对剩余独立项目仍逐项执行原校验，最后按原策略尝试重建安全配置。无新增清理范围、用户参数或依赖。不保证被占用项目已经完全删除，也不把部分删除计入完整成功；增加完整 Windows 合成包的真实独占文件旧/新对照、预览、释放占用后再次清理、显式完整清理及认证/身份/恢复状态保护回归，不读取真实凭据或用户缓存。[Windows 45363684720](https://github.com/rileyaaa/Portable/actions/runs/45363684720) 路径、浏览器清理、309 项 Python 和发行输入通过；新增专项在读取旧源码的 Git 进程启动时失败，未执行文件占用用例。改用已固定包内 Python 的字节复制读取 Git baseline；[Windows 45370271251](https://github.com/rileyaaa/Portable/actions/runs/45370271251) 又在 PS5.1 将 Python `-c` 源码双引号剥离后产生 SyntaxError，两个新专项仍未进入实际用例。改为独占合成目录内的 Python 脚本文件调用，分别执行旧版复现和新版测试，不再由 baseline 失败跳过新版；原生产代码不动。该轮原有路径、浏览器、309 项 Python（SSH 原生依赖仍按既有条件跳过 1 项）及发行输入通过。
+保留现有清理范围、默认保留 Skills/work/Plugins、显式 CleanAll、预览/确认、包级与浏览器锁、认证及恢复状态保护、路径树校验及安全 bootstrap 策略。旧目录清理遇到占用文件时抛出的异常直接终止整个流程；若已删除生成的 config.toml，则后续 bootstrap 重建和失败统计均被跳过。现只在已批准计划的单项删除循环捕获失败，保留非零退出与现有计数，对剩余独立项目仍逐项执行原校验，最后按原策略尝试重建安全配置。无新增清理范围、用户参数或依赖。不保证被占用项目已经完全删除，也不把部分删除计入完整成功；增加完整 Windows 合成包的真实独占文件旧/新对照、预览、释放占用后再次清理、显式完整清理及认证/身份/恢复状态保护回归，不读取真实凭据或用户缓存。[Windows 45363684720](https://github.com/rileyaaa/Portable/actions/runs/45363684720) 路径、浏览器清理、309 项 Python 和发行输入通过；新增专项在读取旧源码的 Git 进程启动时失败，未执行文件占用用例。改用已固定包内 Python 的字节复制读取 Git baseline；[Windows 45370271251](https://github.com/rileyaaa/Portable/actions/runs/45370271251) 又在 PS5.1 将 Python `-c` 源码双引号剥离后产生 SyntaxError，两个新专项仍未进入实际用例。改为独占合成目录内的 Python 脚本文件调用，分别执行旧版复现和新版测试，不再由 baseline 失败跳过新版；原生产代码不动。该轮原有路径、浏览器、309 项 Python（SSH 原生依赖仍按既有条件跳过 1 项）及发行输入通过。[Windows 45371488924](https://github.com/rileyaaa/Portable/actions/runs/45371488924) 两个独立清理专项全部通过：实际复现旧占用文件导致 config 丢失与后续清理中断，修订后完成独立安全项、恢复 bootstrap、保留用户资产与认证/身份/恢复状态、占用释放后清理及显式 CleanAll，预览内容不变。原有路径/维护入口、Python 309 项（1 项按条件跳过）与发行输入检查通过；该运行的其他隔离夹具失败单独记录，不影响已通过的缓存专项。验证提交 `c59af70191abd27c2325d37a1960fb67a9df1c7d`。缓存清理专项结束。
 
 ## 2026-11-24：代理端口规范化与 IPv6 SOCKS 上游地址复核（源码候选）
 
