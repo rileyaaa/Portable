@@ -288,13 +288,13 @@ Assert-PortablePath "codex.exe" $CodexExe
 Assert-PortableRegularInputFile "codex.exe" $CodexExe
 Assert-PortablePinnedExecutableAcl "codex.exe" $CodexExe
 
-# This hardened launcher is version-specific.  Never run the 0.170.0 config/schema
+# This hardened launcher is version-specific.  Never run the 0.172.0 config/schema
 # assumptions against an older, newer, zero-byte, or locally modified Codex binary.
-$ExpectedCodexVersion = "0.170.0"
-$ExpectedRuntimeManifestSha256 = "01B6152F5F9996F1F6B753D2333DD3694CD65BD8D96321C59C08C5A4576FB895"
-$ExpectedCodexSha256 = "8D06DC231DBA649C7D48D3EECAB239C452A1AC498C41DD6492A6F301B90A22CE"
+$ExpectedCodexVersion = "0.172.0"
+$ExpectedRuntimeManifestSha256 = "8AC10794BEDD08EE612F727C7D8079BEDCF791E83EF940EA19BED4668E54432B"
+$ExpectedCodexSha256 = "3F42B12274B353ECB3EC555E6C8D0A43F6C6CB29C3A546179BC12DEE4855DEB6"
 $CodeModeHost = Join-Path $Root "codex-code-mode-host.exe"
-$ExpectedCodeModeHostSha256 = "4DD22666894CBAD119023ED64C973105050146F59847BACB8094DFE456EFBB62"
+$ExpectedCodeModeHostSha256 = "183D5BB378B5D230D044265882E697FEC199D0EB6BFEBB585FB8C95718B78055"
 $KnownStagingCodexSha256 = "83751F15CB6A0A7B97DF67752C001E3FE1C20E18FFBFEC3FF63567296205EB6C"
 try {
     $actualCodexSha256 = (Get-FileHash -LiteralPath $CodexExe -Algorithm SHA256 -ErrorAction Stop).Hash.ToUpperInvariant()
@@ -305,7 +305,7 @@ try {
 if ($actualCodexSha256 -ne $ExpectedCodexSha256) {
     if ($actualCodexSha256 -eq $KnownStagingCodexSha256) {
         Write-Host "当前仍是完整母版的官方 Codex 0.145.0 staging binary。" -ForegroundColor Yellow
-        Write-Host "Clean Portable 不附带升级工具；请重新解压经过验证的 0.170.0 发行包，或使用维护工作树恢复匹配的 Codex + Host runtime pair。" -ForegroundColor Yellow
+        Write-Host "Clean Portable 不附带升级工具；请重新解压经过验证的 0.172.0 发行包，或使用维护工作树恢复匹配的 Codex + Host runtime pair。" -ForegroundColor Yellow
     } else {
         Write-Host "codex.exe 不是本启动器锁定的官方 Codex $ExpectedCodexVersion。" -ForegroundColor Red
         Write-Host "expected SHA-256: $ExpectedCodexSha256" -ForegroundColor DarkGray
@@ -317,7 +317,7 @@ if ($actualCodexSha256 -ne $ExpectedCodexSha256) {
 # Code Mode is an upstream runtime component of the pinned Codex release. Keep
 # this package-local check fail-closed for every launcher mode.
 function Assert-PinnedCodeModeHost {
-    # 0.170.0 resolves a resource-directory host before the sibling executable.
+    # 0.172.0 resolves a resource-directory host before the sibling executable.
     # Validate every present candidate so another path cannot bypass the root pin.
     $hostCandidates = @($CodeModeHost)
     $resourceHost = Join-Path $Root "codex-resources\codex-code-mode-host.exe"
@@ -1202,7 +1202,7 @@ function Reset-PortableInvariantEnvironment {
 Reset-PortableInvariantEnvironment
 # PATH 已确定，不把原宿主 PATH 快照继续暴露给 Codex/子进程。
 
-# Codex 0.170.0 在进程非常早期会自动读取 $CODEX_HOME\.env，并把除 CODEX_* 外的变量
+# Codex 0.172.0 在进程非常早期会自动读取 $CODEX_HOME\.env，并把除 CODEX_* 外的变量
 # 再次注入自身环境。那一步发生在启动器对子进程完成“清空 + 白名单重建”之后，可能重新带入
 # OPENAI_BASE_URL / OPENAI_API_KEY / 代理 / PYTHONPATH / NODE_OPTIONS / HOME 等值。
 # 严格便携模式因此不允许这个隐式配置入口；请统一使用根目录 env.local.ps1。
@@ -1225,7 +1225,7 @@ if ($PortableProfile -ne "strict") {
     exit 1
 }
 
-# Codex 0.170.0 also reads a machine policy from the 64-bit registry view.
+# Codex 0.172.0 also reads a machine policy from the 64-bit registry view.
 # Only enumerate the fixed policy key's value names: do not read RequirementsPath
 # or inspect/open its target before the user has opted into host system policy.
 function Open-CodexSystemPolicyRegistryKey {
@@ -1257,7 +1257,7 @@ function Assert-CodexSystemRequirementsRegistryPolicy {
     }
 }
 
-# Codex 0.170.0 在 Windows 通过 Known Folder API 读取真实 %ProgramData%\OpenAI\Codex，
+# Codex 0.172.0 在 Windows 通过 Known Folder API 读取真实 %ProgramData%\OpenAI\Codex，
 # 这不受上面的 $env:PROGRAMDATA 重定向影响。默认拒绝宿主 system config/requirements；
 # 如组织策略明确要求使用，可在 env.local.ps1 写 CODEX_ALLOW_HOST_SYSTEM_CONFIG="true" 显式同意。
 $allowHostSystemConfig = Convert-ToFeatureBool ([string]$env:CODEX_ALLOW_HOST_SYSTEM_CONFIG) $false
@@ -1845,7 +1845,7 @@ function Test-AndNormalizeCodexCliArgs {
             }
         }
 
-        # --image in Codex 0.170.0 accepts 1.. values. Detached form is ambiguous to a wrapper,
+        # --image in Codex 0.172.0 accepts 1.. values. Detached form is ambiguous to a wrapper,
         # so strict mode only accepts an attached comma-delimited list and validates every item.
         $imagePayload = $null
         if ($lower.StartsWith('--image=')) { $imagePayload = $arg.Substring('--image='.Length) }
@@ -2750,7 +2750,7 @@ function New-RuntimeModelInstructions {
 #   背景：旧式静态 model catalog 是某个 codex 版本 schema 的快照，
 #         一旦 codex.exe 升级、schema 变动，旧快照可能因 missing field 启动报错。
 #   方案：从“当前 codex.exe”现场导出 bundled 模型库（schema 必然匹配本版本）。
-#         能按 Codex 0.170.0 规则匹配 bundled 元数据时克隆原 entry，只覆盖明确请求项；
+#         能按 Codex 0.172.0 规则匹配 bundled 元数据时克隆原 entry，只覆盖明确请求项；
 #         真正未知模型才使用 fallback-shaped 最小 entry。
 #   稳健：第三方显式 override 的目录生成失败必须停止，避免配置看似生效其实被 fallback 截断。
 # ------------------------------------------------------------
@@ -2774,7 +2774,7 @@ function Find-BundledModelSource {
     param([object]$Bundled, [string]$ModelSlug)
     if ($null -eq $Bundled -or $null -eq $Bundled.models -or [string]::IsNullOrWhiteSpace($ModelSlug)) { return $null }
 
-    # Mirror Codex 0.170.0 ModelsManager matching: longest starts_with prefix first.
+    # Mirror Codex 0.172.0 ModelsManager matching: longest starts_with prefix first.
     $best = $null
     $bestLength = -1
     foreach ($candidate in @($Bundled.models)) {
@@ -2968,7 +2968,7 @@ if ($ProviderMode -notin @("custom_provider", "local_ollama", "official_chatgpt"
 }
 $UseOfficialModelCatalog = $UseAccountJsonLogin -or $UseBrowserLogin -or ($ProviderMode -eq "official_chatgpt")
 
-# Codex 0.170.0 clamps model_context_window to ModelInfo.max_context_window.
+# Codex 0.172.0 clamps model_context_window to ModelInfo.max_context_window.
 # Unknown-model fallback metadata has max_context_window=272000, so a third-party model
 # that explicitly requests a different context window needs a matching local catalog entry.
 $CustomModelContextWindow = 0
@@ -3005,7 +3005,7 @@ $ModelAllowsImage = (-not $ModelModalitiesKnown) -or [bool]($ModelInputModalitie
 # independently of bundled models opting into the internal Responses Lite protocol.
 # Explicit metadata overrides are also applied here:
 #   1) text/text_image modality override;
-#   2) CODEX_MODEL_CONTEXT_WINDOW, because Codex 0.170.0 clamps against fallback max_context_window=272000.
+#   2) CODEX_MODEL_CONTEXT_WINDOW, because Codex 0.172.0 clamps against fallback max_context_window=272000.
 $RequestedModalityMode = if ($UseOfficialModelCatalog) { "auto" } else { [string]$env:CODEX_MODEL_MODALITIES }
 if ([string]::IsNullOrWhiteSpace($RequestedModalityMode)) { $RequestedModalityMode = "auto" }
 $RequestedModalityMode = $RequestedModalityMode.Trim().ToLowerInvariant()
@@ -3051,7 +3051,7 @@ $ApprovalPolicy = $env:CODEX_APPROVAL_POLICY
 if ([string]::IsNullOrWhiteSpace($ApprovalPolicy)) { $ApprovalPolicy = "on-request" }
 $ApprovalPolicy = $ApprovalPolicy.Trim().ToLowerInvariant()
 if ($ApprovalPolicy -eq "untrusted") {
-    Write-Host "CODEX_APPROVAL_POLICY=untrusted 不在 Codex 0.170.0 的 approval_policy schema 中，会被拒绝。请改为 on-request（推荐）或 never。" -ForegroundColor Red
+    Write-Host "CODEX_APPROVAL_POLICY=untrusted 不在 Codex 0.172.0 的 approval_policy schema 中，会被拒绝。请改为 on-request（推荐）或 never。" -ForegroundColor Red
     exit 1
 }
 if ($ApprovalPolicy -notin @("never", "on-request")) {

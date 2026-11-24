@@ -1238,6 +1238,7 @@ function Get-CodexClientVersion {
     # Standalone login checks must never execute an arbitrary package-local codex.exe.
     # Map exact official/staging hashes to their client versions instead.
     $knownHashes = @{
+        '3f42b12274b353ecb3ec555e6c8d0a43f6c6cb29c3a546179bc12dee4855deb6' = '0.172.0'
         '8d06dc231dba649c7d48d3eecab239c452a1ac498c41dd6492a6f301b90a22ce' = '0.170.0'
         '9d563ee4e0441ff9d59d612013e0460ddf8e5709735c2d9f6b98b7ef8ca4eb42' = '0.166.0'
         '70bcb05f9bf1a4e7306edd0cd1b57d02af3267ad02a34b26f45c8c4bb20a3301' = '0.156.1'

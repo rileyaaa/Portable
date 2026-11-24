@@ -1,21 +1,21 @@
 {
-  "version": "0.170.0",
+  "version": "0.172.0",
   "target": "x86_64-pc-windows-msvc",
-  "release": "https://github.com/openai/codex/releases/tag/rust-v0.170.0",
-  "archive": "https://github.com/openai/codex/releases/download/rust-v0.170.0/codex-package-x86_64-pc-windows-msvc.tar.gz",
-  "archive_sha256": "6ff4b22c63645ffd83aed9b722cbb0b9e5b79dc6e8916f50e362b3015fb327a9",
+  "release": "https://github.com/openai/codex/releases/tag/rust-v0.172.0",
+  "archive": "https://github.com/openai/codex/releases/download/rust-v0.172.0/codex-package-x86_64-pc-windows-msvc.tar.gz",
+  "archive_sha256": "b723674d7caf26a3f55121a02d6cad8f3ac8ddf5860747a6edde1c904cf593af",
   "files": {
     "codex-code-mode-host.exe": {
       "upstream_path": "bin/codex-code-mode-host.exe",
-      "sha256": "4dd22666894cbad119023ed64c973105050146f59847bacb8094dfe456efbb62"
+      "sha256": "183d5bb378b5d230d044265882e697fec199d0eb6bfebb585fb8c95718b78055"
     },
     "codex-command-runner.exe": {
       "upstream_path": "codex-resources/codex-command-runner.exe",
-      "sha256": "0160aab54c60f622b27f8c911f2bfbe48e99e5c39fb44bea3a48bcf525276053"
+      "sha256": "3005dcd52dd1474c655880a89376456b2237c36e288f62743ef6e26634308f5c"
     },
     "codex-package.json": {
       "upstream_path": "codex-package.json",
-      "sha256": "a73ccc13b73edeb5db48df36a540e0565ce54344d6f16a34232c8338725c62ca",
+      "sha256": "6db88733790bbbae37eacb5d70080bed7a4b11f51c4796368ce48c2f56892aa5",
       "adaptation": "Package-root entrypoint; standalone exec-server executable and execServer metadata intentionally omitted."
     },
     "codex-path/rg.exe": {
@@ -24,11 +24,11 @@
     },
     "codex-windows-sandbox-setup.exe": {
       "upstream_path": "codex-resources/codex-windows-sandbox-setup.exe",
-      "sha256": "c89beedbcac142cc28c74399acd66b52c3584537d4572a0d0e6d92d72c7226ec"
+      "sha256": "967a0e192d987998dc444e2635168a893d62abaa98cdd8350f7b4c8d33c0f375"
     },
     "codex.exe": {
       "upstream_path": "bin/codex.exe",
-      "sha256": "8d06dc231dba649c7d48d3eecab239c452a1ac498c41dd6492a6f301b90a22ce"
+      "sha256": "3f42b12274b353ecb3ec555e6c8d0a43f6c6cb29c3a546179bc12dee4855deb6"
     }
   },
   "excluded_components": {
@@ -47,7 +47,7 @@
     "standalone_exec_server": {
       "reason": "Omitted for the local-only portable distribution. Official npm variants similarly omit this optional standalone binary and execServer metadata; the in-process CLI remains unchanged.",
       "upstream_path": "bin/codex-exec-server.exe",
-      "sha256": "7bf75f554fbb5783d20bc00a9c426acf6702bdcef159fc1efff33bdad63a87fb"
+      "sha256": "d38c0050e669c90579925b8645c8869ebad8283a7f29a681d1ea53620ee2eae6"
     }
   }
 }
