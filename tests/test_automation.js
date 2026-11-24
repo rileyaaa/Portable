@@ -50,6 +50,47 @@ test('path guards reject traversal, hard links and linked ancestors', () => {
   }
 });
 
+test('tree walk avoids repeated leaf and empty-directory stats, still rejects links', () => {
+  const scratch = bridge.checkedPath(root, 'tmp', {directory:true, missing:true});
+  fs.mkdirSync(scratch, {recursive:true});
+  const fixture = fs.mkdtempSync(path.join(scratch, 'tree-stat-test-'));
+  const file = path.join(fixture, 'file.txt'), empty = path.join(fixture, 'empty');
+  const originalLstat = fs.lstatSync, originalRead = fs.readdirSync;
+  try {
+    fs.writeFileSync(file, 'synthetic');
+    fs.mkdirSync(empty);
+    const counts = new Map();
+    fs.lstatSync = function(candidate, ...args) {
+      counts.set(candidate, (counts.get(candidate) ?? 0) + 1);
+      return originalLstat.call(this, candidate, ...args);
+    };
+    bridge.checkTree(fixture, fixture);
+    assert.equal(counts.get(file), 1);
+    assert.equal(counts.get(empty), 1);
+    assert.throws(() => bridge.checkedPath(fixture, 'missing'), /ENOENT/);
+    assert.equal(bridge.checkedPath(fixture, 'missing', {missing:true}), path.join(fixture, 'missing'));
+    assert.throws(() => bridge.checkedPath(fixture, 'file.txt/child', {missing:true}), /file type/);
+    fs.lstatSync = originalLstat;
+    const linked = path.join(fixture, 'linked');
+    fs.symlinkSync(empty, linked, process.platform === 'win32' ? 'junction' : 'dir');
+    let enumerated = false;
+    fs.readdirSync = function(candidate, ...args) {
+      if (candidate === linked) enumerated = true;
+      return originalRead.call(this, candidate, ...args);
+    };
+    assert.throws(() => bridge.checkTree(fixture, fixture), /Links/);
+    assert.equal(enumerated, false);
+    fs.readdirSync = originalRead;
+    fs.rmSync(linked);
+    fs.linkSync(file, path.join(fixture, 'hardlink'));
+    assert.throws(() => bridge.checkTree(fixture, fixture), /Links/);
+  } finally {
+    fs.lstatSync = originalLstat;
+    fs.readdirSync = originalRead;
+    fs.rmSync(fixture, {recursive:true, force:true});
+  }
+});
+
 test('browser configuration reuses only the package-local persistent state', () => {
   const scratch = bridge.checkedPath(root, 'tmp', {directory: true, missing: true});
   fs.mkdirSync(scratch, {recursive: true});
@@ -157,6 +198,48 @@ test('persistent browser owner is lazy, closes explicitly and serializes reopen'
   await assert.rejects(owner.get(), /ended/);
 });
 
+test('failed browser close cannot open another context on the same profile', async () => {
+  let starts = 0, failClose = true;
+  const chromium = {async launchPersistentContext() {
+    starts++;
+    const context = new EventEmitter();
+    context.close = async () => {
+      if (failClose) { failClose = false; throw new Error('synthetic close failure'); }
+      context.emit('close');
+    };
+    return context;
+  }};
+  const owner = bridge.createBrowserOwner(chromium, {userDataDir:'synthetic/profile'});
+  const first = await owner.get();
+  await assert.rejects(owner.close(), /synthetic close failure/);
+  await assert.rejects(owner.get(), /Previous browser close failed/);
+  assert.equal(starts, 1);
+  await owner.close();
+  assert.notEqual(await owner.get(), first);
+  assert.equal(starts, 2);
+  await owner.dispose();
+});
+
+test('launch failure and externally confirmed close allow retry', async () => {
+  let starts = 0;
+  const chromium = {async launchPersistentContext() {
+    if (++starts === 1) throw new Error('synthetic launch failure');
+    const context = new EventEmitter();
+    context.close = async () => { throw new Error('synthetic close failure'); };
+    return context;
+  }};
+  const owner = bridge.createBrowserOwner(chromium, {userDataDir:'synthetic/profile'});
+  await assert.rejects(owner.get(), /synthetic launch failure/);
+  const first = await owner.get();
+  await assert.rejects(owner.close(), /synthetic close failure/);
+  first.emit('close');
+  const reopened = await owner.get();
+  assert.notEqual(reopened, first);
+  assert.equal(starts, 3);
+  reopened.emit('close');
+  await owner.dispose();
+});
+
 test('tool policy blocks host execution, uploads, installation and local-file navigation', () => {
   for (const name of ['browser_run_code_unsafe', 'browser_file_upload', 'browser_install', 'browser_config'])
     assert.throws(() => bridge.validateToolCall(root, {name, arguments: {}}), /not enabled/);
@@ -210,6 +293,53 @@ test('transport strips client roots and refuses requests without forwarding them
   assert.ok(!Object.hasOwn(sanitized, '_meta'));
 });
 
+test('cancellation frees slots, drops late results and preserves the active request cap', async () => {
+  const inner = new MemoryTransport();
+  const policy = new bridge.PolicyTransport(inner, root);
+  const forwarded = [];
+  policy.onmessage = message => forwarded.push(message);
+  await policy.start();
+  const receive = (method, id, params) => inner.onmessage({jsonrpc:'2.0', method,
+    ...(id === undefined ? {} : {id}), ...(params === undefined ? {} : {params})});
+  receive('initialize', 'init', {capabilities:{}});
+  receive('notifications/cancelled', undefined, {requestId:'init'});
+  assert.equal(policy.pending.get('init'), 'initialize');
+  await policy.send({jsonrpc:'2.0', id:'init', result:{}});
+  for (let i=1; i<=130; i++) {
+    receive('ping', i);
+    receive('notifications/cancelled', undefined, {requestId:i, reason:'synthetic timeout'});
+  }
+  assert.equal(policy.pending.size, 0);
+  assert.equal(forwarded.filter(m => m.method === 'ping').length, 130);
+  const sentBefore = inner.sent.length;
+  await policy.send({jsonrpc:'2.0', id:1, result:{}});
+  assert.equal(inner.sent.length, sentBefore);
+  receive('ping', 200);
+  receive('notifications/cancelled', undefined, {requestId:200, reason:7});
+  assert.equal(policy.pending.get(200), 'ping');
+  await policy.send({jsonrpc:'2.0', id:200, result:{}});
+  for (let id=300; id<428; id++) receive('ping', id);
+  const rejected = await inner.request({jsonrpc:'2.0', id:428, method:'ping'});
+  assert.match(rejected.error.message, /Too many/);
+  assert.equal(policy.pending.size, 128);
+  await policy.close();
+  assert.equal(policy.pending.size, 0);
+});
+
+test('cancelled local close still finishes without an obsolete response', async () => {
+  const inner = new MemoryTransport();
+  let finishClose;
+  const policy = new bridge.PolicyTransport(inner, root, () => new Promise(resolve => { finishClose = resolve; }));
+  await policy.start();
+  inner.onmessage({jsonrpc:'2.0', id:40, method:'tools/call', params:{name:'browser_close'}});
+  await new Promise(resolve => setImmediate(resolve));
+  inner.onmessage({jsonrpc:'2.0', method:'notifications/cancelled', params:{requestId:40}});
+  finishClose();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(policy.pending.size, 0);
+  assert.equal(inner.sent.length, 0);
+});
+
 test('browser_close closes the owned context without forwarding or starting a browser', async () => {
   const inner = new MemoryTransport();
   let closed = 0, forwarded = 0;
@@ -254,6 +384,17 @@ test('real pinned MCP initializes and lists filtered tools without browser start
     assert.ok(response.result.tools.some(t => t.name === 'browser_navigate'));
     for (const tool of response.result.tools) assert.ok(bridge.allowedTools.has(tool.name));
     assert.ok(!response.result.tools.some(t => /run_code|upload|install/.test(t.name)));
+    // Actual pinned SDK, not just a transport double.
+    for (let id=100; id<230; id++) {
+      inner.onmessage({jsonrpc:'2.0', id, method:'ping'});
+      inner.onmessage({jsonrpc:'2.0', method:'notifications/cancelled', params:{requestId:id}});
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    assert.equal(policy.pending.size, 0);
+    const ping = await inner.request({jsonrpc:'2.0', id:230, method:'ping'});
+    assert.ok(ping.result);
+    assert.equal(policy.pending.size, 0);
+    assert.ok(!inner.sent.some(m => typeof m.id === 'number' && m.id >= 100 && m.id < 230));
   } finally { await server.close(); }
 });
 

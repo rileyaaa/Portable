@@ -32,18 +32,18 @@ function checkedPath(root, input, {directory = false, missing = false} = {}) {
     if (parent === current) break;
     current = parent;
   }
+  // Reuse the leaf stat from this same ancestor walk for its type check.
+  let leaf;
   for (const current of ancestors.reverse()) {
     try {
       const stat = fs.lstatSync(current);
       if (stat.isSymbolicLink() || (stat.isFile() && stat.nlink !== 1))
         throw new Error('Links are not permitted');
+      if (current === full) leaf = stat;
+      else if (!stat.isDirectory()) throw new Error('Unexpected package file type');
     } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
+      if (error.code !== 'ENOENT' || (current === full && !missing)) throw error;
     }
-  }
-  let leaf;
-  try { leaf = fs.lstatSync(full); } catch (error) {
-    if (error.code !== 'ENOENT' || !missing) throw error;
   }
   if (leaf && (directory ? !leaf.isDirectory() : !leaf.isFile()))
     throw new Error('Unexpected package file type');
@@ -54,8 +54,9 @@ function checkTree(root, directory) {
   checkedPath(root, directory, {directory: true});
   for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {
     const candidate = path.join(directory, entry.name);
-    checkedPath(root, candidate, {directory: entry.isDirectory()});
+    // Recursion validates the directory and all ancestors before enumeration.
     if (entry.isDirectory()) checkTree(root, candidate);
+    else checkedPath(root, candidate);
   }
 }
 
@@ -134,11 +135,15 @@ function browserConfiguration(root, executable, headed, environment = process.en
 }
 
 function createBrowserOwner(chromium, configuration) {
-  let current = null, closing = null, disposed = false;
+  let current = null, closing = null, disposed = false, closeFailed = false;
+  const forget = pending => {
+    if (current === pending) { current = null; closeFailed = false; }
+  };
   return {
     async get() {
       if (closing) await closing;
       if (disposed) throw new Error('Browser task has ended');
+      if (closeFailed) throw new Error('Previous browser close failed; retry browser_close before reopening');
       if (!current) {
         const pending = chromium.launchPersistentContext(configuration.userDataDir, {
           ...configuration.launchOptions, ...configuration.contextOptions,
@@ -146,9 +151,9 @@ function createBrowserOwner(chromium, configuration) {
         current = pending;
         try {
           const context = await pending;
-          context.once('close', () => { if (current === pending) current = null; });
+          context.once('close', () => forget(pending));
         } catch (error) {
-          if (current === pending) current = null;
+          forget(pending);
           throw error;
         }
       }
@@ -159,8 +164,14 @@ function createBrowserOwner(chromium, configuration) {
       const pending = current;
       if (!pending) return;
       closing = (async () => {
-        try { await (await pending).close(); }
-        finally { if (current === pending) current = null; }
+        try {
+          await (await pending).close();
+          forget(pending);
+        } catch (error) {
+          // A failed close does not prove the profile was released.
+          if (current === pending) closeFailed = true;
+          throw error;
+        }
       })();
       try { await closing; } finally { closing = null; }
     },
@@ -200,6 +211,7 @@ class PolicyTransport {
   }
   async start() {
     this.inner.onmessage = message => {
+      let admitted = false;
       try {
         if (!message || message.jsonrpc !== '2.0') throw new Error('Invalid JSON-RPC message');
         const method = message.method;
@@ -209,13 +221,24 @@ class PolicyTransport {
         } else if (method === 'tools/call') {
           const args = validateToolCall(this.workspace, message.params);
           message = {...message, params: {...message.params, arguments: args}};
-        } else if (!['tools/list', 'ping', 'notifications/initialized', 'notifications/cancelled'].includes(method)) {
+        } else if (method === 'notifications/cancelled') {
+          if (message.id !== undefined) throw new Error('Cancellation must be a notification');
+          const {requestId, reason} = message.params ?? {};
+          if (this.pending.get(requestId) === 'initialize') return;
+          if ((typeof requestId === 'string' || Number.isSafeInteger(requestId)) &&
+              (reason === undefined || typeof reason === 'string')) {
+            // SDK 1.29 deliberately sends no result for cancelled requests.
+            // Release the slot; the upstream notification handles cancellation.
+            this.pending.delete(requestId);
+          }
+        } else if (!['tools/list', 'ping', 'notifications/initialized'].includes(method)) {
           throw new Error('MCP method is not enabled by the portable browser policy');
         }
         if (message.id !== undefined) {
           if (this.pending.size >= 128 || this.pending.has(message.id))
             throw new Error('Too many or duplicate requests');
           this.pending.set(message.id, method);
+          admitted = true;
         }
         if (method === 'tools/call' && message.params.name === 'browser_close' && this.closeBrowser) {
           // The pinned API disposes its backend without closing the supplied context.
@@ -230,26 +253,29 @@ class PolicyTransport {
         }
         this.onmessage?.(message);
       } catch (error) {
+        if (admitted) this.pending.delete(message.id);
         if (message?.id !== undefined)
           void Promise.resolve().then(() => this.inner.send({
             jsonrpc: '2.0', id: message.id, error: {code: -32602, message: error.message},
           })).catch(sendError => this.onerror?.(sendError));
       }
     };
-    this.inner.onclose = () => this.onclose?.();
+    this.inner.onclose = () => { this.pending.clear(); this.onclose?.(); };
     this.inner.onerror = error => this.onerror?.(error);
     await this.inner.start();
   }
   async send(message) {
     if (message.id !== undefined && !message.method) {
       const method = this.pending.get(message.id);
+      // Discard results racing with cancellation or connection shutdown.
+      if (method === undefined) return;
       this.pending.delete(message.id);
       if (method === 'tools/list' && message.result?.tools)
         message = {...message, result: {...message.result, tools: message.result.tools.filter(t => allowedTools.has(t.name))}};
     }
     return this.inner.send(message);
   }
-  async close() { return this.inner.close(); }
+  async close() { this.pending.clear(); return this.inner.close(); }
 }
 
 async function main() {
