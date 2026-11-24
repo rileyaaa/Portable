@@ -2377,8 +2377,8 @@ function Resolve-JobTimeoutSec {
 }
 
 function New-ProbeErrorResult {
-    param([string]$Path, [string]$Message)
-    $result = New-ScanResult $Path
+    param([string]$Path, [string]$Message, $Entry = $null)
+    $result = New-ScanResult -Path $Path -Entry $Entry
     $result.Status = "ERROR_KEPT"
     $result.Message = $Message
     return (ConvertTo-ResultRecord $result)
@@ -2424,7 +2424,7 @@ function Receive-CompletedProbeJobs {
                 Write-ScanResultProgress -Result $record -Done $Results.Count -Total $script:LoginJsonProgressTotal
                 Save-PartialReport -Results $Results
             } catch {
-                $record = (New-ProbeErrorResult -Path $item.FilePath -Message ("failed to read probe result: " + (ConvertTo-SafeMessage $_.Exception.Message)))
+                $record = (New-ProbeErrorResult -Path $item.FilePath -Entry $item.Entry -Message ("failed to read probe result: " + (ConvertTo-SafeMessage $_.Exception.Message)))
                 $Results.Add($record) | Out-Null
                 Write-ScanResultProgress -Result $record -Done $Results.Count -Total $script:LoginJsonProgressTotal
                 Save-PartialReport -Results $Results
@@ -2436,7 +2436,7 @@ function Receive-CompletedProbeJobs {
             } elseif (-not $timedOut -and $job.State -ne "Completed") {
                 $msg = "probe job state: $($job.State)"
             }
-            $record = (New-ProbeErrorResult -Path $item.FilePath -Message $msg)
+            $record = (New-ProbeErrorResult -Path $item.FilePath -Entry $item.Entry -Message $msg)
             $Results.Add($record) | Out-Null
             Write-ScanResultProgress -Result $record -Done $Results.Count -Total $script:LoginJsonProgressTotal
             Save-PartialReport -Results $Results
@@ -2509,6 +2509,13 @@ function Invoke-ParallelCredentialChecks {
             $jobs.Add([pscustomobject]@{
                 Job = $job
                 FilePath = $target.Path
+                # Preserve only report identity, never credential contents.
+                Entry = [pscustomobject]@{
+                    File = $target.File
+                    CredentialIndex = $target.CredentialIndex
+                    Source = $target.Source
+                    DeleteAllowed = $target.DeleteAllowed
+                }
                 ResultPath = $resultPath
                 StartedAtUtc = (Get-Date).ToUniversalTime()
                 TimeoutSec = $jobTimeoutSec
@@ -2717,6 +2724,13 @@ function Write-AuthJson {
     }
     if ([string]::IsNullOrWhiteSpace($cred.AccountId)) {
         throw "Selected credential is missing account_id/chatgpt_account_id."
+    }
+    # A cached report is not authorization to import a different account at
+    # the same path/index. Check before creating the auth transition marker.
+    if ($Selection.PSObject.Properties["AccountId"] -and
+        -not [string]::IsNullOrWhiteSpace([string]$Selection.AccountId) -and
+        ([string]$Selection.AccountId -cne [string]$cred.AccountId)) {
+        throw "Selected credential no longer matches the reported account ID. Run the existing login_json check again before selecting an account."
     }
     $idTokenForAuth = $cred.IdToken
     if ([string]::IsNullOrWhiteSpace($idTokenForAuth) -and -not [string]::IsNullOrWhiteSpace($cred.AccessToken) -and $cred.AccessToken.Contains(".")) {
