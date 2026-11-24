@@ -2521,6 +2521,7 @@ function Append-TomlSet {
 }
 
 $script:CodexProxyBridgeProcess = $null
+$script:CodexProxyBridgeJob = $null
 
 function Test-TcpPortOpen {
     param([string]$HostName, [int]$Port, [int]$TimeoutMs = 700)
@@ -2630,7 +2631,13 @@ function Start-CodexSocksHttpBridge {
         Set-ProcessEnvironmentValue $psi "PYTHONDONTWRITEBYTECODE" "1"
         Set-ProcessEnvironmentValue $psi "PYTHONNOUSERSITE" "1"
         Set-ProcessEnvironmentValue $psi "CODEX_PROXY_BRIDGE_TOKEN" $bridgeToken
-        $script:CodexProxyBridgeProcess = [System.Diagnostics.Process]::Start($psi)
+        # Own the bridge for the entire launcher lifetime, including forced
+        # termination when PowerShell finally blocks cannot run. The existing
+        # supervisor attaches the suspended child before any code executes.
+        Import-CodexProcessSupervisor
+        Initialize-PortableProcessJob -PackageRoot $Root
+        $script:CodexProxyBridgeJob = New-Object CodexPortable.ProcessJobR20
+        $script:CodexProxyBridgeProcess = New-Object CodexPortable.SuspendedChildR20 -ArgumentList $psi,$script:CodexProxyBridgeJob
         for ($i = 0; $i -lt 25; $i++) {
             Start-Sleep -Milliseconds 120
             if (-not $script:CodexProxyBridgeProcess.HasExited -and (Test-TcpPortOpen -HostName $bridgeHost -Port $bridgePort -TimeoutMs 200)) {
@@ -2643,19 +2650,18 @@ function Start-CodexSocksHttpBridge {
         $bridgeFailure = $_.Exception.Message
     }
 
-    try {
-        if ($null -ne $script:CodexProxyBridgeProcess -and -not $script:CodexProxyBridgeProcess.HasExited) {
-            $script:CodexProxyBridgeProcess.Kill()
-            [void]$script:CodexProxyBridgeProcess.WaitForExit(3000)
-        }
-    } catch {}
-    try { if ($null -ne $script:CodexProxyBridgeProcess) { $script:CodexProxyBridgeProcess.Dispose() } } catch {}
-    $script:CodexProxyBridgeProcess = $null
+    Stop-CodexSocksHttpBridge
     if ([string]::IsNullOrWhiteSpace($bridgeFailure)) { $bridgeFailure = "bridge 未在超时内进入监听状态" }
     throw "CODEX_PROXY_HTTP_BRIDGE=true，但 SOCKS HTTP bridge 启动失败：$bridgeFailure"
 }
 
 function Stop-CodexSocksHttpBridge {
+    # Terminate the owned job first; closing the last job handle also kills
+    # the bridge if explicit termination fails. Retain the direct child
+    # cleanup as a final bounded fallback, and make repeated stops harmless.
+    try { if ($null -ne $script:CodexProxyBridgeJob) { $script:CodexProxyBridgeJob.Terminate() } } catch {}
+    try { if ($null -ne $script:CodexProxyBridgeJob) { $script:CodexProxyBridgeJob.Dispose() } } catch {}
+    $script:CodexProxyBridgeJob = $null
     try {
         if ($null -ne $script:CodexProxyBridgeProcess -and -not $script:CodexProxyBridgeProcess.HasExited) {
             $script:CodexProxyBridgeProcess.Kill()

@@ -1,0 +1,50 @@
+name: Proxy bridge lifetime regression (one time)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/proxy-bridge-lifetime-validation-20261124.yml']
+permissions:
+  contents: read
+jobs:
+  native:
+    if: >-
+      startsWith(github.event.head_commit.message, 'fix(proxy): own bridge in existing Windows job')
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Preserve original bytes
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+          lfs: true
+          persist-credentials: false
+      - name: Reproduce orphaned bridge and verify actual Windows lifetime
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_proxy_bridge_lifetime.ps1 -BaselineCommit 7052241e50eb98830ceb976cd1f9b694b14190b1
+          if ($LASTEXITCODE -ne 0) { throw 'Bridge baseline reproduction failed' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_proxy_bridge_lifetime.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Bridge lifecycle regression failed' }
+      - name: Existing native process and launcher regressions
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('test_automation_process','test_launcher_argument_boundaries','test_cli_model_options','test_portable_config','test_launcher_smoke','test_auth_credential_structure','test_auth_fresh_transition','test_auth_snapshot_type')) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests' ($name + '.ps1'))
+            if ($LASTEXITCODE -ne 0) { throw ('Regression failed: ' + $name) }
+          }
+      - name: Runtime mode and release input integrity
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git lfs fsck
+          if ($LASTEXITCODE -ne 0) { throw 'LFS integrity failed' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Python regression failed' }
+          & .\tool\python\python.exe -B .\tool\package-release.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Release input check failed' }
