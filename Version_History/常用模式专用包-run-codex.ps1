@@ -1319,7 +1319,7 @@ foreach ($authStatePath in @($ActiveAuthPath, $AccountJsonAuthPath, $BrowserAuth
 }
 
 function Test-CodexAuthFile {
-    param([string]$Path)
+    param([string]$Path, [switch]$RequireChatGpt)
     if (-not (Test-IsUnderDirectory -Path $Path -Directory $Root)) { return $false }
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
     try {
@@ -1335,7 +1335,7 @@ function Test-CodexAuthFile {
             return (-not [string]::IsNullOrWhiteSpace([string]$auth.tokens.refresh_token)) -or
                    (-not [string]::IsNullOrWhiteSpace([string]$auth.tokens.access_token))
         }
-        if ([string]$auth.auth_mode -eq "apikey") {
+        if (-not $RequireChatGpt -and [string]$auth.auth_mode -eq "apikey") {
             return -not [string]::IsNullOrWhiteSpace([string]$auth.OPENAI_API_KEY)
         }
         return $false
@@ -1405,7 +1405,8 @@ function Copy-CodexAuthAtomic {
         if ($Destination -eq $snapshot -and -not $FreshLogin -and (Test-CodexLogoutBlocked $mode)) { throw 'Logged-out snapshot backup is blocked.' }
     }
     if ($FreshLogin -and ($Source -ne $ActiveAuthPath -or $Destination -notin @($BrowserAuthPath,$AccountJsonAuthPath))) { throw 'Invalid fresh-login snapshot transition.' }
-    if (-not (Test-CodexAuthFile $Source)) {
+    # This copy helper only moves the two official account snapshots.
+    if (-not (Test-CodexAuthFile $Source -RequireChatGpt)) {
         throw "凭证文件无效，拒绝复制：$Source"
     }
     $temporaryPath = "$Destination.tmp-$([System.Guid]::NewGuid().ToString('N'))"
@@ -1415,7 +1416,7 @@ function Copy-CodexAuthAtomic {
         Assert-PortablePath 'auth copy staging' $temporaryPath
         [IO.File]::Copy($Source, $temporaryPath, $false)
         $temporaryOwned = $true
-        if (-not (Test-CodexAuthFile $temporaryPath)) {
+        if (-not (Test-CodexAuthFile $temporaryPath -RequireChatGpt)) {
             throw "凭证临时副本校验失败：$temporaryPath"
         }
         Move-TemporaryFileIntoPlace -TemporaryPath $temporaryPath -Destination $Destination
@@ -1528,10 +1529,10 @@ function Clear-CodexLogoutBlockAfterFreshLogin {
 function Backup-LegacyAccountJsonAuthForBrowser {
     if ((Test-CodexLogoutBlocked 'browser') -or (Test-CodexLogoutBlocked 'account_json')) { return }
     # 兼容改造前的便携包：首次切到浏览器模式时，先保护可能属于选项 2 的旧 auth.json。
-    if (-not (Test-CodexAuthFile $ActiveAuthPath) -or (Test-CodexAuthFile $AccountJsonAuthPath)) { return }
+    if (-not (Test-CodexAuthFile $ActiveAuthPath -RequireChatGpt) -or (Test-CodexAuthFile $AccountJsonAuthPath -RequireChatGpt)) { return }
 
     $activeIsBrowserAuth = $false
-    if (Test-CodexAuthFile $BrowserAuthPath) {
+    if (Test-CodexAuthFile $BrowserAuthPath -RequireChatGpt) {
         try {
             $activeIsBrowserAuth = (Get-FileHash -LiteralPath $ActiveAuthPath -Algorithm SHA256).Hash -eq
                                    (Get-FileHash -LiteralPath $BrowserAuthPath -Algorithm SHA256).Hash
@@ -1550,7 +1551,10 @@ $PreviousAuthMode = Read-CodexAuthMode
 if ($PreviousAuthMode -in @('browser','account_json') -and (Test-CodexLogoutBlocked $PreviousAuthMode)) {
     Remove-PortableAuthStateFile -Path $ActiveAuthPath -Name 'active auth from logged-out mode'
 }
-if (Test-CodexAuthFile $ActiveAuthPath) {
+# A syntactically valid API-key auth file is not an official account
+# credential. Preserve a mismatched active file instead of overwriting
+# a known account snapshot with it.
+if (Test-CodexAuthFile $ActiveAuthPath -RequireChatGpt:($PreviousAuthMode -in @("account_json", "browser"))) {
     if ($PreviousAuthMode -eq "account_json") {
         Copy-CodexAuthAtomic -Source $ActiveAuthPath -Destination $AccountJsonAuthPath
     } elseif ($PreviousAuthMode -eq "browser") {
@@ -1560,7 +1564,7 @@ if (Test-CodexAuthFile $ActiveAuthPath) {
     Move-InvalidCodexAuthFile $ActiveAuthPath
 }
 foreach ($savedAuthPath in @($AccountJsonAuthPath, $BrowserAuthPath)) {
-    if ((Test-Path -LiteralPath $savedAuthPath -PathType Leaf) -and -not (Test-CodexAuthFile $savedAuthPath)) {
+    if ((Test-Path -LiteralPath $savedAuthPath -PathType Leaf) -and -not (Test-CodexAuthFile $savedAuthPath -RequireChatGpt)) {
         Move-InvalidCodexAuthFile $savedAuthPath
     }
 }
@@ -2210,7 +2214,7 @@ if ($ShowStartupMenu) {
         }
         $env:CODEX_MODEL = $LoginResult.model
         $CodexAuthDisplay = "login_json ($($LoginResult.email))"
-        if (-not (Test-CodexAuthFile $ActiveAuthPath)) {
+        if (-not (Test-CodexAuthFile $ActiveAuthPath -RequireChatGpt)) {
             Write-Host "账号 JSON 登录生成的 auth.json 无效：$ActiveAuthPath" -ForegroundColor Red
             exit 1
         }
@@ -2238,7 +2242,7 @@ if ($ShowStartupMenu) {
         }
 
         Backup-LegacyAccountJsonAuthForBrowser
-        $HasBrowserAuth = -not (Test-CodexLogoutBlocked 'browser') -and (Test-CodexAuthFile $BrowserAuthPath)
+        $HasBrowserAuth = -not (Test-CodexLogoutBlocked 'browser') -and (Test-CodexAuthFile $BrowserAuthPath -RequireChatGpt)
 
         Start-CodexAuthTransition
         if ($HasBrowserAuth) {
@@ -2344,7 +2348,7 @@ if (-not $ShowStartupMenu) {
 
     switch ($EffectiveAuthMode) {
         "account_json" {
-            if ((Test-CodexLogoutBlocked 'account_json') -or -not (Test-CodexAuthFile $AccountJsonAuthPath)) {
+            if ((Test-CodexLogoutBlocked 'account_json') -or -not (Test-CodexAuthFile $AccountJsonAuthPath -RequireChatGpt)) {
                 Write-Host "命令行账号 JSON 模式缺少有效凭证：$AccountJsonAuthPath" -ForegroundColor Red
                 exit 1
             }
@@ -2376,7 +2380,7 @@ if (-not $ShowStartupMenu) {
                 Remove-Item "Env:$name" -ErrorAction SilentlyContinue
             }
             Start-CodexAuthTransition
-            if (-not (Test-CodexLogoutBlocked 'browser') -and (Test-CodexAuthFile $BrowserAuthPath)) {
+            if (-not (Test-CodexLogoutBlocked 'browser') -and (Test-CodexAuthFile $BrowserAuthPath -RequireChatGpt)) {
                 Copy-CodexAuthAtomic -Source $BrowserAuthPath -Destination $ActiveAuthPath
             } else {
                 $BrowserLoginRequired = $true
@@ -3435,7 +3439,7 @@ if ($UseBrowserLogin -and $BrowserLoginRequired -and $script:CodexRootCommand -e
 
 if ($UseBrowserLogin -and $BrowserLoginRequired) {
     $BrowserLoginExitCode = Invoke-CodexOfficialAccountLogin -Flow $BrowserLoginFlow
-    if (($BrowserLoginExitCode -ne 0) -or -not (Test-CodexAuthFile $ActiveAuthPath)) {
+    if (($BrowserLoginExitCode -ne 0) -or -not (Test-CodexAuthFile $ActiveAuthPath -RequireChatGpt)) {
         Write-Host "官方账号登录未完成，未生成有效凭证：$ActiveAuthPath" -ForegroundColor Red
         if ($BrowserLoginFlow -eq 'device_auth') {
             Write-Host '请确认账号已启用设备码登录；也可选择账号 JSON，或在 env.local.ps1 明确设置 CODEX_BROWSER_LOGIN_FLOW="system_browser"（会读写宿主浏览器数据）。' -ForegroundColor Yellow
@@ -3564,10 +3568,10 @@ try {
     # Credential snapshots are part of Codex-run cleanup.  Host resource cleanup is
     # intentionally outside this nested block so it also covers failures before the
     # Codex process starts (for example a bridge-success/config-failure path).
-    if ($script:CodexRootCommand -ne 'logout' -and $UseAccountJsonLogin -and -not (Test-CodexLogoutBlocked 'account_json') -and (Test-CodexAuthFile $ActiveAuthPath)) {
+    if ($script:CodexRootCommand -ne 'logout' -and $UseAccountJsonLogin -and -not (Test-CodexLogoutBlocked 'account_json') -and (Test-CodexAuthFile $ActiveAuthPath -RequireChatGpt)) {
         Copy-CodexAuthAtomic -Source $ActiveAuthPath -Destination $AccountJsonAuthPath
     }
-    if ($script:CodexRootCommand -ne 'logout' -and $UseBrowserLogin -and -not (Test-CodexLogoutBlocked 'browser') -and (Test-CodexAuthFile $ActiveAuthPath)) {
+    if ($script:CodexRootCommand -ne 'logout' -and $UseBrowserLogin -and -not (Test-CodexLogoutBlocked 'browser') -and (Test-CodexAuthFile $ActiveAuthPath -RequireChatGpt)) {
         Copy-CodexAuthAtomic -Source $ActiveAuthPath -Destination $BrowserAuthPath
     }
 }

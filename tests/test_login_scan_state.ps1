@@ -152,7 +152,8 @@ try {
     Assert-Case ($scheduled.Count -eq 6 -and $script:Peak -eq 2 -and $script:ActiveJobs.Count -eq 0) 'Existing scheduling concurrency changed.'
     foreach ($p in @($a,$b)) {
         $seq=@($script:Queued | Where-Object { $_.StartsWith($p+'#') })
-        Assert-Case (($seq -join '|') -eq ((@($p+'#0',$p+'#1',$p+'#2')) -join '|')) 'Same-file credential order changed.'
+        $expected = @(0,1,2 | ForEach-Object { $p + '#' + $_ })
+        Assert-Case (($seq -join '|') -ceq ($expected -join '|')) 'Same-file credential order changed.'
     }
     Write-Output 'PASS actual scheduler with job doubles: same-file serialization and different-file concurrency'
 } finally {
