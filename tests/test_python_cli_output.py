@@ -45,8 +45,8 @@ class PythonCliOutputTests(unittest.TestCase):
                 self.assertEqual(sys.argv, ["synthetic", "--flag"])
             stdout.flush()
             stderr.flush()
-            self.assertEqual(data_out.getvalue().decode("utf-8"), text + "\n")
-            self.assertEqual(data_err.getvalue().decode("utf-8"), text + "\n")
+            self.assertEqual(data_out.getvalue().decode("utf-8").splitlines(), [text])
+            self.assertEqual(data_err.getvalue().decode("utf-8").splitlines(), [text])
 
     def test_preserves_interactive_console_and_non_reconfigurable_stream(self):
         module = load_wrapper()

@@ -139,7 +139,7 @@ if ($script:ToolProbeFailures.Count -eq 0) {
     Run-Checked 'fd.exe' @('--version')
     Run-Checked 'jq.exe' @('--version')
     # Exercise 7-Zip without flooding the model's output token budget.
-    & '7z.exe' 'i' | Select-Object -First 5
+    (& '7z.exe' 'i') | Select-Object -First 5
     if ($LASTEXITCODE -ne 0) { throw ('7z exit=' + $LASTEXITCODE) }
     Write-Output 'TOOL_RAN=7z.exe'
     # The actual CLI must resolve the selected portable values, not merely
@@ -157,7 +157,10 @@ if ($script:ToolProbeFailures.Count -eq 0) {
     }
     Check-ToolConfig 'pip.cmd' @('cache','dir') $env:PIP_CACHE_DIR 'PIP_CACHE_DIR'
     Check-ToolConfig 'npm.cmd' @('config','get','cache') $env:NPM_CONFIG_CACHE 'NPM_CONFIG_CACHE'
-    Check-ToolConfig 'npm.cmd' @('config','get','prefix') $env:NPM_CONFIG_PREFIX 'NPM_CONFIG_PREFIX'
+    # Existing wrapper intentionally forces local prefix to the task cwd.
+    # Only an explicitly global command consumes NPM_CONFIG_PREFIX.
+    Check-ToolConfig 'npm.cmd' @('config','get','prefix') (Get-Location).Path 'NPM_LOCAL_PREFIX'
+    Check-ToolConfig 'npm.cmd' @('config','get','prefix','--global') $env:NPM_CONFIG_PREFIX 'NPM_CONFIG_PREFIX'
     Check-ToolConfig 'npm.cmd' @('config','get','userconfig') $env:NPM_CONFIG_USERCONFIG 'NPM_CONFIG_USERCONFIG'
     Check-ToolConfig 'npm.cmd' @('config','get','globalconfig') $env:NPM_CONFIG_GLOBALCONFIG 'NPM_CONFIG_GLOBALCONFIG'
 }
@@ -300,6 +303,7 @@ def handler_for(fixture, mode):
                 "SANDBOX_WRITE_DENIED=outside-workspace-audit.txt",
                 "TOOL_CONFIG_EFFECTIVE=PIP_CACHE_DIR",
                 "TOOL_CONFIG_EFFECTIVE=NPM_CONFIG_CACHE",
+                "TOOL_CONFIG_EFFECTIVE=NPM_LOCAL_PREFIX",
                 "TOOL_CONFIG_EFFECTIVE=NPM_CONFIG_PREFIX",
                 "TOOL_CONFIG_EFFECTIVE=NPM_CONFIG_USERCONFIG",
                 "TOOL_CONFIG_EFFECTIVE=NPM_CONFIG_GLOBALCONFIG",

@@ -1,4 +1,4 @@
-name: Native 0.172.0 core tools, Unicode CLI and policy regression (one time)
+name: Native 0.172.0 core tools and local/global npm config (one time)
 on:
   push:
     branches: [main]
@@ -6,6 +6,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: portable-native-core-0172
+  cancel-in-progress: true
 jobs:
   compare:
     runs-on: windows-latest
