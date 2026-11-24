@@ -108,6 +108,15 @@ def validate_upstream_host(host: str) -> str:
         raise argparse.ArgumentTypeError("invalid SOCKS host")
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in host):
         raise argparse.ArgumentTypeError("invalid SOCKS host")
+    # The launcher accepts IPv6 URI spelling as well as a bare address.
+    # PySocks passes the upstream host to a socket, not to a URI parser.
+    if ":" in host or "[" in host or "]" in host:
+        candidate = host[1:-1] if host.startswith("[") and host.endswith("]") else host
+        try:
+            ipaddress.IPv6Address(candidate)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError("invalid SOCKS IPv6 host") from exc
+        return candidate
     return host
 
 
@@ -337,7 +346,11 @@ class ProxyHandler(socketserver.BaseRequestHandler):
                 and hmac.compare_digest(credentials.lstrip(" "), expected_credentials))
 
     def connect_via_socks(self, host: str, port: int) -> socks.socksocket:
-        upstream = socks.socksocket()
+        # The bundled PySocks socket defaults to AF_INET. Explicit IPv6
+        # proxy literals need AF_INET6; keep the existing IPv4/DNS behavior
+        # and single connection attempt (no new retry or timeout policy).
+        upstream = (socks.socksocket(socket.AF_INET6)
+                    if ":" in self.socks_host else socks.socksocket())
         upstream.set_proxy(
             socks.SOCKS5,
             self.socks_host,

@@ -3114,6 +3114,9 @@ if ($ProxyEnabled) {
         Write-Host "CODEX_PROXY_PORT 必须是 1-65535：$ProxyPort" -ForegroundColor Red
         exit 1
     }
+    # Use the validated numeric value in both URI and bridge arguments.
+    # TryParse also accepts signed positive numbers, but URI ports do not.
+    $ProxyPort = $parsedProxyPort.ToString([Globalization.CultureInfo]::InvariantCulture)
 
     $ProxyProtocol = $env:CODEX_PROXY_PROTOCOL
     if ([string]::IsNullOrWhiteSpace($ProxyProtocol)) { $ProxyProtocol = "socks5" }

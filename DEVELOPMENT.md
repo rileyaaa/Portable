@@ -1,8 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-24：代理端口规范化与 IPv6 SOCKS 上游地址复核（源码候选）
+
+保留原 HTTP/SOCKS5、代理开关、模型绕过、直连及超时/单次连接策略。启动器原端口通过 Int32 校验后仍以用户原字符串生成 URI，正数带加号等写法会产生无效 URI；改用已经校验的数值生成 URI 与 bridge 参数，账号 JSON 既有 Get-ProxyUrl 已使用数值，不改该模块。固定包内 PySocks `socksocket` 默认 AF_INET，而启动器原已接受裸 IPv6 与方括号 IPv6 地址，桥接上游使用 IPv4 socket 导致实际失败。bridge 将已支持的 IPv6 字面地址按 socket 所需形式去除括号并使用 AF_INET6，保留 IPv4、DNS 名称的原有路径及现有远端解析策略，不改变地址族自动选择、重试、连接限时、HTTP 转发或认证规则。根及两模式副本同步。新增准确的旧/新生产配置语句对照及真实包内 PySocks 对本机合成 SOCKS5 协议测试，覆盖 IPv4/IPv6、代理关闭、模型绕过，不访问外部 DNS、账号或服务；Windows 结果另记。
+
 ## 2026-11-24：SOCKS HTTP bridge 进程归属复核（源码候选）
 
-保留代理开关、HTTP/SOCKS5、TUN/直连、模型绕过规则、随机或指定回环监听端口、每次启动认证 token 及现有 Python 转发/超时机制。原 bridge 直接 Process.Start，正常退出依赖 finally 清理；若启动器被强制终止，独立监听进程可能继续运行。复用包内现有 ProcessJobR20/SuspendedChildR20，在 bridge 执行前加入独立 kill-on-close Job Object，正常关闭/启动失败统一释放该 job 及子进程，重复清理安全；不改共享进程监管实现或代理协议，不新增依赖、权限或后台服务。根启动器与两模式副本保持一致。新增真实 Windows 合成 bridge 生命周期回归，以进程句柄验证强制终止与正常停止；不使用真实代理账号或外部请求。Windows 结果另记。
+保留代理开关、HTTP/SOCKS5、TUN/直连、模型绕过规则、随机或指定回环监听端口、每次启动认证 token 及现有 Python 转发/超时机制。原 bridge 直接 Process.Start，正常退出依赖 finally 清理；若启动器被强制终止，独立监听进程可能继续运行。复用包内现有 ProcessJobR20/SuspendedChildR20，在 bridge 执行前加入独立 kill-on-close Job Object，正常关闭/启动失败统一释放该 job 及子进程，重复清理安全；不改共享进程监管实现或代理协议，不新增依赖、权限或后台服务。根启动器与两模式副本保持一致。新增真实 Windows 合成 bridge 生命周期回归，以进程句柄验证强制终止与正常停止；不使用真实代理账号或外部请求。[Windows 45355771627](https://github.com/rileyaaa/Portable/actions/runs/45355771627) 已全部通过，实际复现旧进程残留，修订后强制终止/正常退出/重复清理均通过，原生进程、启动器、306 项 Python 和发行输入检查通过，验证提交 `a221d3b668dfdc931a8ea4037a5fb12cca39dbf6`。
 
 ## 2026-11-24：启动器显式认证参数及空输出参数复核（源码候选）
 
