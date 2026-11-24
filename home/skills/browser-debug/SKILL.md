@@ -27,6 +27,10 @@ description: Use only for an explicitly requested web UI test, browser debugging
 
 第二条是前台 stdio MCP 服务入口，应由本次明确选定的 MCP 客户端连接。`-Headed` 显示窗口；没有客户端工具调用时不会启动浏览器。工具仍须限制于已授权操作。不要默认写入全局 MCP 配置。
 
+需要由 Codex 原生 MCP 客户端进行交互探索时，在包内 `env.local.ps1` 设置 `$env:CODEX_PORTABLE_ALLOW_USER_MCP = "true"`，然后从 BAT 启动 `启动Codex.bat --portable-extensions --portable-browser-mcp`。启动器只为本次会话生成 `portable_browser` 服务（固定 `work/browser-debug`），不改写持久 MCP 配置；无需手工维护绝对路径。服务已连接后，`browser_close` 只关闭浏览器并保留 profile，服务退出才释放 profile 独占锁；需要切换为独立任务脚本或清理浏览器时先退出该 MCP 会话。未选择相关任务不得启动该会话。常用模式的任务脚本如需写入持久浏览器资料，沿用正常审批流程，不扩大默认沙箱范围。
+
+浏览器按启动器的有效代理开关显式配置 Playwright HTTP/SOCKS 代理（含本地认证桥）；未授权子进程代理时显式直连，不采用宿主代理。明确命名的输出仍在任务目录内，MCP 自动输出进入独立 `mcp-output-*` 目录，自动淘汰不使用整个任务工作区。
+
 编码助手通常直接写包内任务脚本，不需要注册 MCP。例如将本次已检查的代码保存为 `work/browser-debug/check.cjs`：
 
 ```javascript

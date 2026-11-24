@@ -71,6 +71,16 @@ test('browser configuration reuses only the package-local persistent state', () 
     assert.equal(first.isolated, false);
     assert.equal(first.contextOptions.acceptDownloads, false);
     assert.equal(first.contextOptions.serviceWorkers, 'block');
+    assert.ok(first.launchOptions.args.includes('--no-proxy-server'));
+    const proxied = bridge.browserConfiguration(fixture, executable, false, {
+      ...environment, HTTPS_PROXY: 'http://codex:synthetic%2Dtoken@127.0.0.1:18088',
+      NO_PROXY: 'localhost,127.0.0.1,::1,model.invalid',
+    });
+    assert.deepEqual(proxied.launchOptions.proxy, {
+      server: 'http://127.0.0.1:18088', username: 'codex', password: 'synthetic-token',
+      bypass: 'localhost,127.0.0.1,[::1],model.invalid',
+    });
+    assert.ok(!proxied.launchOptions.args.includes('--no-proxy-server'));
     assert.equal(first.launchOptions.downloadsPath, path.join(state, 'downloads'));
     assert.ok(first.launchOptions.args.includes(`--disk-cache-dir=${path.join(state, 'cache')}`));
     assert.ok(first.launchOptions.args.includes(`--crash-dumps-dir=${path.join(state, 'crashes')}`));
@@ -83,6 +93,32 @@ test('browser configuration reuses only the package-local persistent state', () 
     fs.linkSync(path.join(first.userDataDir, 'synthetic-state'), path.join(state, 'hardlink'));
     assert.throws(() => bridge.browserConfiguration(fixture, executable, false, environment), /Links/);
   } finally { fs.rmSync(fixture, {recursive: true, force: true}); }
+});
+
+test('browser proxy parsing is explicit, rejects ambiguity and never reveals rejected credentials', () => {
+  assert.equal(bridge.browserProxy({}), null);
+  assert.deepEqual(bridge.browserProxy({ALL_PROXY:'socks5h://[::1]:1080'}), {server:'socks5://[::1]:1080'});
+  assert.deepEqual(bridge.browserProxy({HTTP_PROXY:'http://127.0.0.1:80'}), {server:'http://127.0.0.1'});
+  assert.throws(() => bridge.browserProxy({HTTP_PROXY:'http://a:1', HTTPS_PROXY:'http://b:2'}), /Conflicting/);
+  for (const value of ['https://synthetic-secret@host:9','http://u:synthetic-secret@host:9/path','socks5://u:synthetic-secret@host:9']) {
+    assert.throws(() => bridge.browserProxy({ALL_PROXY:value}), error => /Invalid browser proxy/.test(error.message) && !error.message.includes('synthetic-secret'));
+  }
+});
+
+test('MCP automatic outputs have a separate owned directory per service', () => {
+  const scratch = bridge.checkedPath(root, 'tmp', {directory: true, missing: true});
+  fs.mkdirSync(scratch, {recursive: true});
+  const workspace = fs.mkdtempSync(path.join(scratch, 'browser-output-test-'));
+  try {
+    const proof = path.join(workspace, 'user-result.txt');
+    fs.writeFileSync(proof, 'preserve');
+    const first = bridge.createMcpOutputDirectory(workspace), second = bridge.createMcpOutputDirectory(workspace);
+    assert.notEqual(first, second);
+    assert.equal(path.dirname(first), workspace);
+    assert.equal(path.dirname(second), workspace);
+    assert.equal(fs.readFileSync(proof, 'utf8'), 'preserve');
+    assert.equal(bridge.validateToolCall(workspace, {name:'browser_take_screenshot', arguments:{filename:'proof.png'}}).filename, path.join(workspace, 'proof.png'));
+  } finally { fs.rmSync(workspace, {recursive:true, force:true}); }
 });
 
 test('persistent browser owner is lazy, closes explicitly and serializes reopen', async () => {

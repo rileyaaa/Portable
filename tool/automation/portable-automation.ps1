@@ -184,7 +184,7 @@ function New-AutomationStartInfo {
     foreach ($name in @('CODEX_PROXY_ENABLED', 'CODEX_PROXY_FOR_SUBPROCESS',
                         'CODEX_SANDBOX_NETWORK_ACCESS')) {
         $value = [string][Environment]::GetEnvironmentVariable($name)
-        if ($value.Trim() -notmatch '^(?i:1|true|yes|on)$') { $proxyEnabled = $false }
+        if ($value.Trim() -notmatch '^(?i:1|true|yes|y|on)$') { $proxyEnabled = $false }
     }
     if ($proxyEnabled) {
         foreach ($name in @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',

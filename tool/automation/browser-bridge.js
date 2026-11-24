@@ -59,6 +59,47 @@ function checkTree(root, directory) {
   }
 }
 
+// Only proxy values admitted by New-AutomationStartInfo reach this process.
+// Windows Chromium does not reliably interpret the conventional proxy env vars.
+// Use Playwright's explicit proxy options, and explicitly bypass system proxies
+// when the user selected direct mode. Credentials never enter browser CLI args.
+function browserProxy(environment) {
+  const values = ['HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY'].map(key => environment[key]).filter(Boolean);
+  if (!values.length) return null;
+  if (values.some(value => value !== values[0])) throw new Error('Conflicting browser proxy settings');
+  try {
+    const url = new URL(values[0]);
+    const protocol = url.protocol === 'socks5h:' ? 'socks5:' : url.protocol;
+    if (!['http:', 'socks5:'].includes(protocol) || !url.hostname ||
+        (url.pathname && url.pathname !== '/') || url.search || url.hash ||
+        (protocol === 'socks5:' && !url.port)) throw new Error('invalid');
+    const result = {server: protocol + '//' + url.host};
+    if (url.username || url.password) {
+      if (protocol !== 'http:' || !url.username || !url.password) throw new Error('invalid');
+      result.username = decodeURIComponent(url.username);
+      result.password = decodeURIComponent(url.password);
+    }
+    if (environment.NO_PROXY) {
+      result.bypass = environment.NO_PROXY.split(',').map(value => {
+        const name = value.trim();
+        return name === '::1' ? '[::1]' : name;
+      }).filter(Boolean).join(',');
+    }
+    return result;
+  } catch {
+    throw new Error('Invalid browser proxy configuration; sensitive values suppressed');
+  }
+}
+
+// Auto-named MCP outputs are eligible for upstream size-based eviction. Never
+// point that eviction at the entire user workspace. Explicit filenames still
+// resolve against the workspace and pass checkedPath in validateToolCall.
+function createMcpOutputDirectory(workspace) {
+  checkedPath(workspace, workspace, {directory: true});
+  const directory = fs.mkdtempSync(path.join(workspace, 'mcp-output-'));
+  return checkedPath(workspace, directory, {directory: true});
+}
+
 function browserConfiguration(root, executable, headed, environment = process.env) {
   executable = checkedPath(root, executable);
   checkTree(root, path.dirname(executable));
@@ -74,12 +115,15 @@ function browserConfiguration(root, executable, headed, environment = process.en
     if (checkedPath(root, environment[key], {directory: true}) !== directories.runtime)
       throw new Error('Launch through the portable wrapper to isolate browser data');
   }
+  const proxy = browserProxy(environment);
   return {
     browserName: 'chromium', isolated: false, userDataDir: directories.profile,
     launchOptions: {
       executablePath: checkedPath(root, executable), headless: !headed, chromiumSandbox: true,
       downloadsPath: directories.downloads,
+      ...(proxy ? {proxy} : {}),
       args: [
+        ...(proxy ? [] : ['--no-proxy-server']),
         `--disk-cache-dir=${directories.cache}`,
         `--crash-dumps-dir=${directories.crashes}`,
         '--disable-breakpad',
@@ -230,10 +274,11 @@ async function main() {
   const {chromium} = require('./playwright/node_modules/playwright');
   const owner = createBrowserOwner(chromium, browser);
   const {StdioServerTransport} = require('./playwright/node_modules/playwright-core/lib/utilsBundle');
+  const outputDirectory = createMcpOutputDirectory(workspace);
   const server = await createConnection({
     browser,
     capabilities: [], webmcp: false, allowUnrestrictedFileAccess: false,
-    outputDir: workspace, outputMaxSize: 50 * 1024 * 1024,
+    outputDir: outputDirectory, outputMaxSize: 50 * 1024 * 1024,
     saveSession: false, codegen: 'none',
   }, () => owner.get());
   const transport = new PolicyTransport(new StdioServerTransport(), workspace, () => owner.close());
@@ -259,7 +304,7 @@ async function main() {
   } catch (error) { await shutdown(); throw error; }
 }
 
-module.exports = {allowedTools, checkedPath, checkTree, browserConfiguration, createBrowserOwner, validateToolCall, PolicyTransport};
+module.exports = {allowedTools, checkedPath, checkTree, browserProxy, createMcpOutputDirectory, browserConfiguration, createBrowserOwner, validateToolCall, PolicyTransport};
 if (require.main === module) main().catch(error => {
   process.stderr.write(`Portable browser: ${error.message}\n`);
   process.exitCode = 1;
