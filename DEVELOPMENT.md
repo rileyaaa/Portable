@@ -4,6 +4,8 @@
 
 保持既有固定 Chromium/Playwright 版本、工具白名单、正常/维护/YOLO 边界与按任务启用原则。修复 Codex core 环境继承缺少代理控制变量、Chromium 未显式使用被授权代理以及 MCP 自动输出目录与用户工作目录混用的问题。新增明确的本次会话选项 `--portable-browser-mcp`，仍需原用户 MCP 双重开关；只生成当前根的 stdio 配置，原持久扩展配置不变。浏览器关闭保留 profile，stdio 服务退出才释放独占锁；不自动扩大沙箱可写范围。根启动器与常用/YOLO 副本同步。本次仅验证候选源码，不变更已发布 Release。
 
+验证入口：新增 `tests/check_browser_mcp_stdio.py`（真实 Windows stdio、导航、点击、截图、关闭与重开、合成认证 HTTP 代理）和 `tests/check_codex_browser_mcp.py`（真实 BAT/客户端/MCP/Chromium 与本地合成 Responses 服务往返），并扩充原 Node 与启动器回归。经本次明确授权，使用只匹配本次工作流路径及提交消息的临时 push 触发器；[Windows 综合验证 45325563396](https://github.com/rileyaaa/Portable/actions/runs/45325563396) 与 [原生端到端验证 45325941104](https://github.com/rileyaaa/Portable/actions/runs/45325941104) 已成功启动。当前 Windows LFS、Python 与 Node 回归通过，其他检查尚未取得最终结果，不作为已通过记录。临时触发器在两次运行注册后删除；不变更正式 Release 或固定运行时。
+
 ## 2026-11-19：Codex 0.170.0 官方运行时升级候选（人工维护）
 
 在独立检出目录中从官方 rust-v0.170.0 准备固定 Windows x64 工件，核对官方发布摘要与独立程序摘要，替换本地文字/Agent 所需主程序、Host、搜索和沙箱助手，并同步版本固定值、登录映射、运行清单、相关配置与模式副本。语音及独立 Exec Server 继续不打包；官方原始程序字节不修改。
