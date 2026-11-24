@@ -1,12 +1,18 @@
 # 开发与维护记录
 
+## 2026-11-24：本轮现有功能维护收尾
+
+本轮按原有功能、权限、便携隔离及固定依赖的设计完成浏览器/MCP、账号 JSON、认证切换、启动器/环境、代理桥、缓存清理、隔离检查、依赖维护及发行输入专项复核。各模块的实际旧版复现、新版验证、测试夹具修正和未覆盖边界见下文记录及对应 Windows Actions；不再因继续寻找细小问题进行例行生产源码调整。最近一次综合 Python 回归共 309 项，308 项通过、1 项按现有 SSH 候选依赖条件跳过（45371488924）。最后一轮隔离专项已通过，该轮其余步骤以 45374794159 最终结果为准。上述为源码候选验收，不代表使用真实账号、代理、外部模型服务或用户机器完成实测，不代表已生成或发布新客户 ZIP。
+
+收尾核对：主分支生产源码基线 `ac2537685c93dbb533a362366f34bbabac25bf76` 与正式发行标签 `v0.170.0-portable.2`（`9350ad7fa5856595ff07af4469afae6a3251ebbd`）的差异中无 Codex 原生组件、浏览器固定工件、Python/Node 等固定依赖的更换；根及常用/YOLO 启动器相同，根与常用 env 相同，YOLO 的 approval/sandbox/network 保持既有差异。现存工作流仅原 `import-round12.yml` 与 `release.yml`，本轮一次性触发入口已移除。正式 Release 及旧版下载不动，不构建发布、不升级依赖，不把 Paramiko 等候选当成已发布功能。后续只处理实际反馈、明确复现的问题或用户另行授权的维护任务。
+
 ## 2026-11-24：依赖与打包维护复核
 
 核对 `tool/工具更新说明.md` 的固定 wheel/hash lock、无源码编译、固定运行依赖修复而非自动升级、客户发行筛选和人工发布规则；源码复核 setup-tools 的路径/互斥、修复范围预检、lock 校验、候选发布时机以及 package-release 的干净索引、链接/私有状态、固定 runtime/browser、ZIP 核验设计。未发现必须调整的生产逻辑。[Windows 45371488924](https://github.com/rileyaaa/Portable/actions/runs/45371488924) 的维护入口和路径步骤、309 项 Python（308 通过、SSH 原生依赖用例 1 项按现有条件跳过）及 `package-release.py --check` 均通过；未实际联网重装依赖、构建正式客户 ZIP 或发布。已核对 GitHub 正式 Release 为 `v0.170.0-portable.2`，保留旧 Release 和固定工具；仅纠正过时文档，不引入 Paramiko 或其它候选依赖。依赖管理与发行输入专项不再做例行源码调整，等待实际问题及明确发布授权。
 
 ## 2026-11-24：隔离检查链接路径边界复核（源码候选）
 
-保留默认仅包内、显式宿主只读扫描授权、报告而不删除宿主内容及 BAT 入口保护。旧直接 PS1 检查仅验证包根自身，未验证入口与祖先；Marketplace 和插件根警告后仍可能读取/枚举链接目标。复用其它入口既有的完整祖先检查，创建运行目录前拒绝 hardlink/reparse/link；Marketplace 读取前检查路径和普通单链接文件，插件根及各插件清单存在性检查前拒绝链接路径，不因诊断警告而继续访问目标。正常包内检查与已授权宿主扫描不变，不增加扫描范围或权限。合成 Windows 夹具使用自建 junction/hardlink 模拟边界，真实生产脚本旧/新对照，无真实宿主残留扫描或凭证。[Windows 45370271251](https://github.com/rileyaaa/Portable/actions/runs/45370271251) 新专项未进入用例（PS5.1 `-c` 引号问题）；[Windows 45371488924](https://github.com/rileyaaa/Portable/actions/runs/45371488924) 已复现旧入口穿越 linked ancestor 并验证新入口拒绝初始化。随后两版夹具均因变量 `$home` 与 PS5.1 内置只读 `$HOME` 冲突而停止，尚未验证 Marketplace 和插件链接用例。仅将夹具变量改名为 `$fixtureHome`，生产脚本不变；继续针对性回归。
+保留默认仅包内、显式宿主只读扫描授权、报告而不删除宿主内容及 BAT 入口保护。旧直接 PS1 检查仅验证包根自身，未验证入口与祖先；Marketplace 和插件根警告后仍可能读取/枚举链接目标。复用其它入口既有的完整祖先检查，创建运行目录前拒绝 hardlink/reparse/link；Marketplace 读取前检查路径和普通单链接文件，插件根及各插件清单存在性检查前拒绝链接路径，不因诊断警告而继续访问目标。正常包内检查与已授权宿主扫描不变，不增加扫描范围或权限。合成 Windows 夹具使用自建 junction/hardlink 模拟边界，真实生产脚本旧/新对照，无真实宿主残留扫描或凭证。[Windows 45370271251](https://github.com/rileyaaa/Portable/actions/runs/45370271251) 新专项未进入用例（PS5.1 `-c` 引号问题）；[Windows 45371488924](https://github.com/rileyaaa/Portable/actions/runs/45371488924) 已复现旧入口穿越 linked ancestor 并验证新入口拒绝初始化。随后两版夹具均因变量 `$home` 与 PS5.1 内置只读 `$HOME` 冲突而停止，尚未验证 Marketplace 和插件链接用例。仅将夹具变量改名为 `$fixtureHome`，生产脚本不变。[Windows 45374794159](https://github.com/rileyaaa/Portable/actions/runs/45374794159) 的旧版复现和新版专项均通过，覆盖入口祖先、Marketplace 链接目录及 hardlink、插件根和个别插件链接及普通清单检查。该次 Windows 运行的旧版复现和新版隔离专项已通过；记录时综合路径/BAT 防护及发行输入步骤尚未取得最终结论，以对应 Actions 实际结果为准。 验证提交 `cc8bcb3204b154b5fe7b2954fa9eb13fc4e9a33b`。
 
 ## 2026-11-24：缓存清理单项失败与安全 bootstrap 恢复复核（源码候选）
 
