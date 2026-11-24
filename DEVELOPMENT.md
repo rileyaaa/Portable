@@ -1,8 +1,12 @@
 # 开发与维护记录
 
+## 2026-11-24：账号缓存复用与刷新网络边界复核（源码候选）
+
+保留合法 JSON 缓存复用、无 JSON 且未指定扫描限制时的旧 CSV 兼容入口；已有 JSON 缓存未通过版本、扫描范围或文件状态校验时，不再回退同批 CSV 绕过校验，显式文件/凭证限制也不由不记录限制的 CSV 替代。缓存版本 3 升至 4 使旧解析、局部清理与额度重置结果一次性失效，不增加定时刷新或修改原有缓存时效。固定 Python Requests 默认禁止重试；ConnectTimeout 与包装的 urllib3 NewConnectionError 可证明连接未建立，PowerShell 的明确 DNS/连接失败和 curl 5/6/7 同理。仅对现有 OAuth refresh POST，在无法确认发送结果的传输异常、408、5xx 情况下停止自动换路重放；若第二路 POST 的结果不明，不再用第一路 401 判定永久失效。明确连接未建立及原有 4xx 拒绝的代理回退、普通 GET、显式 direct/proxy、确认失效删除逻辑保留。不声称可恢复服务端已经轮换但未收到的新令牌。无新增用户功能、依赖或请求地址；旧/新合成对照与固定后端异常分类回归均不访问真实凭证或网络，Windows 结果另记。
+
 ## 2026-11-24：账号刷新字段一致性及额度重置时间复核（源码候选）
 
-维持原刷新触发、认证错误分类、auto/direct/proxy 路由、额度分类及缓存复用策略。刷新成功后仍写既有标准 token 字段，同时更新已存在的 camelCase 别名；服务端返回合法正数 expires_in 时更新已存在的显式有效期（旧父级回退仅由当前凭证自身 expires 覆盖），不改共享父级或无有效期元数据的格式，不凭空推断缺失的有效期。核对固定 Codex 0.170.0 上游 `codex-rs/backend-client/src/client.rs` 的 rate limit 映射及测试，普通 rate_limit 主/次窗口包含 used_percent、reset_at（Unix 秒）和 reset_after_seconds；既有明确 NO_QUOTA 的 allowed=false/limit_reached=true 分支改用耗尽窗口中最晚的已知重置时间，不使用未耗尽窗口或附加额度的重置时间；有耗尽窗口时间无法判定时留空，旧无窗口格式继续沿用原解析。其他额度分类不变。增加真实生产函数旧/新合成回归，不读取真实账号或访问认证服务，Windows 验证结果另记。
+维持原刷新触发、认证错误分类、auto/direct/proxy 路由、额度分类及缓存复用策略。刷新成功后仍写既有标准 token 字段，同时更新已存在的 camelCase 别名；服务端返回合法正数 expires_in 时更新已存在的显式有效期（旧父级回退仅由当前凭证自身 expires 覆盖），不改共享父级或无有效期元数据的格式，不凭空推断缺失的有效期。核对固定 Codex 0.170.0 上游 `codex-rs/backend-client/src/client.rs` 的 rate limit 映射及测试，普通 rate_limit 主/次窗口包含 used_percent、reset_at（Unix 秒）和 reset_after_seconds；既有明确 NO_QUOTA 的 allowed=false/limit_reached=true 分支改用耗尽窗口中最晚的已知重置时间，不使用未耗尽窗口或附加额度的重置时间；有耗尽窗口时间无法判定时留空，旧无窗口格式继续沿用原解析。其他额度分类不变。增加真实生产函数旧/新合成回归，不读取真实账号或访问认证服务。[Windows 45351481533](https://github.com/rileyaaa/Portable/actions/runs/45351481533) 已完整通过旧行为复现、刷新字段/重置窗口及原有分类、304 项 Python 回归和发行输入检查，验证提交 `a8684111773effef425df53ab7eca1dcd0e47db3`。
 
 ## 2026-11-24：账号检查报告归属及登录选择一致性复核（源码候选）
 

@@ -50,7 +50,7 @@ $HomeDir  = Join-Path $Root "home"
 $TmpDir   = Join-Path $Root "tmp"
 $LogDir   = Join-Path $Root "logs"
 $ScanCachePath = Join-Path $LoginDir "login_json_report.cache.json"
-$ScanCacheVersion = 3
+$ScanCacheVersion = 4
 
 
 function Clear-StandaloneInheritedEnvironment {
@@ -896,6 +896,10 @@ function Invoke-JsonHttpFallback {
     } catch {
         $status = 0
         $text = ""
+        $requestNotSent = $_.Exception -is [System.Net.WebException] -and
+            $_.Exception.Status -in @([System.Net.WebExceptionStatus]::ConnectFailure,
+                [System.Net.WebExceptionStatus]::NameResolutionFailure,
+                [System.Net.WebExceptionStatus]::ProxyNameResolutionFailure)
         try {
             if ($_.Exception.Response) {
                 $status = [int]$_.Exception.Response.StatusCode
@@ -916,6 +920,7 @@ function Invoke-JsonHttpFallback {
             Body = $text
             Json = $json
             Error = "HTTP request failed; sensitive diagnostics suppressed"
+            RequestNotSent = ($status -eq 0 -and $requestNotSent)
         }
     } finally {
         [Net.WebRequest]::DefaultWebProxy = $savedDefaultProxy
@@ -1038,6 +1043,9 @@ function Invoke-JsonHttpPython {
             Body = $text
             Json = $json
             Error = ConvertTo-SafeMessage ([string]$response.error)
+            RequestNotSent = ([int]$response.status_code -eq 0 -and
+                $response.PSObject.Properties["request_not_sent"] -and
+                $response.request_not_sent -is [bool] -and $response.request_not_sent)
         }
     } catch {
         return [pscustomobject]@{
@@ -1137,12 +1145,32 @@ function Invoke-JsonHttpAttempt {
     else { $err = 'curl returned an invalid response envelope.' }
     if ($capture.ExitCode -ne 0) { $err = 'curl request failed; sensitive diagnostics suppressed.' }
     if ($text) { try { $json = $text | ConvertFrom-Json } catch {} }
-    return [pscustomobject]@{ StatusCode = $status; Body = $text; Json = $json; Error = $err }
+    return [pscustomobject]@{
+        StatusCode = $status; Body = $text; Json = $json; Error = $err
+        # curl exit codes 5/6/7 indicate DNS or connection establishment
+        # failure; a transfer timeout or receive error is not such proof.
+        RequestNotSent = ($status -eq 0 -and $capture.ExitCode -in @(5, 6, 7))
+    }
 }
 
 function ConvertTo-CurlConfigString {
     param([AllowEmptyString()][string]$Value)
     return '"' + $Value.Replace('\','\\').Replace('"','\"').Replace("`r",'\r').Replace("`n",'\n').Replace("`t",'\t') + '"'
+}
+
+# A rotating refresh token is not an idempotent GET. Only explicit proof
+# that a transport error happened before sending permits replay on another
+# route; a missing/truncated response or HTTP 408/5xx is indeterminate.
+function Test-RefreshDeliveryUncertain {
+    param($Response)
+    if ($null -eq $Response) { return $true }
+    $status = 0
+    if (-not [int]::TryParse([string]$Response.StatusCode, [ref]$status)) { return $true }
+    if ($status -eq 0) {
+        return (-not ($Response.PSObject.Properties["RequestNotSent"] -and
+            $Response.RequestNotSent -is [bool] -and $Response.RequestNotSent))
+    }
+    return ($status -lt 0 -or $status -eq 408 -or $status -ge 500)
 }
 
 function Invoke-JsonHttp {
@@ -1170,10 +1198,22 @@ function Invoke-JsonHttp {
         return $direct
     }
 
-    # auto: direct/TUN is considered usable only for 2xx; redirects are never followed for credential-bearing login APIs.
-    # If proxy fails, return direct 401 to refresh/delete logic; keep direct 403 conservative because it may be Cloudflare/region/IP blocking.
+    # auto: direct/TUN first, proxy second for ordinary GETs and definitive
+    # rejections. Do not replay a refresh whose delivery was not confirmed.
+    $refreshPost = $Method -ieq "POST"
+    if ($refreshPost -and (Test-RefreshDeliveryUncertain $direct)) {
+        $direct.Error = "refresh delivery uncertain; automatic proxy replay skipped"
+        return $direct
+    }
+
+    # Redirects are never followed. Keep existing direct 401 / 403 fallback
+    # behavior, except when the second refresh may itself have been accepted.
     $proxied = Add-HttpNetworkTag (Invoke-JsonHttpAttempt -Method $Method -Url $Url -Headers $Headers -Body $Body -TimeoutSec $TimeoutSec -ProxyUrl $proxyUrl) "proxy"
     if ($proxied.StatusCode -ne 0) {
+        return $proxied
+    }
+    if ($refreshPost -and (Test-RefreshDeliveryUncertain $proxied)) {
+        $proxied.Error = "proxy refresh delivery uncertain; credential kept"
         return $proxied
     }
 
@@ -2882,7 +2922,10 @@ function Select-LoginJson {
     $clientVersion = Get-CodexClientVersion
     $cachedResults = Read-ScanCache -ClientVersion $clientVersion
     $usedCsvReportCache = $false
-    if ($null -eq $cachedResults) {
+    # CSV is a legacy fallback, not a way around a failed authoritative
+    # cache validation. CSV also cannot prove either explicit scan limit.
+    if ($null -eq $cachedResults -and -not (Test-Path -LiteralPath $ScanCachePath) -and
+        (Resolve-MaxFiles) -eq 0 -and (Resolve-MaxCredentials) -eq 0) {
         $cachedResults = Read-CsvReportCache
         if ($null -ne $cachedResults) { $usedCsvReportCache = $true }
     }

@@ -6,6 +6,7 @@ import time
 from urllib.parse import urlsplit
 
 import requests
+from urllib3.exceptions import MaxRetryError, NewConnectionError
 
 
 MAX_REQUEST_CHARS = 1024 * 1024
@@ -19,6 +20,21 @@ def read_request(stream):
     return json.loads(text)
 
 
+def request_not_sent(error):
+    # The bundled requests adapter has retries disabled. ConnectTimeout and
+    # urllib3's NewConnectionError (including DNS failure) prove that no HTTP
+    # request reached the endpoint. Generic ConnectionError, read timeouts,
+    # TLS/response errors and supervisor failures do not prove this.
+    if isinstance(error, requests.exceptions.ConnectTimeout):
+        return True
+    if isinstance(error, requests.exceptions.ConnectionError) and error.args:
+        wrapped = error.args[0]
+        return isinstance(wrapped, MaxRetryError) and isinstance(
+            wrapped.reason, NewConnectionError
+        )
+    return False
+
+
 def main() -> int:
     # The PowerShell caller sends credentials through stdin.  Keeping the old
     # filename mode would allow direct helper calls to read outside the package.
@@ -26,6 +42,7 @@ def main() -> int:
         print(json.dumps({"status_code": 0, "body": "", "error": "stdin marker '-' is required"}))
         return 2
 
+    not_sent = False
     try:
         req = read_request(sys.stdin)
         if not isinstance(req, dict):
@@ -106,16 +123,20 @@ def main() -> int:
         deadline = time.monotonic() + timeout
         with requests.Session() as session:
             session.trust_env = False
-            response = session.request(
-                method=method,
-                url=url,
-                headers=clean_headers,
-                json=body if body is not None else None,
-                timeout=(connect_timeout, timeout),
-                proxies=proxies,
-                allow_redirects=False,
-                stream=True,
-            )
+            try:
+                response = session.request(
+                    method=method,
+                    url=url,
+                    headers=clean_headers,
+                    json=body if body is not None else None,
+                    timeout=(connect_timeout, timeout),
+                    proxies=proxies,
+                    allow_redirects=False,
+                    stream=True,
+                )
+            except requests.exceptions.RequestException as error:
+                not_sent = request_not_sent(error)
+                raise
             content = bytearray()
             with response:
                 for chunk in response.iter_content(chunk_size=65536):
@@ -133,6 +154,7 @@ def main() -> int:
             "status_code": 0,
             "body_b64": "",
             "error": "HTTP request rejected or failed (details suppressed to protect credentials)",
+            "request_not_sent": not_sent,
         }))
         return 1
 

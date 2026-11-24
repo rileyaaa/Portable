@@ -1,0 +1,43 @@
+name: Login cache and refresh replay regression (one time)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/login-cache-replay-validation-20261124.yml']
+permissions:
+  contents: read
+jobs:
+  native:
+    if: >-
+      startsWith(github.event.head_commit.message, 'fix(login): honor cache validation')
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Preserve original bytes
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+          lfs: true
+          persist-credentials: false
+      - name: Reproduce old cache and refresh routing bugs and verify exact new functions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_login_cache_replay.ps1 -BaselineCommit b7dace97a90dd2e1b7b143f97fbf4cf8695fd6a2
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline reproduction failed' }
+          foreach ($name in @('test_login_cache_replay','test_login_refresh_quota','test_login_result_consistency','test_login_json_containers','test_login_input_errors','test_browser_login_flow')) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests' ($name + '.ps1'))
+            if ($LASTEXITCODE -ne 0) { throw ('Regression failed: ' + $name) }
+          }
+      - name: Fixed runtime and Python transport regressions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git lfs fsck
+          if ($LASTEXITCODE -ne 0) { throw 'LFS integrity failed' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Python regression failed' }
+          & .\tool\python\python.exe -B .\tool\package-release.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Release input check failed' }
