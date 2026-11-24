@@ -14,8 +14,24 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = [System.IO.Path]::GetFullPath((Split-Path -Parent $MyInvocation.MyCommand.Path)).TrimEnd("\\")
-$RootItem = Get-Item -LiteralPath $Root -Force -ErrorAction Stop
-if (($RootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) { throw "拒绝以重解析点作为 Codex Portable 根目录：$Root" }
+# Match the other direct PS1 entry points: validate the entry and every
+# ancestor before creating any runtime directory or reading package state.
+$bootstrapAncestors = New-Object System.Collections.Stack
+$bootstrapCursor = [IO.Path]::GetFullPath($PSCommandPath)
+while ($bootstrapCursor) {
+    $bootstrapAncestors.Push($bootstrapCursor)
+    $bootstrapParent = Split-Path -Parent $bootstrapCursor
+    if ($bootstrapParent -eq $bootstrapCursor) { break }
+    $bootstrapCursor = $bootstrapParent
+}
+while ($bootstrapAncestors.Count -gt 0) {
+    $bootstrapItem = Get-Item -LiteralPath $bootstrapAncestors.Pop() -Force -ErrorAction Stop
+    if (($bootstrapItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        ($bootstrapItem.PSObject.Properties['LinkType'] -and $bootstrapItem.LinkType) -or
+        (-not $bootstrapItem.PSIsContainer -and ([string]$bootstrapItem.Mode).Contains('l'))) {
+        throw '隔离检查入口及其祖先目录不能是 hardlink/reparse/link。'
+    }
+}
 
 function Test-IsUnderDirectory {
     param([string]$Path, [string]$Directory)
@@ -81,7 +97,7 @@ if ($PromptHostScan -and -not $ScanHostResidue) {
 Write-Host "当前便携包目录： $Root" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "包根安全检查：" -ForegroundColor Green
-Write-Host "  OK  包根不是 junction/symlink/reparse point"
+Write-Host "  OK  入口及包根祖先不含 hardlink/junction/symlink/reparse point"
 
 $KnownInside = @('home','logs','sqlite','login_json','tmp','work','cache','appdata','localappdata','programdata','home-runtime','tool') | ForEach-Object { Join-Path $Root $_ }
 $PackageWarnings = $false
@@ -121,8 +137,17 @@ foreach ($p in @($PluginRoot,(Split-Path -Parent $PluginMarketplace))) {
     if (Test-IsUnderDirectory -Path $p -Directory $Root) { Write-Host "  OK  包内插件路径：$p" }
     else { $PackageWarnings=$true; Write-Host "  警告：插件路径不安全：$p" -ForegroundColor Yellow }
 }
-if (Test-Path -LiteralPath $PluginMarketplace) {
+if (-not (Test-IsUnderDirectory -Path $PluginMarketplace -Directory $Root)) {
+    $PackageWarnings=$true
+    Write-Host "  警告：Marketplace JSON 路径不安全，未读取。" -ForegroundColor Yellow
+} elseif (Test-Path -LiteralPath $PluginMarketplace) {
     try {
+        $marketItem=Get-Item -LiteralPath $PluginMarketplace -Force -ErrorAction Stop
+        if ($marketItem.PSIsContainer -or
+            ($marketItem.PSObject.Properties['LinkType'] -and $marketItem.LinkType) -or
+            ([string]$marketItem.Mode).Contains('l')) {
+            throw 'Marketplace must be a regular single-link file.'
+        }
         $jsonText=[System.IO.File]::ReadAllText($PluginMarketplace)
         $null=$jsonText | ConvertFrom-Json
         Write-Host "  OK  Marketplace JSON 可解析"
@@ -130,12 +155,18 @@ if (Test-Path -LiteralPath $PluginMarketplace) {
             $ref=$m.Value; $resolved=if ([IO.Path]::IsPathRooted($ref)){$ref}else{Join-Path $CodexHome $ref}
             if (-not (Test-IsUnderDirectory -Path $resolved -Directory $PluginRoot)) { $PackageWarnings=$true; Write-Host "  警告：Marketplace 引用疑似越界：$ref" -ForegroundColor Yellow }
         }
-    } catch { $PackageWarnings=$true; Write-Host "  警告：Marketplace JSON 格式错误" -ForegroundColor Yellow }
+    } catch { $PackageWarnings=$true; Write-Host "  警告：Marketplace JSON 非安全普通文件、无法读取或格式错误" -ForegroundColor Yellow }
 }
-if (Test-Path -LiteralPath $PluginRoot) {
+# A path warning is not authorization to enumerate the linked target.
+if ((Test-IsUnderDirectory -Path $PluginRoot -Directory $Root) -and (Test-Path -LiteralPath $PluginRoot -PathType Container)) {
     foreach ($dir in Get-ChildItem -LiteralPath $PluginRoot -Directory -Force -ErrorAction SilentlyContinue) {
         $manifest=Join-Path $dir.FullName '.codex-plugin\plugin.json'
-        if (Test-Path -LiteralPath $manifest) { Write-Host "  OK  插件清单：$manifest" } else { Write-Host "  提示：缺少插件清单：$($dir.FullName)" -ForegroundColor DarkGray }
+        if (-not (Test-IsUnderDirectory -Path $manifest -Directory $Root)) {
+            $PackageWarnings=$true
+            Write-Host "  警告：插件目录或清单路径不安全：$($dir.FullName)" -ForegroundColor Yellow
+            continue
+        }
+        if (Test-Path -LiteralPath $manifest -PathType Leaf) { Write-Host "  OK  插件清单：$manifest" } else { Write-Host "  提示：缺少插件清单：$($dir.FullName)" -ForegroundColor DarkGray }
     }
 }
 

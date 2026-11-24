@@ -64,22 +64,19 @@ try {
         if ($BaselineCommit -notmatch '^[a-f0-9]{40}$') { throw 'Invalid baseline commit' }
         # Preserve exact UTF-8/BOM and line endings of the old source, rather
         # than decoding/re-encoding its localized text through a console.
-        $blob=(& git -C $root rev-parse ($BaselineCommit+':清理缓存.ps1') | Select-Object -First 1)
-        if ($LASTEXITCODE -ne 0 -or $blob -notmatch '^[a-f0-9]{40}$') { throw 'Cannot find exact baseline blob.' }
-        $psi=New-Object Diagnostics.ProcessStartInfo
-        $psi.FileName=(Get-Command git.exe -CommandType Application).Source
-        $psi.WorkingDirectory=$root
-        $psi.Arguments='cat-file blob '+$blob
-        $psi.UseShellExecute=$false
-        $psi.RedirectStandardOutput=$true
-        $git=[Diagnostics.Process]::Start($psi)
-        try {
-            $stream=[IO.File]::Open($cleaner,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
-            try { $git.StandardOutput.BaseStream.CopyTo($stream) } finally { $stream.Dispose() }
-            if (-not $git.WaitForExit(10000) -or $git.ExitCode -ne 0) {throw 'Cannot copy baseline cleaner.'}
-        } finally {
-            try { if (-not $git.HasExited) { $git.Kill(); [void]$git.WaitForExit(3000) } } finally {$git.Dispose()}
-        }
+        $python=Join-Path $root 'tool\python\python.exe'
+        [void](Assert-AutomationPath -Root $root -Path $python)
+        $copyBaseline = @'
+import subprocess
+import sys
+from pathlib import Path
+root, revision, path, output = sys.argv[1:]
+raw = subprocess.check_output(["git", "-C", root, "show", revision + ":" + path], timeout=15)
+with Path(output).open("xb") as target:
+    target.write(raw)
+'@
+        & $python -B -c $copyBaseline $root $BaselineCommit '清理缓存.ps1' $cleaner
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot copy exact baseline cleaner.' }
     } else {
         Copy-Item -LiteralPath (Join-Path $root '清理缓存.ps1') -Destination $cleaner
     }
