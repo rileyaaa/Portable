@@ -1,0 +1,48 @@
+name: Header isolation real launcher and native HTTP regression (one time)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/header-isolation-0172.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  header:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Preserve tracked bytes
+        run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'git config failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          lfs: true
+          persist-credentials: false
+      - name: Actual PS5.1 portable path and header child environment
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_portable_paths.ps1
+          if ($LASTEXITCODE) { throw 'Portable paths/header isolation failed' }
+      - name: Actual BAT and Responses configured headers with real MCP browser
+        if: always()
+        run: |
+          & .\tool\python\python.exe -B tests/check_codex_browser_mcp.py
+          if ($LASTEXITCODE) { throw 'Native header and MCP regression failed' }
+      - name: Existing launcher smoke and runtime preflight
+        if: always()
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_launcher_smoke.ps1
+          if ($LASTEXITCODE) { throw 'Launcher smoke failed' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_runtime_preflight.ps1
+          if ($LASTEXITCODE) { throw 'Native runtime preflight failed' }
+      - name: Mode copy and customer package inputs
+        if: always()
+        run: |
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_mode_copies.py' -v
+          if ($LASTEXITCODE) { throw 'Mode copy validation failed' }
+          & .\tool\python\python.exe -B tool/package-release.py --check
+          if ($LASTEXITCODE) { throw 'Package input validation failed' }

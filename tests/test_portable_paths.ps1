@@ -268,10 +268,12 @@ try {
         # Exercise actual trusted root assignment and pure-data local loader,
         # including a deliberately identical value and a missing host-only name.
         [IO.File]::AppendAllText((Join-Path $Root 'env.ps1'), "`r`n" + '$env:MY_X_TITLE = "synthetic portable task"' + "`r`n", (New-Object Text.UTF8Encoding($false)))
-        [IO.File]::AppendAllLines((Join-Path $Root 'env.local.ps1'), @(
+        $HeaderLines = @(
             '$env:CODEX_ENV_HTTP_HEADERS_TOML = ''{ "HTTP-Referer" = "MY_HTTP_REFERER", "X-Title" = "MY_X_TITLE", "X-Missing" = "MY_HOST_ONLY" }'''
             '$env:MY_HTTP_REFERER = "https://synthetic.invalid/"'
-        ), (New-Object Text.UTF8Encoding($false)))
+        ) -join "`r`n"
+        # AppendAllText avoids the PS5.1 generic IEnumerable overload binder.
+        [IO.File]::AppendAllText((Join-Path $Root 'env.local.ps1'), $HeaderLines + "`r`n", (New-Object Text.UTF8Encoding($false)))
         . (Join-Path $Root 'env.ps1')
         Reset-PortableInvariantEnvironment
         Set-CodexChildPortableEnvironment $Child

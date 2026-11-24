@@ -109,7 +109,7 @@ def response_item(body, url):
                 {"type": "output_text", "text": "native-browser-mcp-ok", "annotations": []}]}
 
 
-def provider(url, model="gpt-6-sol", handler=response_item):
+def provider(url, model="gpt-6-sol", handler=response_item, expected_headers=None, forbidden_headers=()):
     class Provider(http.server.BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -127,6 +127,10 @@ def provider(url, model="gpt-6-sol", handler=response_item):
         def do_POST(self):
             try:
                 assert self.path == "/v1/responses", self.path
+                for name, value in (expected_headers or {}).items():
+                    assert self.headers.get(name) == value, "Wrong synthetic configured header: " + name
+                for name in forbidden_headers:
+                    assert self.headers.get(name) is None, "Unexpected inherited synthetic header: " + name
                 raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
                 if self.headers.get("Content-Encoding") == "gzip":
                     raw = gzip.decompress(raw)
@@ -176,7 +180,10 @@ def main():
                          "tool/automation", *manifest["files"]):
             copy_input(relative, fixture)
         (fixture / "codex-resources").mkdir()
-        with serving(NativePage) as page_port, serving(provider(f"http://127.0.0.1:{page_port}/")) as api_port:
+        with serving(NativePage) as page_port, serving(provider(
+                f"http://127.0.0.1:{page_port}/",
+                expected_headers={"X-Portable-Audit": "synthetic-package-value"},
+                forbidden_headers=("X-Portable-Host-Only",))) as api_port:
             (fixture / "env.local.ps1").write_text(
                 '$env:CODEX_AUTH_MODE = "api"\n'
                 '$env:CODEX_PORTABLE_ALLOW_USER_MCP = "true"\n'
@@ -184,7 +191,9 @@ def main():
                 '$env:CODEX_DISABLE_WEBSOCKET = "true"\n'
                 '$env:CODEX_MODEL = "gpt-6-sol"\n'
                 f'$env:CODEX_BASE_URL = "http://127.0.0.1:{api_port}/v1"\n'
-                '$env:OPENAI_API_KEY = "synthetic-offline-not-a-real-key"\n',
+                '$env:OPENAI_API_KEY = "synthetic-offline-not-a-real-key"\n'
+                '$env:CODEX_ENV_HTTP_HEADERS_TOML = \'{ "X-Portable-Audit" = "PORTABLE_TEST_HEADER", "X-Portable-Host-Only" = "PORTABLE_TEST_MISSING_HEADER" }\'\n'
+                '$env:PORTABLE_TEST_HEADER = "synthetic-package-value"\n',
                 encoding="utf-8")
             windows = Path(os.environ["SystemRoot"])
             # Configure exactly one synthetic MCP via the original durable user
@@ -217,6 +226,10 @@ def main():
                                              "ComSpec", "PATHEXT", "OS", "PROCESSOR_ARCHITECTURE",
                                              "USERNAME", "COMPUTERNAME") if k in os.environ}
             env["PATH"] = str(windows / "System32")
+            # Both names originate in the synthetic parent. Only the explicit
+            # package assignment may reach the model request.
+            env["PORTABLE_TEST_HEADER"] = "synthetic-parent-conflict"
+            env["PORTABLE_TEST_MISSING_HEADER"] = "synthetic-parent-only"
             command = (f'"{cmd}" /d /s /c ""{fixture / bat_name}" '
                        '--portable-auth=api --portable-extensions '
                        'exec --skip-git-repo-check --json "Run the synthetic browser check.""')
@@ -242,6 +255,7 @@ def main():
             assert (fixture / "cache/browser/profile").is_dir()
             print("PASS real BAT, pinned native Codex and MCP client, real Chromium, tool output returned to Responses API")
             print("PASS original user MCP config retained unchanged")
+        print("PASS actual Responses header uses package value and omits inherited host-only value")
 
 
 if __name__ == "__main__":
