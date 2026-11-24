@@ -1110,6 +1110,37 @@ Get-ChildItem Env: | Where-Object { $_.Name -match '^(?i:CODEX_|OPENAI_)' -and $
     Remove-Item ("Env:" + $_.Name) -ErrorAction SilentlyContinue
 }
 
+# Keep a single allowlist for the existing OS/runtime environment and the
+# child process. Unlisted inherited values must never become header secrets
+# just because the package later references an ordinary environment name.
+function Get-PortableFixedChildEnvironmentNames {
+    @(
+        "SystemRoot","WINDIR","SystemDrive","ComSpec","PATHEXT","OS","PROCESSOR_ARCHITECTURE","PROCESSOR_IDENTIFIER","NUMBER_OF_PROCESSORS","USERNAME","COMPUTERNAME",
+        "PATH","CODEX_HOME","CODEX_SQLITE_HOME","HOME","USERPROFILE","HOMEDRIVE","HOMEPATH","APPDATA","LOCALAPPDATA","PROGRAMDATA","ALLUSERSPROFILE",
+        "TEMP","TMP","TMPDIR","XDG_CACHE_HOME","XDG_CONFIG_HOME","XDG_DATA_HOME","XDG_STATE_HOME","PIP_CONFIG_FILE","PIP_CACHE_DIR","PYTHONUSERBASE",
+        "NPM_CONFIG_CACHE","NPM_CONFIG_PREFIX","NPM_CONFIG_GLOBALCONFIG","NPM_CONFIG_USERCONFIG","NODE_REPL_HISTORY","YARN_CACHE_FOLDER","PNPM_HOME","PNPM_STORE_DIR",
+        "GRADLE_USER_HOME","MAVEN_OPTS","POWERSHELL_TELEMETRY_OPTOUT","PSModuleAnalysisCachePath","PSModulePath",
+        "PYTHONPYCACHEPREFIX","GIT_CONFIG_NOSYSTEM","CODEX_INSTALL_DIR","CODEX_PYTHON",
+        "ANDROID_HOME","ANDROID_SDK_ROOT","ANDROID_USER_HOME","ANDROID_SDK_HOME","JAVA_HOME","ADB_VENDOR_KEYS","APKTOOL_FRAMEWORK_DIR","FRIDA_CACHE_DIR","MITMPROXY_HOME","APPIUM_HOME",
+        "APK_LAB_CACHE_DIR","APK_LAB_TMP_DIR","APK_LAB_JOBS_DIR","HTTP_PROXY","HTTPS_PROXY","ALL_PROXY","NO_PROXY","http_proxy","https_proxy","all_proxy","no_proxy"
+    )
+}
+
+function Clear-UnconfiguredPortableEnvironment {
+    $allowed = @(Get-PortableFixedChildEnvironmentNames)
+    foreach ($entry in @(Get-ChildItem Env:)) {
+        if ($entry.Name -notin $allowed) {
+            Remove-Item ("Env:" + $entry.Name) -ErrorAction Stop
+        }
+    }
+}
+
+# Existing sensitive-name and CODEX_/OPENAI_ cleanup has already run.
+# Load the package configuration without unrelated inherited ordinary values.
+# Explicit assignments in env.ps1/env.local.ps1 (even identical to a previous
+# host value) remain supported. This affects only the launcher process.
+Clear-UnconfiguredPortableEnvironment
+
 $script:CodexPortableAutoModelInstructions = $false
 . $EnvFile
 # Validate the package's explicit login choice before touching account state.
@@ -1985,19 +2016,7 @@ function Set-CodexChildPortableEnvironment {
     try { $ProcessStartInfo.EnvironmentVariables.Clear() } catch { try { $ProcessStartInfo.Environment.Clear() } catch {} }
 
     Reset-CodexTrustedSystemEnvironment
-    foreach ($name in @("SystemRoot","WINDIR","SystemDrive","ComSpec","PATHEXT","OS","PROCESSOR_ARCHITECTURE","PROCESSOR_IDENTIFIER","NUMBER_OF_PROCESSORS","USERNAME","COMPUTERNAME")) {
-        Set-ProcessEnvironmentValue $ProcessStartInfo $name ([Environment]::GetEnvironmentVariable($name))
-    }
-
-    $fixed = @(
-        "PATH","CODEX_HOME","CODEX_SQLITE_HOME","HOME","USERPROFILE","HOMEDRIVE","HOMEPATH","APPDATA","LOCALAPPDATA","PROGRAMDATA","ALLUSERSPROFILE",
-        "TEMP","TMP","TMPDIR","XDG_CACHE_HOME","XDG_CONFIG_HOME","XDG_DATA_HOME","XDG_STATE_HOME","PIP_CONFIG_FILE","PIP_CACHE_DIR","PYTHONUSERBASE",
-        "NPM_CONFIG_CACHE","NPM_CONFIG_PREFIX","NPM_CONFIG_GLOBALCONFIG","NPM_CONFIG_USERCONFIG","NODE_REPL_HISTORY","YARN_CACHE_FOLDER","PNPM_HOME","PNPM_STORE_DIR",
-        "GRADLE_USER_HOME","MAVEN_OPTS","POWERSHELL_TELEMETRY_OPTOUT","PSModuleAnalysisCachePath","PSModulePath",
-        "PYTHONPYCACHEPREFIX","GIT_CONFIG_NOSYSTEM","CODEX_INSTALL_DIR","CODEX_PYTHON",
-        "ANDROID_HOME","ANDROID_SDK_ROOT","ANDROID_USER_HOME","ANDROID_SDK_HOME","JAVA_HOME","ADB_VENDOR_KEYS","APKTOOL_FRAMEWORK_DIR","FRIDA_CACHE_DIR","MITMPROXY_HOME","APPIUM_HOME",
-        "APK_LAB_CACHE_DIR","APK_LAB_TMP_DIR","APK_LAB_JOBS_DIR","HTTP_PROXY","HTTPS_PROXY","ALL_PROXY","NO_PROXY","http_proxy","https_proxy","all_proxy","no_proxy"
-    )
+    $fixed = @(Get-PortableFixedChildEnvironmentNames)
     $headerEnvNames = @(Get-ConfiguredHeaderEnvironmentVariableNames)
     $names = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($n in @($fixed + $headerEnvNames)) { if (-not [string]::IsNullOrWhiteSpace($n)) { [void]$names.Add($n) } }

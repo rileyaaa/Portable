@@ -1,0 +1,82 @@
+name: Native safe shell version comparison and header isolation (one time)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/native-safe-compare-0172.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compare:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: prior-0170
+            ref: '518c25f69a8e078cb7dae5108ecb0ebe0d032e53'
+          - label: current-0172
+            ref: ${{ github.sha }}
+    name: ${{ matrix.label }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Preserve tracked bytes
+        run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'git config failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ matrix.ref }}
+          path: source
+          fetch-depth: 1
+          lfs: true
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: matrix.label == 'prior-0170'
+        with:
+          ref: ${{ github.sha }}
+          path: harness
+          sparse-checkout: tests
+          lfs: false
+          persist-credentials: false
+      - name: Use identical diagnostic harness on prior version
+        if: matrix.label == 'prior-0170'
+        run: |
+          Copy-Item -LiteralPath harness/tests/check_codex_tool_discovery.py -Destination source/tests/check_codex_tool_discovery.py
+          Copy-Item -LiteralPath harness/tests/check_codex_browser_mcp.py -Destination source/tests/check_codex_browser_mcp.py
+      - name: Native normal mode model-visible tools and restricted shell diagnostics
+        working-directory: source
+        run: |
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py normal
+          if ($LASTEXITCODE) { throw 'Normal-mode native diagnostic failed' }
+      - name: Native unknown custom model direct shell and Unicode path
+        if: always()
+        working-directory: source
+        run: |
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py unknown
+          if ($LASTEXITCODE) { throw 'Unknown-model native diagnostic failed' }
+      - name: Real launcher path and header isolation cases
+        if: always() && matrix.label == 'current-0172'
+        working-directory: source
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_portable_paths.ps1
+          if ($LASTEXITCODE) { throw 'Path/header regression failed' }
+      - name: Original YOLO browser route and native MCP integration
+        if: always() && matrix.label == 'current-0172'
+        working-directory: source
+        run: |
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py browser
+          if ($LASTEXITCODE) { throw 'YOLO browser regression failed' }
+          & .\tool\python\python.exe -B tests/check_codex_browser_mcp.py
+          if ($LASTEXITCODE) { throw 'Native MCP regression failed' }
+      - name: Current fixed runtime, mode copies and customer input integrity
+        if: always() && matrix.label == 'current-0172'
+        working-directory: source
+        run: |
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_mode_copies.py' -v
+          if ($LASTEXITCODE) { throw 'Mode copies failed' }
+          & .\tool\python\python.exe -B tool/package-release.py --check
+          if ($LASTEXITCODE) { throw 'Customer input check failed' }

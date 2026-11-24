@@ -196,7 +196,8 @@ try {
         foreach ($Name in @('Get-CodexTrustedWindowsRoot','Reset-CodexTrustedSystemEnvironment',
                             'Reset-PortableInvariantEnvironment','Set-PortableProcessPath',
                             'Set-CodexChildPortableEnvironment','Set-ProcessEnvironmentValue',
-                            'Get-ConfiguredHeaderEnvironmentVariableNames','Append-TomlSet','Convert-ToTomlString')) {
+                            'Get-ConfiguredHeaderEnvironmentVariableNames','Get-PortableFixedChildEnvironmentNames',
+                            'Clear-UnconfiguredPortableEnvironment','Append-TomlSet','Convert-ToTomlString')) {
             $Definition = @($Ast.FindAll({param($Node) $Node -is [Management.Automation.Language.FunctionDefinitionAst]}, $true) | Where-Object { $_.Name -eq $Name })
             if ($Definition.Count -ne 1) { throw 'Missing launcher function.' }
             . ([scriptblock]::Create($Definition[0].Extent.Text))
@@ -249,15 +250,39 @@ try {
             if ($Required -notin $Paths) { throw 'Required runtime PATH disappeared.' }
         }
         if ((Join-Path $PortableTool 'go\bin') -in $Paths) { throw 'Removed compiler remains on runtime PATH.' }
-        # Custom headers use ordinary variable names, not the protected CODEX_* namespace.
-        $env:CODEX_ENV_HTTP_HEADERS_TOML = '{ "HTTP-Referer" = "MY_HTTP_REFERER", "X-Title" = "MY_X_TITLE" }'
-        $env:MY_HTTP_REFERER = 'https://synthetic.invalid/'
-        $env:MY_X_TITLE = 'synthetic portable task'
+        # Reproduce the old leak using synthetic inherited values only.
+        $env:CODEX_ENV_HTTP_HEADERS_TOML = '{ "X-Missing" = "MY_HOST_ONLY" }'
+        $env:MY_HOST_ONLY = 'synthetic-host-only-value'
         Set-CodexChildPortableEnvironment $Child
-        if ($Child.EnvironmentVariables['MY_HTTP_REFERER'] -cne $env:MY_HTTP_REFERER -or
-            $Child.EnvironmentVariables['MY_X_TITLE'] -cne $env:MY_X_TITLE) {
-            throw 'Configured custom headers did not reach the client environment.'
+        if ($Child.EnvironmentVariables['MY_HOST_ONLY'] -cne 'synthetic-host-only-value') {
+            throw 'Header forwarding fixture did not exercise the declared variable.'
         }
+        # The real pre-config scrub must remove inherited ordinary variables.
+        $env:MY_HTTP_REFERER = 'https://inherited.invalid/'
+        $env:MY_X_TITLE = 'synthetic portable task'
+        $env:MY_UNUSED_HOST = 'synthetic-unused'
+        Clear-UnconfiguredPortableEnvironment
+        foreach ($Name in @('MY_HOST_ONLY','MY_HTTP_REFERER','MY_X_TITLE','MY_UNUSED_HOST','CODEX_ENV_HTTP_HEADERS_TOML')) {
+            if ([Environment]::GetEnvironmentVariable($Name)) { throw ('Pre-config host variable survived: ' + $Name) }
+        }
+        # Exercise actual trusted root assignment and pure-data local loader,
+        # including a deliberately identical value and a missing host-only name.
+        [IO.File]::AppendAllText((Join-Path $Root 'env.ps1'), "`r`n" + '$env:MY_X_TITLE = "synthetic portable task"' + "`r`n", (New-Object Text.UTF8Encoding($false)))
+        [IO.File]::AppendAllLines((Join-Path $Root 'env.local.ps1'), @(
+            '$env:CODEX_ENV_HTTP_HEADERS_TOML = ''{ "HTTP-Referer" = "MY_HTTP_REFERER", "X-Title" = "MY_X_TITLE", "X-Missing" = "MY_HOST_ONLY" }'''
+            '$env:MY_HTTP_REFERER = "https://synthetic.invalid/"'
+        ), (New-Object Text.UTF8Encoding($false)))
+        . (Join-Path $Root 'env.ps1')
+        Reset-PortableInvariantEnvironment
+        Set-CodexChildPortableEnvironment $Child
+        if ($Child.EnvironmentVariables['MY_HTTP_REFERER'] -cne 'https://synthetic.invalid/' -or
+            $Child.EnvironmentVariables['MY_X_TITLE'] -cne 'synthetic portable task') {
+            throw 'Explicit package header assignments did not reach the client environment.'
+        }
+        if ($Child.EnvironmentVariables.ContainsKey('MY_HOST_ONLY') -or $Child.EnvironmentVariables.ContainsKey('MY_UNUSED_HOST')) {
+            throw 'Host-only header or unrelated value leaked to client.'
+        }
+        Write-Output 'PASS explicit package header values and missing host-only header isolation'
         if (Test-Path -LiteralPath $PortableTool) { throw 'Environment setup recreated removed compiler/tool directories.' }
     }
     Write-Output 'worker-ok'

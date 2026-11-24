@@ -9,6 +9,11 @@ import sys
 import tempfile
 import tomllib
 
+# Embedded Python may ignore PYTHONIOENCODING. Keep the original failure visible.
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
 helper = Path(__file__).absolute().with_name("check_codex_browser_mcp.py")
 for p in (*reversed(helper.parents), helper):
     info = p.lstat()
@@ -78,6 +83,45 @@ Run-Checked (Join-Path $root 'tool/android/platform-tools/adb.exe') @('version')
 Run-Checked 'python.exe' @('-B', (Join-Path $root 'work/tool-probe/probe.py'))
 Write-Output 'PORTABLE_TOOLS_EXECUTED_0172'
 '''
+# Inspect the *actual* Codex-created restricted shell before executing the
+# pre-existing script. Every diagnostic is bounded to the disposable work tree.
+DIAG_PS = r'''
+$ErrorActionPreference = 'Stop'
+Write-Output ('DIAG_CWD=' + (Get-Location).Path)
+Write-Output ('DIAG_PROCESS_CWD=' + [Environment]::CurrentDirectory)
+Write-Output ('DIAG_PS=' + $PSVersionTable.PSVersion + ';LANG=' + $ExecutionContext.SessionState.LanguageMode)
+Write-Output ('DIAG_INSTALL_DIR=' + $env:CODEX_INSTALL_DIR)
+$expectedRoot = '__EXPECTED_ROOT__'
+if ($env:CODEX_INSTALL_DIR -ne $expectedRoot) { throw 'Unexpected package root; stop' }
+$target = Join-Path $expectedRoot 'work/tool-probe/probe.ps1'
+$relative = './tool-probe/probe.ps1'
+function Observe([string]$label, [scriptblock]$operation) {
+    try {
+        $result = & $operation
+        Write-Output ('DIAG_' + $label + '=OK ' + ($result -join '; '))
+    } catch {
+        Write-Output ('DIAG_' + $label + '=ERROR ' + $_.Exception.GetType().FullName + ' ' + $_.Exception.Message)
+    }
+}
+Observe 'WORK' { Test-Path -LiteralPath (Join-Path $expectedRoot 'work') -PathType Container }
+Observe 'TARGET_ABS' { Test-Path -LiteralPath $target -PathType Leaf }
+Observe 'TARGET_REL' { Test-Path -LiteralPath $relative -PathType Leaf }
+Observe 'ITEM' { (Get-Item -LiteralPath $target -ErrorAction Stop).FullName }
+Observe 'READ' { (Get-Content -LiteralPath $target -TotalCount 1 -ErrorAction Stop) }
+Observe 'SKILL_READ' { (Get-Content -LiteralPath (Join-Path $expectedRoot 'home/skills/browser-debug/SKILL.md') -TotalCount 2 -ErrorAction Stop) }
+Observe 'RESOLVE_COMMAND' { (Get-Command -Name $target -ErrorAction Stop).Source }
+Observe 'WORK_WRITE' {
+    $own = Join-Path $expectedRoot 'work/tool-probe/native-created.txt'
+    if (Test-Path -LiteralPath $own) { throw 'Unexpected existing test file' }
+    Set-Content -LiteralPath $own -Value 'owned-write' -Encoding UTF8 -ErrorAction Stop
+    Get-Content -LiteralPath $own -ErrorAction Stop
+}
+Observe 'RELATIVE_SCRIPT' { & $relative; if ($LASTEXITCODE -ne 0) { throw ('Relative script exit=' + $LASTEXITCODE) } }
+Write-Output 'DIAG_BEGIN_ORIGINAL_ABSOLUTE'
+& $target
+if ($LASTEXITCODE -ne 0) { throw ('Absolute script exit=' + $LASTEXITCODE) }
+'''
+
 BROWSER_PS = r'''
 $ErrorActionPreference = 'Stop'
 $entry = Join-Path $env:CODEX_INSTALL_DIR 'tool/automation/start-browser.ps1'
@@ -104,12 +148,13 @@ def handler_for(fixture, mode):
                                 ensure_ascii=False)
             absent = sorted(name for name in SKILLS if name not in prompt)
             assert not absent, "Model-visible skill catalog missing: " + ", ".join(absent)
-            assert "explicitly requested browser task" in prompt, "Browser skill description absent"
+            assert "browser-debug" in prompt, "Browser skill absent"
             print("MODEL_VISIBLE_LOCAL_SKILLS=" + ",".join(sorted(SKILLS)), flush=True)
             entries = list(m.tool_entries(body.get("tools", [])))
             assert not any("portable_browser" in (str(ns) + str(t.get("name"))) for ns, t in entries), \
                 "Browser MCP should not be advertised by default"
-            command = "& (Join-Path $env:CODEX_INSTALL_DIR 'work/tool-probe/" + script + "')"
+            command = ("& (Join-Path $env:CODEX_INSTALL_DIR 'work/tool-probe/" + script + "')"
+                       if mode == "browser" else DIAG_PS.replace("__EXPECTED_ROOT__", str(fixture).replace("'", "''")))
             args = {"cmd": command, "workdir": str(fixture / "work"), "login": False,
                     "yield_time_ms": 30000, "max_output_tokens": 4500}
             custom = next(((ns, t) for ns, t in entries
@@ -143,8 +188,13 @@ def handler_for(fixture, mode):
             return item
         outputs = m.call_output(body, "portable-probe")
         evidence = json.dumps(outputs, ensure_ascii=False)
-        print("NATIVE_TOOL_OUTPUT=" + evidence[:12000], flush=True)
+        print("NATIVE_TOOL_OUTPUT=" + evidence[:26000], flush=True)
+        # The marker is necessary but is not sufficient when the outer shell fails.
         assert expected in evidence, "Real tool output did not contain success marker: " + expected
+        assert "DIAG_BEGIN_ORIGINAL_ABSOLUTE" in evidence or mode == "browser"
+        # Native direct output has an exit line; Code Mode emits JSON exit_code.
+        assert 'Process exited with code 1' not in evidence
+        assert '\\\"exit_code\\\":1' not in evidence and '\\\"exit_code\\\": 1' not in evidence
         assert "ENV_DIFFERENCES=" not in evidence, "Actual child environment differs from generated policy"
         return {"id": "msg_probe", "type": "message", "role": "assistant", "status": "completed",
                 "content": [{"type": "output_text", "text": DONE, "annotations": []}]}
@@ -164,7 +214,7 @@ def main():
     scratch.mkdir(exist_ok=True)
     m.ordinary(scratch)
     with tempfile.TemporaryDirectory(prefix="native-tools-" + mode + "-", dir=scratch) as owned:
-        fixture = Path(owned) / "Relocated Portable"
+        fixture = Path(owned) / ("Relocated Portable" if mode != "unknown" else "Relocated \u4fbf\u643a Portable")
         fixture.mkdir()
         manifest = json.loads((ROOT / "tool/runtime-manifest.json").read_text(encoding="utf-8-sig"))
         bat = "\u542f\u52a8Codex.bat"

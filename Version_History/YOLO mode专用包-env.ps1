@@ -282,6 +282,8 @@ $env:CODEX_PROVIDER_NAME = "My Proxy"
 $env:CODEX_HTTP_HEADERS_TOML = ""
 
 # 从环境变量读取 HTTP headers，必须是 TOML inline table 格式。
+# 自定义值须在本包 env.ps1 或 env.local.ps1 显式赋值；不回退到宿主任意同名变量。
+# 例如另设 $env:MY_X_TITLE = "Codex Portable"；未定义的值由上游按缺失处理。
 # 示例：'{ "HTTP-Referer" = "MY_HTTP_REFERER", "X-Title" = "MY_X_TITLE" }'
 $env:CODEX_ENV_HTTP_HEADERS_TOML = ""
 
