@@ -1,0 +1,136 @@
+name: One-time verified Codex 0.172.0 runtime upgrade
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/upgrade-0172-verified.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: portable-0172-upgrade
+  cancel-in-progress: false
+jobs:
+  upgrade:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 110
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Preserve tracked bytes
+        run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'git config failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Verify fixed official stable release and prepare matching runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPGRADE_CHANGELOG_DATE: '2026-11-24'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $py = Join-Path $PWD 'tool/python/python.exe'
+          $script = '.github/maintenance/01-upgrade-runtime.py'
+          if ((Get-Content tool/runtime-manifest.json -Raw | ConvertFrom-Json).version -cne '0.170.0') { throw 'Unexpected baseline' }
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'Baseline LFS integrity failed' }
+          New-Item -ItemType Directory -Force -Path tmp/upgrade-0172 | Out-Null
+          & $py -B $script --repo . --metadata --release-url https://github.com/openai/codex/releases/tag/rust-v0.172.0 --plan tmp/upgrade-0172/plan.json
+          if ($LASTEXITCODE) { throw 'Official release metadata check failed' }
+          $plan = Get-Content tmp/upgrade-0172/plan.json -Raw | ConvertFrom-Json
+          if ($plan.version -cne '0.172.0' -or $plan.prerelease -or $plan.archive.sha256 -cne 'b723674d7caf26a3f55121a02d6cad8f3ac8ddf5860747a6edde1c904cf593af') { throw 'Stable archive identity changed' }
+          & curl.exe --fail --location --retry 3 --max-time 300 --output tmp/upgrade-0172/runtime.tar.gz $plan.archive.url
+          if ($LASTEXITCODE) { throw 'Download failed' }
+          & $py -B $script --repo . --apply --version 0.172.0 --plan tmp/upgrade-0172/plan.json --archive tmp/upgrade-0172/runtime.tar.gz
+          if ($LASTEXITCODE) { throw 'Upgrade preparation failed; main remains unchanged' }
+          Remove-Item -LiteralPath tmp/upgrade-0172/runtime.tar.gz
+          git add -u
+          if ($LASTEXITCODE) { throw 'Staging failed' }
+          & $py -B $script --repo . --check-index
+          if ($LASTEXITCODE) { throw 'Candidate scope/LFS identity failed' }
+          git diff --cached --stat
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Upgrade official Windows Codex runtime to 0.172.0'
+          if ($LASTEXITCODE) { throw 'Local candidate commit failed' }
+      - name: Audit managed variables, actual native config, model catalog and tool paths
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $py = Join-Path $PWD 'tool/python/python.exe'
+          $workflow = '.github/workflows/upgrade-0172-verified.yml'
+          # The existing manual audit explicitly admits only the two permanent workflows.
+          # Temporarily hide just this one-time file on the isolated runner, then restore it.
+          Move-Item -LiteralPath $workflow -Destination tmp/upgrade-0172/workflow.yml
+          try {
+            & $py -B .github/maintenance/02-compatibility.py --repo . --native
+            if ($LASTEXITCODE) { throw 'Existing comprehensive compatibility audit failed' }
+          } finally {
+            Move-Item -LiteralPath tmp/upgrade-0172/workflow.yml -Destination $workflow
+          }
+          & .\codex.exe debug models --bundled | Set-Content -LiteralPath tmp/upgrade-0172/bundled-models.json -Encoding UTF8
+          if ($LASTEXITCODE) { throw 'Native model export failed' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_portable_config.ps1 -BundledModelsPath tmp/upgrade-0172/bundled-models.json
+          if ($LASTEXITCODE) { throw 'Actual model/config mapping failed' }
+      - name: Full PowerShell 5.1 regressions including BAT relocation, authentication, proxies and browser
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $failed = @()
+          foreach ($test in Get-ChildItem -LiteralPath tests -Filter 'test_*.ps1' -File | Sort-Object Name) {
+            if ($test.Name -eq 'test_portable_config.ps1') { continue }
+            Write-Output ('RUN ' + $test.Name)
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $test.FullName
+            if ($LASTEXITCODE -ne 0) { $failed += $test.Name }
+          }
+          if ($failed.Count) { throw ('Failed PowerShell regressions: ' + ($failed -join ', ')) }
+      - name: Full bundled Python and Node regressions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE) { throw 'Python regressions failed' }
+          foreach ($test in Get-ChildItem -LiteralPath tests -Filter 'test_*.js' -File | Sort-Object Name) {
+            & .\tool\node\node.exe $test.FullName
+            if ($LASTEXITCODE) { throw ('Node regression failed: ' + $test.Name) }
+          }
+      - name: Native Codex to MCP to Chromium and Responses compatibility
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/check_browser_mcp_stdio.py
+          if ($LASTEXITCODE) { throw 'Native browser MCP stdio failed' }
+          & .\tool\python\python.exe -B tests/check_codex_browser_mcp.py
+          if ($LASTEXITCODE) { throw 'Native Codex MCP roundtrip failed' }
+          & .\tool\python\python.exe -B tests/check_responses_wire.py --help
+          if ($LASTEXITCODE) { throw 'Wire test interface failed' }
+      - name: Validate clean candidate package inputs and LFS
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git status --porcelain --untracked-files=normal) -join '') { throw 'Unexpected dirty candidate after tests' }
+          & .\tool\python\python.exe -B tool/package-release.py --check
+          if ($LASTEXITCODE) { throw 'Release input verification failed' }
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'Candidate LFS integrity failed' }
+          Write-Output 'VERIFIED_SOURCE_CANDIDATE_ONLY_NO_RELEASE'
+      - name: Push exact verified source and LFS to main without force
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD~1).Trim() -cne $env:GITHUB_SHA) { throw 'Unexpected candidate ancestry' }
+          $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes('x-access-token:' + $env:GH_TOKEN))
+          $env:GIT_CONFIG_COUNT = '1'
+          $env:GIT_CONFIG_KEY_0 = 'http.https://github.com/.extraheader'
+          $env:GIT_CONFIG_VALUE_0 = 'AUTHORIZATION: basic ' + $auth
+          $remote = (git ls-remote origin refs/heads/main) -join ''
+          if ($LASTEXITCODE -or -not $remote.StartsWith($env:GITHUB_SHA + [char]9)) { throw 'Remote main moved; no push' }
+          git lfs push origin HEAD
+          if ($LASTEXITCODE) { throw 'LFS upload failed' }
+          git push origin HEAD:refs/heads/main
+          if ($LASTEXITCODE) { throw 'Verified source push failed' }
+          $remote = (git ls-remote origin refs/heads/main) -join ''
+          if ($LASTEXITCODE -or -not $remote.StartsWith((git rev-parse HEAD).Trim() + [char]9)) { throw 'Remote verification failed' }
+          Write-Output ('VERIFIED_UPGRADE_PUSHED=' + (git rev-parse HEAD).Trim())
