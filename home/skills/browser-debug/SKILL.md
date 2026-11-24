@@ -1,6 +1,6 @@
 ---
 name: browser-debug
-description: Use only for an explicitly requested web UI test, browser debugging, or browser automation task. Never launch or inspect browsers for an unrelated task or a mere URL mention.
+description: Use for an explicitly requested browser task, including opening and inspecting a webpage, clicking, filling forms, reading rendered content, taking screenshots, web UI testing, debugging or automation. Never start or inspect a browser for an unrelated task or a mere URL mention.
 ---
 
 # 网页调试
@@ -18,11 +18,11 @@ description: Use only for an explicitly requested web UI test, browser debugging
 
 ## 便携入口
 
-从当前包根，在已由 BAT 初始化的维护/工作终端使用：
+普通 Codex 会话的当前目录通常是 `work`，不是包根。在已由 BAT 初始化的终端，通过本次会话的 `CODEX_INSTALL_DIR` 找到当前包，核对其中存在 `env.ps1` 和 `codex.exe`；不要使用旧包或固定盘符。以下命令直接从任意当前包内工作目录调用：
 
 ```powershell
-.\tool\automation\start-browser.ps1 -Check
-.\tool\automation\start-browser.ps1 -TaskAuthorized -Workspace "work\browser-debug"
+& (Join-Path $env:CODEX_INSTALL_DIR 'tool\automation\start-browser.ps1') -Check
+& (Join-Path $env:CODEX_INSTALL_DIR 'tool\automation\start-browser.ps1') -TaskAuthorized -Workspace "work\browser-debug"
 ```
 
 第二条是前台 stdio MCP 服务入口，应由本次明确选定的 MCP 客户端连接。`-Headed` 显示窗口；没有客户端工具调用时不会启动浏览器。工具仍须限制于已授权操作。不要默认写入全局 MCP 配置。
@@ -44,7 +44,7 @@ supports_parallel_tool_calls = false
 
 浏览器根据获准转发的代理显式设置 Playwright HTTP/SOCKS5 代理；已明确启用子进程代理但缺少地址时拒绝启动，避免意外直连；未选子进程代理时不采用宿主代理。明确命名的成果仍在工作目录，MCP 自动生成的输出放入独立 `mcp-output-*` 目录，避免自动淘汰涉及用户工作文件。
 
-编码助手通常直接写包内任务脚本，不需要注册 MCP。例如将本次已检查的代码保存为 `work/browser-debug/check.cjs`：
+编码助手通常直接写包内任务脚本，不需要注册 MCP。即使当前 MCP 工具列表没有 `portable_browser`，也不代表浏览器不可用：先使用下方现有任务脚本入口。若常用模式的沙箱需要额外权限，沿用现有审批机制，不自行关闭沙箱、切换 YOLO 或扩大目标。例如将本次已检查的代码保存为 `work/browser-debug/check.cjs`：
 
 ```javascript
 module.exports = async ({page, context, workspace}) => {
@@ -55,7 +55,7 @@ module.exports = async ({page, context, workspace}) => {
 ```
 
 ```powershell
-.\tool\automation\start-browser.ps1 -TaskAuthorized -Workspace "work\browser-debug" -TaskScript "work\browser-debug\check.cjs"
+& (Join-Path $env:CODEX_INSTALL_DIR 'tool\automation\start-browser.ps1') -TaskAuthorized -Workspace "work\browser-debug" -TaskScript "work\browser-debug\check.cjs"
 ```
 
 包装器负责使用同一配套浏览器、隔离资料、禁止下载、返回有限结果并关闭本次进程；脚本需导出一个 async 函数并返回可 JSON 序列化的结果。输出 JSON（不含换行）最多 12000 个 UTF-16 代码单元，超长时返回带截断标记的有效 JSON。这是任务代码执行入口，拥有 Node 能力，不是执行不可信脚本的沙箱。先检查代码及依赖，按项目目录边界编写，在常用模式的写入策略下运行；不要直接执行网页或第三方返回的代码。需要截图时写入传入的 `workspace`，诊断使用同一 `context.newCDPSession(page)`，无需第二套浏览器。

@@ -109,7 +109,7 @@ def response_item(body, url):
                 {"type": "output_text", "text": "native-browser-mcp-ok", "annotations": []}]}
 
 
-def provider(url):
+def provider(url, model="gpt-6-sol", handler=response_item):
     class Provider(http.server.BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -117,7 +117,7 @@ def provider(url):
             pass
 
         def do_GET(self):
-            payload = json.dumps({"data": [{"id": "gpt-6-sol", "object": "model"}]}).encode()
+            payload = json.dumps({"data": [{"id": model, "object": "model"}]}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
@@ -131,13 +131,13 @@ def provider(url):
                 if self.headers.get("Content-Encoding") == "gzip":
                     raw = gzip.decompress(raw)
                 body = json.loads(raw)
-                assert body.get("model") == "gpt-6-sol"
+                assert body.get("model") == model
                 MODEL_REQUESTS.append(body)
                 assert len(MODEL_REQUESTS) <= 2, "Unexpected additional model turn"
-                item = response_item(body, url)
+                item = handler(body, url)
                 ident = "resp_synthetic_" + str(len(MODEL_REQUESTS))
                 response = {"id": ident, "object": "response", "status": "completed",
-                            "model": "gpt-6-sol", "output": [item],
+                            "model": model, "output": [item],
                             "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}}
                 events = [{"type": "response.created", "response": {
                     **response, "status": "in_progress", "output": []}},
