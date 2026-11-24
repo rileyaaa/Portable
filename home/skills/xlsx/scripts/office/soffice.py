@@ -20,7 +20,6 @@ import os
 import platform
 import socket
 import subprocess
-import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -197,8 +196,9 @@ def run_soffice(args: Iterable[str], **kwargs) -> subprocess.CompletedProcess:
     args = list(args)
     with contextlib.ExitStack() as stack:
         if not any(str(a).startswith("-env:UserInstallation") for a in args):
+            from .helpers import portable_temporary_directory
             profile = stack.enter_context(
-                tempfile.TemporaryDirectory(prefix="lo_profile_", dir=_portable_temp_dir(), ignore_cleanup_errors=True)
+                portable_temporary_directory(prefix="lo_profile_", ignore_cleanup_errors=True)
             )
             args = [f"-env:UserInstallation={Path(profile).as_uri()}"] + args
         return subprocess.run([get_soffice_executable()] + args, env=get_soffice_env(), **kwargs)

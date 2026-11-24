@@ -11,12 +11,11 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 import zipfile
 from pathlib import Path
 
-from office.helpers import portable_temp_dir, resolve_portable_path
+from office.helpers import portable_temporary_directory, resolve_portable_path
 from office.soffice import get_soffice_env, get_soffice_executable, run_soffice
 
 from openpyxl import load_workbook
@@ -152,8 +151,8 @@ def recalc(filename, timeout=30, force=False):
                 "external_link_cells_truncated": max(0, len(at_risk) - len(shown)),
             }
 
-    with tempfile.TemporaryDirectory(
-        prefix="recalc-lo-profile-", dir=portable_temp_dir(), ignore_cleanup_errors=True
+    with portable_temporary_directory(
+        prefix="recalc-lo-profile-", ignore_cleanup_errors=True
     ) as profile_dir:
         return _recalc_with_profile(filename, abs_path, timeout, Path(profile_dir))
 

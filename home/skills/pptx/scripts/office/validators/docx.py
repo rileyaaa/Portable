@@ -4,14 +4,13 @@ Validator for Word document XML files against XSD schemas.
 
 import random
 import re
-import tempfile
 import zipfile
 from pathlib import Path
 
 import defusedxml.minidom
 import lxml.etree
 
-from helpers import portable_temp_dir, safe_extract
+from helpers import portable_temporary_directory, safe_extract
 
 from .base import BaseSchemaValidator
 
@@ -187,7 +186,7 @@ class DOCXSchemaValidator(BaseSchemaValidator):
         count = 0
 
         try:
-            with tempfile.TemporaryDirectory(dir=portable_temp_dir()) as temp_dir:
+            with portable_temporary_directory() as temp_dir:
                 with zipfile.ZipFile(original, "r") as zip_ref:
                     safe_extract(zip_ref, Path(temp_dir))
 

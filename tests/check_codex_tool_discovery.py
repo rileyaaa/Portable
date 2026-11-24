@@ -337,6 +337,62 @@ presentation.save(deck)
 assert pptx.Presentation(deck).slides[0].shapes[0].text_frame.text == label
 print("NATIVE_PPTX_WRITE_READ=PASS", flush=True)
 
+# Exercise existing packed Office validators, including original-document
+# snapshots and the early-return XLSX branch. No external Office executable.
+office_scratch = root / "tmp/office"
+def assert_office_scratch_clean():
+    assert not office_scratch.exists() or not list(office_scratch.iterdir()), "Office scratch leaked"
+
+def validate_packed(skill, path, *args):
+    entry = root / "home/skills" / skill / "scripts/office/validate.py"
+    original_bytes = path.read_bytes()
+    result = subprocess.run([sys.executable, "-B", str(entry), str(path), *map(str, args)],
+                            cwd=root / "work", capture_output=True, timeout=120, check=False)
+    transcript = (result.stdout + b"\n" + result.stderr).decode("utf-8", "replace")
+    if result.returncode:
+        raise AssertionError("Office " + skill + " validation exit=" + str(result.returncode)
+                             + "; " + ascii(transcript[-4500:]))
+    assert path.read_bytes() == original_bytes, "Read-only validator changed input"
+    assert_office_scratch_clean()
+    return transcript
+
+word_original = output / "original.docx"
+word_original.write_bytes(word.read_bytes())
+deck_original = output / "original.pptx"
+deck_original.write_bytes(deck.read_bytes())
+assert "All validations PASSED!" in validate_packed("docx", word, "--original", word_original, "--author", "Synthetic")
+print("NATIVE_DOCX_VALIDATOR_AND_REDLINE_BASELINE=PASS", flush=True)
+assert "All validations PASSED!" in validate_packed("pptx", deck, "--original", deck_original)
+print("NATIVE_PPTX_VALIDATOR_BASELINE=PASS", flush=True)
+assert "No XSD schema validation is performed for xlsx-family" in validate_packed("xlsx", book)
+print("NATIVE_XLSX_VALIDATOR_EXPLICIT_SKIP_AND_CLEANUP=PASS", flush=True)
+
+# Exercise automatic LibreOffice profile creation/cleanup in the restricted
+# process with a mock subprocess only. LibreOffice is intentionally absent.
+# Actual rendering, formula recalculation and macro execution remain untested.
+from unittest import mock
+sys.path.insert(0, str(root / "home/skills/docx/scripts"))
+from office import soffice
+from office import helpers as office_helpers
+assert Path(office_helpers.__file__).resolve().is_relative_to(root / "home/skills/docx")
+assert Path(soffice.__file__).resolve().is_relative_to(root / "home/skills/docx")
+def simulate_soffice(argv, **kwargs):
+    from urllib.parse import urlparse, unquote
+    arg = next(v for v in argv if v.startswith("-env:UserInstallation="))
+    uri = urlparse(arg.split("=", 1)[1])
+    profile = Path(unquote(uri.path).lstrip("/"))
+    assert profile.parent == office_scratch
+    assert profile.name.startswith("lo_profile_")
+    (profile / "synthetic-profile.txt").write_bytes(b"owned profile")
+    return subprocess.CompletedProcess(argv, 0)
+with mock.patch.object(soffice, "get_soffice_executable", return_value="synthetic-not-executed.exe"), \
+        mock.patch.object(soffice, "get_soffice_env", return_value={}), \
+        mock.patch.object(soffice.subprocess, "run", side_effect=simulate_soffice) as mocked:
+    assert soffice.run_soffice(["--headless"]).returncode == 0
+    mocked.assert_called_once()
+assert_office_scratch_clean()
+print("NATIVE_OFFICE_OPTIONAL_PROFILE_MOCK=PASS (no LibreOffice execution)", flush=True)
+
 # PDF: create a synthetic manual with actual selectable text.
 manuals = output / "manuals"
 manuals.mkdir()

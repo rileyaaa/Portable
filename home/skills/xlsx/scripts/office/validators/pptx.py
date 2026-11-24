@@ -5,7 +5,7 @@ Validator for PowerPoint presentation XML files against XSD schemas.
 import re
 from pathlib import Path
 
-from helpers import opc_target, portable_temp_dir, rels_source_part, safe_extract
+from helpers import opc_target, portable_temporary_directory, rels_source_part, safe_extract
 
 from .base import BaseSchemaValidator
 
@@ -121,7 +121,6 @@ class PPTXSchemaValidator(BaseSchemaValidator):
         return True
 
     def _original_slide_defects(self, schema) -> set[str]:
-        import tempfile
         import zipfile
 
         from helpers.pptx_slide import SLIDE_PART_RE, fatal_slide_errors
@@ -130,7 +129,7 @@ class PPTXSchemaValidator(BaseSchemaValidator):
             return set()
 
         found: set[str] = set()
-        with tempfile.TemporaryDirectory(dir=portable_temp_dir()) as temp_dir:
+        with portable_temporary_directory() as temp_dir:
             temp_path = Path(temp_dir)
             try:
                 with zipfile.ZipFile(self.original_file, "r") as zf:

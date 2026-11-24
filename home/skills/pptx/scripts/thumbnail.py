@@ -19,13 +19,12 @@ import argparse
 import posixpath
 import subprocess
 import sys
-import tempfile
 import zipfile
 from pathlib import Path
 
 import defusedxml.minidom
 from defusedxml import ElementTree
-from office.helpers import SLIDE_REL_TYPE, opc_target, portable_file, portable_subprocess_env, portable_temp_dir, resolve_portable_path, safe_extract
+from office.helpers import SLIDE_REL_TYPE, opc_target, portable_file, portable_subprocess_env, portable_temporary_directory, resolve_portable_path, safe_extract
 from office.soffice import run_soffice
 from PIL import Image, ImageDraw, ImageFont
 
@@ -81,7 +80,7 @@ def main():
         sys.exit(1)
 
     try:
-        with tempfile.TemporaryDirectory(dir=portable_temp_dir()) as temp_dir:
+        with portable_temporary_directory() as temp_dir:
             temp_path = Path(temp_dir)
             # Validate archive structure/limits before handing the document to LibreOffice.
             validate_dir = temp_path / "archive-validation"

@@ -1,10 +1,13 @@
+import contextlib
 import os
 import posixpath
 import re
+import shutil
 import stat
 import tempfile
 import urllib.parse
 import unicodedata
+import uuid
 import zipfile
 from pathlib import Path
 
@@ -173,6 +176,38 @@ def portable_temp_dir(category: str = "office") -> Path:
         raise RuntimeError("portable temp path escapes package") from exc
     return resolved
 
+
+
+@contextlib.contextmanager
+def portable_temporary_directory(prefix: str = "office-", *, ignore_cleanup_errors: bool = False):
+    """Own one temporary child under the existing package-local office scratch.
+
+    CPython 3.13+ mkdir(0700) on Windows creates a protected DACL, which
+    tempfile.TemporaryDirectory uses. A restricted Codex token can be denied
+    access despite the parent being writable. Inherit the parent's existing
+    Windows ACL instead; retain 0700 on POSIX. No ACL is modified and this
+    directory layout does not guarantee confidentiality from other users.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", prefix):
+        raise ValueError("Invalid portable Office scratch prefix")
+    parent = resolve_portable_path(portable_temp_dir(), must_exist=True, kind="dir")
+    child = resolve_portable_path(parent / (prefix + uuid.uuid4().hex), kind="dir")
+    child.mkdir(mode=0o777 if os.name == "nt" else 0o700)
+    identity = child.lstat()
+    try:
+        resolve_portable_path(child, must_exist=True, kind="dir")
+        # Preserve the string interface of tempfile.TemporaryDirectory.
+        yield str(child)
+    finally:
+        resolve_portable_path(child, kind="dir")
+        try:
+            current = child.lstat()
+        except FileNotFoundError:
+            current = None
+        if current is not None:
+            if (current.st_dev, current.st_ino) != (identity.st_dev, identity.st_ino):
+                raise RuntimeError("Office scratch directory identity changed; refusing cleanup")
+            shutil.rmtree(child, ignore_errors=ignore_cleanup_errors)
 
 
 def portable_subprocess_env() -> dict[str, str]:

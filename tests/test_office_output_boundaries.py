@@ -159,6 +159,41 @@ class OfficeOutputBoundaryTests(unittest.TestCase):
         (source / "doc.xml").write_bytes(b"<document>synthetic</document>")
         return source
 
+    def test_office_scratch_inherits_package_path_and_cleans_on_success_or_exit(self):
+        scratch = self.package / "tmp" / "office"
+        scratch.mkdir(parents=True)
+        sentinel = scratch / "keep.txt"
+        sentinel.write_bytes(b"keep")
+        paths = []
+        with mock.patch.object(self.helpers.tempfile, "TemporaryDirectory",
+                               side_effect=AssertionError("private Windows ACL temp directory")):
+            for failure in (False, True):
+                try:
+                    with self.helpers.portable_temporary_directory(prefix="audit-") as name:
+                        self.assertIsInstance(name, str)
+                        child = Path(name)
+                        self.assertEqual(child.parent, scratch)
+                        paths.append(child)
+                        (child / "scratch.txt").write_bytes(b"owned")
+                        if failure:
+                            raise SystemExit(2)
+                except SystemExit as error:
+                    self.assertTrue(failure)
+                    self.assertEqual(error.code, 2)
+        self.assertEqual(len(paths), 2)
+        self.assertNotEqual(paths[0], paths[1])
+        self.assertTrue(all(not p.exists() for p in paths))
+        self.assertEqual(list(scratch.iterdir()), [sentinel])
+        self.assertEqual(sentinel.read_bytes(), b"keep")
+
+    def test_office_scratch_refuses_existing_link_before_creation(self):
+        scratch = self.package / "tmp"
+        self.directory_link(self.outside, scratch)
+        with self.assertRaises(RuntimeError):
+            with self.helpers.portable_temporary_directory():
+                self.fail("linked scratch was accepted")
+        self.assertEqual(list(self.outside.iterdir()), [])
+
     def test_rezip_stages_in_package_tmp_and_preserves_archive_content(self):
         import zipfile
         source = self.rezip_source()

@@ -12,14 +12,13 @@ are separate parts and are not checked.
 """
 
 import subprocess
-import tempfile
 import zipfile
 from pathlib import Path
 
 import defusedxml.ElementTree as ET
 from defusedxml.common import DefusedXmlException
 
-from helpers import portable_file, portable_subprocess_env, portable_temp_dir, rendered_text, safe_extract
+from helpers import portable_file, portable_subprocess_env, portable_temporary_directory, rendered_text, safe_extract
 
 
 def _portable_git_executable() -> str | None:
@@ -50,7 +49,7 @@ class RedliningValidator:
             print(f"FAILED - Modified document.xml not found at {modified_file}")
             return False
 
-        with tempfile.TemporaryDirectory(dir=portable_temp_dir()) as temp_dir:
+        with portable_temporary_directory() as temp_dir:
             temp_path = Path(temp_dir)
 
             try:
@@ -192,7 +191,7 @@ class RedliningValidator:
         if not git_executable:
             return None
         try:
-            with tempfile.TemporaryDirectory(dir=portable_temp_dir()) as temp_dir:
+            with portable_temporary_directory() as temp_dir:
                 temp_path = Path(temp_dir)
 
                 original_file = temp_path / "original.txt"

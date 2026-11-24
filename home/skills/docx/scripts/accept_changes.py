@@ -7,11 +7,10 @@ import argparse
 import logging
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 
-from office.helpers import resolve_portable_path
-from office.soffice import _portable_temp_dir, get_soffice_env, get_soffice_executable
+from office.helpers import portable_temporary_directory, resolve_portable_path
+from office.soffice import get_soffice_env, get_soffice_executable
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +57,7 @@ def accept_changes(
 
     # TEMP/TMP are pinned to Codex\tmp by the portable launcher. A unique profile
     # avoids both host /tmp leakage on Windows and concurrent LibreOffice profile races.
-    with tempfile.TemporaryDirectory(prefix="libreoffice_docx_profile_", dir=_portable_temp_dir()) as profile_dir:
+    with portable_temporary_directory(prefix="libreoffice_docx_profile_") as profile_dir:
         profile_path = Path(profile_dir).resolve()
         if not _setup_libreoffice_macro(profile_path):
             return None, "Error: Failed to setup LibreOffice macro"

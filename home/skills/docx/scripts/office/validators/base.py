@@ -10,7 +10,7 @@ from functools import lru_cache
 
 import lxml.etree
 
-from helpers import portable_temp_dir, safe_extract
+from helpers import portable_temporary_directory, safe_extract
 
 
 @lru_cache(maxsize=None)
@@ -835,15 +835,13 @@ class BaseSchemaValidator:
     def _get_original_file_errors(self, xml_file, schema_path=None):
         if self.original_file is None:
             return set()
-
-        import tempfile
         import zipfile
 
         xml_file = Path(xml_file).resolve()
         unpacked_dir = self.unpacked_dir.resolve()
         relative_path = xml_file.relative_to(unpacked_dir)
 
-        with tempfile.TemporaryDirectory(dir=portable_temp_dir()) as temp_dir:
+        with portable_temporary_directory() as temp_dir:
             temp_path = Path(temp_dir)
 
             try:

@@ -14,15 +14,15 @@ Auto-repair fixes:
 """
 
 import argparse
+from contextlib import ExitStack
 import sys
-import tempfile
 import zipfile
 from pathlib import Path
 
 import defusedxml.ElementTree as ET
 from defusedxml.common import DefusedXmlException
 
-from helpers import OOXML_FAMILY, ensure_portable_tree_no_reparse, portable_temp_dir, resolve_portable_path, rezip, safe_extract
+from helpers import OOXML_FAMILY, ensure_portable_tree_no_reparse, portable_temporary_directory, resolve_portable_path, rezip, safe_extract
 from validators import DOCXSchemaValidator, PPTXSchemaValidator, RedliningValidator
 
 WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -46,6 +46,10 @@ def _has_tracked_changes(unpacked_dir: Path) -> bool:
 
 
 def main():
+    # Redirected embedded Python streams may otherwise use the ANSI code page.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and not stream.isatty() and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(description="Validate Office document XML files")
     parser.add_argument(
         "path",
@@ -109,71 +113,68 @@ def main():
     if args.author is not None and family != "docx":
         _fail(f"--author only applies to docx files, not {family}")
 
-    packed_file = None
-    temp_dir_ctx = None
-    if path.is_file() and path.suffix.lower() in OOXML_FAMILY:
-        packed_file = path
-        temp_dir_ctx = tempfile.TemporaryDirectory(dir=portable_temp_dir())
-        unpacked_dir = Path(temp_dir_ctx.name)
-        try:
-            with zipfile.ZipFile(path, "r") as zf:
-                safe_extract(zf, unpacked_dir)
-        except (zipfile.BadZipFile, ValueError, OSError) as e:
-            _fail(f"cannot unpack {path}: {e}")
-    else:
-        if not path.is_dir():
-            _fail(f"{path} is not a directory or Office file")
-        try:
-            unpacked_dir = ensure_portable_tree_no_reparse(path)
-        except RuntimeError as e:
-            _fail(str(e))
+    # Ensure scratch is removed even on validation failure or sys.exit().
+    with ExitStack() as stack:
+        packed_file = None
+        if path.is_file() and path.suffix.lower() in OOXML_FAMILY:
+            packed_file = path
+            unpacked_dir = Path(stack.enter_context(portable_temporary_directory()))
+            try:
+                with zipfile.ZipFile(path, "r") as zf:
+                    safe_extract(zf, unpacked_dir)
+            except (zipfile.BadZipFile, ValueError, OSError) as e:
+                _fail(f"cannot unpack {path}: {e}")
+        else:
+            if not path.is_dir():
+                _fail(f"{path} is not a directory or Office file")
+            try:
+                unpacked_dir = ensure_portable_tree_no_reparse(path)
+            except RuntimeError as e:
+                _fail(str(e))
 
-    match family:
-        case "docx":
-            validators = [
-                DOCXSchemaValidator(unpacked_dir, original_file, verbose=args.verbose),
-            ]
-            if args.author is not None:
-                validators.append(
-                    RedliningValidator(unpacked_dir, original_file, verbose=args.verbose)  
-                )
-            elif original_file and _has_tracked_changes(unpacked_dir):
+        match family:
+            case "docx":
+                validators = [
+                    DOCXSchemaValidator(unpacked_dir, original_file, verbose=args.verbose),
+                ]
+                if args.author is not None:
+                    validators.append(
+                        RedliningValidator(unpacked_dir, original_file, verbose=args.verbose)  
+                    )
+                elif original_file and _has_tracked_changes(unpacked_dir):
+                    print(
+                        "Note: this document has tracked changes; they were not "
+                        "checked against the original (pass --author to check)."
+                    )
+            case "pptx":
+                validators = [
+                    PPTXSchemaValidator(unpacked_dir, original_file, verbose=args.verbose),
+                ]
+            case "xlsx":
+                exts = ", ".join(k for k, v in sorted(OOXML_FAMILY.items()) if v == "xlsx")
                 print(
-                    "Note: this document has tracked changes; they were not "
-                    "checked against the original (pass --author to check)."
+                    f"No XSD schema validation is performed for xlsx-family files ({exts}). "
+                    "For formula-error checking, use scripts/recalc.py instead."
                 )
-        case "pptx":
-            validators = [
-                PPTXSchemaValidator(unpacked_dir, original_file, verbose=args.verbose),
-            ]
-        case "xlsx":
-            exts = ", ".join(k for k, v in sorted(OOXML_FAMILY.items()) if v == "xlsx")
-            print(
-                f"No XSD schema validation is performed for xlsx-family files ({exts}). "
-                "For formula-error checking, use scripts/recalc.py instead."
-            )
-            sys.exit(0)
-        case _:
-            print(f"Error: Validation not supported for file type {family}")
-            sys.exit(1)
+                sys.exit(0)
+            case _:
+                print(f"Error: Validation not supported for file type {family}")
+                sys.exit(1)
 
-    if args.auto_repair:
-        total_repairs = sum(v.repair() for v in validators)
-        if total_repairs:
-            print(f"Auto-repaired {total_repairs} issue(s)")
-            if packed_file is not None:
-                rezip(unpacked_dir, packed_file)
-                print(f"Wrote repaired file to {packed_file}")
+        if args.auto_repair:
+            total_repairs = sum(v.repair() for v in validators)
+            if total_repairs:
+                print(f"Auto-repaired {total_repairs} issue(s)")
+                if packed_file is not None:
+                    rezip(unpacked_dir, packed_file)
+                    print(f"Wrote repaired file to {packed_file}")
 
-    success = all([v.validate() for v in validators])
+        success = all([v.validate() for v in validators])
 
-    if temp_dir_ctx is not None:
-        temp_dir_ctx.cleanup()
+        if success:
+            print("All validations PASSED!")
 
-    if success:
-        print("All validations PASSED!")
-
-    sys.exit(0 if success else 1)
+        sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":
