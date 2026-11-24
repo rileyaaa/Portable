@@ -538,6 +538,9 @@ function Get-ObjectProperty {
     if ($null -eq $Object) { return $null }
     $prop = $Object.PSObject.Properties[$Name]
     if ($null -eq $prop) { return $null }
+    # PowerShell enumerates function output. Preserve JSON array shape so a
+    # singleton accounts/credentials array cannot become an object/map.
+    if ($prop.Value -is [array]) { return ,$prop.Value }
     return $prop.Value
 }
 
@@ -605,7 +608,8 @@ function Add-CredentialEntriesFromItem {
     if ($null -eq $Item) { return }
 
     $credentials = Get-ObjectProperty $Item "credentials"
-    if ($null -ne $credentials) {
+    # Retain the existing direct-credential fallback for an empty list.
+    if ($null -ne $credentials -and @($credentials).Count -gt 0) {
         $credentialItems = @($credentials)
         if ($credentials -is [array]) { $credentialItems = @($credentials) }
         for ($i = 0; $i -lt $credentialItems.Count; $i++) {
@@ -1380,9 +1384,12 @@ function Test-ItemHasCredentialEntries {
     param($Item)
     if ($null -eq $Item) { return $false }
     $credentials = Get-ObjectProperty $Item "credentials"
-    if ($null -ne $credentials) {
+    if ($null -ne $credentials -and @($credentials).Count -gt 0) {
+        # The parser admits non-null nested records even when required token
+        # fields are absent (-AllowEmpty). Keep such siblings until their own
+        # check classifies them; a partial scan must not prune untested entries.
         foreach ($credential in @($credentials)) {
-            if (Test-LooksLikeCredentialObject $credential) { return $true }
+            if ($null -ne $credential) { return $true }
         }
         return $false
     }
