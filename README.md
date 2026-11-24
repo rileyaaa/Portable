@@ -56,7 +56,7 @@
 .\codex.exe --version
 ```
 
-带参数启动时，`CODEX_AUTH_MODE=menu` 默认使用 API；如需沿用上次选择，设为 `last`，或明确设为 `api`、`account_json`、`browser`。
+带参数启动时，`CODEX_AUTH_MODE=menu` 默认使用 API；如需沿用上次选择，设为 `last`，或明确设为 `api`、`account_json`、`browser`。命令行显式 `--portable-auth <模式>`（或等号写法）即使不附加 Codex 子命令或提示词，也沿用原有非菜单认证路径；显式 `menu` 和普通无参数双击保留启动菜单。
 
 ## 目录与配置
 

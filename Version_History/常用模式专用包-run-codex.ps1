@@ -1587,6 +1587,7 @@ $ConfiguredAuthMode = $env:CODEX_AUTH_MODE
 if ([string]::IsNullOrWhiteSpace($ConfiguredAuthMode)) { $ConfiguredAuthMode = "menu" }
 $PortableMaintenanceMode = $false
 $PortableExtensionsRequested = $false
+$PortableAuthExplicit = $false
 $CodexLaunchArgs = New-Object System.Collections.Generic.List[string]
 $portableOptionScan = $true
 for ($argumentIndex = 0; $argumentIndex -lt $args.Count; $argumentIndex++) {
@@ -1615,10 +1616,12 @@ for ($argumentIndex = 0; $argumentIndex -lt $args.Count; $argumentIndex++) {
         }
         $argumentIndex++
         $ConfiguredAuthMode = [string]$args[$argumentIndex]
+        $PortableAuthExplicit = $true
         continue
     }
     if ($portableOptionScan -and $argument.StartsWith("--portable-auth=", [System.StringComparison]::OrdinalIgnoreCase)) {
         $ConfiguredAuthMode = $argument.Substring("--portable-auth=".Length)
+        $PortableAuthExplicit = $true
         continue
     }
     $CodexLaunchArgs.Add($argument)
@@ -1927,7 +1930,9 @@ function Test-AndNormalizeCodexCliArgs {
                 $normalizedCliPath = Resolve-PortableCliPath -OptionName '--output-schema' -Value $arg.Substring('--output-schema='.Length) -MustExist $true
                 $result.Add('--output-schema=' + $normalizedCliPath)
                 continue
-            } elseif ($lower.StartsWith('-o=') -and $arg.Length -gt 3) {
+            } elseif ($lower.StartsWith('-o=')) {
+                # Keep empty attached values in this branch so path validation
+                # rejects them, instead of treating the separator as a filename.
                 $normalizedCliPath = Resolve-PortableCliPath -OptionName '--output-last-message' -Value $arg.Substring(3) -MustExist $false
                 $result.Add('-o=' + $normalizedCliPath)
                 continue
@@ -2125,7 +2130,11 @@ function Normalize-ReasoningEffortValue {
 # ------------------------------------------------------------
 $StartupInteractiveEnabled = Convert-ToFeatureBool $env:CODEX_STARTUP_INTERACTIVE $true
 $ReasoningSettingSource = "env.ps1"
-$ShowStartupMenu = $StartupInteractiveEnabled -and $CodexLaunchArgs.Count -eq 0 -and [Environment]::UserInteractive
+# Launcher options are stripped from the native argument list. An explicit
+# authentication choice must still select the existing CLI authentication path
+# when no native arguments remain. A bare launch or explicit menu keeps the menu.
+$ShowStartupMenu = $StartupInteractiveEnabled -and $CodexLaunchArgs.Count -eq 0 -and
+    [Environment]::UserInteractive -and (-not $PortableAuthExplicit -or $ConfiguredAuthMode -eq "menu")
 if ($ShowStartupMenu) {
     # 计算各项“回车=默认”实际会用到的值(取自 env.ps1),显示给用户看
     $MenuTruthy = @("1","true","yes","y","on")
