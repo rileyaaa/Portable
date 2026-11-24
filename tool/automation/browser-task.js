@@ -1,7 +1,7 @@
 'use strict';
 // One requested coding task, one browser process tree, no persistent daemon.
 const path = require('node:path');
-const {checkedPath, checkTree, browserConfiguration} = require('./browser-bridge');
+const {checkedPath, checkTree, browserConfiguration, checkBrowserTrees} = require('./browser-bridge');
 
 // Preserve the existing JSON result format and enforce its actual serialized
 // payload limit, including the escaping and metadata of a truncated result.
@@ -45,6 +45,7 @@ async function main() {
   const task = require(script);
   if (typeof task !== 'function') throw new Error('The task module must export an async function');
   const {chromium} = require('./playwright/node_modules/playwright');
+  checkBrowserTrees(root, executable);
   const context = await chromium.launchPersistentContext(browser.userDataDir, {
     ...browser.launchOptions, ...browser.contextOptions,
   });

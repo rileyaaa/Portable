@@ -101,14 +101,25 @@ function createMcpOutputDirectory(workspace) {
   return checkedPath(workspace, directory, {directory: true});
 }
 
-function browserConfiguration(root, executable, headed, environment = process.env) {
+const browserStateDirectories = ['profile', 'cache', 'crashes', 'downloads', 'runtime'];
+
+// A stdio service can sit idle before its first tool call, or reopen Chromium
+// after browser_close. Validate the current trees at each actual launch, not
+// just during service initialization. The PowerShell checks remain unchanged.
+function checkBrowserTrees(root, executable) {
   executable = checkedPath(root, executable);
   checkTree(root, path.dirname(executable));
   const state = checkedPath(root, path.join(root, 'cache', 'browser'), {directory: true});
-  // Reject nested links before Chromium reads persisted databases or preferences.
+  for (const name of browserStateDirectories)
+    checkedPath(state, name, {directory: true});
   checkTree(root, state);
+}
+
+function browserConfiguration(root, executable, headed, environment = process.env) {
+  executable = checkedPath(root, executable);
+  const state = checkedPath(root, path.join(root, 'cache', 'browser'), {directory: true});
   const directories = {};
-  for (const name of ['profile', 'cache', 'crashes', 'downloads', 'runtime'])
+  for (const name of browserStateDirectories)
     directories[name] = checkedPath(state, name, {directory: true});
   for (const key of ['HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'TMPDIR',
     'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME',
@@ -134,18 +145,20 @@ function browserConfiguration(root, executable, headed, environment = process.en
   };
 }
 
-function createBrowserOwner(chromium, configuration) {
+function createBrowserOwner(chromium, configuration, beforeLaunch = null) {
   let current = null, closing = null, disposed = false, closeFailed = false;
   const forget = pending => {
     if (current === pending) { current = null; closeFailed = false; }
   };
   return {
     async get() {
-      if (closing) await closing;
+      while (closing) await closing;
       if (disposed) throw new Error('Browser task has ended');
       if (closeFailed) throw new Error('Previous browser close failed; retry browser_close before reopening');
-      if (!current) {
-        const pending = chromium.launchPersistentContext(configuration.userDataDir, {
+      let pending = current;
+      if (!pending) {
+        beforeLaunch?.();
+        pending = chromium.launchPersistentContext(configuration.userDataDir, {
           ...configuration.launchOptions, ...configuration.contextOptions,
         });
         current = pending;
@@ -157,7 +170,13 @@ function createBrowserOwner(chromium, configuration) {
           throw error;
         }
       }
-      return current;
+      const context = await pending;
+      // A close/dispose may have arrived while launch was still pending.
+      // Never hand a closing or superseded context back to either caller.
+      if (disposed) throw new Error('Browser task has ended');
+      if (closing || current !== pending || closeFailed)
+        throw new Error('Browser closed while its context was being acquired; retry the task');
+      return context;
     },
     async close() {
       if (closing) return closing;
@@ -298,7 +317,7 @@ async function main() {
   process.chdir(workspace);
   const {createConnection} = require('./playwright/node_modules/@playwright/mcp');
   const {chromium} = require('./playwright/node_modules/playwright');
-  const owner = createBrowserOwner(chromium, browser);
+  const owner = createBrowserOwner(chromium, browser, () => checkBrowserTrees(root, executable));
   const {StdioServerTransport} = require('./playwright/node_modules/playwright-core/lib/utilsBundle');
   const outputDirectory = createMcpOutputDirectory(workspace);
   const server = await createConnection({
@@ -330,7 +349,7 @@ async function main() {
   } catch (error) { await shutdown(); throw error; }
 }
 
-module.exports = {allowedTools, checkedPath, checkTree, browserProxy, createMcpOutputDirectory, browserConfiguration, createBrowserOwner, validateToolCall, PolicyTransport};
+module.exports = {allowedTools, checkedPath, checkTree, browserProxy, createMcpOutputDirectory, browserConfiguration, checkBrowserTrees, createBrowserOwner, validateToolCall, PolicyTransport};
 if (require.main === module) main().catch(error => {
   process.stderr.write(`Portable browser: ${error.message}\n`);
   process.exitCode = 1;

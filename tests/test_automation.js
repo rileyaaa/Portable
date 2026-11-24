@@ -123,6 +123,7 @@ test('browser configuration reuses only the package-local persistent state', () 
       'TEMP', 'TMP', 'TMPDIR', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME',
       'XDG_STATE_HOME', 'PROGRAMDATA', 'ALLUSERSPROFILE', 'PUBLIC'].map(key => [key, path.join(state, 'runtime')]));
     const first = bridge.browserConfiguration(fixture, executable, false, environment);
+    bridge.checkBrowserTrees(fixture, executable);
     fs.writeFileSync(path.join(first.userDataDir, 'synthetic-state'), 'survives the next task');
     const second = bridge.browserConfiguration(fixture, executable, true, environment);
     assert.equal(second.userDataDir, first.userDataDir);
@@ -147,10 +148,10 @@ test('browser configuration reuses only the package-local persistent state', () 
     assert.throws(() => bridge.browserConfiguration(fixture, executable, false, {...environment, APPDATA: fixture}), /portable wrapper/);
     const linked = path.join(first.userDataDir, 'linked');
     fs.symlinkSync(path.join(state, 'runtime'), linked, process.platform === 'win32' ? 'junction' : 'dir');
-    assert.throws(() => bridge.browserConfiguration(fixture, executable, false, environment), /Links/);
+    assert.throws(() => bridge.checkBrowserTrees(fixture, executable), /Links/);
     fs.rmSync(linked);
     fs.linkSync(path.join(first.userDataDir, 'synthetic-state'), path.join(state, 'hardlink'));
-    assert.throws(() => bridge.browserConfiguration(fixture, executable, false, environment), /Links/);
+    assert.throws(() => bridge.checkBrowserTrees(fixture, executable), /Links/);
   } finally { fs.rmSync(fixture, {recursive: true, force: true}); }
 });
 
@@ -214,6 +215,87 @@ test('persistent browser owner is lazy, closes explicitly and serializes reopen'
   await owner.dispose();
   assert.equal(closes, 2);
   await assert.rejects(owner.get(), /ended/);
+});
+
+test('close or disposal during a shared pending launch rejects stale acquisitions', async () => {
+  for (const dispose of [false, true]) {
+    let release, starts = 0, closes = 0;
+    const chromium = {launchPersistentContext() {
+      starts++;
+      return new Promise(resolve => { release = resolve; });
+    }};
+    const owner = bridge.createBrowserOwner(chromium, {userDataDir:'synthetic/profile'});
+    const first = owner.get(), second = owner.get();
+    const closing = dispose ? owner.dispose() : owner.close();
+    const context = new EventEmitter();
+    context.close = async () => { closes++; context.emit('close'); };
+    release(context);
+    const result = await Promise.allSettled([first, second, closing]);
+    assert.deepEqual(result.map(x => x.status), ['rejected','rejected','fulfilled']);
+    assert.match(result[0].reason.message, /ended|closed while/);
+    assert.match(result[1].reason.message, /ended|closed while/);
+    assert.equal(starts, 1);
+    assert.equal(closes, 1);
+    if (dispose) await assert.rejects(owner.get(), /ended/);
+    else {
+      const reopening = owner.get();
+      const reopened = new EventEmitter();
+      reopened.close = async () => reopened.emit('close');
+      release(reopened);
+      assert.equal(await reopening, reopened);
+      assert.equal(starts, 2);
+      await owner.dispose();
+    }
+  }
+});
+
+test('each actual browser launch checks its current profile and payload, without checks on reuse', async () => {
+  const scratch = bridge.checkedPath(root, 'tmp', {directory:true, missing:true});
+  fs.mkdirSync(scratch, {recursive:true});
+  const fixture = fs.mkdtempSync(path.join(scratch, 'launch-tree-test-'));
+  const state = path.join(fixture, 'cache', 'browser');
+  const executable = path.join(fixture, 'payload', 'synthetic.exe');
+  let starts = 0, validations = 0, owner;
+  try {
+    for (const name of ['profile','cache','crashes','downloads','runtime'])
+      fs.mkdirSync(path.join(state, name), {recursive:true});
+    fs.mkdirSync(path.dirname(executable));
+    fs.writeFileSync(executable, 'synthetic');
+    const chromium = {async launchPersistentContext() {
+      starts++;
+      const context = new EventEmitter();
+      context.close = async () => context.emit('close');
+      return context;
+    }};
+    owner = bridge.createBrowserOwner(chromium, {userDataDir:path.join(state,'profile')}, () => {
+      validations++;
+      bridge.checkBrowserTrees(fixture, executable);
+    });
+    assert.equal(validations, 0, 'Idle service performs no extra full tree walk');
+    const linked = path.join(state, 'profile', 'linked');
+    fs.symlinkSync(path.join(state, 'runtime'), linked, process.platform === 'win32' ? 'junction' : 'dir');
+    await assert.rejects(owner.get(), /Links/);
+    assert.equal(starts, 0, 'Unsafe tree rejected before launching');
+    fs.rmSync(linked);
+    const first = await owner.get();
+    assert.equal(await owner.get(), first);
+    assert.equal(validations, 2);
+    await owner.close();
+    const downloads = path.join(state,'downloads');
+    fs.rmdirSync(downloads);
+    fs.writeFileSync(downloads, 'wrong type');
+    await assert.rejects(owner.get(), /file type/);
+    assert.equal(starts, 1);
+    fs.rmSync(downloads);
+    fs.mkdirSync(downloads);
+    assert.notEqual(await owner.get(), first);
+    assert.equal(validations, 4);
+    assert.equal(starts, 2);
+    await owner.dispose();
+  } finally {
+    await owner?.dispose();
+    fs.rmSync(fixture, {recursive:true, force:true});
+  }
 });
 
 test('failed browser close cannot open another context on the same profile', async () => {
