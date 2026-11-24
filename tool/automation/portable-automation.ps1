@@ -187,13 +187,18 @@ function New-AutomationStartInfo {
         if ($value.Trim() -notmatch '^(?i:1|true|yes|y|on)$') { $proxyEnabled = $false }
     }
     if ($proxyEnabled) {
+        $hasProxyAddress = $false
         foreach ($name in @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
                             'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy')) {
             $value = [Environment]::GetEnvironmentVariable($name)
             if (-not [string]::IsNullOrWhiteSpace($value)) {
                 $start.EnvironmentVariables[$name] = $value
+                if ($name -in @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY')) { $hasProxyAddress = $true }
             }
         }
+        # An explicitly selected proxy with no address is an incomplete MCP
+        # environment, not a request to silently fall back to direct access.
+        if (-not $hasProxyAddress) { throw 'Explicit package proxy selected, but proxy address is missing.' }
     }
     foreach ($name in @('HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'TMPDIR',
                         'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME')) {

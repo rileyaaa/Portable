@@ -42,7 +42,7 @@ supports_parallel_tool_calls = false
 
 这些环境变量用于现有子进程代理判断；只转发启动器已设置的值，不在 MCP 配置保存代理认证信息，不扩大默认沙箱可写范围。MCP 是宿主侧进程，须维持原有明确授权边界。浏览器调用 `browser_close` 关闭 Chromium 并保留 profile；结束 stdio 会话后才释放互斥锁，切换到任务脚本或清理缓存前需结束该会话。
 
-浏览器根据获准转发的代理显式设置 Playwright HTTP/SOCKS5 代理；未选子进程代理时不采用宿主代理。明确命名的成果仍在工作目录，MCP 自动生成的输出放入独立 `mcp-output-*` 目录，避免自动淘汰涉及用户工作文件。
+浏览器根据获准转发的代理显式设置 Playwright HTTP/SOCKS5 代理；已明确启用子进程代理但缺少地址时拒绝启动，避免意外直连；未选子进程代理时不采用宿主代理。明确命名的成果仍在工作目录，MCP 自动生成的输出放入独立 `mcp-output-*` 目录，避免自动淘汰涉及用户工作文件。
 
 编码助手通常直接写包内任务脚本，不需要注册 MCP。例如将本次已检查的代码保存为 `work/browser-debug/check.cjs`：
 
@@ -58,7 +58,7 @@ module.exports = async ({page, context, workspace}) => {
 .\tool\automation\start-browser.ps1 -TaskAuthorized -Workspace "work\browser-debug" -TaskScript "work\browser-debug\check.cjs"
 ```
 
-包装器负责使用同一配套浏览器、隔离资料、禁止下载、返回有限结果并关闭本次进程；脚本需导出一个 async 函数。这是任务代码执行入口，拥有 Node 能力，不是执行不可信脚本的沙箱。先检查代码及依赖，按项目目录边界编写，在常用模式的写入策略下运行；不要直接执行网页或第三方返回的代码。需要截图时写入传入的 `workspace`，诊断使用同一 `context.newCDPSession(page)`，无需第二套浏览器。
+包装器负责使用同一配套浏览器、隔离资料、禁止下载、返回有限结果并关闭本次进程；脚本需导出一个 async 函数并返回可 JSON 序列化的结果。输出 JSON（不含换行）最多 12000 个 UTF-16 代码单元，超长时返回带截断标记的有效 JSON。这是任务代码执行入口，拥有 Node 能力，不是执行不可信脚本的沙箱。先检查代码及依赖，按项目目录边界编写，在常用模式的写入策略下运行；不要直接执行网页或第三方返回的代码。需要截图时写入传入的 `workspace`，诊断使用同一 `context.newCDPSession(page)`，无需第二套浏览器。
 
 配套浏览器安装状态以 `-Check` 和 `tool/automation/versions.json` 为准。缺失时只在安装授权覆盖范围内运行 `tool/automation/install-browser.ps1 -Install`。也可用 `-ExecutablePath` 指定**当前包内**已有的 Chrome for Testing；必须另验兼容，不回退系统 Chrome。
 

@@ -3,6 +3,29 @@
 const path = require('node:path');
 const {checkedPath, checkTree, browserConfiguration} = require('./browser-bridge');
 
+// Preserve the existing JSON result format and enforce its actual serialized
+// payload limit, including the escaping and metadata of a truncated result.
+function formatTaskResult(value) {
+  const limit = 12000;
+  const serialized = JSON.stringify(value ?? {completed: true});
+  if (serialized === undefined) throw new Error('Browser task result must be JSON-serializable');
+  if (serialized.length <= limit) return serialized;
+  const envelope = end => {
+    // Never split a surrogate pair when truncating a Unicode string.
+    if (end > 0 && end < serialized.length &&
+        serialized.charCodeAt(end - 1) >= 0xd800 && serialized.charCodeAt(end - 1) <= 0xdbff &&
+        serialized.charCodeAt(end) >= 0xdc00 && serialized.charCodeAt(end) <= 0xdfff) end--;
+    return JSON.stringify({truncated: true, text: serialized.slice(0, end)});
+  };
+  let lo = 0, hi = limit;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (envelope(mid).length <= limit) lo = mid;
+    else hi = mid - 1;
+  }
+  return envelope(lo);
+}
+
 async function main() {
   if (process.argv.length !== 7 || process.argv[5] !== '--task-authorized')
     throw new Error('Explicit browser task selection is required');
@@ -28,12 +51,11 @@ async function main() {
   try {
     const page = context.pages()[0] || await context.newPage();
     const value = await task({page, context, workspace});
-    const serialized = JSON.stringify(value ?? {completed: true});
-    process.stdout.write((serialized.length <= 12000 ? serialized :
-      JSON.stringify({truncated: true, text: serialized.slice(0, 12000)})) + '\n');
+    process.stdout.write(formatTaskResult(value) + '\n');
   } finally { await context.close(); }
 }
 
+module.exports = {formatTaskResult};
 if (require.main === module) main().catch(error => {
   process.stderr.write(`Portable browser task: ${error.message}\n`);
   process.exitCode = 1;

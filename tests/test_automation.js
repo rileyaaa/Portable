@@ -8,6 +8,7 @@ const {createHash} = require('node:crypto');
 const {spawnSync} = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const bridge = require('../tool/automation/browser-bridge');
+const {formatTaskResult} = require('../tool/automation/browser-task');
 
 test('unselected browser entry exits before attempting to start a browser', () => {
   for (const name of ['browser-bridge.js', 'browser-task.js']) {
@@ -17,6 +18,23 @@ test('unselected browser entry exits before attempting to start a browser', () =
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Explicit browser task/);
   }
+});
+
+test('task result limit includes JSON escaping and truncation metadata', () => {
+  for (const value of [null, undefined, {text:'中文😀'}, 'x'.repeat(11998), false, 0])
+    assert.equal(formatTaskResult(value), JSON.stringify(value ?? {completed:true}));
+  for (const data of ['a'.repeat(30000), '"\\'.repeat(10000), '\n\t'.repeat(10000), '😀中文'.repeat(10000)]) {
+    const serialized = JSON.stringify({data});
+    const output = formatTaskResult({data});
+    assert.ok(output.length <= 12000, 'Actual serialized payload exceeds limit');
+    const parsed = JSON.parse(output);
+    assert.equal(parsed.truncated, true);
+    assert.ok(parsed.text.length > 5000);
+    assert.ok(serialized.startsWith(parsed.text));
+    assert.ok(!/[\uD800-\uDBFF]$/.test(parsed.text));
+  }
+  assert.throws(() => formatTaskResult(() => {}), /JSON-serializable/);
+  assert.throws(() => formatTaskResult(Symbol('synthetic')), /JSON-serializable/);
 });
 
 test('path guards reject traversal, hard links and linked ancestors', () => {

@@ -80,11 +80,14 @@ try {
     # A direct automation entry must not inherit ambient host proxies;
     # only an explicitly enabled package-local task may forward them.
     $saved = @{}
-    foreach ($key in @('HTTP_PROXY','CODEX_INSTALL_DIR','CODEX_HOME','CODEX_PROXY_ENABLED',
+    foreach ($key in @('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','NO_PROXY','CODEX_INSTALL_DIR','CODEX_HOME','CODEX_PROXY_ENABLED',
                        'CODEX_PROXY_FOR_SUBPROCESS','CODEX_SANDBOX_NETWORK_ACCESS')) {
         $saved[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
     }
     try {
+        foreach ($key in @('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','NO_PROXY')) {
+            Remove-Item ('Env:' + $key) -ErrorAction SilentlyContinue
+        }
         $env:HTTP_PROXY = 'http://127.0.0.1:65432'
         $env:CODEX_PROXY_ENABLED = 'false'
         $probeOff = New-AutomationStartInfo -Root $root -FilePath $node -WorkingDirectory $fixture -SessionDirectory $fixture
@@ -96,6 +99,21 @@ try {
         $env:CODEX_SANDBOX_NETWORK_ACCESS = 'true'
         $probeOn = New-AutomationStartInfo -Root $root -FilePath $node -WorkingDirectory $fixture -SessionDirectory $fixture
         if ($probeOn.EnvironmentVariables['HTTP_PROXY'] -cne 'http://127.0.0.1:65432') { throw 'Explicit package proxy did not reach automation.' }
+        Remove-Item Env:HTTP_PROXY -ErrorAction SilentlyContinue
+        $env:NO_PROXY = 'localhost'
+        $missingProxyRejected = $false
+        try {
+            $null = New-AutomationStartInfo -Root $root -FilePath $node -WorkingDirectory $fixture -SessionDirectory $fixture
+        } catch { $missingProxyRejected = $_.Exception.Message -like '*proxy address is missing*' }
+        if (-not $missingProxyRejected) { throw 'Explicit proxy with missing address silently allowed direct access.' }
+        $env:ALL_PROXY = 'socks5h://127.0.0.1:65432'
+        $probeSocks = New-AutomationStartInfo -Root $root -FilePath $node -WorkingDirectory $fixture -SessionDirectory $fixture
+        if ($probeSocks.EnvironmentVariables['ALL_PROXY'] -cne $env:ALL_PROXY) { throw 'Explicit SOCKS fallback was not forwarded.' }
+        Remove-Item Env:ALL_PROXY -ErrorAction SilentlyContinue
+        $env:CODEX_PROXY_FOR_SUBPROCESS = 'false'
+        $probeDirect = New-AutomationStartInfo -Root $root -FilePath $node -WorkingDirectory $fixture -SessionDirectory $fixture
+        if ($probeDirect.EnvironmentVariables.ContainsKey('NO_PROXY')) { throw 'Disabled proxy leaked bypass environment.' }
+        Write-Output 'PASS explicit proxy missing address rejected and SOCKS/direct selection preserved'
     } finally {
         foreach ($key in $saved.Keys) {
             if ($null -eq $saved[$key]) { Remove-Item ('Env:' + $key) -ErrorAction SilentlyContinue }

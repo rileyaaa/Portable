@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import queue
 import shutil
+import socketserver
 import stat
 import subprocess
 import tempfile
@@ -44,8 +45,9 @@ def copy_input(relative, dest):
 
 HTML = b"""<!doctype html><title>Portable MCP smoke</title>
 <h1>Portable MCP smoke</h1><button onclick="document.body.dataset.clicked='yes';this.textContent='Clicked'">Click me</button>
-<input aria-label="Name"><script>document.cookie='portable_mcp=persisted; Max-Age=3600; Path=/'</script>"""
+<input aria-label="Name">"""
 PROXY_REQUESTS = []
+SOCKS_REQUESTS = []
 
 
 class Page(http.server.BaseHTTPRequestHandler):
@@ -78,9 +80,52 @@ class Proxy(Page):
         super().do_GET()
 
 
+class SocksProxy(socketserver.StreamRequestHandler):
+    """Loopback-only synthetic SOCKS5 endpoint; never connect to an upstream host."""
+    def handle(self):
+        self.request.settimeout(10)
+        try:
+            greeting = self.rfile.read(2)
+            if len(greeting) != 2 or greeting[0] != 5:
+                return
+            methods = self.rfile.read(greeting[1])
+            if 0 not in methods:
+                self.wfile.write(b"\x05\xff")
+                return
+            self.wfile.write(b"\x05\x00")
+            if self.rfile.read(4) != b"\x05\x01\x00\x03":
+                return
+            size = self.rfile.read(1)
+            if not size:
+                return
+            host = self.rfile.read(size[0])
+            port = int.from_bytes(self.rfile.read(2), "big")
+            if host != b"portable-socks.invalid" or port != 80:
+                self.wfile.write(b"\x05\x02\x00\x01\x00\x00\x00\x00\x00\x00")
+                return
+            self.wfile.write(b"\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x50")
+            request = self.rfile.readline(4096)
+            if not request.startswith(b"GET "):
+                return
+            for _ in range(64):
+                header = self.rfile.readline(4096)
+                if header == b"\r\n":
+                    break
+                if not header or len(header) >= 4096:
+                    return
+            else:
+                return
+            SOCKS_REQUESTS.append(host)
+            self.wfile.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\nContent-Length: "
+                             + str(len(HTML)).encode("ascii") + b"\r\n\r\n" + HTML)
+        except (OSError, ValueError):
+            return
+
+
 @contextlib.contextmanager
-def serving(handler):
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+def serving(handler, server_type=http.server.ThreadingHTTPServer):
+    server = server_type(("127.0.0.1", 0), handler)
+    server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -92,7 +137,7 @@ def serving(handler):
 
 
 class Client:
-    def __init__(self, root, workspace, proxy_port=None):
+    def __init__(self, root, workspace, proxy_port=None, socks_port=None):
         windows = Path(os.environ["SystemRoot"])
         engine = windows / "System32/WindowsPowerShell/v1.0/powershell.exe"
         self.taskkill = windows / "System32/taskkill.exe"
@@ -109,6 +154,10 @@ class Client:
         if proxy_port:
             env.update(CODEX_PROXY_ENABLED="true", CODEX_PROXY_FOR_SUBPROCESS="true",
                        HTTP_PROXY=f"http://codex:synthetic@127.0.0.1:{proxy_port}",
+                       NO_PROXY="localhost,127.0.0.1,::1")
+        elif socks_port:
+            env.update(CODEX_PROXY_ENABLED="true", CODEX_PROXY_FOR_SUBPROCESS="true",
+                       ALL_PROXY=f"socks5h://127.0.0.1:{socks_port}",
                        NO_PROXY="localhost,127.0.0.1,::1")
         self.proc = subprocess.Popen(
             [str(engine), "-NoLogo", "-NoProfile", "-NonInteractive",
@@ -213,7 +262,8 @@ def main():
         workspace.mkdir(parents=True)
         sentinel = workspace / "user-result.txt"
         sentinel.write_text("keep", encoding="utf-8")
-        with serving(Page) as port, serving(Proxy) as proxy_port:
+        with (serving(Page) as port, serving(Proxy) as proxy_port,
+              serving(SocksProxy, socketserver.ThreadingTCPServer) as socks_port):
             url = f"http://127.0.0.1:{port}/"
             with Client(fixture, workspace) as client:
                 client.initialize()
@@ -228,6 +278,12 @@ def main():
                 assert "yes" in json.dumps(clicked)
                 client.call("browser_take_screenshot", filename="proof.png")
                 assert (workspace / "proof.png").stat().st_size > 0
+                # The fixture page never writes cookies. Seed exactly once and
+                # verify after reopening without any second write.
+                seeded = client.call("browser_evaluate", function=(
+                    "() => { document.cookie = 'portable_mcp=persisted; Max-Age=3600; Path=/'; "
+                    "return document.cookie; }"))
+                assert "portable_mcp=persisted" in json.dumps(seeded)
                 client.call("browser_close")
                 client.call("browser_navigate", url=url)
                 cookies = client.call("browser_evaluate", function="() => document.cookie")
@@ -239,10 +295,19 @@ def main():
                 client.call("browser_navigate", url="http://portable-browser.invalid/")
                 assert "Portable MCP smoke" in json.dumps(client.call("browser_snapshot"))
                 assert PROXY_REQUESTS, "Chromium did not reach the authenticated synthetic proxy"
+                client.call("browser_navigate", url=url)
+                assert "Portable MCP smoke" in json.dumps(client.call("browser_snapshot"))
+                client.call("browser_close")
+            print("PASS explicit authenticated HTTP proxy and loopback bypass", flush=True)
+            with Client(fixture, workspace, socks_port=socks_port) as client:
+                client.initialize()
+                client.call("browser_navigate", url="http://portable-socks.invalid/")
+                assert "Portable MCP smoke" in json.dumps(client.call("browser_snapshot"))
+                assert SOCKS_REQUESTS, "Chromium did not reach the synthetic SOCKS5 endpoint"
                 client.call("browser_close")
             assert sentinel.read_text(encoding="utf-8") == "keep"
-            assert len(list(workspace.glob("mcp-output-*"))) == 2
-            print("PASS explicit authenticated HTTP proxy and separate MCP output directories", flush=True)
+            assert len(list(workspace.glob("mcp-output-*"))) == 3
+            print("PASS actual SOCKS5 fallback and separate MCP output directories", flush=True)
 
 
 if __name__ == "__main__":
