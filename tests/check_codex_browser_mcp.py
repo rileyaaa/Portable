@@ -4,7 +4,8 @@ The Responses service and browser page are loopback-only synthetic fixtures.
 No real model, account, device, host profile or external site is required.
 Run explicitly on Windows with the fully hydrated source checkout.
 """
-import contextlib
+import hashlib
+import importlib.util
 import gzip
 import http.server
 import json
@@ -12,10 +13,22 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-import threading
+import stat
 import tomllib
 
-from check_browser_mcp_stdio import ROOT, ordinary, copy_input, serving
+# Embedded Windows Python uses python314._pth and intentionally does not
+# import sibling scripts via the usual sys.path. Load this exact test helper.
+helper = Path(__file__).absolute().with_name("check_browser_mcp_stdio.py")
+for p in (*reversed(helper.parents), helper):
+    info = p.lstat()
+    if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+        raise RuntimeError("Linked test helper")
+    if p == helper and (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1):
+        raise RuntimeError("Invalid test helper")
+spec = importlib.util.spec_from_file_location("portable_browser_test_helper", helper)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+ROOT, ordinary, copy_input, serving = module.ROOT, module.ordinary, module.copy_input, module.serving
 
 MARKER = "PORTABLE_NATIVE_MCP_PAGE_74f9b2"
 PAGE_HITS = []
@@ -174,14 +187,39 @@ def main():
                 '$env:OPENAI_API_KEY = "synthetic-offline-not-a-real-key"\n',
                 encoding="utf-8")
             windows = Path(os.environ["SystemRoot"])
+            # Configure exactly one synthetic MCP via the original durable user
+            # sidecar and original double opt-in. No new launcher switch.
+            (fixture / "home").mkdir()
+            store = fixture / "home/portable-extensions.toml"
+            engine = windows / "System32/WindowsPowerShell/v1.0/powershell.exe"
+            entry = fixture / "tool/automation/start-browser.ps1"
+            workspace = fixture / "work/browser-debug"
+            lines = [
+                "[mcp_servers.portable_browser]",
+                "command = " + json.dumps(str(engine)),
+                "args = " + json.dumps(["-NoProfile", "-NonInteractive", "-ExecutionPolicy",
+                                        "Bypass", "-File", str(entry), "-TaskAuthorized",
+                                        "-Workspace", str(workspace)]),
+                "cwd = " + json.dumps(str(fixture / "work")),
+                'env_vars = ["CODEX_INSTALL_DIR","CODEX_HOME","CODEX_PROXY_ENABLED","CODEX_PROXY_FOR_SUBPROCESS","CODEX_SANDBOX_NETWORK_ACCESS","HTTP_PROXY","HTTPS_PROXY","ALL_PROXY","NO_PROXY"]',
+                "startup_timeout_sec = 120",
+                "tool_timeout_sec = 120",
+                "supports_parallel_tool_calls = false",
+                "required = true",
+                # The synthetic model is trusted test code; this approval
+                # setting is restricted to the disposable fixture only.
+                'default_tools_approval_mode = "approve"',
+            ]
+            store.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            expected_store = hashlib.sha256(store.read_bytes()).digest()
             cmd = windows / "System32/cmd.exe"
             env = {k: os.environ[k] for k in ("SystemRoot", "WINDIR", "SystemDrive",
                                              "ComSpec", "PATHEXT", "OS", "PROCESSOR_ARCHITECTURE",
                                              "USERNAME", "COMPUTERNAME") if k in os.environ}
             env["PATH"] = str(windows / "System32")
             command = (f'"{cmd}" /d /s /c ""{fixture / bat_name}" '
-                       '--portable-auth=api --portable-extensions --portable-browser-mcp '
-                       'exec --skip-git-repo-check --json "Run the synthetic browser check." "')
+                       '--portable-auth=api --portable-extensions '
+                       'exec --skip-git-repo-check --json "Run the synthetic browser check.""')
             proc = subprocess.Popen(command, executable=str(cmd), cwd=fixture, env=env,
                                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE)
@@ -200,10 +238,10 @@ def main():
             assert len(MODEL_REQUESTS) == 2
             cfg = tomllib.loads((fixture / "home/config.toml").read_text(encoding="utf-8-sig"))
             assert "portable_browser" in cfg["mcp_servers"]
-            assert (fixture / "home/portable-extensions.toml").read_bytes() == b""
+            assert hashlib.sha256(store.read_bytes()).digest() == expected_store
             assert (fixture / "cache/browser/profile").is_dir()
             print("PASS real BAT, pinned native Codex and MCP client, real Chromium, tool output returned to Responses API")
-            print("PASS per-session browser config did not persist into user extension store")
+            print("PASS original user MCP config retained unchanged")
 
 
 if __name__ == "__main__":

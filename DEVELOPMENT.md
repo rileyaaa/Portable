@@ -1,10 +1,10 @@
 # 开发与维护记录
 
-## 2026-11-24：浏览器与 MCP 调用链专项修订（源码候选）
+## 2026-11-24：现有浏览器与 MCP 专项修复（源码候选）
 
-保持既有固定 Chromium/Playwright 版本、工具白名单、正常/维护/YOLO 边界与按任务启用原则。修复 Codex core 环境继承缺少代理控制变量、Chromium 未显式使用被授权代理以及 MCP 自动输出目录与用户工作目录混用的问题。新增明确的本次会话选项 `--portable-browser-mcp`，仍需原用户 MCP 双重开关；只生成当前根的 stdio 配置，原持久扩展配置不变。浏览器关闭保留 profile，stdio 服务退出才释放独占锁；不自动扩大沙箱可写范围。根启动器与常用/YOLO 副本同步。本次仅验证候选源码，不变更已发布 Release。
+仅优化现有能力，不新增启动参数、MCP 注册机制、服务、工具或默认权限。撤销初次候选的 `--portable-browser-mcp`，继续使用原 stdio 入口、用户 MCP 持久配置和原双重启用条件。修复 core shell 环境漏传的代理控制变量，规范化有效布尔值；浏览器通过现有 Playwright 显式采用获准的 HTTP/SOCKS5 代理，自动生成输出目录与用户工作文件隔离。保留浏览器资料、互斥、工具白名单和正常/维护/YOLO 边界；同步原模式副本。用户 MCP 环境配置示例放在原 browser-debug 技能中，不默认注册。
 
-验证入口：新增 `tests/check_browser_mcp_stdio.py`（真实 Windows stdio、导航、点击、截图、关闭与重开、合成认证 HTTP 代理）和 `tests/check_codex_browser_mcp.py`（真实 BAT/客户端/MCP/Chromium 与本地合成 Responses 服务往返），并扩充原 Node 与启动器回归。经本次明确授权，使用只匹配本次工作流路径及提交消息的临时 push 触发器；[Windows 综合验证 45325563396](https://github.com/rileyaaa/Portable/actions/runs/45325563396) 与 [原生端到端验证 45325941104](https://github.com/rileyaaa/Portable/actions/runs/45325941104) 已成功启动。当前 Windows LFS、Python 与 Node 回归通过，其他检查尚未取得最终结果，不作为已通过记录。临时触发器在两次运行注册后删除；不变更正式 Release 或固定运行时。
+验证记录：[综合 Windows 45325563396](https://github.com/rileyaaa/Portable/actions/runs/45325563396) 已通过 LFS、Python、Node、PowerShell、真实 Chromium、原生 stdio MCP 操作及认证 HTTP 代理、持久化、清理和发行输入检查（针对初次候选）。[完整链路 45325941104](https://github.com/rileyaaa/Portable/actions/runs/45325941104) 在测试脚本导入阶段失败：包内嵌入式 Python 不搜索相邻脚本，尚未实际进入 Codex/MCP 调用。修订测试改为显式加载同目录测试 helper，并使用原有用户 MCP 配置入口；不得将先前通过的结果当作本次收敛后的最终验收。真实在线账号/模型及跨机器状态仍须实测；不修改正式 Release 或固定依赖。
 
 ## 2026-11-19：Codex 0.170.0 官方运行时升级候选（人工维护）
 

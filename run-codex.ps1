@@ -1569,7 +1569,6 @@ $ConfiguredAuthMode = $env:CODEX_AUTH_MODE
 if ([string]::IsNullOrWhiteSpace($ConfiguredAuthMode)) { $ConfiguredAuthMode = "menu" }
 $PortableMaintenanceMode = $false
 $PortableExtensionsRequested = $false
-$PortableBrowserMcpRequested = $false
 $CodexLaunchArgs = New-Object System.Collections.Generic.List[string]
 $portableOptionScan = $true
 for ($argumentIndex = 0; $argumentIndex -lt $args.Count; $argumentIndex++) {
@@ -1589,10 +1588,6 @@ for ($argumentIndex = 0; $argumentIndex -lt $args.Count; $argumentIndex++) {
     }
     if ($portableOptionScan -and $argument -eq "--portable-extensions") {
         $PortableExtensionsRequested = $true
-        continue
-    }
-    if ($portableOptionScan -and $argument -ceq "--portable-browser-mcp") {
-        $PortableBrowserMcpRequested = $true
         continue
     }
     if ($portableOptionScan -and $argument -eq "--portable-auth") {
@@ -1936,10 +1931,6 @@ function Test-AndNormalizeCodexCliArgs {
 # Launcher-only privilege marker must never flow into codex.exe or tool children.
 Remove-Item Env:CODEX_PORTABLE_MAINTENANCE_LAUNCHER -ErrorAction SilentlyContinue
 $CodexLaunchArgs = Test-AndNormalizeCodexCliArgs -InputArgs $CodexLaunchArgs
-if ($PortableBrowserMcpRequested) {
-    if (-not $AllowUserMcp) { throw 'Browser MCP requires --portable-extensions and CODEX_PORTABLE_ALLOW_USER_MCP=true.' }
-    if ($script:CodexRootCommand -notin @('', 'exec', 'e', 'resume', 'fork')) { throw 'Browser MCP is only available for an explicitly selected browser task session, not MCP/plugin management commands.' }
-}
 
 # ------------------------------------------------------------
 # 3.4 定位 codex.exe，并读取当前模型支持的思考档位
@@ -3070,8 +3061,7 @@ foreach ($pv in @("HTTP_PROXY","HTTPS_PROXY","ALL_PROXY","NO_PROXY","http_proxy"
 }
 $ProxyEnabled = (Convert-ToTomlBool $env:CODEX_PROXY_ENABLED $false) -eq "true"
 $ProxyForSubprocess = (Convert-ToTomlBool $env:CODEX_PROXY_FOR_SUBPROCESS $false) -eq "true"
-# Canonical session values: the shell and native stdio MCP inherit different
-# environment allowlists. Forward only these reviewed control values below.
+# Use the effective normalized session switches, not raw or inherited strings.
 $env:CODEX_PROXY_ENABLED = $ProxyEnabled.ToString().ToLowerInvariant()
 $env:CODEX_PROXY_FOR_SUBPROCESS = $ProxyForSubprocess.ToString().ToLowerInvariant()
 $env:CODEX_SANDBOX_NETWORK_ACCESS = $SandboxNetworkAccess
@@ -3406,8 +3396,8 @@ Append-TomlSet $Builder "APK_LAB_JOBS_DIR" $env:APK_LAB_JOBS_DIR
 if (-not [string]::IsNullOrWhiteSpace($env:HOMEDRIVE)) { Append-TomlSet $Builder "HOMEDRIVE" $env:HOMEDRIVE }
 if (-not [string]::IsNullOrWhiteSpace($env:HOMEPATH)) { Append-TomlSet $Builder "HOMEPATH" $env:HOMEPATH }
 
-# The automation wrapper also requires the effective policy flags, not just
-# proxy URLs. Codex 0.170.0's core shell environment omits CODEX_* variables.
+# The core shell allowlist excludes these CODEX_* switches. The existing
+# automation wrapper needs all three to accept the explicitly chosen proxy.
 Append-TomlSet $Builder "CODEX_PROXY_ENABLED" $env:CODEX_PROXY_ENABLED
 Append-TomlSet $Builder "CODEX_PROXY_FOR_SUBPROCESS" $env:CODEX_PROXY_FOR_SUBPROCESS
 Append-TomlSet $Builder "CODEX_SANDBOX_NETWORK_ACCESS" $env:CODEX_SANDBOX_NETWORK_ACCESS
@@ -3433,39 +3423,6 @@ if (-not [string]::IsNullOrWhiteSpace($EffectiveExtensionToml)) {
 }
 if (-not $AllowUserMcp -and -not [string]::IsNullOrWhiteSpace($PreservedExtensionToml) -and $PreservedExtensionToml -match '(?m)^\s*\[\[?\s*(?:mcp_servers|[''"]mcp_servers[''"])' ) {
     Write-Host "User MCP configuration is stored in home\portable-extensions.toml but disabled for this session. A related task requires --portable-extensions AND CODEX_PORTABLE_ALLOW_USER_MCP=true; maintenance mode does not enable it." -ForegroundColor DarkYellow
-}
-
-# Only this explicitly selected browser session gets the package-managed MCP.
-# Keep the generated entry out of the durable user extension sidecar. An empty
-# sidecar is authoritative on the next launch, preventing legacy re-import.
-if ($PortableBrowserMcpRequested) {
-    if ($PreservedExtensionToml -match '(?i)portable_browser') {
-        throw 'The managed MCP name portable_browser is reserved for this session; existing extension settings were preserved.'
-    }
-    $browserEntry = Join-Path $Root 'tool\automation\start-browser.ps1'
-    Assert-PortableRegularInputFile 'browser MCP entry' $browserEntry
-    $browserWorkspace = Join-Path $PortableWork 'browser-debug'
-    Assert-PortablePath 'browser MCP workspace' $browserWorkspace
-    $browserShell = Join-Path ([Environment]::GetFolderPath('Windows')) 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    if (-not [IO.File]::Exists($browserShell)) { throw 'Built-in Windows PowerShell is unavailable.' }
-    if (-not (Test-Path -LiteralPath $ExtensionStorePath)) {
-        Write-PortableNewUtf8File -Path $ExtensionStorePath -Text ''
-    }
-    $browserArgs = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$browserEntry,'-TaskAuthorized','-Workspace',$browserWorkspace)
-    $browserEnv = @('CODEX_INSTALL_DIR','CODEX_HOME','CODEX_PROXY_ENABLED','CODEX_PROXY_FOR_SUBPROCESS','CODEX_SANDBOX_NETWORK_ACCESS')
-    if ($ProxyEnabled -and $ProxyForSubprocess -and $SandboxNetworkAccess -eq 'true') {
-        $browserEnv += @('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','NO_PROXY')
-    }
-    [void]$Builder.AppendLine('')
-    [void]$Builder.AppendLine('[mcp_servers.portable_browser]')
-    Append-TomlSet $Builder 'command' $browserShell
-    Append-TomlSet $Builder 'cwd' $PortableWork
-    [void]$Builder.AppendLine(('args = [{0}]' -f ((@($browserArgs | ForEach-Object { '"' + (Convert-ToTomlString $_) + '"' })) -join ', ')))
-    [void]$Builder.AppendLine(('env_vars = [{0}]' -f ((@($browserEnv | ForEach-Object { '"' + $_ + '"' })) -join ', ')))
-    [void]$Builder.AppendLine('startup_timeout_sec = 120')
-    [void]$Builder.AppendLine('tool_timeout_sec = 120')
-    [void]$Builder.AppendLine('supports_parallel_tool_calls = false')
-    [void]$Builder.AppendLine('required = true')
 }
 
 $ConfigPath = $GeneratedConfigPath

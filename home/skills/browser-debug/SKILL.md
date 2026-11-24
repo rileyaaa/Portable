@@ -27,9 +27,22 @@ description: Use only for an explicitly requested web UI test, browser debugging
 
 第二条是前台 stdio MCP 服务入口，应由本次明确选定的 MCP 客户端连接。`-Headed` 显示窗口；没有客户端工具调用时不会启动浏览器。工具仍须限制于已授权操作。不要默认写入全局 MCP 配置。
 
-需要由 Codex 原生 MCP 客户端进行交互探索时，在包内 `env.local.ps1` 设置 `$env:CODEX_PORTABLE_ALLOW_USER_MCP = "true"`，然后从 BAT 启动 `启动Codex.bat --portable-extensions --portable-browser-mcp`。启动器只为本次会话生成 `portable_browser` 服务（固定 `work/browser-debug`），不改写持久 MCP 配置；无需手工维护绝对路径。服务已连接后，`browser_close` 只关闭浏览器并保留 profile，服务退出才释放 profile 独占锁；需要切换为独立任务脚本或清理浏览器时先退出该 MCP 会话。未选择相关任务不得启动该会话。常用模式的任务脚本如需写入持久浏览器资料，沿用正常审批流程，不扩大默认沙箱范围。
+若使用包内 Codex 作为客户端，仍沿用既有用户 MCP 配置方式：在明确需要的任务中配置包内 `home/portable-extensions.toml`，设置 `CODEX_PORTABLE_ALLOW_USER_MCP=true` 并带 `--portable-extensions` 启动。不要在默认发行配置中注册浏览器。以下为已有 stdio 入口的 TOML 示例；仅配置本次已选择的服务，实际路径替换为当前包及系统 Windows PowerShell 路径（TOML 单引号内的反斜杠为字面值）。搬迁时按现有自定义 MCP 配置规则核对路径：
 
-浏览器按启动器的有效代理开关显式配置 Playwright HTTP/SOCKS 代理（含本地认证桥）；未授权子进程代理时显式直连，不采用宿主代理。明确命名的输出仍在任务目录内，MCP 自动输出进入独立 `mcp-output-*` 目录，自动淘汰不使用整个任务工作区。
+```toml
+[mcp_servers.portable_browser]
+command = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', 'D:\Codex\tool\automation\start-browser.ps1', '-TaskAuthorized', '-Workspace', 'work\browser-debug']
+cwd = 'D:\Codex\work'
+env_vars = ['CODEX_INSTALL_DIR', 'CODEX_HOME', 'CODEX_PROXY_ENABLED', 'CODEX_PROXY_FOR_SUBPROCESS', 'CODEX_SANDBOX_NETWORK_ACCESS', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY']
+startup_timeout_sec = 120
+tool_timeout_sec = 120
+supports_parallel_tool_calls = false
+```
+
+这些环境变量用于现有子进程代理判断；只转发启动器已设置的值，不在 MCP 配置保存代理认证信息，不扩大默认沙箱可写范围。MCP 是宿主侧进程，须维持原有明确授权边界。浏览器调用 `browser_close` 关闭 Chromium 并保留 profile；结束 stdio 会话后才释放互斥锁，切换到任务脚本或清理缓存前需结束该会话。
+
+浏览器根据获准转发的代理显式设置 Playwright HTTP/SOCKS5 代理；未选子进程代理时不采用宿主代理。明确命名的成果仍在工作目录，MCP 自动生成的输出放入独立 `mcp-output-*` 目录，避免自动淘汰涉及用户工作文件。
 
 编码助手通常直接写包内任务脚本，不需要注册 MCP。例如将本次已检查的代码保存为 `work/browser-debug/check.cjs`：
 
