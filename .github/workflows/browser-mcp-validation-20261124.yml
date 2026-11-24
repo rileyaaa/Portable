@@ -1,4 +1,4 @@
-name: One-time browser and MCP native validation (2026-11-24)
+name: One-time full Codex browser MCP integration (2026-11-24)
 on:
   push:
     branches: [main]
@@ -7,11 +7,11 @@ on:
 permissions:
   contents: read
 jobs:
-  windows:
+  native-browser:
     if: >-
-      github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'test(browser): run authorized native validation')
+      github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'test(browser): verify native Codex tool roundtrip')
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     defaults:
       run:
         shell: powershell
@@ -22,30 +22,8 @@ jobs:
         with:
           lfs: true
           persist-credentials: false
-      - name: Pinned runtime and source regressions
+      - name: Actual pinned Codex to browser MCP roundtrip with synthetic local model
         run: |
           $ErrorActionPreference = 'Stop'
-          git lfs fsck
-          if ($LASTEXITCODE -ne 0) { throw 'LFS verification failed' }
-          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
-          if ($LASTEXITCODE -ne 0) { throw 'Python regression failed' }
-          & .\tool\node\node.exe --test .\tests\test_automation.js .\tests\test_portable_npm.js
-          if ($LASTEXITCODE -ne 0) { throw 'Node regression failed' }
-      - name: PowerShell launch and extension regressions
-        run: |
-          $ErrorActionPreference = 'Stop'
-          foreach ($name in @('test_extension_policy','test_extension_migration','test_extension_persistence','test_automation_paths','test_automation_process','test_launcher_smoke')) {
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests' ($name + '.ps1'))
-            if ($LASTEXITCODE -ne 0) { throw ('Failed: ' + $name) }
-          }
-      - name: Actual Chromium task and native stdio MCP
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_smoke.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Chromium task smoke failed' }
-          & .\tool\python\python.exe -B .\tests\check_browser_mcp_stdio.py
-          if ($LASTEXITCODE -ne 0) { throw 'Native stdio MCP failed' }
-      - name: Release input integrity (no publication)
-        run: |
-          & .\tool\python\python.exe -B .\tool\package-release.py --check
-          if ($LASTEXITCODE -ne 0) { throw 'Package input validation failed' }
+          & .\tool\python\python.exe -B .\tests\check_codex_browser_mcp.py
+          if ($LASTEXITCODE -ne 0) { throw 'Native browser MCP roundtrip failed' }
