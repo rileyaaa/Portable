@@ -506,7 +506,22 @@ Write-Host ("  ---- 合计约 " + [math]::Round($grand / 1MB, 2) + " MB ----") -
 if ($WhatIf) { Write-Host "[预览模式] 未删除任何文件。" -ForegroundColor Cyan; if ($null -ne $CleanupPackageFileLock) { $CleanupPackageFileLock.Dispose(); $CleanupPackageFileLock = $null }; exit 0 }
 if (-not $Yes) { if (-not (Read-YesNo "确认执行清理？" 'N')) { Write-Host "已取消，未删除任何文件。" -ForegroundColor Cyan; if ($null -ne $CleanupPackageFileLock) { $CleanupPackageFileLock.Dispose(); $CleanupPackageFileLock = $null }; exit 0 } }
 $freed=0L; $errs=0
-foreach($row in $plan){ foreach($item in $row.Items){ if(Remove-PortableItem $item){ if($item.PSObject.Properties['PortablePlannedSize']){$freed += [long]$item.PortablePlannedSize} } else { $errs++ } } }
+# A locked/unremovable child can make directory removal throw after earlier
+# items have already been removed (including generated config.toml).
+# Count that item as failed and finish the existing cleanup/bootstrap path.
+# Each remaining item still goes through its original path/tree checks.
+foreach ($row in $plan) {
+    foreach ($item in $row.Items) {
+        try {
+            if (Remove-PortableItem $item) {
+                if ($item.PSObject.Properties['PortablePlannedSize']) { $freed += [long]$item.PortablePlannedSize }
+            } else { $errs++ }
+        } catch {
+            $errs++
+            Write-Host ("[失败] 无法完整清理：" + $item.FullName) -ForegroundColor Yellow
+        }
+    }
+}
 New-Item -ItemType Directory -Force -Path (Join-Path $Root 'home\plugins') | Out-Null
 if (-not (Test-Path -LiteralPath $PluginKeep)) { New-Item -ItemType File -Force -Path $PluginKeep | Out-Null }
 try {
