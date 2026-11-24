@@ -1,4 +1,9 @@
-"""Native model-visible skills and actual bundled shell/browser tools, Windows only."""
+"""Native core tool audit, Windows only; ADB and PSModulePath are separate known gates.
+
+Do not execute ADB again: its pinned Windows native home API can touch the host
+profile even for version. Record PSModulePath startup drift separately rather
+than treating it as a lost Codex variable or claiming strict isolation.
+"""
 import contextlib
 import importlib.util
 import json
@@ -29,12 +34,12 @@ ROOT = m.ROOT
 SKILLS = {p.parent.name for p in (ROOT / "home/skills").glob("*/SKILL.md")
           if not p.parent.name.startswith(".")}
 assert "browser-debug" in SKILLS and len(SKILLS) >= 10
-TOOL_MARKER = "PORTABLE_TOOLS_EXECUTED_0172"
+TOOL_MARKER = "PORTABLE_CORE_TOOLS_EXECUTED_0172"
 BROWSER_MARKER = "PORTABLE_TASK_RENDERED_0172"
 DONE = "native-tool-discovery-ok"
 
 PROBE_PY = '''
-import importlib, os, pathlib, sys, tomllib
+import importlib, os, pathlib, site, sys, tomllib
 root = pathlib.Path(os.environ["CODEX_INSTALL_DIR"]).resolve()
 cfg = tomllib.loads((root / "home/config.toml").read_text(encoding="utf-8-sig"))
 expected = cfg["shell_environment_policy"]["set"]
@@ -44,13 +49,44 @@ for key, value in expected.items():
     if actual is None:
         different.append(key + ":missing")
     elif actual != value and os.path.normcase(actual) != os.path.normcase(value):
-        different.append(key + ":different")
+        if key == "PSModulePath":
+            # PowerShell reconstructs this variable at startup. Preserve the
+            # expected entries and print the actual extra paths as evidence;
+            # this is NOT a strict module-isolation pass.
+            normalize = lambda v: os.path.normcase(os.path.normpath(v))
+            expected_paths = {normalize(p) for p in value.split(";") if p}
+            actual_paths = {normalize(p) for p in actual.split(";") if p}
+            print("PSMODULEPATH_EXPECTED=" + ascii(value), flush=True)
+            print("PSMODULEPATH_ACTUAL=" + ascii(actual), flush=True)
+            print("PSMODULEPATH_STARTUP_EXTRA=" + ascii(sorted(actual_paths - expected_paths)), flush=True)
+            print("PSMODULEPATH_ISOLATION=UNRESOLVED", flush=True)
+            if not expected_paths.issubset(actual_paths):
+                different.append(key + ":missing-configured-path")
+        else:
+            different.append(key + ":different")
 print("ENV_DIFFERENCES=" + ",".join(different) if different else
-      "ENV_ALL_CONFIGURED_VALUES_CONSUMED=" + str(len(expected)), flush=True)
+      "ENV_CORE_CONFIG_VALUES_MATCH=" + str(len(expected) - ("PSModulePath" in expected)), flush=True)
+if os.environ.get("PSModulePath") == expected.get("PSModulePath"):
+    print("PSMODULEPATH_ISOLATION=EXACT", flush=True)
 assert pathlib.Path(sys.executable).resolve() == root / "tool/python/python.exe"
 assert os.environ["CODEX_HOME"].lower() == str(root / "home").lower()
 assert os.environ["CODEX_PYTHON"].lower() == str(root / "tool/python/python.exe").lower()
 assert os.environ["PIP_CONFIG_FILE"].lower() == "nul"
+# Variables reaching a process need not be used by the isolated interpreter.
+print("PYTHON_IGNORE_ENVIRONMENT=" + str(sys.flags.ignore_environment), flush=True)
+print("PYTHONUSERBASE_EFFECTIVE=" + ascii(site.getuserbase()), flush=True)
+print("PYTHONPYCACHEPREFIX_EFFECTIVE=" + ascii(sys.pycache_prefix), flush=True)
+assert site.getuserbase() is not None and pathlib.Path(site.getuserbase()).resolve() == pathlib.Path(os.environ["PYTHONUSERBASE"]).resolve()
+# Test both a protected package file and an outside-workspace file that exist
+# only in this disposable synthetic extraction. Never write real host files.
+for sentinel in (root / "protected-audit.txt", root.parent / "outside-workspace-audit.txt"):
+    try:
+        with sentinel.open("wb") as stream:
+            stream.write(b"unexpected sandbox write")
+    except PermissionError:
+        print("SANDBOX_WRITE_DENIED=" + sentinel.name, flush=True)
+    else:
+        raise AssertionError("Common-mode sandbox permitted write: " + sentinel.name)
 for name in ("pip", "requests", "httpx", "bs4", "lxml", "pandas", "numpy", "openpyxl",
              "docx", "pptx", "PIL", "xlsxwriter", "socks", "defusedxml", "fitz",
              "pymupdf4llm", "PyInstaller"):
@@ -102,13 +138,38 @@ if ($script:ToolProbeFailures.Count -eq 0) {
     Run-Checked 'rg.exe' @('--version')
     Run-Checked 'fd.exe' @('--version')
     Run-Checked 'jq.exe' @('--version')
-    Run-Checked '7z.exe' @('i')
+    # Exercise 7-Zip without flooding the model's output token budget.
+    & '7z.exe' 'i' | Select-Object -First 5
+    if ($LASTEXITCODE -ne 0) { throw ('7z exit=' + $LASTEXITCODE) }
+    Write-Output 'TOOL_RAN=7z.exe'
+    # The actual CLI must resolve the selected portable values, not merely
+    # inherit environment names. These queries do not download or install.
+    function Check-ToolConfig([string]$name, [string[]]$argv, [string]$expected, [string]$label) {
+        try {
+            $actual = (& $name @argv | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0) { throw ('Config query exit=' + $LASTEXITCODE) }
+            if ($actual -ine $expected) { throw ('Expected ' + $expected + '; actual ' + $actual) }
+            Write-Output ('TOOL_CONFIG_EFFECTIVE=' + $label)
+        } catch {
+            $script:ToolProbeFailures += $label
+            Write-Output ('TOOL_CONFIG_ERROR=' + $label + '; ' + $_.Exception.Message)
+        }
+    }
+    Check-ToolConfig 'pip.cmd' @('cache','dir') $env:PIP_CACHE_DIR 'PIP_CACHE_DIR'
+    Check-ToolConfig 'npm.cmd' @('config','get','cache') $env:NPM_CONFIG_CACHE 'NPM_CONFIG_CACHE'
+    Check-ToolConfig 'npm.cmd' @('config','get','prefix') $env:NPM_CONFIG_PREFIX 'NPM_CONFIG_PREFIX'
+    Check-ToolConfig 'npm.cmd' @('config','get','userconfig') $env:NPM_CONFIG_USERCONFIG 'NPM_CONFIG_USERCONFIG'
+    Check-ToolConfig 'npm.cmd' @('config','get','globalconfig') $env:NPM_CONFIG_GLOBALCONFIG 'NPM_CONFIG_GLOBALCONFIG'
 }
-# These absolute paths are rooted in the already-verified disposable fixture.
-Run-Checked ($root + '\tool\android\platform-tools\adb.exe') @('version')
+# ADB is deliberately NOT invoked: previous real Windows results already
+# showed that even version can try to create a real host profile directory.
+# Verify its package-local file exists, not that it can run portably.
+if (-not (Test-Path -LiteralPath ($root + '\tool\android\platform-tools\adb.exe') -PathType Leaf)) { throw 'Missing bundled ADB' }
+Write-Output 'ADB_PORTABLE_EXECUTION=BLOCKED_KNOWN_HOST_PROFILE_BEHAVIOR'
+# This absolute path is rooted in the already-verified disposable fixture.
 Run-Checked ($root + '\tool\python\python.exe') @('-B', ($root + '\work\tool-probe\probe.py'))
 if ($script:ToolProbeFailures.Count -ne 0) { throw ('Tool probe failures: ' + ($script:ToolProbeFailures -join ', ')) }
-Write-Output 'PORTABLE_TOOLS_EXECUTED_0172'
+Write-Output 'PORTABLE_CORE_TOOLS_EXECUTED_0172'
 '''
 # Observe the actual restricted shell, not a different unrestricted process.
 # Keep every operation independent; diagnostic failures must never mask later
@@ -235,6 +296,14 @@ def handler_for(fixture, mode):
                 "DIAG_TARGET_REL=OK present", "DIAG_WORK_WRITE=OK owned-write",
                 "DIAG_RELATIVE_SCRIPT=OK PORTABLE_SCRIPT_RESOLVED_0172",
                 "DIAG_ABSOLUTE_SCRIPT=OK PORTABLE_SCRIPT_RESOLVED_0172",
+                "SANDBOX_WRITE_DENIED=protected-audit.txt",
+                "SANDBOX_WRITE_DENIED=outside-workspace-audit.txt",
+                "TOOL_CONFIG_EFFECTIVE=PIP_CACHE_DIR",
+                "TOOL_CONFIG_EFFECTIVE=NPM_CONFIG_CACHE",
+                "TOOL_CONFIG_EFFECTIVE=NPM_CONFIG_PREFIX",
+                "TOOL_CONFIG_EFFECTIVE=NPM_CONFIG_USERCONFIG",
+                "TOOL_CONFIG_EFFECTIVE=NPM_CONFIG_GLOBALCONFIG",
+                "PSMODULEPATH_ISOLATION=", "ADB_PORTABLE_EXECUTION=BLOCKED_",
             )
             missing = [marker for marker in required if marker not in evidence]
             assert not missing, "Required native diagnostics failed: " + ", ".join(missing)
@@ -309,6 +378,8 @@ def main():
         (probe / "probe.ps1").write_text(RESOLUTION_PS, encoding="utf-8-sig")
         (probe / "browser.ps1").write_text(BROWSER_PS, encoding="utf-8-sig")
         (probe / "page.cjs").write_text(BROWSER_JS, encoding="utf-8")
+        for sentinel in (fixture / "protected-audit.txt", owned / "outside-workspace-audit.txt"):
+            sentinel.write_bytes(b"unchanged synthetic sentinel")
         fixture_acl_evidence(owned, fixture)
         (fixture / "home/portable-extensions.toml").write_text(
             '[mcp_servers.portable_browser]\ncommand = "synthetic-never-executed"\n', encoding="utf-8")
@@ -355,13 +426,17 @@ def main():
             assert exits and all(code == 0 for code in exits), "Native command exits: " + repr(exits)
             if mode != "browser":
                 assert (probe / "native-created.txt").read_text(encoding="utf-8-sig").strip() == "owned-write"
+                for sentinel in (fixture / "protected-audit.txt", owned / "outside-workspace-audit.txt"):
+                    assert sentinel.read_bytes() == b"unchanged synthetic sentinel", "Sandbox changed " + sentinel.name
             cfg = tomllib.loads((fixture / "home/config.toml").read_text(encoding="utf-8-sig"))
             assert "portable_browser" not in cfg.get("mcp_servers", {})
             assert cfg["model"] == model
             assert cfg["sandbox_mode"] == ("danger-full-access" if mode == "browser" else "workspace-write")
             if mode == "browser":
                 assert (fixture / "cache/browser/profile").is_dir()
-            print("NATIVE_SKILL_AND_TOOL_DISCOVERY=PASS mode=" + mode + " model=" + model, flush=True)
+            print("NATIVE_CORE_SKILL_AND_TOOL_DISCOVERY=PASS mode=" + mode + " model=" + model, flush=True)
+            if mode != "browser":
+                print("CORE_PASS_NOT_FULL_PORTABILITY: ADB and PSModulePath require separate resolution", flush=True)
 
 
 if __name__ == "__main__":

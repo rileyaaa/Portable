@@ -9,6 +9,8 @@ Resolve the current portable package root from this skill file (`home/skills/mum
 
 ## Before using ADB
 
+**Known Windows Platform Tools 37.0.1 limitation:** the real native `adb version` audit observed an attempt to create `.android` in the actual Windows user profile despite the portable `ANDROID_USER_HOME` / `ANDROID_SDK_HOME` / `USERPROFILE` settings. The upstream Windows home-directory routine calls `SHGetFolderPathW(CSIDL_PROFILE)`. Those variables do not guarantee portable behavior. Strict portable ADB execution remains unverified/blocked; do not run a version probe or device command as a workaround, grant host-profile write permission, change global Windows folders, replace the pinned binary or switch modes to hide this. Report the limitation when an authorized ADB task needs it. A solution must separately validate user/key, log, server and device cleanup before this limitation can be removed.
+
 Confirm which MuMu instance the task targets and what device actions the user authorized. Before the **first ADB command**, including `adb version`, record existing `adb.exe` processes, their executable paths and PIDs. Validate that the effective ADB user/key and temporary/log paths are inside the current package and do not traverse symlinks, junctions, or other reparse points. Use the current portable launcher's environment; if a required path is missing, stale, or outside this package, correct the task environment to package-local paths before starting ADB.
 
 Record a baseline only for the validated package-local locations:

@@ -33,7 +33,18 @@ def _find_entry_point(name: str):
     return matches[0]
 
 
+def _configure_redirected_output() -> None:
+    # The embedded interpreter ignores PYTHONIOENCODING; redirected Windows
+    # stdout can otherwise use a legacy ANSI code page and crash on a moved
+    # package with Unicode paths. Preserve interactive console behavior and
+    # binary writes through stream.buffer. No changes to the vendor packages.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and not stream.isatty() and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def main() -> int:
+    _configure_redirected_output()
     if len(sys.argv) < 2:
         print("usage: portable-python-cli.py <console-script-name> [args...]", file=sys.stderr)
         return 2
