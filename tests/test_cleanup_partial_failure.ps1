@@ -75,7 +75,12 @@ raw = subprocess.check_output(["git", "-C", root, "show", revision + ":" + path]
 with Path(output).open("xb") as target:
     target.write(raw)
 '@
-        & $python -B -c $copyBaseline $root $BaselineCommit '清理缓存.ps1' $cleaner
+        # Windows PowerShell 5.1 native argument marshalling strips quotes
+        # inside -c source. Pass a real owned script file, not inline code.
+        $copyBaselineScript=Join-Path $fixture 'copy-baseline.py'
+        [void](Assert-AutomationPath -Root $fixture -Path $copyBaselineScript -MayNotExist)
+        [IO.File]::WriteAllText($copyBaselineScript,$copyBaseline,$utf8)
+        & $python -B $copyBaselineScript $root $BaselineCommit '清理缓存.ps1' $cleaner
         if ($LASTEXITCODE -ne 0) { throw 'Cannot copy exact baseline cleaner.' }
     } else {
         Copy-Item -LiteralPath (Join-Path $root '清理缓存.ps1') -Destination $cleaner

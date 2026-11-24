@@ -1,0 +1,67 @@
+name: Cleanup and isolation independent regression (one time)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/cleanup-isolation-test-retry-20261124.yml']
+permissions:
+  contents: read
+jobs:
+  native:
+    if: >-
+      startsWith(github.event.head_commit.message, 'test(maintenance): run baseline copier as script')
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Preserve original bytes
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 6
+          lfs: true
+          persist-credentials: false
+      - name: Reproduce old cleanup abort
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_cleanup_partial_failure.ps1 -BaselineCommit 7d3b2b2cf32b0a1da9b6bc484ce2dd6db964f143
+          if ($LASTEXITCODE -ne 0) { throw 'Cleanup baseline reproduction failed' }
+      - name: Verify current complete cleanup
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_cleanup_partial_failure.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Cleanup regression failed' }
+      - name: Reproduce previous isolation traversal
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_isolation_link_boundaries.ps1 -BaselineCommit 2383aaba6ecfa8dc556a35a1a07878e7b77cb850
+          if ($LASTEXITCODE -ne 0) { throw 'Isolation baseline reproduction failed' }
+      - name: Verify current isolation entry
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_isolation_link_boundaries.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Isolation regression failed' }
+      - name: Existing maintenance and path guards
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('test_python_setup','test_automation_paths','test_bootstrap_paths','test_portable_paths')) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests' ($name + '.ps1'))
+            if ($LASTEXITCODE -ne 0) { throw ('Regression failed: ' + $name) }
+          }
+      - name: Runtime mode and release input integrity
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git lfs fsck
+          if ($LASTEXITCODE -ne 0) { throw 'LFS integrity failed' }
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Python regression failed' }
+          & .\tool\python\python.exe -B .\tool\package-release.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Release input check failed' }
