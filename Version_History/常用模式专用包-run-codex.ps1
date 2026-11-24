@@ -1328,15 +1328,29 @@ function Test-CodexAuthFile {
         $linkTypeProperty = $item.PSObject.Properties['LinkType']
         $linkType = if ($null -ne $linkTypeProperty) { [string]$linkTypeProperty.Value } else { "" }
         if ($linkType -eq 'HardLink' -or ([string]$item.Mode).Contains('l')) { return $false }
-        $auth = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-        if ($null -eq $auth -or [string]::IsNullOrWhiteSpace([string]$auth.auth_mode)) { return $false }
-        if ([string]$auth.auth_mode -eq "chatgpt") {
-            if ($null -eq $auth.tokens) { return $false }
-            return (-not [string]::IsNullOrWhiteSpace([string]$auth.tokens.refresh_token)) -or
-                   (-not [string]::IsNullOrWhiteSpace([string]$auth.tokens.access_token))
+        $raw = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+        # PS5.1 can enumerate a singleton JSON array into an object. Only the
+        # actual auth.json object shape is eligible for snapshot recycling.
+        if (-not $raw.TrimStart().StartsWith('{')) { return $false }
+        $auth = $raw | ConvertFrom-Json
+        if ($null -eq $auth -or $auth.auth_mode -isnot [string] -or
+            [string]::IsNullOrWhiteSpace($auth.auth_mode)) { return $false }
+        if ($null -ne $auth.OPENAI_API_KEY -and $auth.OPENAI_API_KEY -isnot [string]) { return $false }
+        if ($auth.auth_mode -eq "chatgpt") {
+            if ($auth.tokens -isnot [pscustomobject]) { return $false }
+            # The pinned native schema expects string-valued token/identity
+            # fields. Do not coerce arrays, objects, numbers or booleans to
+            # text. Keep the existing partial/legacy credential check: this
+            # is not JWT validation or a guarantee of successful login.
+            foreach ($name in @('access_token','refresh_token','id_token','account_id','login_owner_id')) {
+                $property = $auth.tokens.PSObject.Properties[$name]
+                if ($null -ne $property -and $null -ne $property.Value -and $property.Value -isnot [string]) { return $false }
+            }
+            return (-not [string]::IsNullOrWhiteSpace($auth.tokens.refresh_token)) -or
+                   (-not [string]::IsNullOrWhiteSpace($auth.tokens.access_token))
         }
-        if (-not $RequireChatGpt -and [string]$auth.auth_mode -eq "apikey") {
-            return -not [string]::IsNullOrWhiteSpace([string]$auth.OPENAI_API_KEY)
+        if (-not $RequireChatGpt -and $auth.auth_mode -eq "apikey") {
+            return -not [string]::IsNullOrWhiteSpace($auth.OPENAI_API_KEY)
         }
         return $false
     } catch {
