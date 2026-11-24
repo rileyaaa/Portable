@@ -1,4 +1,4 @@
-name: Native 0.172.0 core tools and local/global npm config (one time)
+name: Native 0.172.0 browser discovery and task-local module path (one time)
 on:
   push:
     branches: [main]
@@ -39,6 +39,11 @@ jobs:
         run: |
           & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py unknown
           if ($LASTEXITCODE) { throw 'Unknown-model native diagnostic failed' }
+      - name: Actual normal mode browser read-only discovery (no MCP or profile creation)
+        if: always()
+        run: |
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py browser-check
+          if ($LASTEXITCODE) { throw 'Normal mode browser read-only discovery failed' }
       - name: Real launcher path and missing-versus-empty header assertions
         if: always()
         run: |

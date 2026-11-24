@@ -17,12 +17,15 @@ description: Use only when the user explicitly authorizes SSH to a specified ser
 
 work/ 已被 Git 忽略、客户发行包排除。不要把密钥、口令、私有 known_hosts、日志和下载文件复制到 home/skills、tool、Git 提交或交接报告。禁止复制宿主 ~/.ssh 或导出 SSH Agent 的密钥。Windows 目录权限/ACL 仍需由用户维护；不要声称目录重定向能抵御拥有同一 Windows 用户权限的恶意进程。
 
-首次连接（example.test、用户名与指纹均仅为占位符）：
+首次连接（example.test、用户名与指纹均仅为占位符）。Codex 默认工作目录是 `work`，先确认本次 `CODEX_INSTALL_DIR` 与本 Skill 所属包一致且包含 `env.ps1`、`codex.exe`；以下命令沿用首次定义的绝对路径变量。`--local` 的相对路径仍由 SSH 工具按 uploads/downloads 的原规则解释：
 
 1. 当前用户授权后才生成密钥，按提示输入私钥口令：
 
 ~~~powershell
-.\tool\python\python.exe -B tool\portable-ssh.py keygen --name id_ed25519
+$root = $env:CODEX_INSTALL_DIR
+$python = Join-Path $root 'tool\python\python.exe'
+$sshTool = Join-Path $root 'tool\portable-ssh.py'
+& $python -B $sshTool keygen --name id_ed25519
 ~~~
 
 2. 将 work/ssh/keys/id_ed25519.pub 的公钥内容按用户授权方式部署到指定远端账号。绝不自动替远端修改 authorized_keys。
@@ -30,13 +33,13 @@ work/ 已被 Git 忽略、客户发行包排除。不要把密钥、口令、私
 3. 观察远端主机指纹：
 
 ~~~powershell
-.\tool\python\python.exe -B tool\portable-ssh.py probe --task-authorized --host example.test --port 22
+& $python -B $sshTool probe --task-authorized --host example.test --port 22
 ~~~
 
 4. 用户通过可信渠道**独立核对**服务端指纹后，明确确认并固定：
 
 ~~~powershell
-.\tool\python\python.exe -B tool\portable-ssh.py trust --task-authorized --host example.test --fingerprint SHA256:经核对的真实指纹
+& $python -B $sshTool trust --task-authorized --host example.test --fingerprint SHA256:经核对的真实指纹
 ~~~
 
 仅通过刚才的 probe 输出获取指纹，不构成可信核验。主机密钥变化时应停止，由用户确认轮换；不允许 AutoAddPolicy 或忽略密钥错误。
@@ -46,19 +49,19 @@ work/ 已被 Git 忽略、客户发行包排除。不要把密钥、口令、私
 - 远端只读命令：
 
 ~~~powershell
-.\tool\python\python.exe -B tool\portable-ssh.py exec --task-authorized --host example.test --user dbuser --key id_ed25519 --ask-passphrase --command "uname -a"
+& $python -B $sshTool exec --task-authorized --host example.test --user dbuser --key id_ed25519 --ask-passphrase --command "uname -a"
 ~~~
 
 - 将远端日志存到 work/ssh/downloads/：
 
 ~~~powershell
-.\tool\python\python.exe -B tool\portable-ssh.py get --task-authorized --host example.test --user dbuser --key id_ed25519 --ask-passphrase --remote /var/log/example.log --local logs/example.log
+& $python -B $sshTool get --task-authorized --host example.test --user dbuser --key id_ed25519 --ask-passphrase --remote /var/log/example.log --local logs/example.log
 ~~~
 
 - 将 work/ssh/uploads/script.sql 传到用户授权的远端路径：
 
 ~~~powershell
-.\tool\python\python.exe -B tool\portable-ssh.py put --task-authorized --host example.test --user dbuser --key id_ed25519 --ask-passphrase --local script.sql --remote /tmp/script.sql
+& $python -B $sshTool put --task-authorized --host example.test --user dbuser --key id_ed25519 --ask-passphrase --local script.sql --remote /tmp/script.sql
 ~~~
 
 SFTP 默认拒绝覆盖已有目的文件；确需覆盖必须明确使用 --overwrite。私钥口令通过终端交互输入，不在命令行、环境变量或报告内保存。无法安全交互时说明限制，不能自行改成空口令或泄露口令。

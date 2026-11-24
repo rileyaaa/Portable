@@ -9,7 +9,7 @@ description: Use only when the user explicitly requests searching or reading a c
 
 ## 便携边界与依赖
 
-- 用当前包内 `tool/python/python.exe` 和本技能 `scripts/pdf_library.py`。根目录由脚本实际位置确定，忽略旧安装的 `CODEX_INSTALL_DIR`；下面命令均从当前包根运行，无固定盘符。
+- 用当前包内 `tool/python/python.exe` 和本技能 `scripts/pdf_library.py`。根目录由脚本实际位置确定，忽略旧安装的 `CODEX_INSTALL_DIR`。Codex 默认工作目录为 `work`；先核对本次 `CODEX_INSTALL_DIR` 与本 Skill 所属包一致且存在 `env.ps1`、`codex.exe`。以下示例使用明确绝对路径，不假定当前目录为包根。各代码块沿用首次定义的变量。
 - 输入、库、临时文件及 ZIP 都必须在当前包内。拒绝 `..`、符号链接、junction、reparse point、硬链接文件及不能在 Windows 保留的源文件名。包外输入须先取得授权，再复制到包内工作目录。
 - 提取使用成熟上游 `PyMuPDF4LLM 0.2.9`、`PyMuPDF 1.26.6`、`tabulate 0.9.0`，适配器只负责便携校验、按页审计、索引和交付。版本及来源见 `tool/optional-python-manifest.json`。保留上游许可证；PyMuPDF / PyMuPDF4LLM 的 AGPL / 商业许可需按实际分发方式遵守。
 - 不安装 `pymupdf-layout`、模型或驱动，不启动网络服务、MCP 或 OCR。缺依赖时如实说明，不借用宿主安装，也不自动下载。
@@ -21,9 +21,12 @@ description: Use only when the user explicitly requests searching or reading a c
 `--input` 可以是一个 PDF，也可以是 PDF 目录；递归保留原目录与文件名，仅将扩展名改为 `.md`。库目录须为空或由此工具创建，且与源目录分开。
 
 ```powershell
-& .\tool\python\python.exe .\home\skills\pdf-library\scripts\pdf_library.py build --input .\work\manuals --library .\work\manual-library
-& .\tool\python\python.exe .\home\skills\pdf-library\scripts\pdf_library.py search --library .\work\manual-library --query "connection_timeout" --limit 5 --max-chars 800
-& .\tool\python\python.exe .\home\skills\pdf-library\scripts\pdf_library.py read --library .\work\manual-library --document "database/manual.pdf" --pages 12 13 --max-chars 12000
+$root = $env:CODEX_INSTALL_DIR
+$python = Join-Path $root 'tool\python\python.exe'
+$libraryTool = Join-Path $root 'home\skills\pdf-library\scripts\pdf_library.py'
+& $python -B $libraryTool build --input (Join-Path $root 'work\manuals') --library (Join-Path $root 'work\manual-library')
+& $python -B $libraryTool search --library (Join-Path $root 'work\manual-library') --query "connection_timeout" --limit 5 --max-chars 800
+& $python -B $libraryTool read --library (Join-Path $root 'work\manual-library') --document "database/manual.pdf" --pages 12 13 --max-chars 12000
 ```
 
 - `search` 按空白分词并要求同页包含全部词；`_`、`%` 等按字面搜索，返回文件名、页码及有限片段。无结果时缩短查询词再试，不直接读完全部手册。
@@ -47,7 +50,7 @@ description: Use only when the user explicitly requests searching or reading a c
 默认 `--ocr none`。有图片或文字稀少的页面会列为待检查，绝不将“文字层覆盖完整”描述为截图内容也完整。仅当本次任务确实要求 OCR，且包内已有以下工具，才选择：
 
 ```powershell
-& .\tool\python\python.exe .\home\skills\pdf-library\scripts\pdf_library.py build --input .\work\manuals --library .\work\manual-library-ocr --ocr auto --language eng+chi_sim --strict
+& $python -B $libraryTool build --input (Join-Path $root 'work\manuals') --library (Join-Path $root 'work\manual-library-ocr') --ocr auto --language eng+chi_sim --strict
 ```
 
 使用 `tool/ocr/tesseract/tesseract.exe` 和相邻 `tessdata/<语言>.traineddata`。`auto` 处理有图片或文字稀少的页，`all` 处理每一页；后者可用于检查矢量文字或自动信号漏检。OCR 只追加内容，不覆盖文字层；低置信度词标为 `[疑似：…]`。临时页图仅写入包内 `tmp/pdf-library-ocr/`，完成后清理，不放入交付 ZIP。
@@ -57,8 +60,8 @@ description: Use only when the user explicitly requests searching or reading a c
 ## 验证与纯 Markdown ZIP
 
 ```powershell
-& .\tool\python\python.exe .\home\skills\pdf-library\scripts\pdf_library.py verify --library .\work\manual-library --strict
-& .\tool\python\python.exe .\home\skills\pdf-library\scripts\pdf_library.py export --library .\work\manual-library --output .\work\manuals-markdown.zip --strict
+& $python -B $libraryTool verify --library (Join-Path $root 'work\manual-library') --strict
+& $python -B $libraryTool export --library (Join-Path $root 'work\manual-library') --output (Join-Path $root 'work\manuals-markdown.zip') --strict
 ```
 
 导出前检查正文哈希、页映射、围栏及禁用资源，输出只含正文和四份 `.md` 报告，不含 SQLite、PDF、图片或其他附件。ZIP 写完后校验 CRC 和 UTF-8，命令输出 ZIP SHA-256，并更新库目录现有 `SHA256.md` 的最近导出记录；ZIP 内不能包含自身最终摘要。目标 ZIP 必须是包内的新路径，位于库目录之外；不会覆盖既有交付物。`export --strict` 在检查未完成时拒绝生成 ZIP。普通导出允许交付明确标为未完成的草稿，不能把它标成严格验收通过。

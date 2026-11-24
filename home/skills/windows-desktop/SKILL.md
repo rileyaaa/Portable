@@ -7,12 +7,12 @@ description: Use only when the user explicitly requests inspecting or operating 
 
 先确定用户授权的应用、进程及本次动作，不枚举整个桌面、其他窗口或个人资料。包内安装不会限制目标应用自身的写入位置；点击保存、设置、删除、发送等动作的影响仍须属于用户任务。工具开关只是调用方确认，不能代替用户授权。
 
-使用当前包内 `tool/automation/desktop.ps1`；仅支持 Windows 的 UI Automation，系统组件不需安装。默认读取指定进程主窗口的有界控件树，不读密码控件，不使用剪贴板或坐标盲点，不提供全盘文件、任意 Shell、注册表或全桌面 MCP。
+使用当前包内 `tool/automation/desktop.ps1`；仅支持 Windows 的 UI Automation，系统组件不需安装。Codex 默认位于 `work`，从本次已初始化的 `CODEX_INSTALL_DIR` 派生绝对入口，确认它与本 Skill 所属包一致，并包含 `env.ps1` 和 `codex.exe`；不依赖当前目录、旧安装路径或宿主同名工具。默认读取指定进程主窗口的有界控件树，不读密码控件，不使用剪贴板或坐标盲点，不提供全盘文件、任意 Shell、注册表或全桌面 MCP。
 
 ```powershell
 # TargetProcessId 必须来自本次已选定的应用，不扫描其他应用寻找目标。
-.\tool\automation\desktop.ps1 -TaskAuthorized -TargetProcessId 1234 -Action Tree
-.\tool\automation\desktop.ps1 -TaskAuthorized -TargetProcessId 1234 -Action Invoke -AutomationId "previewButton" -AllowChanges
+& (Join-Path $env:CODEX_INSTALL_DIR 'tool\automation\desktop.ps1') -TaskAuthorized -TargetProcessId 1234 -Action Tree
+& (Join-Path $env:CODEX_INSTALL_DIR 'tool\automation\desktop.ps1') -TaskAuthorized -TargetProcessId 1234 -Action Invoke -AutomationId "previewButton" -AllowChanges
 ```
 
 只调用当前树中唯一、可见、启用且属于目标进程的 AutomationId；树截断、匹配不唯一或目标变化时停止。`SetValue -Value "..." -AllowChanges` 只用于非密码、可编辑的字段。优先用应用自己的诊断接口；Electron/Web 页面调试优先浏览器方案。UI Automation 看不到的自绘、游戏或远程桌面控件须说明限制，不能自动扩大为全屏截图和全局鼠标键盘控制。

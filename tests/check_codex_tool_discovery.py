@@ -36,6 +36,7 @@ SKILLS = {p.parent.name for p in (ROOT / "home/skills").glob("*/SKILL.md")
 assert "browser-debug" in SKILLS and len(SKILLS) >= 10
 TOOL_MARKER = "PORTABLE_CORE_TOOLS_EXECUTED_0172"
 BROWSER_MARKER = "PORTABLE_TASK_RENDERED_0172"
+BROWSER_CHECK_MARKER = "PORTABLE_BROWSER_CHECK_READ_ONLY_0172"
 DONE = "native-tool-discovery-ok"
 
 PROBE_PY = '''
@@ -169,6 +170,18 @@ if ($script:ToolProbeFailures.Count -eq 0) {
 # Verify its package-local file exists, not that it can run portably.
 if (-not (Test-Path -LiteralPath ($root + '\tool\android\platform-tools\adb.exe') -PathType Leaf)) { throw 'Missing bundled ADB' }
 Write-Output 'ADB_PORTABLE_EXECUTION=BLOCKED_KNOWN_HOST_PROFILE_BEHAVIOR'
+# A stock PowerShell engine reconstructs module paths at startup. Demonstrate
+# the existing command-local correction without inspecting host module folders
+# or modifying a user/machine setting. Restore the original before the env audit.
+$savedModulePath = $env:PSModulePath
+try {
+    $scopedModulePath = ($root + '\cache\powershell\modules;' + $PSHOME + '\Modules')
+    $env:PSModulePath = $scopedModulePath
+    & ($root + '\tool\python\python.exe') -B -c 'import os,sys; assert os.environ["PSModulePath"] == sys.argv[1]; print("PSMODULEPATH_TASK_LOCAL_RESET=PASS")' $scopedModulePath
+    if ($LASTEXITCODE -ne 0) { throw ('Scoped module path probe exit=' + $LASTEXITCODE) }
+} finally {
+    $env:PSModulePath = $savedModulePath
+}
 # This absolute path is rooted in the already-verified disposable fixture.
 Run-Checked ($root + '\tool\python\python.exe') @('-B', ($root + '\work\tool-probe\probe.py'))
 if ($script:ToolProbeFailures.Count -ne 0) { throw ('Tool probe failures: ' + ($script:ToolProbeFailures -join ', ')) }
@@ -229,6 +242,24 @@ $engine = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.
 & $engine -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $entry -TaskAuthorized -Workspace 'work/tool-probe' -TaskScript 'work/tool-probe/page.cjs'
 exit $LASTEXITCODE
 '''
+# Discover the installed browser from the actual normal-mode Codex shell.
+# -Check must not create the persistent browser profile or its lock.
+BROWSER_CHECK_PS = r'''
+$ErrorActionPreference = 'Stop'
+$root = $env:CODEX_INSTALL_DIR
+$entry = Join-Path $root 'tool/automation/start-browser.ps1'
+$engine = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+$result = & $engine -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $entry -Check -Workspace 'work/tool-probe' -TaskScript 'work/tool-probe/page.cjs'
+if ($LASTEXITCODE -ne 0) { throw ('Browser read-only check exit=' + $LASTEXITCODE) }
+$data = ($result -join [Environment]::NewLine) | ConvertFrom-Json
+if ($data.PackageRoot -ine $root -or $data.Workspace -ine (Join-Path $root 'work\tool-probe')) { throw 'Browser check resolved wrong root/workspace' }
+if (-not $data.BrowserPresent -or -not $data.PersistentProfile -or $data.AutomaticStart -or $data.Mode -ne 'task-script') { throw 'Browser check did not describe the existing task route' }
+if ($data.BrowserDataDirectory -ine (Join-Path $root 'cache\browser')) { throw 'Wrong browser data directory' }
+Write-Output ('BROWSER_CHECK_VERSION=' + $data.BrowserVersion)
+Write-Output ('BROWSER_CHECK_EXECUTABLE=' + $data.BrowserExecutable)
+Write-Output 'PORTABLE_BROWSER_CHECK_READ_ONLY_0172'
+'''
+
 BROWSER_JS = '''
 module.exports = async ({page}) => {
   await page.setContent('<title>PORTABLE_TASK_RENDERED_0172</title><button>Local test</button>');
@@ -239,8 +270,8 @@ module.exports = async ({page}) => {
 
 
 def handler_for(fixture, mode):
-    expected = BROWSER_MARKER if mode == "browser" else TOOL_MARKER
-    script = "browser.ps1" if mode == "browser" else "probe.ps1"
+    expected = {"browser": BROWSER_MARKER, "browser-check": BROWSER_CHECK_MARKER}.get(mode, TOOL_MARKER)
+    script = {"browser": "browser.ps1", "browser-check": "browser-check.ps1"}.get(mode, "probe.ps1")
 
     def handler(body, _):
         if len(m.MODEL_REQUESTS) == 1:
@@ -254,7 +285,7 @@ def handler_for(fixture, mode):
             assert not any("portable_browser" in (str(ns) + str(t.get("name"))) for ns, t in entries), \
                 "Browser MCP should not be advertised by default"
             command = ("& (Join-Path $env:CODEX_INSTALL_DIR 'work/tool-probe/" + script + "')"
-                       if mode == "browser" else DIAG_PS.replace("__EXPECTED_ROOT__", str(fixture).replace("'", "''")) + "\n" + PROBE_PS)
+                       if mode in {"browser", "browser-check"} else DIAG_PS.replace("__EXPECTED_ROOT__", str(fixture).replace("'", "''")) + "\n" + PROBE_PS)
             args = {"cmd": command, "workdir": str(fixture / "work"), "login": False,
                     "yield_time_ms": 30000, "max_output_tokens": 7000}
             custom = next(((ns, t) for ns, t in entries
@@ -291,7 +322,7 @@ def handler_for(fixture, mode):
         print("NATIVE_TOOL_OUTPUT=" + evidence[:26000], flush=True)
         assert expected in evidence, "Real tool output did not contain success marker: " + expected
         assert "ENV_DIFFERENCES=" not in evidence, "Actual child environment differs from generated policy"
-        if mode != "browser":
+        if mode in {"normal", "unknown"}:
             required = (
                 "DIAG_WORK=OK present", "DIAG_TARGET_ABS=OK present",
                 "DIAG_SKILL_READ=OK", "name: browser-debug",
@@ -307,7 +338,8 @@ def handler_for(fixture, mode):
                 "TOOL_CONFIG_EFFECTIVE=NPM_CONFIG_PREFIX",
                 "TOOL_CONFIG_EFFECTIVE=NPM_CONFIG_USERCONFIG",
                 "TOOL_CONFIG_EFFECTIVE=NPM_CONFIG_GLOBALCONFIG",
-                "PSMODULEPATH_ISOLATION=", "ADB_PORTABLE_EXECUTION=BLOCKED_",
+                "PSMODULEPATH_ISOLATION=", "PSMODULEPATH_TASK_LOCAL_RESET=PASS",
+                "ADB_PORTABLE_EXECUTION=BLOCKED_",
             )
             missing = [marker for marker in required if marker not in evidence]
             assert not missing, "Required native diagnostics failed: " + ", ".join(missing)
@@ -353,8 +385,8 @@ def main():
     if os.name != "nt":
         raise SystemExit("Windows x64 required")
     mode = sys.argv[1] if len(sys.argv) == 2 else "normal"
-    assert mode in {"normal", "browser", "unknown"}
-    model = {"normal": "gpt-6-sol", "browser": "gpt-6.2-sol",
+    assert mode in {"normal", "browser", "browser-check", "unknown"}
+    model = {"normal": "gpt-6-sol", "browser": "gpt-6.2-sol", "browser-check": "gpt-6.2-sol",
              "unknown": "portable-synthetic-model"}[mode]
     for p in (*reversed(ROOT.parents), ROOT):
         m.ordinary(p)
@@ -370,8 +402,9 @@ def main():
                          "tool/portable-process.ps1", "tool/python", "tool/node", "tool/bin",
                          "tool/android/platform-tools", "home/skills", *manifest["files"]):
             m.copy_input(relative, fixture)
-        if mode == "browser":
+        if mode in {"browser", "browser-check"}:
             m.copy_input("tool/automation", fixture)
+        if mode == "browser":
             source = ROOT / "Version_History/YOLO mode\u4e13\u7528\u5305-env.ps1"
             m.ordinary(source)
             (fixture / "env.ps1").write_bytes(source.read_bytes())
@@ -381,6 +414,7 @@ def main():
         (probe / "probe.py").write_text(PROBE_PY, encoding="utf-8")
         (probe / "probe.ps1").write_text(RESOLUTION_PS, encoding="utf-8-sig")
         (probe / "browser.ps1").write_text(BROWSER_PS, encoding="utf-8-sig")
+        (probe / "browser-check.ps1").write_text(BROWSER_CHECK_PS, encoding="utf-8-sig")
         (probe / "page.cjs").write_text(BROWSER_JS, encoding="utf-8")
         for sentinel in (fixture / "protected-audit.txt", owned / "outside-workspace-audit.txt"):
             sentinel.write_bytes(b"unchanged synthetic sentinel")
@@ -428,7 +462,7 @@ def main():
                 if event.get("type") == "item.completed" and item.get("type") == "command_execution":
                     exits.append(item.get("exit_code"))
             assert exits and all(code == 0 for code in exits), "Native command exits: " + repr(exits)
-            if mode != "browser":
+            if mode in {"normal", "unknown"}:
                 assert (probe / "native-created.txt").read_text(encoding="utf-8-sig").strip() == "owned-write"
                 for sentinel in (fixture / "protected-audit.txt", owned / "outside-workspace-audit.txt"):
                     assert sentinel.read_bytes() == b"unchanged synthetic sentinel", "Sandbox changed " + sentinel.name
@@ -436,10 +470,16 @@ def main():
             assert "portable_browser" not in cfg.get("mcp_servers", {})
             assert cfg["model"] == model
             assert cfg["sandbox_mode"] == ("danger-full-access" if mode == "browser" else "workspace-write")
+            assert cfg["approval_policy"] == ("never" if mode == "browser" else "on-request")
+            assert cfg["sandbox_workspace_write"]["network_access"] == (mode == "browser")
             if mode == "browser":
                 assert (fixture / "cache/browser/profile").is_dir()
+            if mode == "browser-check":
+                assert not (fixture / "cache/browser").exists(), "Read-only check created persistent browser state"
+                assert not (fixture / ".codex-browser.instance.lock").exists(), "Read-only check created browser lock"
+                print("NORMAL_MODE_BROWSER_DISCOVERY_READ_ONLY=PASS; interactive task approval still separate", flush=True)
             print("NATIVE_CORE_SKILL_AND_TOOL_DISCOVERY=PASS mode=" + mode + " model=" + model, flush=True)
-            if mode != "browser":
+            if mode in {"normal", "unknown"}:
                 print("CORE_PASS_NOT_FULL_PORTABILITY: ADB and PSModulePath require separate resolution", flush=True)
 
 

@@ -46,7 +46,7 @@ supports_parallel_tool_calls = false
 
 浏览器根据获准转发的代理显式设置 Playwright HTTP/SOCKS5 代理；已明确启用子进程代理但缺少地址时拒绝启动，避免意外直连；未选子进程代理时不采用宿主代理。明确命名的成果仍在工作目录，MCP 自动生成的输出放入独立 `mcp-output-*` 目录，避免自动淘汰涉及用户工作文件。
 
-编码助手通常直接写包内任务脚本，不需要注册 MCP。即使当前 MCP 工具列表没有 `portable_browser`，也不代表浏览器不可用：先使用下方现有任务脚本入口。若常用模式的沙箱需要额外权限，沿用现有审批机制，不自行关闭沙箱、切换 YOLO 或扩大目标。例如将本次已检查的代码保存为 `work/browser-debug/check.cjs`：
+编码助手通常直接写包内任务脚本，不需要注册 MCP。即使当前 MCP 工具列表没有 `portable_browser`，也不代表浏览器不可用：先使用下方现有任务脚本入口。常用模式可先使用 `-Check` 读取已安装浏览器、当前包路径及任务入口（不启动 Chromium、不创建 profile）。实际 `-TaskScript` 还需要写入包根浏览器互斥锁与持久 `cache/browser`，这些不是常用模式默认可写的 `work` / `tmp`；若被拒绝，在交互会话按现有审批机制申请本次明确授权的浏览器命令，并说明持久资料目录及网络范围。非交互 `codex exec` 不应假定能获得交互批准。不要把权限拒绝说成浏览器未安装，也不要自行关闭沙箱、切换 YOLO 或扩大目标。例如将本次已检查的代码保存为 `work/browser-debug/check.cjs`：
 
 ```javascript
 module.exports = async ({page, context, workspace}) => {
