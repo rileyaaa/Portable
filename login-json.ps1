@@ -1342,6 +1342,16 @@ function Save-CredentialFile {
     $jsonToWrite = $Credential.Json
     if ($null -ne $Credential.RootJson) { $jsonToWrite = $Credential.RootJson }
     Write-Utf8JsonFile -Path $Path -InputObject $jsonToWrite -Depth 64
+    # The enumeration FileInfo used by the scan can still describe the old
+    # file. Capture metadata only after our own successful credential write.
+    # If it cannot be captured safely, retain the normal cache miss behavior.
+    try {
+        if (Test-IsPortableSingleLinkRegularFile -Path $Path -Directory $LoginDir) {
+            $savedFile = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+            $states = @(Get-ScanFileState -Files @($savedFile))
+            if ($states.Count -eq 1) { Set-ObjectProperty $Credential "SavedFileState" $states[0] }
+        }
+    } catch {}
 }
 
 function Remove-InvalidCredential {
@@ -2226,7 +2236,7 @@ function Write-ScanResultProgress {
 }
 
 function ConvertTo-ResultRecord {
-    param($Result)
+    param($Result, [switch]$IncludeSavedFileState)
     $models = @()
     foreach ($model in @($Result.Models)) {
         $slug = Get-ModelSlug $model
@@ -2239,7 +2249,7 @@ function ConvertTo-ResultRecord {
         }
     }
 
-    return [pscustomobject][ordered]@{
+    $record = [pscustomobject][ordered]@{
         File = $Result.File
         Path = $Result.Path
         RelativePath = (Get-RelativePathUnderRoot $Result.Path)
@@ -2257,6 +2267,13 @@ function ConvertTo-ResultRecord {
         Deleted = $Result.Deleted
         DeleteAllowed = $(if ($Result.PSObject.Properties["DeleteAllowed"]) { [bool]$Result.DeleteAllowed } else { $true })
     }
+    # This metadata travels only from an owned probe to the scheduler. It is
+    # not copied into persistent per-account report records.
+    if ($IncludeSavedFileState -and $Result.PSObject.Properties["Credential"] -and
+        $null -ne $Result.Credential -and $Result.Credential.PSObject.Properties["SavedFileState"]) {
+        $record | Add-Member -NotePropertyName "SavedFileState" -NotePropertyValue $Result.Credential.SavedFileState
+    }
+    return $record
 }
 
 function Test-IsInternalLoginJsonFile {
@@ -2334,6 +2351,37 @@ function Resolve-ScanCacheResultPaths {
     return @($Results)
 }
 
+# Siblings in one file are checked in credential-index order, even when
+# other files run concurrently. Only a snapshot from a successful save of
+# that same file may replace its enumeration metadata. Do not take a fresh
+# end-of-scan snapshot of arbitrary files or expand the scanned scope.
+function Get-ScanCacheFileState {
+    param($ScannedFiles, $Results)
+    $saved = @{}
+    foreach ($result in @($Results | Sort-Object CredentialIndex)) {
+        $state = $null
+        if ($result.PSObject.Properties["SavedFileState"]) {
+            $state = $result.SavedFileState
+        } elseif ($result.PSObject.Properties["Credential"] -and $null -ne $result.Credential -and
+                  $result.Credential.PSObject.Properties["SavedFileState"]) {
+            $state = $result.Credential.SavedFileState
+        }
+        if ($null -ne $state) {
+            $relative = Get-RelativePathUnderRoot $result.Path
+            if (-not [string]::IsNullOrWhiteSpace($relative) -and [string]$state.relative_path -eq $relative) {
+                $saved[$relative] = $state
+            }
+        }
+    }
+    foreach ($state in @(Get-ScanFileState -Files $ScannedFiles)) {
+        if ($saved.ContainsKey([string]$state.relative_path)) {
+            $saved[[string]$state.relative_path]
+        } else {
+            $state
+        }
+    }
+}
+
 function Write-ScanCache {
     param(
         $Results,
@@ -2349,7 +2397,7 @@ function Write-ScanCache {
         client_version = $ClientVersion
         scan_limit = $ScanLimit
         credential_limit = $CredentialLimit
-        files = @(Get-ScanFileState -Files $ScannedFiles)
+        files = @(Get-ScanCacheFileState -ScannedFiles $ScannedFiles -Results $Results)
         results = $records
     }
     Write-Utf8JsonFile -Path $ScanCachePath -InputObject $payload -Depth 64
@@ -3158,7 +3206,7 @@ $LoginJsonOperationStarted = $true
             $ClientVersion = Get-CodexClientVersion
         }
         $probeResult = Test-CredentialFile -Path $CredentialPath -CredentialIndex $CredentialIndex -ClientVersion $ClientVersion
-        $record = ConvertTo-ResultRecord $probeResult
+        $record = ConvertTo-ResultRecord $probeResult -IncludeSavedFileState
         Write-Utf8JsonFile -Path $ProbeResultPath -InputObject $record -Depth 64
         return
     }
