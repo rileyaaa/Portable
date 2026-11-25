@@ -7,10 +7,10 @@ description: Use only when the user explicitly authorizes SSH to a specified ser
 
 使用包内 Python 调用 tool/portable-ssh.py，**不使用宿主 OpenSSH、~/.ssh、SSH Agent 或全局 Python**。仅操作用户本次明确指定并授权的主机、用户名、命令、远端路径或文件。SSH 命令可能修改远端服务器；用户只授权读取时不得执行写操作。
 
-首次使用先验证包内 tool/python/python.exe 能导入已验收的 Paramiko 5.1.0 及依赖。当前功能源代码可能先于 Windows 依赖载荷提交；导入失败则报告尚未安装，不得回退宿主 Python，也不得自动在线安装。
+首次使用先验证包内 tool/python/python.exe 能导入固定的 Paramiko 5.1.0 及依赖。开发分支已跟踪该运行集，但真实 SSH/SFTP 验收仍需按任务执行；导入失败则报告缺失，不得回退宿主 Python，也不得自动在线安装。
 
 所有本地 SSH 文件都在 work/ssh：
-- keys/：私钥及 .pub，keygen 默认提示设置私钥口令
+- keys/：私钥及 .pub，keygen 默认提示设置私钥口令。Paramiko 隐式查找的同名 -cert.pub 或证书对应私钥也必须为当前包内普通单链接文件。
 - known_hosts：仅在用户提供**独立可信渠道核验过的 SHA256 指纹**后固定服务端公钥
 - uploads/：SFTP 待上传的本地文件
 - downloads/：下载的远端文件

@@ -208,4 +208,4 @@ Go、uv 系列和可再生 Python 字节码仍不包含在默认包中。已恢�
 
 已在源码中加入 `tool/portable-ssh.py` 与 `home/skills/portable-ssh`，目标是通过包内 Python / Paramiko 操作用户明确授权的远端主机。私钥、固定主机指纹及本地传输文件集中在包内 `work/ssh/`（Git 和客户 ZIP 均排除），默认拒绝读取宿主 `~/.ssh`、SSH Agent，且不会自动信任远端主机。连接、执行命令和传输操作须指定目标并明确授权。完整使用方法见 [SSH 技能说明](home/skills/portable-ssh/SKILL.md)。
 
-**此功能仍是源码开发候选，不代表 Windows Python 已经安装 Paramiko。** Windows Python 3.14 依赖轮子、固定哈希与许可证、原生功能和发行包检查尚待通过后合入正式发布。
+**开发分支的 Windows Python 运行树已经跟踪 Paramiko 5.1.0 及其固定依赖，输入清单和哈希锁均已包含该组。** 真实 SSH/SFTP、用户目标及本次完整兼容性验收仍需单独核对；不因此宣称正式发行包已通过 SSH 验收。

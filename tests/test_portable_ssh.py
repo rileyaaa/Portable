@@ -203,6 +203,74 @@ class PortableSSHTests(unittest.TestCase):
             self.ws.path("keys", "id_ed25519", existing=True),
         )
 
+    def test_paramiko_implicit_certificate_and_private_key_paths_checked(self):
+        self.ws.known_hosts().write_text("synthetic host keys")
+        key = self.ws.path("keys", "id_ed25519")
+        cert = self.ws.path("keys", "id_ed25519-cert.pub")
+        key.write_bytes(b"synthetic private")
+        args = mock.Mock(host="server.example", port=22, user="dbuser",
+                         key=key.name, timeout=9, ask_passphrase=False)
+        unrelated = self.root / "unrelated"
+        unrelated.write_bytes(b"preserve")
+        os.link(unrelated, cert)
+        pm = FakeParamiko()
+        with self.assertRaisesRegex(SSH.SSHBoundaryError, "single-link"):
+            SSH._connection(pm, self.ws, args)
+        self.assertIsNone(pm.client.options)
+        cert.unlink()
+        # Preserve the established Paramiko companion behavior for normal files.
+        cert.write_bytes(b"synthetic certificate")
+        self.assertIs(SSH._connection(pm, self.ws, args), pm.client)
+        self.assertEqual(Path(pm.client.options["key_filename"]), key)
+        args.key = cert.name
+        self.assertIs(SSH._connection(pm, self.ws, args), pm.client)
+        self.assertEqual(Path(pm.client.options["key_filename"]), cert)
+        key.unlink()
+        os.link(unrelated, key)
+        pm = FakeParamiko()
+        with self.assertRaisesRegex(SSH.SSHBoundaryError, "single-link"):
+            SSH._connection(pm, self.ws, args)
+        self.assertIsNone(pm.client.options)
+        self.assertEqual(unrelated.read_bytes(), b"preserve")
+
+    def test_exec_checks_deadline_during_continuous_output(self):
+        for stderr in (False, True):
+            with self.subTest(stderr=stderr):
+                channel = mock.Mock()
+                channel.recv_ready.side_effect = [not stderr] * 3 + [False]
+                channel.recv_stderr_ready.side_effect = [stderr] * 3 + [False]
+                channel.recv.return_value = b"x"
+                channel.recv_stderr.return_value = b"x"
+                channel.exit_status_ready.return_value = True
+                client = mock.Mock()
+                client.exec_command.return_value = (None, mock.Mock(channel=channel), None)
+                # Deadline is 1.0. At the first read it has already passed,
+                # although a finite burst is still queued and below the cap.
+                with mock.patch.object(SSH.time, "monotonic", side_effect=[0.0, 0.5, 1.1]):
+                    with self.assertRaisesRegex(SSH.SSHBoundaryError, "timed out"):
+                        SSH._exec(client, "synthetic", 1)
+                self.assertEqual(channel.recv.call_count + channel.recv_stderr.call_count, 1)
+                channel.recv_exit_status.assert_not_called()
+                channel.close.assert_called_once_with()
+
+    def test_exec_preserves_successful_binary_output_and_exit_status(self):
+        channel = mock.Mock()
+        channel.recv_ready.side_effect = [True, False, False]
+        channel.recv_stderr_ready.side_effect = [True, False, False]
+        channel.recv.return_value = b"\x00\xffout"
+        channel.recv_stderr.return_value = b"\xfeerr"
+        channel.exit_status_ready.return_value = True
+        channel.recv_exit_status.return_value = 7
+        client = mock.Mock()
+        client.exec_command.return_value = (None, mock.Mock(channel=channel), None)
+        output, errors = io.BytesIO(), io.BytesIO()
+        with mock.patch.object(SSH.sys, "stdout", mock.Mock(buffer=output)), \
+                mock.patch.object(SSH.sys, "stderr", mock.Mock(buffer=errors)):
+            self.assertEqual(SSH._exec(client, "synthetic", 5), 7)
+        self.assertEqual(output.getvalue(), b"\x00\xffout")
+        self.assertEqual(errors.getvalue(), b"\xfeerr")
+        channel.close.assert_called_once_with()
+
     def test_sftp_download_no_clobber_and_upload_exclusive(self):
         client = FakeTransferClient()
         SSH._download(client, self.ws, "/var/log/demo.log", "demo.log", False)

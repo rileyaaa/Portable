@@ -562,8 +562,8 @@ def search_library(library: Path, query: str, limit=5, max_chars=800) -> list[di
     if not 1 <= limit <= 20 or not 80 <= max_chars <= 4000:
         raise ValueError("Search limits: 1..20 hits, 80..4000 characters per hit")
     words = [word for word in query.split() if word]
-    if not words:
-        raise ValueError("A nonempty query is required")
+    if not words or "\x00" in query:
+        raise ValueError("A nonempty query without NUL is required")
     connection = _database(checked(library, exists=True, kind="dir"))
     try:
         terms = ["%" + word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
@@ -573,8 +573,14 @@ def search_library(library: Path, query: str, limit=5, max_chars=800) -> list[di
         result = []
         for row in connection.execute(sql, (*terms, limit)):
             text = row["markdown"]
-            hits = [text.casefold().find(word.casefold()) for word in words]
-            start = max(0, min(hit for hit in hits if hit >= 0) - max_chars // 4)
+            # SQLite LIKE folds ASCII case only. Full Unicode casefold can
+            # expand characters (e.g. sharp s) and yield offsets into a
+            # different string, or select a false match before the SQL hit.
+            matches = [re.search(re.escape(word), text, re.IGNORECASE | re.ASCII)
+                       for word in words]
+            if not all(matches):
+                continue
+            start = max(0, min(match.start() for match in matches) - max_chars // 4)
             snippet = text[start:start + max_chars]
             result.append(dict(document=row["document"], page=row["page"],
                                text=snippet, truncated=start > 0 or start + max_chars < len(text)))

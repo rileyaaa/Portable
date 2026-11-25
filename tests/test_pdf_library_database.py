@@ -100,6 +100,36 @@ class PdfLibraryDatabaseTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_search_snippet_uses_original_offsets_and_sqlite_case_rules(self):
+        text = "\u00df" * 300 + " NEEDLE SS \u4e2d\u6587 _literal% \\path"
+        connection = self.module._database(self.library, create=True)
+        try:
+            connection.execute(
+                "INSERT INTO documents VALUES(?,?,?,?,?)",
+                ("synthetic.pdf", "a", "b", "signature", 1),
+            )
+            connection.execute(
+                "INSERT INTO pages(document,page,markdown) VALUES(?,?,?)",
+                ("synthetic.pdf", 1, text),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        for query, expected in (
+            ("needle", "NEEDLE"), ("ss", "SS"), ("\u4e2d\u6587", "\u4e2d\u6587"),
+            ("_literal%", "_literal%"), ("\\path", "\\path"), ("needle ss", "NEEDLE"),
+        ):
+            with self.subTest(query=query):
+                hits = self.module.search_library(self.library, query, max_chars=80)
+                self.assertEqual(len(hits), 1)
+                self.assertEqual(hits[0]["page"], 1)
+                self.assertIn(expected, hits[0]["text"])
+                self.assertLessEqual(len(hits[0]["text"]), 80)
+                self.assertTrue(hits[0]["truncated"])
+        self.assertEqual(self.module.search_library(self.library, "SSS"), [])
+        with self.assertRaises(ValueError):
+            self.module.search_library(self.library, "needle\x00suffix")
+
     def test_existing_empty_database_can_complete_initialization(self):
         self.prepare_database([])
         connection = self.module._database(self.library, create=True)

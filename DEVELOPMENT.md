@@ -1,5 +1,9 @@
 # 开发与维护记录
 
+## 2026-11-25：第五组既有 SSH 与 PDF 检索缺陷修正（源码候选）
+
+固定 0.172.0 及既有启动变量、模式、工具版本和权限不变。包内实际 Paramiko 5.1.0 client.py 的 _key_from_filepath 会在禁用 agent/自动密钥搜索时仍查找相邻 -cert.pub，显式证书路径又会推导私钥；原入口只检查一个路径。现按固定版本实际推导规则，在构建 SSHClient 前检查另一条路径及完整祖先、普通单链接；保留正常证书/私钥、显式授权与主机指纹策略。远端 exec 在持续读 stdout/stderr 时也检查既有截止时间，不改输出限额和退出码。PDF 索引原 SQLite LIKE 筛选后用全文 casefold 的位置截取原文本，含大量 ß 等展开字符的手册可返回空片段或错误位置；保持 SQL 字面量及 ASCII 大小写匹配规则，用原字符串坐标截取，拒绝 NUL 查询。新增合成文件/通道和 SQLite 索引回归；未访问任何真实 SSH 服务器。Windows 实际验收待本组门禁，未测设备、真实账号、外部网络、Office 渲染及重算不视为通过。仅修正文档与实际 SSH 依赖树不一致的当前说明，不恢复预览组件、不新增功能、不发布。
+
 ## 2026-11-25：第四组 typing_extensions 独立稳定更新
 
 仅将已有纯 Python 单模块 typing_extensions 4.15.0 更新到 4.16.0（PSF-2.0，Python >=3.9）；固定 Python 3.14.10、pip/certifi、Node/npm/Corepack、Codex/Host、浏览器/MCP、其他 48 个已装发行包和原 CLI/权限不动。官方 PyPI wheel SHA-256 481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8，旧 wheel f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548；PyPI 发布证明标明官方仓库提交 f29cd28d8ed7642cafb1d18daf5aa41be6a5c0aa。本轮实际核对 wheel 摘要、RECORD、许可证与固定上游模块 Git blob ced78373258ef307c9a94ef15286e6da359e7a80，不声称本地独立验证了 Sigstore 证明。旧包 INSTALLER 为 uv，仍只使用现有固定 pip 在独占目标进行 hash-only、no-index/no-deps/no-compile 安装；不增 console_script、脚本、native binary 或其他依赖。实际同 runner 新旧版本公共导出、TypedDict/Protocol、已有 HTTP 同步异步回环、DOCX/PPTX/XLSX 中文路径创建读回及完整 Windows 原生门禁；不代表真实网络、账号、SSH、用户设备、Office 渲染或公式重算。Python 3.14 中 no_type_check_decorator 仍保留；不启用上游新增 API 作为项目功能。XlsxWriter 新版另有历史 vendor vba_extract.py 变化，暂不混入；SSH 候选边界不变。回退仅恢复该模块、dist-info、输入/锁及本组测试/说明。

@@ -267,6 +267,14 @@ def _trust(pm, ws: Workspace, host: str, port: int,
 def _connection(pm, ws: Workspace, args):
     host_keys = ws.known_hosts(existing=True)
     key = ws.path("keys", _safe_name(args.key), existing=True)
+    # Paramiko 5.1.0 derives and opens both paths in _key_from_filepath,
+    # even with allow_agent=False and look_for_keys=False. Check the same
+    # companion before constructing the client (and before any connection).
+    suffix = "-cert.pub"
+    if key.name.endswith(suffix):
+        ws.path("keys", _safe_name(key.name[:-len(suffix)]), existing=True)
+    else:
+        ws._inspect(key.with_name(key.name + suffix))
     client = pm.SSHClient()
     try:
         client.load_host_keys(str(host_keys))
@@ -292,22 +300,27 @@ def _exec(client, command: str, timeout: float) -> int:
     channel = stdout.channel
     deadline = time.monotonic() + timeout
     out, err = bytearray(), bytearray()
+    def check_deadline():
+        if time.monotonic() > deadline:
+            raise SSHBoundaryError("Remote command timed out.")
+
     try:
         while True:
+            check_deadline()
             while channel.recv_ready():
                 out.extend(channel.recv(65536))
                 if len(out) > 2_000_000:
                     raise SSHBoundaryError("Remote stdout exceeded the bounded limit.")
+                check_deadline()
             while channel.recv_stderr_ready():
                 err.extend(channel.recv_stderr(65536))
                 if len(err) > 2_000_000:
                     raise SSHBoundaryError("Remote stderr exceeded the bounded limit.")
+                check_deadline()
             if channel.exit_status_ready() and not (
                 channel.recv_ready() or channel.recv_stderr_ready()
             ):
                 break
-            if time.monotonic() > deadline:
-                raise SSHBoundaryError("Remote command timed out.")
             time.sleep(0.03)
         status = channel.recv_exit_status()
         sys.stdout.buffer.write(out)
