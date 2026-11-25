@@ -1,0 +1,369 @@
+name: Stable tool refresh - typing_extensions 4.16.0 (one time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths: [.github/workflows/refresh-typing-extensions-stable.yml]
+permissions: {}
+concurrency:
+  group: stable-tool-refresh-typing-extensions
+  cancel-in-progress: false
+jobs:
+  refresh:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == '00893a8d7cdfca1c7ad4752496b2ca20202b7acf' && github.run_attempt == 1
+    runs-on: windows-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: powershell
+    env:
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      BASE: 00893a8d7cdfca1c7ad4752496b2ca20202b7acf
+      TARGET_BRANCH: dev/stable-tool-refresh
+    steps:
+      - name: Preserve tracked bytes and isolate CI module cache
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'git configuration failed' }
+          $dir = Join-Path $env:RUNNER_TEMP ('typing-refresh-pscache-' + [Guid]::NewGuid().ToString('N'))
+          $null = New-Item -ItemType Directory -Path $dir
+          ('PSModuleAnalysisCachePath=' + (Join-Path $dir 'ModuleAnalysisCache')) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Confirm cleaned baseline and fixed runtime
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or (git rev-parse 'HEAD^').Trim() -cne $env:BASE) { throw 'Wrong checkout or parent' }
+          if ((git diff --name-only $env:BASE HEAD) -cne '.github/workflows/refresh-typing-extensions-stable.yml') { throw 'Unexpected starting changes' }
+          foreach ($old in @('.github/workflows/refresh-pip-certifi-stable.yml','.github/workflows/refresh-npm11-stable.yml','.github/workflows/refresh-rg16-stable.yml')) {
+            if (Test-Path -LiteralPath $old) { throw 'Previous trigger not cleaned' }
+          }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
+            $remote = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen ref or development branch moved' }
+          }
+          $fixed = @(git diff --name-only $env:FROZEN HEAD -- env.ps1 run-codex.ps1 codex.exe codex-code-mode-host.exe codex-path tool/runtime-manifest.json tool/python tool/python-packages.in.txt tool/python-packages.lock.txt tool/node tool/automation Version_History)
+          if ($LASTEXITCODE -ne 0 -or $fixed.Count -ne 0) { throw 'Unexpected fixed runtime change' }
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'LFS verification failed' }
+      - name: Official fixed pure wheel, old raw ownership and same-runner actual consumer tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tool/python-lock.py validate --requirements tool/python-packages.in.txt --lock tool/python-packages.lock.txt
+          if ($LASTEXITCODE) { throw 'Old dependency lock mismatch' }
+          & .\tool\python\python.exe -B tool/python-lock.py validate-runtime --requirements tool/python-packages.in.txt
+          if ($LASTEXITCODE) { throw 'Old runtime closure mismatch' }
+          @'
+          import base64,csv,email.parser,hashlib,importlib.metadata as md,io,json,os,re,stat,subprocess,sys,tempfile,zipfile
+          from pathlib import Path
+          import urllib.parse,urllib.request
+          for s in (sys.stdout,sys.stderr):s.reconfigure(encoding="utf-8",errors="backslashreplace")
+          root=Path.cwd()
+          py=root/"tool/python/python.exe"
+          site=root/"tool/python/Lib/site-packages"
+          old="4.15.0";new="4.16.0";module="typing_extensions.py"
+          name="typing-extensions"
+          old_sha="f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548"
+          new_sha="481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8"
+          sources={old:"77f33e1614fd7d46ccd66b394d6c5d663bf8a8c6",new:"ced78373258ef307c9a94ef15286e6da359e7a80"}
+          license_blob="f26bcf4d2de6eb136e31006ca3ab447d5e488adf"
+          def sha(data):return hashlib.sha256(data).hexdigest()
+          def oid(data):return hashlib.sha1(("blob "+str(len(data))+"\0").encode("ascii")+data).hexdigest()
+          def rh(data):return "sha256="+base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("=")
+          def git(*a):return subprocess.check_output(["git",*a],cwd=root)
+          def names(*a):return set(git(*a).decode("utf-8").split("\0"))-{""}
+          def plain(p,directory=False):
+              s=p.lstat()
+              assert not stat.S_ISLNK(s.st_mode) and not getattr(s,"st_file_attributes",0)&0x400
+              assert stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode) and s.st_nlink==1
+          def treefiles(parent,prefix):
+              p=parent/prefix;plain(p,True)
+              result=set()
+              for current,dirs,files in os.walk(p,followlinks=False):
+                  d=Path(current)
+                  for sub in dirs:plain(d/sub,True)
+                  for file in files:
+                      f=d/file;plain(f);result.add(f.relative_to(parent).as_posix())
+              return result
+          def rows(raw):
+              result={}
+              for row in csv.reader(io.StringIO(raw.decode("utf-8-sig"),newline="")):
+                  assert len(row)==3 and row[0] not in result
+                  result[row[0]]=tuple(row[1:])
+              return result
+          def dist(v):return "typing_extensions-"+v+".dist-info"
+          def payload_names(v):return {module,*(dist(v)+"/"+x for x in ("METADATA","WHEEL","RECORD","licenses/LICENSE"))}
+          def owned_names(v):return payload_names(v)|{dist(v)+"/INSTALLER",dist(v)+"/REQUESTED"}
+          def distributions():
+              found={}
+              for d in md.distributions(path=[str(site)]):
+                  n=re.sub(r"[-_.]+","-",d.metadata["Name"].lower())
+                  assert n not in found
+                  found[n]=d.version
+              return found
+          def record_check(parent,v,expected_names):
+              record=dist(v)+"/RECORD"
+              data=rows((parent/record).read_bytes())
+              assert set(data)==expected_names,"RECORD ownership differs"
+              for p in sorted(expected_names):
+                  f=parent/p;plain(f)
+                  assert data[p]==(("", "") if p==record else (rh(f.read_bytes()),str(f.stat().st_size))),"RECORD differs: "+p
+          
+          assert sys.version_info[:3]==(3,14,10) and Path(sys.executable).resolve()==py
+          assert sys.flags.isolated and sys.flags.ignore_environment
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          for p in (*reversed(site.parents),site):plain(p,True)
+          old_versions=distributions()
+          assert len(old_versions)==49 and old_versions[name]==old and old_versions["pip"]=="26.1.2" and old_versions["certifi"]=="2026.5.20"
+          assert not os.path.lexists(site/dist(new))
+          prefix=site.relative_to(root).as_posix()+"/"
+          old_files=treefiles(site,dist(old))|{module}
+          assert old_files==owned_names(old)
+          assert names("ls-files","-z","--",prefix+module,prefix+dist(old))=={prefix+p for p in old_files}
+          record_check(site,old,old_files)
+          for p in old_files:assert git("cat-file","blob","HEAD:"+prefix+p)==(site/p).read_bytes(),"Raw Git differs: "+p
+          for p in site.glob("*.dist-info/RECORD"):
+              plain(p.parent,True);plain(p)
+              if p.parent.name!=dist(old):
+                  assert not (set(rows(p.read_bytes()))&old_files),"Shared RECORD ownership"
+          assert (site/dist(old)/"INSTALLER").read_bytes()==b"uv" and (site/dist(old)/"REQUESTED").read_bytes()==b""
+          print("TYPING_OLD_GIT_RECORD_OWNERSHIP=PASS files="+str(len(old_files)),flush=True)
+          scratch=root/"tmp";scratch.mkdir(exist_ok=True);plain(scratch,True)
+          test=root/"tests/check_typing_extensions_refresh.py"
+          assert not os.path.lexists(test)
+          test.write_text("\"\"\"Real installed typing_extensions consumers, using only owned synthetic data.\"\"\"\nimport asyncio\nimport importlib.metadata as md\nimport json\nimport os\nfrom pathlib import Path\nimport stat\nimport sys\nimport tempfile\nimport threading\nfrom http.server import BaseHTTPRequestHandler, ThreadingHTTPServer\n\nimport typing_extensions as te\nimport anyio\nimport requests\nimport httpx\nimport docx\nimport pptx\nimport openpyxl\nimport xlsxwriter\n\ndef ordinary(p, directory=False):\n    s=p.lstat()\n    assert not stat.S_ISLNK(s.st_mode) and not getattr(s,\"st_file_attributes\",0)&0x400\n    assert stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode) and s.st_nlink==1\n\ndef main():\n    root=Path(__file__).absolute().parents[1]\n    runtime=root/\"tool/python\"\n    assert os.name==\"nt\" and sys.version_info[:3]==(3,14,10)\n    assert Path(sys.executable).resolve()==runtime/\"python.exe\"\n    assert sys.flags.isolated and sys.flags.ignore_environment and sys.flags.safe_path\n    assert set(map(Path,sys.path))=={runtime/\"python314.zip\",runtime,runtime/\"Lib/site-packages\"}\n    assert os.environ.get(\"PIP_CONFIG_FILE\")==os.devnull\n    version=sys.argv[1]\n    assert md.version(\"typing-extensions\")==version\n    for module in (te,anyio,requests,httpx,docx,pptx,openpyxl,xlsxwriter):\n        assert Path(module.__file__).resolve().is_relative_to(runtime/\"Lib/site-packages\"),module.__name__\n    for name in (\"Protocol\",\"TypedDict\",\"Required\",\"NotRequired\",\"Self\",\"TypeAliasType\",\"TypeVar\",\"ParamSpec\",\"override\",\"get_type_hints\",\"Sentinel\",\"no_type_check_decorator\"):\n        assert hasattr(te,name),name\n    class Payload(te.TypedDict):\n        value: te.Required[int]\n        note: te.NotRequired[str]\n    assert Payload.__required_keys__==frozenset({\"value\"})\n    assert Payload.__optional_keys__==frozenset({\"note\"})\n    assert te.get_type_hints(Payload,include_extras=True)[\"note\"]==te.NotRequired[str]\n    @te.runtime_checkable\n    class Getter(te.Protocol):\n        def get(self)->int: ...\n    class Value:\n        def get(self):return 42\n    assert isinstance(Value(),Getter) and not isinstance(object(),Getter)\n    print(\"TYPING_EXTENSIONS_PUBLIC_EXPORTS=\"+json.dumps(sorted(te.__all__),ensure_ascii=True),flush=True)\n    print(\"TYPING_EXTENSIONS_EXISTING_RUNTIME_TYPES=PASS \"+version,flush=True)\n\n    class Handler(BaseHTTPRequestHandler):\n        def do_GET(self):\n            assert self.path==\"/portable-probe\"\n            body=b'{\"value\":42}'\n            self.send_response(200)\n            self.send_header(\"Content-Type\",\"application/json\")\n            self.send_header(\"Content-Length\",str(len(body)))\n            self.end_headers()\n            self.wfile.write(body)\n        def log_message(self,*args):pass\n    with ThreadingHTTPServer((\"127.0.0.1\",0),Handler) as server:\n        worker=threading.Thread(target=server.serve_forever,daemon=True)\n        worker.start()\n        try:\n            url=\"http://127.0.0.1:\"+str(server.server_port)+\"/portable-probe\"\n            with requests.Session() as session:\n                session.trust_env=False\n                response=session.get(url,timeout=5)\n                response.raise_for_status()\n                assert response.json()=={\"value\":42}\n            with httpx.Client(trust_env=False,timeout=5) as client:\n                assert client.get(url).raise_for_status().json()=={\"value\":42}\n            async def fetch():\n                async with httpx.AsyncClient(trust_env=False,timeout=5) as client:\n                    assert (await client.get(url)).raise_for_status().json()=={\"value\":42}\n            anyio.run(fetch,backend=\"asyncio\")\n        finally:\n            server.shutdown()\n            worker.join(10)\n            assert not worker.is_alive()\n    print(\"EXISTING_HTTP_SYNC_ASYNC_LOOPBACK=PASS \"+version,flush=True)\n    for p in (*reversed(root.parents),root):ordinary(p,True)\n    scratch=root/\"tmp\";scratch.mkdir(exist_ok=True);ordinary(scratch,True)\n    with tempfile.TemporaryDirectory(prefix=\"typing-docs-\",dir=scratch) as temp:\n        directory=Path(temp)/\"Portable \\u4fbf\\u643a document\"\n        directory.mkdir()\n        word=directory/\"\\u4fbf\\u643a.docx\"\n        document=docx.Document()\n        document.add_paragraph(\"\\u4fbf\\u643a text\")\n        document.save(word)\n        assert docx.Document(word).paragraphs[0].text==\"\\u4fbf\\u643a text\"\n        slides=directory/\"\\u4fbf\\u643a.pptx\"\n        deck=pptx.Presentation()\n        slide=deck.slides.add_slide(deck.slide_layouts[5])\n        slide.shapes.title.text=\"\\u4fbf\\u643a text\"\n        deck.save(slides)\n        assert pptx.Presentation(slides).slides[0].shapes.title.text==\"\\u4fbf\\u643a text\"\n        sheet=directory/\"\\u4fbf\\u643a.xlsx\"\n        with xlsxwriter.Workbook(str(sheet),{\"tmpdir\":str(directory)}) as book:\n            ws=book.add_worksheet(\"Data\")\n            ws.write(\"A1\",\"\\u4fbf\\u643a\")\n            ws.write_number(\"B1\",21)\n            ws.write_formula(\"C1\",\"=B1*2\",None,42)\n        wb=openpyxl.load_workbook(sheet,data_only=False)\n        try:\n            assert wb[\"Data\"][\"A1\"].value==\"\\u4fbf\\u643a\" and wb[\"Data\"][\"C1\"].value==\"=B1*2\"\n        finally:wb.close()\n        cached=openpyxl.load_workbook(sheet,data_only=True)\n        try:assert cached[\"Data\"][\"C1\"].value==42\n        finally:cached.close()\n    print(\"EXISTING_OFFICE_ROUNDTRIP=PASS \"+version+\" cached formula value only, no recalculation\",flush=True)\n\nif __name__==\"__main__\":main()\n",encoding="utf-8",newline="\n")
+          
+          def fetch_wheel(v,expected,dest):
+              filename="typing_extensions-"+v+"-py3-none-any.whl"
+              request=urllib.request.Request("https://pypi.org/pypi/typing-extensions/"+v+"/json",headers={"User-Agent":"Portable-fixed-wheel-audit/1","Accept":"application/json"})
+              with urllib.request.urlopen(request,timeout=40) as res:
+                  assert urllib.parse.urlsplit(res.url).hostname=="pypi.org"
+                  release=json.load(res)
+              info=release["info"]
+              assert info["version"]==v and re.sub(r"[-_.]+","-",info["name"].lower())==name and info["requires_python"]==">=3.9"
+              items=[x for x in release["urls"] if x["filename"]==filename]
+              assert len(items)==1
+              item=items[0]
+              assert item["packagetype"]=="bdist_wheel" and not item["yanked"] and item["digests"]["sha256"]==expected and 0<item["size"]<1024*1024
+              u=urllib.parse.urlsplit(item["url"])
+              assert u.scheme=="https" and u.hostname=="files.pythonhosted.org" and u.username is None and u.password is None and u.path.endswith("/"+filename)
+              with urllib.request.urlopen(item["url"],timeout=60) as res:
+                  assert urllib.parse.urlsplit(res.url).hostname=="files.pythonhosted.org"
+                  data=res.read(item["size"]+1)
+              assert len(data)==item["size"] and sha(data)==expected
+              file=dest/filename
+              with file.open("xb") as f:f.write(data)
+              payload={};seen=set()
+              with zipfile.ZipFile(io.BytesIO(data)) as z:
+                  for m in z.infolist():
+                      p=m.filename.rstrip("/")
+                      assert p and all(part and part not in (".","..",".git") and not part.endswith((" ",".")) and not re.search(r'[<>:"\\|?*\x00-\x1f]',part) for part in p.split("/"))
+                      assert p.casefold() not in seen and not stat.S_ISLNK(m.external_attr>>16) and not(m.flag_bits&1) and m.file_size<1024*1024
+                      seen.add(p.casefold())
+                      if m.is_dir():
+                          assert p in (dist(v),dist(v)+"/licenses")
+                          continue
+                      assert p in payload_names(v),"Unexpected wheel path: "+p
+                      payload[p]=z.read(m)
+              assert set(payload)==payload_names(v),"Wheel inventory changed"
+              rr=rows(payload[dist(v)+"/RECORD"])
+              assert set(rr)==set(payload)
+              for p,d in payload.items():
+                  assert rr[p]==(("", "") if p.endswith("/RECORD") else (rh(d),str(len(d))))
+              meta=email.parser.BytesParser().parsebytes(payload[dist(v)+"/METADATA"])
+              assert re.sub(r"[-_.]+","-",meta["Name"].lower())==name and meta["Version"]==v and meta["Requires-Python"]==">=3.9"
+              assert meta["License-Expression"]=="PSF-2.0" and meta.get_all("Requires-Dist",[])==[]
+              wheel=email.parser.BytesParser().parsebytes(payload[dist(v)+"/WHEEL"])
+              assert wheel["Root-Is-Purelib"].lower()=="true" and wheel.get_all("Tag")==["py3-none-any"]
+              assert oid(payload[module])==sources[v] and oid(payload[dist(v)+"/licenses/LICENSE"])==license_blob
+              print("OFFICIAL_TYPING_WHEEL="+json.dumps({"version":v,"url":item["url"],"sha256":expected,"bytes":len(data),"module_git_blob":sources[v],"license":"PSF-2.0","files":len(payload),"requires_python":meta["Requires-Python"],"entry_points":0},ensure_ascii=True),flush=True)
+              return payload
+          
+          def run(argv,env,cwd=root,timeout=240):
+              p=subprocess.run([str(x) for x in argv],cwd=cwd,env=env,capture_output=True,timeout=timeout)
+              out=p.stdout.decode("utf-8","backslashreplace")
+              print(out,flush=True);print(p.stderr.decode("utf-8","backslashreplace"),flush=True)
+              assert p.returncode==0,"Process failed: "+str(argv[0])+" exit="+str(p.returncode)
+              return out
+          with tempfile.TemporaryDirectory(prefix="typing-extensions-refresh-",dir=scratch) as tmp:
+              own=Path(tmp);plain(own,True)
+              env={k:os.environ[k] for k in ("SystemRoot","WINDIR","SystemDrive","ComSpec","PATHEXT","OS","PROCESSOR_ARCHITECTURE") if k in os.environ}
+              windows=Path(env["SystemRoot"])
+              env["PATH"]=os.pathsep.join((str(py.parent),str(root/"tool/bin"),str(windows/"System32"),str(windows)))
+              for key,rel in (("HOME","home"),("USERPROFILE","home"),("APPDATA","appdata"),("LOCALAPPDATA","localappdata"),("PROGRAMDATA","programdata"),("ALLUSERSPROFILE","programdata"),("TEMP","temp"),("TMP","temp"),("TMPDIR","temp"),("PIP_CACHE_DIR","pip-cache"),("PYTHONUSERBASE","python-user"),("PYTHONPYCACHEPREFIX","pycache")):
+                  p=own/rel;p.mkdir(exist_ok=True);env[key]=str(p)
+              env.update(PIP_CONFIG_FILE=os.devnull,PSModuleAnalysisCachePath=str(own/"ModuleAnalysisCache"),POWERSHELL_TELEMETRY_OPTOUT="1")
+              def pip(*args):
+                  return run([py,"-B","-m","pip","--isolated","--disable-pip-version-check","--no-input","--cache-dir",env["PIP_CACHE_DIR"],*args],env)
+              assert "No broken requirements found." in pip("check")
+              wheelhouse=own/"wheelhouse";wheelhouse.mkdir()
+              old_payload=fetch_wheel(old,old_sha,wheelhouse)
+              new_payload=fetch_wheel(new,new_sha,wheelhouse)
+              for p,data in old_payload.items():
+                  if not p.endswith("/RECORD"):assert (site/p).read_bytes()==data,"Old installed file differs from official wheel: "+p
+              print("OLD_OFFICIAL_WHEEL_INSTALLED_BYTES=PASS",flush=True)
+              def check_probe(v):
+                  output=run([py,"-B",test,v],env)
+                  for marker in ("TYPING_EXTENSIONS_EXISTING_RUNTIME_TYPES=PASS","EXISTING_HTTP_SYNC_ASYNC_LOOPBACK=PASS","EXISTING_OFFICE_ROUNDTRIP=PASS"):
+                      assert marker+" "+v in output
+                  lines=[x for x in output.splitlines() if x.startswith("TYPING_EXTENSIONS_PUBLIC_EXPORTS=")]
+                  assert len(lines)==1
+                  return set(json.loads(lines[0].split("=",1)[1]))
+              exports_old=check_probe(old)
+              req=own/"wheel.lock"
+              req.write_text(name+"=="+new+" --hash=sha256:"+new_sha+"\n",encoding="ascii",newline="\n")
+              target=own/"staged";target.mkdir()
+              pip("install","--no-index","--find-links",wheelhouse,"--no-deps","--require-hashes","--only-binary=:all:","--no-compile","--ignore-installed","--requirement",req,"--target",target)
+              assert {p.name for p in target.iterdir()}=={module,dist(new)}
+              assert treefiles(target,dist(new))|{module}==owned_names(new)
+              record_check(target,new,owned_names(new))
+              for p,data in new_payload.items():
+                  if not p.endswith("/RECORD"):assert (target/p).read_bytes()==data
+              assert (target/dist(new)/"INSTALLER").read_bytes().strip()==b"pip" and (target/dist(new)/"REQUESTED").read_bytes()==b""
+              print("NEW_OFFICIAL_STAGED_PAYLOAD_AND_RECORD=PASS",flush=True)
+              backup=own/"old";backup.mkdir()
+              for p in (module,dist(old)):
+                  (site/p).rename(backup/p)
+              for p in (module,dist(new)):
+                  (target/p).rename(site/p)
+              record_check(site,new,owned_names(new))
+              assert distributions()==(old_versions|{name:new})
+              assert "No broken requirements found." in pip("check")
+              exports_new=check_probe(new)
+              assert exports_old.issubset(exports_new), "Existing public export removed on Python 3.14"
+              print("OLD_NEW_TYPING_EXPORT_PARITY=PASS added="+json.dumps(sorted(exports_new-exports_old)),flush=True)
+              print("ONLY_ONE_OF_49_DISTRIBUTIONS_CHANGED=PASS",flush=True)
+          assert not (root/"Microsoft/Windows/PowerShell/ModuleAnalysisCache").exists()
+          inp=root/"tool/python-packages.in.txt";lockpath=root/"tool/python-packages.lock.txt"
+          raw=inp.read_bytes();lock=lockpath.read_bytes()
+          def replace_once(data,a,b):
+              assert data.count(a)==1
+              return data.replace(a,b,1)
+          new_input=replace_once(raw,b"typing-extensions==4.15.0",b"typing-extensions==4.16.0")
+          lock=replace_once(lock,b"typing-extensions==4.15.0 --hash=sha256:"+old_sha.encode(),b"typing-extensions==4.16.0 --hash=sha256:"+new_sha.encode())
+          lock=replace_once(lock,b"# requirements-sha256: "+sha(raw).encode(),b"# requirements-sha256: "+sha(new_input).encode())
+          inp.write_bytes(new_input);lockpath.write_bytes(lock)
+          def prepend(path,anchor,addition):
+              raw=path.read_bytes();newline="\r\n" if b"\r\n" in raw else "\n"
+              anchor=anchor.replace("\n",newline).encode("utf-8")
+              content=addition.replace("\n",newline).encode("utf-8")
+              assert raw.count(anchor)==1
+              path.write_bytes(raw.replace(anchor,anchor+content,1))
+          runurl="https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]
+          prepend(root/"DEVELOPMENT.md","# \u5f00\u53d1\u4e0e\u7ef4\u62a4\u8bb0\u5f55\n\n","## 2026-11-25\uff1a\u7b2c\u56db\u7ec4 typing_extensions \u72ec\u7acb\u7a33\u5b9a\u66f4\u65b0\n\n\u4ec5\u5c06\u5df2\u6709\u7eaf Python \u5355\u6a21\u5757 typing_extensions 4.15.0 \u66f4\u65b0\u5230 4.16.0\uff08PSF-2.0\uff0cPython >=3.9\uff09\uff1b\u56fa\u5b9a Python 3.14.10\u3001pip/certifi\u3001Node/npm/Corepack\u3001Codex/Host\u3001\u6d4f\u89c8\u5668/MCP\u3001\u5176\u4ed6 48 \u4e2a\u5df2\u88c5\u53d1\u884c\u5305\u548c\u539f CLI/\u6743\u9650\u4e0d\u52a8\u3002\u5b98\u65b9 PyPI wheel SHA-256 481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8\uff0c\u65e7 wheel f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548\uff1bPyPI \u53d1\u5e03\u8bc1\u660e\u6807\u660e\u5b98\u65b9\u4ed3\u5e93\u63d0\u4ea4 f29cd28d8ed7642cafb1d18daf5aa41be6a5c0aa\u3002\u672c\u8f6e\u5b9e\u9645\u6838\u5bf9 wheel \u6458\u8981\u3001RECORD\u3001\u8bb8\u53ef\u8bc1\u4e0e\u56fa\u5b9a\u4e0a\u6e38\u6a21\u5757 Git blob ced78373258ef307c9a94ef15286e6da359e7a80\uff0c\u4e0d\u58f0\u79f0\u672c\u5730\u72ec\u7acb\u9a8c\u8bc1\u4e86 Sigstore \u8bc1\u660e\u3002\u65e7\u5305 INSTALLER \u4e3a uv\uff0c\u4ecd\u53ea\u4f7f\u7528\u73b0\u6709\u56fa\u5b9a pip \u5728\u72ec\u5360\u76ee\u6807\u8fdb\u884c hash-only\u3001no-index/no-deps/no-compile \u5b89\u88c5\uff1b\u4e0d\u589e console_script\u3001\u811a\u672c\u3001native binary \u6216\u5176\u4ed6\u4f9d\u8d56\u3002\u5b9e\u9645\u540c runner \u65b0\u65e7\u7248\u672c\u516c\u5171\u5bfc\u51fa\u3001TypedDict/Protocol\u3001\u5df2\u6709 HTTP \u540c\u6b65\u5f02\u6b65\u56de\u73af\u3001DOCX/PPTX/XLSX \u4e2d\u6587\u8def\u5f84\u521b\u5efa\u8bfb\u56de\u53ca\u5b8c\u6574 Windows \u539f\u751f\u95e8\u7981\uff1b\u4e0d\u4ee3\u8868\u771f\u5b9e\u7f51\u7edc\u3001\u8d26\u53f7\u3001SSH\u3001\u7528\u6237\u8bbe\u5907\u3001Office \u6e32\u67d3\u6216\u516c\u5f0f\u91cd\u7b97\u3002Python 3.14 \u4e2d no_type_check_decorator \u4ecd\u4fdd\u7559\uff1b\u4e0d\u542f\u7528\u4e0a\u6e38\u65b0\u589e API \u4f5c\u4e3a\u9879\u76ee\u529f\u80fd\u3002XlsxWriter \u65b0\u7248\u53e6\u6709\u5386\u53f2 vendor vba_extract.py \u53d8\u5316\uff0c\u6682\u4e0d\u6df7\u5165\uff1bSSH \u5019\u9009\u8fb9\u754c\u4e0d\u53d8\u3002\u56de\u9000\u4ec5\u6062\u590d\u8be5\u6a21\u5757\u3001dist-info\u3001\u8f93\u5165/\u9501\u53ca\u672c\u7ec4\u6d4b\u8bd5/\u8bf4\u660e\u3002"+"\n\nWindows AC: "+runurl+"\n\n")
+          prepend(root/"tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md","### Python \u4f9d\u8d56\u4e0e\u547d\u4ee4\u5165\u53e3\n\n","\u5f00\u53d1\u5206\u652f\u7b2c\u56db\u6279\u4ec5\u5c06 typing_extensions \u56fa\u5b9a\u5230 4.16.0\uff08PSF-2.0\uff0c\u5b98\u65b9 py3-none-any wheel SHA-256 481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8\uff09\u3002\u4fdd\u7559\u56fa\u5b9a Python 3.14.10\u3001pip/certifi\u3001\u5176\u4ed6\u4f9d\u8d56\u3001\u547d\u4ee4\u548c\u8def\u5f84\u9694\u79bb\uff1b\u4f7f\u7528\u73b0\u6709 pip \u72ec\u7acb\u6682\u5b58\u4e0e\u5b8c\u6574\u539f\u751f\u95e8\u7981\u3002\u5177\u4f53\u5df2\u9a8c\u8303\u56f4\u3001\u56de\u9000\u53ca\u9650\u5236\u89c1 DEVELOPMENT.md\u3002"+"\n\n")
+          print("TYPING_CANDIDATE_LOCK_DOCS_READY=PASS",flush=True)
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Typing extensions staging or old/new consumer contract failed; do not push' }
+          & .\tool\python\python.exe -B tool/python-lock.py validate --requirements tool/python-packages.in.txt --lock tool/python-packages.lock.txt
+          if ($LASTEXITCODE) { throw 'New dependency lock mismatch' }
+          & .\tool\python\python.exe -B tool/python-lock.py validate-runtime --requirements tool/python-packages.in.txt
+          if ($LASTEXITCODE) { throw 'New runtime closure mismatch' }
+      - name: Commit only exact candidate locally
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import pathlib,subprocess,sys
+          sys.stdout.reconfigure(encoding="utf-8",errors="backslashreplace")
+          root=pathlib.Path.cwd()
+          prefix="tool/python/Lib/site-packages/"
+          old=prefix+"typing_extensions-4.15.0.dist-info/"
+          new=prefix+"typing_extensions-4.16.0.dist-info/"
+          module=prefix+"typing_extensions.py"
+          exact={"DEVELOPMENT.md","tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md","tool/python-packages.in.txt","tool/python-packages.lock.txt","tests/check_typing_extensions_refresh.py",module}
+          members={"METADATA","WHEEL","RECORD","licenses/LICENSE","INSTALLER","REQUESTED"}
+          def git(*a):return subprocess.check_output(["git",*a],cwd=root)
+          def names(*a):return set(git(*a).decode("utf-8").split("\0"))-{""}
+          expected=exact|{old+p for p in members}|{new+p for p in members}
+          changed=names("diff","--no-renames","--name-only","-z")|names("ls-files","--others","--exclude-standard","-z")
+          assert changed==expected,("Candidate scope mismatch",sorted(changed-expected),sorted(expected-changed))
+          git("add","-A","--",*sorted(expected))
+          assert names("diff","--cached","--no-renames","--name-only","-z")==expected
+          assert not git("diff","--name-only","-z") and not git("ls-files","--others","--exclude-standard","-z")
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Refresh verified typing_extensions 4.16.0 and fixed wheel lock")
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          print("LOCAL_TYPING_EXTENSIONS_CANDIDATE="+git("rev-parse","HEAD").decode().strip(),flush=True)
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Candidate scope gate failed' }
+      - name: Full existing Python and Node regression suite
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE) { throw 'Full Python regression failed' }
+          foreach ($test in @('test_portable_npm.js','test_automation.js')) {
+            & .\tool\node\node.exe --test (Join-Path 'tests' $test)
+            if ($LASTEXITCODE) { throw "Node regression failed: $test" }
+          }
+      - name: Existing Windows PowerShell path isolation and setup regressions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($test in @('test_python_setup.ps1','test_portable_paths.ps1','test_launcher_smoke.ps1','test_runtime_preflight.ps1','test_npm_entrypoints.ps1','test_automation_paths.ps1','test_automation_process.ps1')) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests' $test)
+            if ($LASTEXITCODE) { throw "Windows regression failed: $test" }
+          }
+      - name: Actual common-mode and relocated tools with read-only browser discovery
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($mode in @('normal','unknown','browser-check')) {
+            & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py $mode
+            if ($LASTEXITCODE) { throw "Native common-mode probe failed: $mode" }
+          }
+      - name: Actual YOLO browser, persistence, native MCP and Office PDF
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py browser
+          if ($LASTEXITCODE) { throw 'Native YOLO probe failed' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_smoke.ps1
+          if ($LASTEXITCODE) { throw 'Real browser persistence and cleanup failed' }
+          & .\tool\python\python.exe -B tests/check_browser_mcp_stdio.py
+          if ($LASTEXITCODE) { throw 'Real stdio MCP failed' }
+          & .\tool\python\python.exe -B tests/check_codex_browser_mcp.py
+          if ($LASTEXITCODE) { throw 'Native MCP integration failed' }
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py documents
+          if ($LASTEXITCODE) { throw 'Native Office/PDF probe failed' }
+      - name: Final LFS and customer input integrity, no archive or artifact
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Test-Path -LiteralPath '.\Microsoft\Windows\PowerShell\ModuleAnalysisCache') { throw 'Unexpected checkout PowerShell module cache after native tests' }
+          $dirty = @(git status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0 -or $dirty.Count -ne 0) { throw 'Candidate worktree became dirty during native regression' }
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'LFS gate failed' }
+          & .\tool\python\python.exe -B tool/package-release.py --check
+          if ($LASTEXITCODE) { throw 'Customer input integrity failed' }
+          Write-Output 'TYPING_EXTENSIONS_WINDOWS_NATIVE_VALIDATION=PASS'
+          Write-Output 'Real Windows processes with synthetic model/inputs; no real account, devices, optional renderers or formula calculation tested.'
+      - name: Push only validated fast-forward development commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REF -cne "refs/heads/$env:TARGET_BRANCH" -or $env:TARGET_BRANCH -cne 'dev/stable-tool-refresh') { throw 'Wrong target branch' }
+          $current = (git rev-parse HEAD).Trim()
+          if ((git rev-parse 'HEAD^').Trim() -cne $env:GITHUB_SHA) { throw 'Candidate not direct child' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
+            $remote = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen ref or development branch moved before push' }
+          }
+          $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:GH_TOKEN"))
+          Write-Output "::add-mask::$auth"
+          try {
+            & git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin "HEAD:refs/heads/$env:TARGET_BRANCH"
+            if ($LASTEXITCODE) { throw 'Validated development-only push failed' }
+          } finally {
+            Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+            $auth = $null
+          }
+          $after = (git ls-remote origin "refs/heads/$env:TARGET_BRANCH") -join ''
+          if ($LASTEXITCODE -ne 0 -or $after -cne ($current + [char]9 + "refs/heads/$env:TARGET_BRANCH")) { throw 'Development push readback mismatch' }
+          foreach ($ref in @('refs/heads/main','refs/tags/v0.172.0-portable.1')) {
+            $remote = (git ls-remote origin $ref) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($env:FROZEN + [char]9 + $ref)) { throw 'Frozen ref changed' }
+          }
+          Write-Output "VALIDATED_DEV_COMMIT=$current"
+          Write-Output 'NO_RELEASE_NO_ARTIFACT_NO_MAIN_CHANGE'
