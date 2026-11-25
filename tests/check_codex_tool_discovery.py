@@ -112,6 +112,8 @@ print("RG_PATH_RESOLVED="+str(selected.relative_to(root)),flush=True)
 print("NATIVE_RG16_SEARCH_AND_DISCOVERY=PASS",flush=True)
 '''
 
+PIP_CERTIFI_SECURITY_PY = Path(__file__).with_name('check_pip_certifi_security.py').read_text(encoding='utf-8')
+
 PROBE_PY = '''
 import importlib, os, pathlib, site, sys, tomllib
 root = pathlib.Path(os.environ["CODEX_INSTALL_DIR"]).resolve()
@@ -169,6 +171,8 @@ for name in ("pip", "requests", "httpx", "bs4", "lxml", "pandas", "numpy", "open
 print("BUNDLED_PYTHON_IMPORTS_OK", flush=True)
 if different:
     raise SystemExit(9)
+import subprocess
+subprocess.run([sys.executable,"-B",str(pathlib.Path(__file__).with_name("pip-certifi-security.py"))],check=True)
 '''
 # This tiny file distinguishes native .ps1 resolution from the work performed
 # by a longer probe. Do not use unrestricted .NET methods under CLM.
@@ -313,6 +317,8 @@ BROWSER_PS = r'''
 $ErrorActionPreference = 'Stop'
 & (Join-Path $env:CODEX_INSTALL_DIR 'tool/python/python.exe') -B (Join-Path $env:CODEX_INSTALL_DIR 'work/tool-probe/rg-refresh.py')
 if ($LASTEXITCODE -ne 0) { throw 'Native YOLO rg regression failed' }
+& (Join-Path $env:CODEX_INSTALL_DIR 'tool/python/python.exe') -B (Join-Path $env:CODEX_INSTALL_DIR 'work/tool-probe/pip-certifi-security.py')
+if ($LASTEXITCODE -ne 0) { throw 'Native YOLO CA/pip regression failed' }
 $entry = Join-Path $env:CODEX_INSTALL_DIR 'tool/automation/start-browser.ps1'
 $engine = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 & $engine -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $entry -TaskAuthorized -Workspace 'work/tool-probe' -TaskScript 'work/tool-probe/page.cjs'
@@ -710,6 +716,9 @@ def handler_for(fixture, mode):
         assert expected in evidence, "Real tool output did not contain success marker: " + expected
         if mode in {"normal", "unknown", "browser"}:
             assert "NATIVE_RG16_SEARCH_AND_DISCOVERY=PASS" in evidence and "RG15_RG16_EXACT_LF_CRLF_PARITY=PASS" in evidence, "Missing actual dual-version rg search evidence"
+        if mode in {"normal", "unknown", "browser"}:
+            for marker in ("NATIVE_AFFECTED_CA_TRUST_REMOVED=PASS", "NATIVE_PIP_OFFICIAL_CLI_ENTRY_AND_ALIASES=PASS", "NATIVE_PIP_ENTRYPOINT_CONFIG_AND_CLOSURE=PASS"):
+                assert marker in evidence, "Missing native CA/pip evidence: " + marker
         assert "ENV_DIFFERENCES=" not in evidence, "Actual child environment differs from generated policy"
         if mode in {"normal", "unknown"}:
             required = (
@@ -802,6 +811,7 @@ def main():
         probe.mkdir(parents=True)
         (probe / "probe.py").write_text(PROBE_PY, encoding="utf-8")
         (probe / "rg-refresh.py").write_text(RG_REFRESH_PY, encoding="utf-8")
+        (probe / "pip-certifi-security.py").write_text(PIP_CERTIFI_SECURITY_PY, encoding="utf-8")
         (probe / "probe.ps1").write_text(RESOLUTION_PS, encoding="utf-8-sig")
         (probe / "browser.ps1").write_text(BROWSER_PS, encoding="utf-8-sig")
         (probe / "browser-check.ps1").write_text(BROWSER_CHECK_PS, encoding="utf-8-sig")
@@ -831,6 +841,7 @@ def main():
             env = {k: os.environ[k] for k in ("SystemRoot","WINDIR","SystemDrive","ComSpec",
                    "PATHEXT","OS","PROCESSOR_ARCHITECTURE","USERNAME","COMPUTERNAME") if k in os.environ}
             env["PATH"] = str(windows / "System32")
+            env.update({k:"synthetic-host-value-not-for-child" for k in ("PIP_INDEX_URL","PIP_EXTRA_INDEX_URL","PIP_TRUSTED_HOST","PIP_CERT","PIP_CLIENT_CERT","SSL_CERT_FILE","SSL_CERT_DIR","REQUESTS_CA_BUNDLE","CURL_CA_BUNDLE","PYTHONHOME","PYTHONPATH")})
             command = (f'"{cmd}" /d /s /c ""{fixture / bat}" --portable-auth=api '
                        'exec --skip-git-repo-check --json "Inspect the authorized local test tools and page.""')
             proc = subprocess.Popen(command, executable=str(cmd), cwd=fixture, env=env,

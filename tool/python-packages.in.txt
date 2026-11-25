@@ -2,7 +2,7 @@
 # Keep installed, audited versions pinned. PyInstaller packaging is explicitly restored from the recorded history.
 # Optional PDF/OCR/OpenAI/MarkItDown dependencies are installed only for an explicit task.
 # When changing this input, deliberately regenerate python-packages.lock.txt.
-pip==26.1.2
+pip==26.3
 requests==2.34.2
 httpx==0.28.1
 beautifulsoup4==4.15.0
@@ -28,7 +28,7 @@ packaging==26.4
 
 # Pin the existing transitive runtime closure too; no incidental resolver upgrades.
 anyio==4.16.0
-certifi==2026.5.20
+certifi==2026.11.20
 charset-normalizer==3.4.7
 et_xmlfile==2.0.0
 h11==0.16.0
