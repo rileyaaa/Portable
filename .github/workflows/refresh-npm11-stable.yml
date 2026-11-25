@@ -1,0 +1,364 @@
+name: Stable tool refresh - npm 11.21.3 with independent Corepack audit (one time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths: [.github/workflows/refresh-npm11-stable.yml]
+permissions: {}
+concurrency:
+  group: stable-tool-refresh-npm11
+  cancel-in-progress: false
+jobs:
+  refresh:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == '81ad01fb72649ae875f6833d2cfc5faf04d8487d' && github.run_attempt == 1
+    runs-on: windows-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: powershell
+    env:
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      BASE: 81ad01fb72649ae875f6833d2cfc5faf04d8487d
+      TARGET_BRANCH: dev/stable-tool-refresh
+    steps:
+      - name: Preserve tracked bytes and isolate CI module cache
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'git configuration failed' }
+          $dir = Join-Path $env:RUNNER_TEMP ('npm-refresh-pscache-' + [Guid]::NewGuid().ToString('N'))
+          $null = New-Item -ItemType Directory -Path $dir
+          ('PSModuleAnalysisCachePath=' + (Join-Path $dir 'ModuleAnalysisCache')) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Confirm cleaned baseline and fixed runtime
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or (git rev-parse 'HEAD^').Trim() -cne $env:BASE) { throw 'Wrong checkout or parent' }
+          if ((git diff --name-only $env:BASE HEAD) -cne '.github/workflows/refresh-npm11-stable.yml') { throw 'Unexpected starting changes' }
+          if (Test-Path -LiteralPath '.github/workflows/refresh-pip-certifi-stable.yml') { throw 'Previous trigger not cleaned' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
+            $remote = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen ref or development branch moved' }
+          }
+          $fixed = @(git diff --name-only $env:FROZEN HEAD -- env.ps1 run-codex.ps1 codex.exe codex-code-mode-host.exe codex-path tool/runtime-manifest.json tool/python tool/python-packages.in.txt tool/python-packages.lock.txt tool/node tool/automation Version_History)
+          if ($LASTEXITCODE -ne 0 -or $fixed.Count -ne 0) { throw 'Unexpected fixed runtime change' }
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'LFS verification failed' }
+      - name: Official tarball integrity, registry signature, old ownership and native npm candidate tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import base64, hashlib, io, json, os, re, shutil, stat, subprocess, sys, tarfile, tempfile
+          from pathlib import Path, PurePosixPath
+          import urllib.parse, urllib.request
+          
+          for stream in (sys.stdout,sys.stderr):
+              stream.reconfigure(encoding="utf-8",errors="backslashreplace")
+          root=Path.cwd()
+          py=root/"tool/python/python.exe"
+          node=root/"tool/node/node.exe"
+          nm=root/"tool/node/node_modules"
+          npm=nm/"npm"
+          core=nm/"corepack"
+          old="11.20.0"
+          new="11.21.3"
+          old_sri="sha512-dF3EDFwbYN+N5RUip+ZYDe0NeURK5BgqKOcvT1iNtUYhTMTl0FwWhBuXrS7KtXyduqyTMS5aaQaregnHDAxNgw=="
+          cp_old_sri="sha512-9BuIGHDFE7Zieor1CeRsvt7X7AJFEuJ6OnbSbsVprq83ChDFoBh1wP98NeUS9FT3ZwlzFllPElXcz/OiDf0YGw=="
+          cp_new_sri="sha512-SiiJsBhZqdBiPHTEl6OT3sASrRrKIcYTQMsVGXx6EE/gM8WFMwYjeIX8Tt8RiU4Iv2J6LbT8KpGfCOsBpRWB/w=="
+          def git(*a):return subprocess.check_output(["git",*a],cwd=root)
+          def sha(data):return hashlib.sha256(data).hexdigest()
+          def ordinary(p, directory=False):
+              s=p.lstat()
+              assert not stat.S_ISLNK(s.st_mode) and not getattr(s,"st_file_attributes",0)&0x400, "Unexpected link"
+              assert stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode) and s.st_nlink==1
+          def files(p):
+              ordinary(p,True)
+              result={}
+              for base,dirs,names in os.walk(p,followlinks=False):
+                  here=Path(base)
+                  for d in dirs:ordinary(here/d,True)
+                  for n in names:
+                      f=here/n;ordinary(f)
+                      result[f.relative_to(p).as_posix()]=f.read_bytes()
+              return result
+          def https(url, limit):
+              req=urllib.request.Request(url,headers={"User-Agent":"Portable-stable-refresh/1","Accept":"application/json, application/octet-stream"})
+              with urllib.request.urlopen(req,timeout=90) as res:
+                  assert urllib.parse.urlsplit(res.url).scheme=="https" and urllib.parse.urlsplit(res.url).hostname==urllib.parse.urlsplit(url).hostname
+                  data=res.read(limit+1)
+              assert len(data)<=limit
+              return data
+          registry="https://registry.npmjs.org/"
+          keys=json.loads(https(registry+"-/npm/v1/keys",1024*1024))["keys"]
+          def verified(name,version,expected_sri,license,signature=False):
+              meta=json.loads(https(registry+name+"/"+version,8*1024*1024))
+              assert meta["name"]==name and meta["version"]==version and meta["license"]==license
+              assert re.fullmatch(r"\d+\.\d+\.\d+",version) and not meta.get("deprecated")
+              dist=meta["dist"]; url=registry+name+"/-/"+name+"-"+version+".tgz"
+              assert dist["tarball"]==url
+              sri=dist["integrity"]
+              assert sri.startswith("sha512-") and len(base64.b64decode(sri[7:],validate=True))==64
+              if expected_sri is not None:assert sri==expected_sri
+              if signature:
+                  # Verify the registry's documented ECDSA signature over name@version:integrity.
+                  # An absent/unrecognized signature is a blocker, not an integrity bypass.
+                  trusted={x["keyid"]:x for x in keys}
+                  candidates=[(s,trusted[s["keyid"]]) for s in dist.get("signatures",[]) if s["keyid"] in trusted]
+                  assert candidates, "No trusted registry package signature"
+                  code=r'''const crypto=require("node:crypto");const x=JSON.parse(process.argv[1]);const key=crypto.createPublicKey({key:Buffer.from(x.key,"base64"),format:"der",type:"spki"});if(key.asymmetricKeyType!=="ec"||!crypto.verify("sha256",Buffer.from(x.message),key,Buffer.from(x.sig,"base64")))process.exit(2);'''
+                  accepted=[]
+                  for sig,key in candidates:
+                      if key.get("expires"):
+                          from datetime import datetime, timezone
+                          if datetime.fromisoformat(key["expires"].replace("Z","+00:00"))<=datetime.now(timezone.utc):continue
+                      p=subprocess.run([str(node),"-e",code,json.dumps({"key":key["key"],"message":name+"@"+version+":"+sri,"sig":sig["sig"]})],cwd=root,capture_output=True,timeout=30)
+                      if p.returncode==0:accepted.append(sig["keyid"])
+                  assert accepted,"Registry signature did not verify"
+                  print("REGISTRY_SIGNATURE=PASS "+name+" "+version+" "+",".join(accepted),flush=True)
+              blob=https(url,40*1024*1024)
+              assert "sha512-"+base64.b64encode(hashlib.sha512(blob).digest()).decode()==sri
+              assert hashlib.sha1(blob).hexdigest()==dist["shasum"]
+              payload={};seen=set();total=0
+              with tarfile.open(fileobj=io.BytesIO(blob),mode="r:gz") as z:
+                  for member in z:
+                      raw=member.name.rstrip("/")
+                      assert raw=="package" or raw.startswith("package/")
+                      if raw=="package":assert member.isdir();continue
+                      namepath=raw[len("package/"):]
+                      parts=namepath.split("/")
+                      assert all(x and x not in (".","..",".git") and not x.endswith((" ",".")) and not re.search(r'[<>:"\\|?*\x00-\x1f]',x) and not re.fullmatch(r"(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?",x,re.I) for x in parts)
+                      assert member.isdir() or member.isfile(), "Nonregular tar member"
+                      assert namepath.casefold() not in seen,"Duplicate/colliding tar member"
+                      seen.add(namepath.casefold())
+                      if member.isdir():continue
+                      assert member.size<=25*1024*1024
+                      total+=member.size
+                      assert total<180*1024*1024 and len(payload)<20000
+                      payload[namepath]=z.extractfile(member).read()
+                      assert len(payload[namepath])==member.size
+              assert len({p.casefold() for p in payload})==len(payload)
+              for p in payload:
+                  assert not any(str(parent).casefold() in seen and str(parent) in payload for parent in PurePosixPath(p).parents if str(parent)!=".")
+              manifest=json.loads(payload["package.json"])
+              assert manifest["version"]==version and manifest["name"]==name and manifest["license"]==license
+              assert any(p.lower() in ("license","license.md","license.txt") for p in payload)
+              print("OFFICIAL_NPM_TARBALL="+json.dumps({"name":name,"version":version,"sha512":sri,"sha1":dist["shasum"],"sha256":sha(blob),"bytes":len(blob),"files":len(payload),"license":license,"engines":manifest["engines"]},ensure_ascii=True),flush=True)
+              return payload,manifest,sri,sha(blob)
+          def owned_current(folder,official,allow_empty_npmrc=False):
+              actual=files(folder)
+              prefix=folder.relative_to(root).as_posix()+"/"
+              tracked=set(git("ls-files","-z","--",prefix).decode("utf-8").split("\0"))-{""}
+              assert tracked=={prefix+p for p in actual}
+              for p,body in actual.items():
+                  if p==".npmrc" and allow_empty_npmrc:
+                      assert body==b"" and official.get(p,b"")==b"";continue
+                  assert p in official,"Unreviewed old vendor file: "+p
+                  ref=official[p]
+                  if body!=ref:
+                      # Old Node ZIP may carry CRLF text. Do not normalize binary data.
+                      assert b"\0" not in body and b"\0" not in ref and body.decode("utf-8").replace("\r\n","\n")==ref.decode("utf-8").replace("\r\n","\n"),"Old vendor bytes differ: "+p
+              return actual
+          def write_payload(target,payload):
+              target.mkdir()
+              for p,data in payload.items():
+                  dst=target.joinpath(*p.split("/"))
+                  dst.parent.mkdir(parents=True,exist_ok=True)
+                  with dst.open("xb") as f:f.write(data)
+              assert files(target)==payload
+          def checked(*args,timeout=400):
+              p=subprocess.run([str(x) for x in args],cwd=root,capture_output=True,timeout=timeout)
+              print(p.stdout.decode("utf-8","backslashreplace"),flush=True)
+              print(p.stderr.decode("utf-8","backslashreplace"),flush=True)
+              assert p.returncode==0, "Native command failed: "+str(args[0])
+              return p.stdout
+          
+          assert checked(node,"--version").strip()==b"v26.13.1"
+          assert json.loads((npm/"package.json").read_bytes())["version"]==old
+          assert json.loads((core/"package.json").read_bytes())["version"]=="0.35.0"
+          for p in (*reversed(nm.parents),nm):ordinary(p,True)
+          node_hash=sha(node.read_bytes())
+          wrapper_names=("npm","npm.cmd","npm.ps1","npx","npx.cmd","npx.ps1","portable-npm.js","corepack","corepack.cmd")
+          wrappers={p:sha((node.parent/p).read_bytes()) for p in wrapper_names}
+          core_before={p:sha(b) for p,b in files(core).items()}
+          old_payload,old_meta,_,_=verified("npm",old,old_sri,"Artistic-2.0")
+          new_payload,new_meta,sri,new_sha=verified("npm",new,None,"Artistic-2.0",signature=True)
+          assert old_meta["bin"]==new_meta["bin"]=={"npm":"bin/npm-cli.js","npx":"bin/npx-cli.js"}
+          assert new_meta["engines"]["node"]=="^20.17.0 || >=22.9.0"
+          before=owned_current(npm,old_payload,True)
+          assert before[".npmrc"]==b"" and new_payload.get(".npmrc",b"")==b""
+          new_payload[".npmrc"]=b""
+          print("OLD_NPM_TRACKED_OWNERSHIP_AND_OFFICIAL_BYTES=PASS files="+str(len(before)),flush=True)
+          scratch=root/"tmp";scratch.mkdir(exist_ok=True);ordinary(scratch,True)
+          test=root/"tests/check_npm_refresh.py"
+          assert not test.exists()
+          test.write_text("\"\"\"Real npm/npx entrypoints in a disposable relocated Windows package.\"\"\"\nimport hashlib\nimport io\nimport json\nimport os\nfrom pathlib import Path\nimport shutil\nimport stat\nimport subprocess\nimport sys\nimport tarfile\nimport tempfile\n\nfor stream in (sys.stdout, sys.stderr):\n    stream.reconfigure(encoding=\"utf-8\", errors=\"backslashreplace\")\nROOT=Path(__file__).absolute().parents[1]\ndef ordinary(p, directory=False):\n    s=p.lstat()\n    assert not stat.S_ISLNK(s.st_mode) and not getattr(s,\"st_file_attributes\",0)&0x400\n    assert stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode) and s.st_nlink==1\n\ndef main():\n    assert os.name==\"nt\" and len(sys.argv)==2\n    version=sys.argv[1]\n    assert version in (\"11.20.0\",\"11.21.3\")\n    scratch=ROOT/\"tmp\"\n    for p in (*reversed(ROOT.parents),ROOT): ordinary(p,True)\n    scratch.mkdir(exist_ok=True)\n    ordinary(scratch,True)\n    with tempfile.TemporaryDirectory(prefix=\"npm-relocation-\",dir=scratch) as temp:\n        parent=Path(temp)\n        root=parent/\"Relocated \\u4fbf\\u643a Portable\"\n        node=root/\"tool/node\"\n        node.parent.mkdir(parents=True)\n        shutil.copytree(ROOT/\"tool/node\",node)\n        # These two markers are synthetic here; the separate native Codex\n        # integration test below uses the actual official executables.\n        (root/\"codex.exe\").write_bytes(b\"synthetic package marker\")\n        (root/\"env.ps1\").write_bytes(b\"# synthetic package marker\")\n        (parent/\"package.json\").write_text('{\"name\":\"outside-parent\",\"version\":\"1.0.0\"}',encoding=\"utf-8\")\n        outside=parent/\".npmrc\"\n        outside.write_text(\"tag=outside-parent-value\\n\",encoding=\"utf-8\")\n        sentinel=outside.read_bytes()\n        cwd=root/\"work\"/\"project with spaces\"\n        cwd.mkdir(parents=True)\n        (cwd/\"package.json\").write_text('{\"name\":\"portable-ci-project\",\"version\":\"1.0.0\",\"private\":true}',encoding=\"utf-8\")\n        for name in (\"home-runtime\",\"cache/npm\",\"cache/npm-prefix\",\"tmp\",\"appdata\",\"localappdata\",\"programdata\"):\n            (root/name).mkdir(parents=True,exist_ok=True)\n        for name in (\"home-runtime/.npmrc\",\"cache/npm/global.npmrc\"):\n            (root/name).write_bytes(b\"\")\n        injection=parent/\"forbidden-startup.js\"\n        injection.write_text('throw new Error(\"Inherited NODE_OPTIONS executed\")',encoding=\"ascii\")\n        env={k:os.environ[k] for k in (\"SystemRoot\",\"WINDIR\",\"SystemDrive\",\"ComSpec\",\"PATHEXT\",\"OS\",\"PROCESSOR_ARCHITECTURE\",\"USERNAME\",\"COMPUTERNAME\") if k in os.environ}\n        windows=Path(env[\"SystemRoot\"])\n        env[\"PATH\"]=os.pathsep.join((str(node),str(windows/\"System32\"),str(windows)))\n        env.update(HOME=str(parent/\"stale-home\"),USERPROFILE=str(parent/\"stale-home\"),\n                   LOCALAPPDATA=str(root/\"localappdata\"),APPDATA=str(root/\"appdata\"),\n                   PROGRAMDATA=str(root/\"programdata\"),TEMP=str(root/\"tmp\"),TMP=str(root/\"tmp\"),\n                   NPM_CONFIG_CACHE=str(parent/\"stale-cache\"),NPM_CONFIG_PREFIX=str(parent/\"stale-prefix\"),\n                   NPM_CONFIG_USERCONFIG=str(parent/\"stale-user.rc\"),NPM_CONFIG_GLOBALCONFIG=str(parent/\"stale-global.rc\"),\n                   NPM_CONFIG_OFFLINE=\"true\",NPM_CONFIG_AUDIT=\"false\",NPM_CONFIG_FUND=\"false\",\n                   NODE_OPTIONS='--require=\"'+str(injection)+'\"',\n                   PSModuleAnalysisCachePath=str(root/\"tmp/ModuleAnalysisCache\"),\n                   POWERSHELL_TELEMETRY_OPTOUT=\"1\")\n        cmd=windows/\"System32/cmd.exe\"\n        ps=windows/\"System32/WindowsPowerShell/v1.0/powershell.exe\"\n        bash=Path(os.environ[\"ProgramFiles\"])/\"Git/bin/bash.exe\"\n        assert bash.is_file(), \"CI Git Bash absent\"\n        def run(name,*args,ok=True):\n            entry=node/name\n            if name.endswith(\".cmd\"):\n                command=f'\"{cmd}\" /d /s /c \"\"{entry}\" '+subprocess.list2cmdline(list(map(str,args)))+'\"'\n                argv=command; exe=str(cmd)\n            elif name.endswith(\".ps1\"):\n                argv=[str(ps),\"-NoLogo\",\"-NoProfile\",\"-NonInteractive\",\"-ExecutionPolicy\",\"Bypass\",\"-File\",str(entry),*map(str,args)]\n                exe=None\n            else:\n                argv=[str(bash),entry.as_posix(),*map(str,args)]\n                exe=None\n            p=subprocess.run(argv,executable=exe,cwd=cwd,env=env,capture_output=True,timeout=90)\n            assert (p.returncode==0)==ok,(name,args[0],p.returncode,p.stderr.decode(\"utf-8\",\"replace\")[-1800:])\n            return p.stdout.decode(\"utf-8\",\"replace\").strip()\n        for entry in (\"npm.cmd\",\"npx.cmd\",\"npm.ps1\",\"npx.ps1\",\"npm\",\"npx\"):\n            assert run(entry,\"--version\")==version,entry\n            print(\"RELOCATED_NPM_ENTRY=PASS \"+version+\" \"+entry,flush=True)\n        assert Path(run(\"npm.cmd\",\"prefix\")).resolve()==cwd\n        assert run(\"npm.cmd\",\"config\",\"get\",\"tag\")==\"latest\"\n        for key,value in {\"cache\":\"cache/npm\",\"userconfig\":\"home-runtime/.npmrc\",\"globalconfig\":\"cache/npm/global.npmrc\"}.items():\n            assert Path(run(\"npm.cmd\",\"config\",\"get\",key)).resolve()==root/value\n        assert Path(run(\"npm.cmd\",\"config\",\"get\",\"prefix\",\"--global\")).resolve()==root/\"cache/npm-prefix\"\n        selected=root/\"work\"/\"explicit prefix\"\n        selected.mkdir()\n        assert Path(run(\"npm.cmd\",\"--prefix\",selected,\"prefix\")).resolve()==selected\n        run(\"npm.cmd\",\"--prefix\",parent,\"prefix\",ok=False)\n        run(\"npm.cmd\",\"--cache\",parent/\"outside-cache\",\"config\",\"get\",\"cache\",ok=False)\n        # A local tarball is the only dependency. Lifecycle hooks are forbidden,\n        # no registry/network, global install, or user package is involved.\n        archive=root/\"work\"/\"portable-ci-probe-1.0.0.tgz\"\n        payload={\"package/package.json\":json.dumps({\"name\":\"portable-ci-probe\",\"version\":\"1.0.0\",\"bin\":{\"portable-ci-probe\":\"cli.js\"},\"scripts\":{\"install\":\"node -e \\\"process.exit(77)\\\"\"},\"license\":\"MIT\"}).encode(),\n                 \"package/cli.js\":b\"#!/usr/bin/env node\\nconsole.log(JSON.stringify({args:process.argv.slice(2),node:process.execPath}));\\n\"}\n        with tarfile.open(archive,\"w:gz\") as z:\n            for name,data in payload.items():\n                item=tarfile.TarInfo(name);item.size=len(data);item.mode=0o755 if name.endswith(\".js\") else 0o644\n                z.addfile(item,io.BytesIO(data))\n        run(\"npm.cmd\",\"install\",\"--offline\",\"--ignore-scripts\",\"--no-audit\",\"--no-fund\",\"--no-package-lock\",\"--no-save\",archive)\n        installed=cwd/\"node_modules/portable-ci-probe\"\n        assert (installed/\"cli.js\").read_bytes()==payload[\"package/cli.js\"]\n        result=json.loads(run(\"npx.cmd\",\"--offline\",\"--no-install\",\"portable-ci-probe\",\"--prefix\",\"target-arg\"))\n        assert result[\"args\"]==[\"--prefix\",\"target-arg\"] and Path(result[\"node\"]).resolve()==node/\"node.exe\"\n        assert outside.read_bytes()==sentinel and not any((parent/n).exists() for n in (\"stale-home\",\"stale-cache\",\"stale-prefix\",\"stale-user.rc\",\"stale-global.rc\",\"outside-cache\"))\n        print(\"REAL_OFFLINE_NPM_INSTALL_NPX_AND_CONFIG_BOUNDARY=PASS \"+version,flush=True)\n\nif __name__==\"__main__\":main()\n",encoding="utf-8",newline="\n")
+          with tempfile.TemporaryDirectory(prefix="npm-refresh-",dir=scratch) as temp:
+              own=Path(temp);ordinary(own,True)
+              # Corepack is audited separately and never replaces its old payload in
+              # this npm-only candidate. Do not enable shims or fetch a package manager.
+              core_audit="not verified"
+              try:
+                  cp0,cm0,_,_=verified("corepack","0.35.0",cp_old_sri,"MIT")
+                  cp1,cm1,_,cp_sha=verified("corepack","0.36.0",cp_new_sri,"MIT",signature=True)
+                  assert cm1["engines"]["node"]=="^22.22.2 || ^24.15.0 || >=26.0.0"
+                  owned_current(core,cp0)
+                  cpdir=own/"corepack-review"
+                  write_payload(cpdir,cp1)
+                  area=own/"corepack-synthetic-parent"
+                  child=area/"child";child.mkdir(parents=True)
+                  (area/".corepack.env").write_text("COREPACK_ENABLE_NETWORK=0\n",encoding="ascii")
+                  env={k:os.environ[k] for k in ("SystemRoot","WINDIR","SystemDrive","ComSpec","PATHEXT","OS","PROCESSOR_ARCHITECTURE") if k in os.environ}
+                  env["PATH"]=str(node.parent)+os.pathsep+str(Path(env["SystemRoot"])/"System32")
+                  for k in ("HOME","USERPROFILE","LOCALAPPDATA","APPDATA","TEMP","TMP"):
+                      p=own/("cp-"+k.lower());p.mkdir(exist_ok=True);env[k]=str(p)
+                  cp_home=own/"corepack-cache";cp_home.mkdir()
+                  env.update(COREPACK_HOME=str(cp_home),COREPACK_ENABLE_NETWORK="0",COREPACK_ENABLE_DOWNLOAD_PROMPT="0",DEBUG="corepack")
+                  seen=[]
+                  for version,loc in (("0.35.0",core),("0.36.0",cpdir)):
+                      runner=loc/"dist/corepack.js"
+                      p=subprocess.run([str(node),str(runner),"--version"],cwd=child,env=env,capture_output=True,timeout=40)
+                      assert p.returncode==0 and p.stdout.decode().strip()==version
+                      p=subprocess.run([str(node),str(runner),"pack","npm@11.21.3","--output",str(child/"never-created.tgz")],cwd=child,env=env,capture_output=True,timeout=60)
+                      diagnostic=(p.stdout+p.stderr).decode("utf-8","replace")
+                      assert p.returncode!=0 and not (child/"never-created.tgz").exists()
+                      seen.append("Successfully loaded env file" in diagnostic)
+                      print("COREPACK_OFFLINE_ENV_DISCOVERY="+json.dumps({"version":version,"exit":p.returncode,"synthetic_env_loaded":seen[-1],"archive_created":False},ensure_ascii=True),flush=True)
+                  core_audit="official old/new payloads and version commands verified; synthetic .corepack.env load old/new="+str(seen)
+                  print("COREPACK_RETAINED_0.35.0 "+core_audit,flush=True)
+              except Exception as err:
+                  # Independent component: no Corepack substitution or acceptance on failure.
+                  core_audit="retained; independent audit incomplete: "+type(err).__name__
+                  print("COREPACK_AUDIT_INCOMPLETE="+json.dumps(str(err)[:600],ensure_ascii=True),flush=True)
+              checked(node,"--test","tests/test_portable_npm.js")
+              checked(py,"-B","tests/check_npm_refresh.py",old)
+              staged=own/"npm-new"
+              write_payload(staged,new_payload)
+              # Validate every bundled package's actual version and direct dependency
+              # closure against the candidate's own semver implementation.
+              audit=r'''const fs=require("node:fs"),path=require("node:path"),p=process.argv[1],semver=require(path.join(p,"node_modules/semver"));const list=[];function visit(root){const j=JSON.parse(fs.readFileSync(path.join(root,"package.json")));if(!semver.valid(j.version)||semver.prerelease(j.version))throw Error("Nonstable bundled version "+j.name+" "+j.version);if(j.engines?.node&&!semver.satisfies(process.version,j.engines.node))throw Error("Node engine mismatch "+j.name);list.push({root,name:j.name,version:j.version,license:j.license||null,deps:j.dependencies||{},optional:j.optionalDependencies||{}});const n=path.join(root,"node_modules");if(!fs.existsSync(n))return;for(const e of fs.readdirSync(n,{withFileTypes:true})){if(!e.isDirectory())continue;if(e.name.startsWith("@")){for(const s of fs.readdirSync(path.join(n,e.name),{withFileTypes:true}))if(s.isDirectory())visit(path.join(n,e.name,s.name));}else visit(path.join(n,e.name));}}visit(p);for(const j of list){for(const [name,range] of Object.entries(j.deps)){if(Object.hasOwn(j.optional,name))continue;let found;for(let d=j.root;;d=path.dirname(d)){const f=path.join(d,"node_modules",name,"package.json");if(fs.existsSync(f)){found=JSON.parse(fs.readFileSync(f));break;}if(d===p)break;if(!path.relative(p,d)||path.relative(p,d).startsWith(".."))break;}if(!found||!semver.satisfies(found.version,range))throw Error("Missing or incompatible bundled dependency "+j.name+" -> "+name+" "+range);}}console.log("BUNDLED_NPM_DEPENDENCY_CLOSURE=PASS "+list.length);for(const j of list)console.log("NPM_BUNDLED_METADATA="+JSON.stringify({name:j.name,version:j.version,license:j.license}));'''
+              checked(node,"-e",audit,str(staged))
+              backup=own/"npm-old"
+              npm.rename(backup);staged.rename(npm)
+              assert files(npm)==new_payload
+              checked(node,"--test","tests/test_portable_npm.js")
+              checked(py,"-B","tests/check_npm_refresh.py",new)
+              assert sha(node.read_bytes())==node_hash and all(sha((node.parent/p).read_bytes())==digest for p,digest in wrappers.items())
+              assert {p:sha(b) for p,b in files(core).items()}==core_before
+              print("NEW_NPM_OFFICIAL_PAYLOAD_AND_FIXED_RUNTIME=PASS",flush=True)
+              assert not (root/"Microsoft/Windows/PowerShell/ModuleAnalysisCache").exists()
+          
+          def prepend(path,anchor,text):
+              raw=path.read_bytes();s=raw.decode("utf-8")
+              newline="\r\n" if b"\r\n" in raw else "\n"
+              a=anchor.replace("\n",newline)
+              assert s.count(a)==1
+              path.write_bytes(s.replace(a,a+text.replace("\n",newline),1).encode("utf-8"))
+          runurl="https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]
+          rec="## 2026-11-25\uff1a\u7b2c\u4e09\u7ec4 npm 11.x \u7a33\u5b9a\u7ef4\u62a4\u5347\u7ea7\n\n"+"Node.js 26.13.1 x64\u3001Python\u3001pip/certifi\u3001\u56fa\u5b9a Codex/Host\u3001\u6d4f\u89c8\u5668\u53ca MCP \u4fdd\u6301\u4e0d\u53d8\u3002npm 11.20.0 \u2192 11.21.3\uff08Artistic-2.0\uff09\u9009\u62e9\u540c\u4e3b\u7248\u672c\u7a33\u5b9a\u7ef4\u62a4\u7ebf\uff0c\u4e0d\u76f2\u8de8 npm 12\uff1b\u5b98\u65b9 npm CLI release v11.21.3 \u4e0e registry \u7cbe\u786e\u7248\u672c\u5143\u6570\u636e\u3001\u4f9b\u5e94\u94fe ECDSA \u7b7e\u540d\u3001tarball SHA-512/SHA-1 \u548c\u5b8c\u6574\u5b98\u65b9 payload/\u8bb8\u53ef\u8bc1\u6838\u5bf9\uff0c\u5305\u5185\u516d\u4e2a npm/npx shim \u4e0e portable-npm.js \u539f\u5b57\u8282\u4e0d\u52a8\u3002\u65e7 Node ZIP \u4e2d\u7a7a .npmrc \u4fdd\u7559\uff0c\u7981\u6b62\u5168\u5c40\u5b89\u88c5\u3001\u7cfb\u7edf PATH \u53d8\u66f4\u3001\u5b89\u88c5\u811a\u672c\u53ca\u5bbf\u4e3b\u914d\u7f6e\u56de\u9000\u3002\u65b0\u65e7\u771f\u5b9e Node config/\u5165\u53e3\u3001\u4e2d\u6587\u7a7a\u683c\u642c\u8fc1\u3001\u5408\u6210\u672c\u5730 tarball \u79bb\u7ebf\u5b89\u88c5/npx \u53c2\u6570\u4e0e cache/prefix/user/global \u8def\u5f84\u6d4b\u8bd5\uff0c\u4fdd\u7559\u539f\u751f\u5e38\u7528/YOLO\u3001\u6d4f\u89c8\u5668/MCP\u3001Office/PDF\u3001\u53d1\u884c\u8f93\u5165\u95e8\u7981\uff1b\u5408\u6210 API/\u9875\u9762\u4e0d\u7b49\u4e8e\u771f\u5b9e\u8d26\u53f7\u3001\u5728\u7ebf\u6a21\u578b\u3001\u5ba1\u6279\u6216\u7528\u6237\u8bbe\u5907\u9a8c\u6536\u3002Corepack 0.35.0 \u6682\u7559\uff1a0.36.0 \u6709\u5b98\u65b9\u7a33\u5b9a\u5de5\u4ef6\u4f46\u6539\u53d8 .corepack.env \u7956\u5148\u53d1\u73b0\uff0c\u5f53\u524d\u539f\u59cb Corepack vendor shim \u6ca1\u6709 npm \u53d7\u7ba1\u8def\u5f84\u5305\u88c5\u5668\uff0c\u4e0d\u80fd\u6269\u5927\u5176\u652f\u6301\u8303\u56f4\u6216\u5b89\u88c5 pnpm/yarn\uff1b\u4ec5\u53d7\u63a7\u4e34\u65f6\u5de5\u4ef6\u5ba1\u8ba1\u3002\u56de\u9000\u6574\u4f53\u6062\u590d npm package root \u4e0e\u672c\u7ec4\u8bf4\u660e/\u6d4b\u8bd5\uff0c\u4fdd\u6301\u5df2\u9a8c rg \u548c\u539f Python\u3002"+"\n\nOfficial npm 11.21.3 tarball: https://registry.npmjs.org/npm/-/npm-11.21.3.tgz\nSHA-512 SRI: "+sri+"\nSHA-256: "+new_sha+"\nCorepack audit: "+core_audit+"\nWindows AC: "+runurl+"\n\n"
+          prepend(root/"DEVELOPMENT.md","# \u5f00\u53d1\u4e0e\u7ef4\u62a4\u8bb0\u5f55\n\n",rec)
+          prepend(root/"tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md","### Node / npm \u7684\u9879\u76ee\u8fb9\u754c\n\n","\u5f00\u53d1\u5206\u652f\u5019\u9009\u56fa\u5b9a Node 26.13.1 x64\uff0cnpm 11.21.3\uff08Artistic-2.0\uff09\u4f7f\u7528\u5b98\u65b9\u5b8c\u6574 bundle\uff0c\u4fdd\u7559\u65e2\u6709\u516d\u4efd npm/npx shim\u3001portable-npm.js \u548c\u7a7a .npmrc\u3002Corepack 0.35.0 \u4fdd\u7559\u539f vendor payload\uff1b0.36.0 \u6539\u53d8\u7956\u5148\u76ee\u5f55 .corepack.env \u53d1\u73b0\uff0c\u4e0d\u628a\u672a\u53d7\u7ba1\u5165\u53e3\u89c6\u4e3a\u5177\u5907 npm \u7684\u8def\u5f84\u9694\u79bb\uff0c\u4e0d\u542f\u7528\u989d\u5916\u5305\u7ba1\u7406\u5668\u3002\u6821\u9a8c\u7ed3\u679c\u3001\u56de\u9000\u548c\u9650\u5236\u89c1 DEVELOPMENT.md\u3002"+"\n\nOfficial npm 11.21.3 SRI: "+sri+"\n\nSHA-256: "+new_sha+"\n\n")
+          print("NPM_CANDIDATE_PAYLOAD_AND_DOCS_READY=PASS",flush=True)
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Npm staging or compatibility failed; do not push' }
+      - name: Commit only exact candidate locally
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import pathlib,subprocess,sys
+          sys.stdout.reconfigure(encoding="utf-8",errors="backslashreplace")
+          root=pathlib.Path.cwd()
+          prefix="tool/node/node_modules/npm/"
+          exact={"DEVELOPMENT.md","tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md","tests/check_npm_refresh.py"}
+          def git(*a):return subprocess.check_output(["git",*a],cwd=root)
+          def names(*a):return set(git(*a).decode("utf-8").split("\0"))-{""}
+          def allowed(p):return p in exact or p.startswith(prefix)
+          changed=names("diff","--no-renames","--name-only","-z")|names("ls-files","--others","--exclude-standard","-z")
+          assert exact.issubset(changed) and any(p.startswith(prefix) for p in changed)
+          assert all(allowed(p) for p in changed),("Unexpected candidate paths",sorted(p for p in changed if not allowed(p)))
+          git("add","-A","--",prefix[:-1],*sorted(exact))
+          assert names("diff","--cached","--no-renames","--name-only","-z")==changed
+          assert not git("diff","--name-only","-z") and not git("ls-files","--others","--exclude-standard","-z")
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Refresh verified npm 11.21.3 bundled payload with portable boundary regression")
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          print("LOCAL_NPM_CANDIDATE="+git("rev-parse","HEAD").decode().strip(),flush=True)
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Candidate scope gate failed' }
+      - name: Existing npm config, automation, runtime, package and PowerShell regressions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($test in @('test_portable_npm.js','test_automation.js')) {
+            & .\tool\node\node.exe --test (Join-Path 'tests' $test)
+            if ($LASTEXITCODE) { throw "Node regression failed: $test" }
+          }
+          foreach ($test in @('test_npm_entrypoints.ps1','test_portable_paths.ps1','test_launcher_smoke.ps1','test_runtime_preflight.ps1','test_automation_paths.ps1','test_automation_process.ps1')) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests' $test)
+            if ($LASTEXITCODE) { throw "Windows regression failed: $test" }
+          }
+          foreach ($test in @('test_python_lock.py','test_pip_config_isolation.py','test_python_runtime_dependencies.py','test_cli_version_verifier.py','test_runtime_package.py','test_mode_copies.py','test_release_package.py','test_browser_install.py','test_pdf_library*.py','test_office_output_boundaries.py')) {
+            & .\tool\python\python.exe -B -m unittest discover -s tests -p $test -v
+            if ($LASTEXITCODE) { throw "Regression failed: $test" }
+          }
+      - name: Actual common-mode tools, relocated environment and read-only browser discovery
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($mode in @('normal','unknown','browser-check')) {
+            & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py $mode
+            if ($LASTEXITCODE) { throw "Native common-mode probe failed: $mode" }
+          }
+      - name: Actual YOLO task, browser persistence, native MCP and Office PDF
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py browser
+          if ($LASTEXITCODE) { throw 'YOLO browser probe failed' }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\test_browser_smoke.ps1
+          if ($LASTEXITCODE) { throw 'Real browser persistence and cleanup failed' }
+          & .\tool\python\python.exe -B tests/check_browser_mcp_stdio.py
+          if ($LASTEXITCODE) { throw 'Real stdio MCP integration failed' }
+          & .\tool\python\python.exe -B tests/check_codex_browser_mcp.py
+          if ($LASTEXITCODE) { throw 'Native Codex MCP integration failed' }
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py documents
+          if ($LASTEXITCODE) { throw 'Native Office/PDF probe failed' }
+      - name: Final clean tree, LFS and customer input integrity
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dirty = @(git status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0 -or $dirty.Count -ne 0) { throw 'Candidate worktree became dirty' }
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'LFS gate failed' }
+          & .\tool\python\python.exe -B tool/package-release.py --check
+          if ($LASTEXITCODE) { throw 'Customer input integrity failed' }
+          Write-Output 'NPM11_WINDOWS_NATIVE_VALIDATION=PASS'
+      - name: Push only validated fast-forward development candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REF -cne "refs/heads/$env:TARGET_BRANCH" -or $env:TARGET_BRANCH -cne 'dev/stable-tool-refresh') { throw 'Wrong target branch' }
+          $current = (git rev-parse HEAD).Trim()
+          if ((git rev-parse 'HEAD^').Trim() -cne $env:GITHUB_SHA) { throw 'Candidate not direct child' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
+            $remote = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen ref or development branch moved before push' }
+          }
+          $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:GH_TOKEN"))
+          Write-Output "::add-mask::$auth"
+          try {
+            & git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin "HEAD:refs/heads/$env:TARGET_BRANCH"
+            if ($LASTEXITCODE) { throw 'Validated development-only push failed' }
+          } finally {
+            Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+            $auth = $null
+          }
+          $after = (git ls-remote origin "refs/heads/$env:TARGET_BRANCH") -join ''
+          if ($LASTEXITCODE -ne 0 -or $after -cne ($current + [char]9 + "refs/heads/$env:TARGET_BRANCH")) { throw 'Development push readback mismatch' }
+          foreach ($ref in @('refs/heads/main','refs/tags/v0.172.0-portable.1')) {
+            $remote = (git ls-remote origin $ref) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($env:FROZEN + [char]9 + $ref)) { throw 'Frozen ref changed' }
+          }
+          Write-Output "VALIDATED_DEV_COMMIT=$current"
+          Write-Output 'NO_RELEASE_NO_ARTIFACT_NO_MAIN_CHANGE'
