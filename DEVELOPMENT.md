@@ -616,3 +616,14 @@ AC 45643199639 passed all native gates but LFS returned 502. AC 45650347051 repr
 ## 2026-11-26: targeted trust-store security closeout
 
 GHSA-6q48-6c7w-9gw2 (https://github.com/advisories/GHSA-6q48-6c7w-9gw2): both the bundled standalone certifi 2026.5.20 and pip 26.1.2 vendor certifi 2026.2.25 contained the affected emSign ECC Root CA - G3 (DER SHA-256 86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b). Official pip 26.3 and certifi 2026.11.20 (pip-vendored 2026.10.23) passed fixed-wheel/source/RECORD checks, actual old/new CLI and install guard, DER trust-anchor exclusion, targeted native common/YOLO and MCP, closure and customer-input validation; delivered 6202635ddacc5cf96d3524df8940b9268db2999e. Earlier exact browser/packaging proof and successful fresh LFS download of all 305 paths in AC 45655675826 retained. No repeat full native suite, change to environment/approval/extension policy, main/tag/Release or optional tools. Real accounts, devices, SSH, optional rendering/recalculation and OS trust-store state remain outside these tests. Recovery: https://github.com/rileyaaa/Portable/actions/runs/45663535491
+
+## 2026-11-26: Pillow and PyInstaller targeted security closeout
+
+
+Independent candidates from pinned official Windows wheels; no repeat full browser/MCP or CA suite. No exploit inputs, elevated frozen execution or launcher/permission changes. Prior exact browser/LFS and pip/certifi proof retained.
+
+Pillow: 13.0.0 delivered f136fb7ba28a1cafeca73a438142d3e031ec708c; official wheel SHA-256 f7cbb7a64e7ec664775195e4f81923bc8a93d9451b963f844e59118f63147a7a, RECORD and tagged source/license verified, real moved normal/YOLO image/PDF/Office checks passed.
+
+PyInstaller: 6.22.3 and required hooks-contrib 2026.10 delivered d5205bb9cb14d9ef2294e0778b426912591b26b0; exact official wheels, AMD64 bootloaders, RECORD, source/license and build object manifest verified; real moved normal-mode onedir and YOLO onefile builds and executable readback passed. Only ordinary generated apps, not every hook/GUI/elevated path.
+
+No other dependency refresh. Known ADB/PSModulePath, host OS trust store, real accounts/devices/SSH, optional Office rendering and calculation remain outside the completed scope. https://github.com/rileyaaa/Portable/actions/runs/45690490980
