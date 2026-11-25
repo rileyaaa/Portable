@@ -439,6 +439,32 @@ def _check_owned_output(library: Path, row) -> None:
                          "use a new library instead of overwriting user changes")
 
 
+def _check_orphan_pages(connection) -> None:
+    if connection.execute(
+        "SELECT 1 FROM pages p LEFT JOIN documents d ON p.document=d.document "
+        "WHERE d.document IS NULL LIMIT 1"
+    ).fetchone():
+        raise ValueError("Library index contains orphan pages")
+
+
+def _check_indexed_output(library: Path, connection, row) -> str:
+    document = row["document"]
+    indexed = connection.execute(
+        "SELECT page,markdown FROM pages WHERE document=? ORDER BY page", (document,)
+    ).fetchall()
+    expected = list(range(1, row["pages"] + 1))
+    if [page["page"] for page in indexed] != expected:
+        raise ValueError(f"Indexed page mapping differs from generated Markdown: {document}")
+    # Reconstruct the same UTF-8 text written by build, including page separators.
+    # Do not normalize newlines when comparing the indexed and generated content.
+    text = _output(library, document).read_bytes().decode("utf-8")
+    reconstructed = "# " + Path(document).stem.replace("\n", " ") + "\n\n" + \
+        "\n".join(page["markdown"] for page in indexed)
+    if reconstructed != text:
+        raise ValueError(f"Indexed page content differs from generated Markdown: {document}")
+    return text
+
+
 def _summary(connection) -> dict:
     totals = connection.execute(
         "SELECT count(*),coalesce(sum(text_total),0),coalesce(sum(text_matched),0),"
@@ -506,6 +532,7 @@ def build_library(input_path: Path, library_path: Path, *, ocr="none",
     connection = _database(library, create=True)
     reused = removed = 0
     try:
+        _check_orphan_pages(connection)
         old = {row["document"]: row for row in connection.execute("SELECT * FROM documents")}
         for row in old.values():
             _check_owned_output(library, row)
@@ -519,6 +546,7 @@ def build_library(input_path: Path, library_path: Path, *, ocr="none",
             ).fetchone() is not None
             if (previous and previous["source_sha"] == digest and
                     previous["signature"] == signature and not retry_ocr):
+                _check_indexed_output(library, connection, previous)
                 reused += 1
                 continue
             output = _output(library, name)
@@ -616,9 +644,12 @@ def verify_library(library: Path) -> dict:
     library = checked(library, exists=True, kind="dir")
     connection = _database(library)
     try:
+        # Use a consistent read-only index snapshot throughout verification.
+        connection.execute("BEGIN")
+        _check_orphan_pages(connection)
         for row in connection.execute("SELECT * FROM documents"):
             _check_owned_output(library, row)
-            text = _output(library, row["document"]).read_text(encoding="utf-8")
+            text = _check_indexed_output(library, connection, row)
             check_markdown(text)
             expected = list(range(1, row["pages"] + 1))
             actual = [int(x) for x in re.findall(r"^## PDF 第 (\d+) 页$", text, re.M)]

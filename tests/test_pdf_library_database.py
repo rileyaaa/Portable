@@ -452,6 +452,49 @@ class PdfLibraryDatabaseTests(unittest.TestCase):
 
 
 
+    def test_verify_export_and_reuse_reject_inconsistent_index_pages(self):
+        source, _ = self._synthetic_pdf()
+        (source / 'another.pdf').write_bytes(b'second synthetic PDF fixture')
+        self.assertEqual(self._build_with_stub_renderer(source)['documents'], 2)
+        self.assertTrue(self.module.verify_library(self.library)['strict_ok'])
+        self.assertEqual(self._build_with_stub_renderer(source)['reused'], 2)
+        original = self.database.read_bytes()
+        outputs = {path: path.read_bytes() for path in (self.library / 'manuals').glob('*.md')}
+        self.assertEqual(len(outputs), 2)
+        cases = (
+            ("DELETE FROM pages WHERE document='synthetic.pdf'", 'Indexed page mapping'),
+            ("UPDATE pages SET markdown='unrelated text' WHERE document='synthetic.pdf'",
+             'Indexed page content'),
+            ("UPDATE pages SET page=2 WHERE document='synthetic.pdf'", 'Indexed page mapping'),
+            ("UPDATE pages SET document='unmanaged.pdf' WHERE document='synthetic.pdf'",
+             'orphan pages'),
+        )
+        for number, (sql, message) in enumerate(cases):
+            with self.subTest(sql=sql):
+                self.database.write_bytes(original)
+                with closing(sqlite3.connect(self.database)) as connection:
+                    connection.execute(sql)
+                    connection.commit()
+                before = self.database.read_bytes()
+                # All four invalid index states used to leave the Markdown
+                # hashes/headings intact and pass the old strict summary.
+                with closing(self.module._database(self.library)) as connection:
+                    self.assertTrue(self.module._summary(connection)['strict_ok'])
+                with self.assertRaisesRegex(ValueError, message):
+                    self.module.verify_library(self.library)
+                destination = self.package / 'work' / f'invalid-{number}.zip'
+                with self.assertRaisesRegex(ValueError, message):
+                    self.module.export_library(self.library, destination)
+                self.assertFalse(destination.exists())
+                self.assertEqual(self.database.read_bytes(), before)
+                with self.assertRaisesRegex(ValueError, message):
+                    self._build_with_stub_renderer(source)
+                for path, content in outputs.items():
+                    self.assertEqual(path.read_bytes(), content)
+        self.database.write_bytes(original)
+        self.assertTrue(self.module.verify_library(self.library)['strict_ok'])
+        self.assertEqual(self._build_with_stub_renderer(source)['reused'], 2)
+
     def test_rejected_crashed_wal_database_keeps_all_original_files(self):
         self.library.mkdir(parents=True)
         code = "import sqlite3,os,sys; c=sqlite3.connect(sys.argv[1]); c.execute('PRAGMA journal_mode=WAL'); c.execute('PRAGMA wal_autocheckpoint=0'); c.execute('CREATE TABLE user_data(x)'); c.execute('INSERT INTO user_data VALUES(7)'); c.commit(); os._exit(0)"

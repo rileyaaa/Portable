@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-25：HTTP / 时区正式候选落地，浏览器保留原因
+
+[AC 45596716268](https://github.com/rileyaaa/Portable/actions/runs/45596716268)（job 139144594270）completed/success。实际推送 urllib3 2.8.0（52d2a8f2d454a01a7dcb77910e689980513a1836）、AnyIO 4.16.0（429f3aa34125e1acb84aa87377b1e1998e33f3a8）、tzdata 2026.6（167056c7ba2091c612652cfdd8f7b0ec21d2dba9）。新旧回环 HTTP/代理/压缩流/异步、已满足的 typing_extensions 4.16.0 依赖、时区版权声明与包内偏移均通过；324 项 Python、Node/PowerShell、实际常用/未知模型、YOLO、浏览器只读/实际 MCP、Office/PDF 及发行输入门禁全过。实际 dev tree a51c039d6a0531999c4c881d4cc1f948defc7fc7。浏览器组在 stage_browser_stable.py 第 108 行 keyid 指纹断言停止，未验证签名正文、未安装新 npm 载荷或浏览器，未进入新旧 MCP 契约与 profile 测试；现有版本/清单/载荷不变。独立用官方 registry 两把公钥复现：keyid 对应 SSH wire-format 公钥摘要（不是 DER SubjectPublicKeyInfo 字节的摘要），两把均精确匹配；后续仅纠正该验证算法和已审查的暂存实现。清理已完成的一次性 workflow，不重跑已落地 Python 候选。真实 Windows 消费者由合成模型/输入驱动；未测真实账号、设备、SSH、外部网站、可选渲染器和公式重算。main/tag/Release 不变。
+
+## 2026-11-25：PDF 库分页索引一致性修复
+
+将前一轮候选 2ed3cf402fccd6c6784db49d14ba76b3bc805684 的 PDF 源码与回归文件移植到上述已验 tree（两文件旧 blob 完全一致）。旧 verify 只核对 Markdown 文件摘要、页标题和全局覆盖率；独立局部 SQLite/合成文件验证正常库、新旧函数对照，缺页、错误索引文本、错页号、孤立页四类状态旧校验均可误报 strict_ok，新核对均拒绝。verify/export 与增量复用按既有输出格式检查索引记录；只读验证使用一致的 SQLite 读事务，不改数据库格式、检索参数、权限或依赖，不自动改写异常用户资料。局部验证不代替实际模块 Windows 回归；本次仍需通过原有 PDF 测试、Office/PDF 原生及完整门禁。
+
 ## 2026-11-25：浏览器既有 MCP 调用边界与稳定版入口兼容
 
 现有 @playwright/mcp 0.0.83 的 index.js 仅从 playwright-core/lib/coreBundle 取得 tools.createConnection 再导出。入口直接使用同一官方函数，PowerShell 只读检查对应实际依赖文件；仍使用原 PolicyTransport、上下文拥有者、互斥锁、启动变量、代理及显式授权，不开新工具、不回退宿主。原代码将没有请求 ID 的 tools/call 也进入自有 browser_close 分支，可能在畸形通知时实际关闭 Chromium；现在 request-only 方法要求字符串或安全整数 ID，通知不能携带 ID，补零启动/零关闭及合法关闭回归。版本/载荷尚未更换，需按旧、新真实 MCP 契约及 Windows 原生门禁验证。
