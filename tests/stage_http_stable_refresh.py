@@ -13,6 +13,8 @@ specs={
     "urllib3":("2.7.0","2.8.0","9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897","0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3"),
     "anyio":("4.13.0","4.16.0","08b310f9e24a9594186fd75b4f73f4a4152069e3853f1ed8bfbf58369f4ad708","c66ae634e0b8228396b801741beb3294326d4b6102f7bba4041c0dfb58c29026"),
 }
+assert len(sys.argv)==2 and sys.argv[1] in specs
+specs={sys.argv[1]:specs[sys.argv[1]]}
 def sha(data): return hashlib.sha256(data).hexdigest()
 def rh(data): return "sha256="+base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("=")
 def norm(name): return re.sub(r"[-_.]+","-",name.lower())
@@ -141,7 +143,7 @@ with tempfile.TemporaryDirectory(prefix="http-refresh-",dir=scratch) as tmp:
         out=run([py,"-B",root/"tests/check_typing_extensions_refresh.py","4.16.0"],env)
         assert "EXISTING_HTTP_SYNC_ASYNC_LOOPBACK=PASS" in out and "EXISTING_OFFICE_ROUNDTRIP=PASS" in out
     assert "No broken requirements found." in pip("check")
-    consumer(specs["urllib3"][0],specs["anyio"][0])
+    consumer(old_versions["urllib3"],old_versions["anyio"])
     wheelhouse=own/"wheelhouse";wheelhouse.mkdir()
     plans=[]
     for n,(old,new,oldsha,newsha) in specs.items():
@@ -149,7 +151,12 @@ with tempfile.TemporaryDirectory(prefix="http-refresh-",dir=scratch) as tmp:
         assert not os.path.lexists(site/nd)
         old_payload,old_deps=fetch_wheel(n,old,oldsha,wheelhouse,old_versions)
         new_payload,new_deps=fetch_wheel(n,new,newsha,wheelhouse,new_versions)
-        assert set(old_deps)==set(new_deps),("default dependency closure changed",n,old_deps,new_deps)
+        if n=="anyio":
+            assert old_deps=={"idna":"idna>=2.8"}
+            assert new_deps=={"idna":"idna>=2.8","typing-extensions":'typing_extensions>=4.16.0; python_version < "3.15"'}
+            assert old_versions["typing-extensions"]==new_versions["typing-extensions"]=="4.16.0"
+        else:
+            assert old_deps==new_deps=={},("default dependency change",n,old_deps,new_deps)
         old_meta={p.split("/",1)[1]:b for p,b in old_payload.items() if p.startswith(od+"/")}
         new_meta={p.split("/",1)[1]:b for p,b in new_payload.items() if p.startswith(nd+"/")}
         assert {p:b for p,b in old_meta.items() if p.startswith("licenses/")}=={p:b for p,b in new_meta.items() if p.startswith("licenses/")},("license change needs review",n)
@@ -189,8 +196,8 @@ with tempfile.TemporaryDirectory(prefix="http-refresh-",dir=scratch) as tmp:
         check_record(site,nd,owned_new)
     assert distributions()==new_versions
     assert "No broken requirements found." in pip("check")
-    consumer(specs["urllib3"][1],specs["anyio"][1])
-    print("ONLY_TWO_OF_49_DISTRIBUTIONS_CHANGED=PASS",flush=True)
+    consumer(new_versions["urllib3"],new_versions["anyio"])
+    print("ONLY_ONE_OF_49_DISTRIBUTIONS_CHANGED=PASS",flush=True)
 inp=root/"tool/python-packages.in.txt";lockpath=root/"tool/python-packages.lock.txt"
 raw=inp.read_bytes();new_input=raw;lock=lockpath.read_bytes()
 def once(data,a,b):
@@ -201,21 +208,9 @@ for n,(old,new,oldsha,newsha) in specs.items():
     lock=once(lock,(n+"=="+old+" --hash=sha256:"+oldsha).encode(),(n+"=="+new+" --hash=sha256:"+newsha).encode())
 lock=once(lock,b"# requirements-sha256: "+sha(raw).encode(),b"# requirements-sha256: "+sha(new_input).encode())
 inp.write_bytes(new_input);lockpath.write_bytes(lock)
-def prepend(path,anchor,addition):
-    data=path.read_bytes()
-    newline="\r\n" if b"\r\n" in data else "\n"
-    a=anchor.replace("\n",newline).encode("utf-8")
-    b=addition.replace("\n",newline).encode("utf-8")
-    path.write_bytes(once(data,a,a+b))
-runurl="https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]
-prepend(root/"DEVELOPMENT.md","# \u5f00\u53d1\u4e0e\u7ef4\u62a4\u8bb0\u5f55\n\n","## 2026-11-25\uff1a\u7b2c\u516d\u7ec4 Python HTTP \u7a33\u5b9a\u7ec4\u4ef6\u66f4\u65b0\n\n\u4ec5\u5c06\u5df2\u6709 urllib3 2.7.0 \u2192 2.8.0\u3001anyio 4.13.0 \u2192 4.16.0 \u66f4\u65b0\u4e3a\u5b98\u65b9\u7a33\u5b9a\u7eaf Python wheel\uff1b\u56fa\u5b9a Python 3.14.10\u3001requests/httpx\u3001pip/certifi\u3001\u5176\u4f59 47 \u4e2a\u53d1\u884c\u5305\u548c\u539f\u6709\u542f\u52a8/\u6a21\u5f0f/\u6743\u9650\u4e0d\u52a8\u3002urllib3 \u4e0a\u6e38\u4fee\u590d HTTPS \u4ee3\u7406 TLS \u914d\u7f6e\u3001\u5206\u5757\u957f\u5ea6\u65e0\u754c\u7f13\u51b2\u53ca Deflate \u6d41\u5f0f\u5faa\u73af\uff1bAnyIO \u4fee\u590d\u53d6\u6d88\u4e0e\u8fde\u63a5\u5173\u95ed\u95ee\u9898\u3002\u4e24\u4efd\u65b0 wheel SHA-256 \u5206\u522b\u4e3a 0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3\u3001c66ae634e0b8228396b801741beb3294326d4b6102f7bba4041c0dfb58c29026\uff0cPyPI provenance \u5206\u522b\u6307\u5411 b1d30ab61fe0db8f11092805e8c5ac43e091064a\u30010ddd02d6a44a68cfdf0210783c2a2a1b02334d9a\uff08\u672a\u72ec\u7acb\u9a8c\u8bc1 Sigstore\uff09\u3002\u6838\u5bf9\u65e7\u5b98\u65b9 wheel / Git / RECORD\u3001\u8bb8\u53ef\u4e0e entry point\u3001Python 3.14 \u4f9d\u8d56\u95ed\u5305\uff1b\u7528\u56fa\u5b9a pip \u5728\u5305\u5185\u72ec\u5360 staging hash-only \u5b89\u88c5\uff0c\u672a\u542f\u7528\u65b0\u589e API\u3002\u4e24\u7248\u771f\u5b9e\u540c\u6b65/\u5f02\u6b65\u56de\u73af\u3001HTTP \u4ee3\u7406\u8ba4\u8bc1\u3001\u91cd\u5b9a\u5411\u3001\u538b\u7f29\u5206\u5757\u6d41\u53ca Office \u4e2d\u6587\u8def\u5f84\u8bfb\u56de\uff1b\u5b8c\u6574 Windows \u95e8\u7981\u6210\u529f\u624d\u63a8\u9001\u5019\u9009\u3002\u672a\u5ba3\u79f0\u771f\u5b9e HTTPS \u4ee3\u7406 TLS\u3001\u7ebf\u4e0a\u8d26\u53f7/SSH\u3001\u8bbe\u5907\u6216 Office \u91cd\u7b97\u5df2\u9a8c\u3002\u539f\u6d4f\u89c8\u5668/MCP \u914d\u5bf9\u4fdd\u7559\uff1a\u6b63\u5f0f MCP 0.0.86 \u4ecd\u56fa\u5b9a 1.66.0-alpha-2026-11-18\uff0c\u4e0d\u5f15\u5165\u65b0\u9884\u89c8\u4f9d\u8d56\u3002Windows AC: "+runurl+"\n\n")
-prepend(root/"tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md","### Python \u4f9d\u8d56\u4e0e\u547d\u4ee4\u5165\u53e3\n\n","\u5f00\u53d1\u5206\u652f\u7b2c\u516d\u6279\u66f4\u65b0 urllib3 2.8.0\u3001anyio 4.16.0\uff0c\u4fdd\u7559 requests 2.34.2\u3001httpx 0.28.1 \u4e0e\u539f\u4ee3\u7406/\u53d8\u91cf\u7ea6\u5b9a\uff1b\u56fa\u5b9a wheel \u6458\u8981\u3001\u5f52\u5c5e\u53ca\u9a8c\u6536\u8303\u56f4\u89c1 DEVELOPMENT.md\u3002\u65e0\u9700\u65b0\u589e\u5305\u7ba1\u7406\u5668\u6216 CLI\u3002\n\n")
-fixed={"DEVELOPMENT.md","tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md","tool/python-packages.in.txt","tool/python-packages.lock.txt"}
+fixed={"tool/python-packages.in.txt","tool/python-packages.lock.txt"}
 allowed=all_old|all_new|fixed
 required=(all_old^all_new)|fixed
 changed=names("diff","--no-renames","--name-only","-z")|names("ls-files","--others","--exclude-standard","-z")
 assert required<=changed<=allowed,("candidate scope",sorted(required-changed),sorted(changed-allowed))
-git("add","-A","--",*sorted(changed))
-assert names("diff","--cached","--no-renames","--name-only","-z")==changed
-assert not git("diff","--name-only","-z") and not git("ls-files","--others","--exclude-standard","-z")
 print("HTTP_STABLE_SCOPE_READY=PASS files="+str(len(changed)),flush=True)

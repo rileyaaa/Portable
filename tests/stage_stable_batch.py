@@ -17,9 +17,9 @@ SITE = "tool/python/Lib/site-packages/"
 SHARED = {"tool/python-packages.in.txt", "tool/python-packages.lock.txt",
           "DEVELOPMENT.md", "tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md"}
 GROUPS = [
-    ("http", "tests/stage_http_stable_refresh.py", [], {"urllib3": ("2.7.0","2.8.0"),"anyio": ("4.13.0","4.16.0")}),
+    ("urllib3", "tests/stage_http_stable_refresh.py", ["urllib3"], {"urllib3": ("2.7.0","2.8.0")}),
+    ("anyio", "tests/stage_http_stable_refresh.py", ["anyio"], {"anyio": ("4.13.0","4.16.0")}),
     ("tzdata", "tests/stage_office_data_stable_refresh.py", ["tzdata"], {"tzdata": ("2026.2","2026.6")}),
-    ("xlsxwriter", "tests/stage_office_data_stable_refresh.py", ["xlsxwriter"], {"xlsxwriter": ("3.2.9","3.3.4")}),
 ]
 
 
@@ -142,15 +142,14 @@ def main():
             results[label] = "RETAINED: lock, closure, or scope validation failed"
             print("GROUP_RETAINED="+label, flush=True)
             continue
-        if label != "http":
-            runurl = "https://github.com/rileyaaa/Portable/actions/runs/" + os.environ["GITHUB_RUN_ID"]
-            summary = ", ".join(f"{n} {old} -> {new}" for n,(old,new) in pins.items())
-            note = ("## 2026-11-25: fixed stable dependency candidate\n\n" + summary +
-                    "\n\nOfficial wheel SHA-256, RECORD, previous Git payload, dependency closure and actual Windows consumer checks passed. "
-                    "No extra distribution or feature enabled. Full native regression must pass before this commit is pushed. "
-                    "Run: " + runurl)
-            append_record(ROOT / "DEVELOPMENT.md", note)
-            append_record(ROOT / "tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md", summary + " (Windows candidate; verification: " + runurl + ")")
+        runurl = "https://github.com/rileyaaa/Portable/actions/runs/" + os.environ["GITHUB_RUN_ID"]
+        summary = ", ".join(f"{n} {old} -> {new}" for n,(old,new) in pins.items())
+        note = ("## 2026-11-25: " + summary +
+                "\n\nOfficial fixed wheel hashes, RECORD, prior Git payload, licenses, dependency closure and actual old/new Windows consumer checks passed. "
+                "No extra distribution or feature enabled. AnyIO's exact added dependency is already satisfied by the fixed typing_extensions 4.16.0. "
+                "Full native regression required before push. No real accounts, devices, remote SSH, Office rendering or recalculation tested. Run: " + runurl)
+        append_record(ROOT / "DEVELOPMENT.md", note)
+        append_record(ROOT / "tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md", summary + " (Windows validation: " + runurl + ")")
         changed = tracked_changes() | untracked()
         allowed(changed, pins)
         commit("Refresh verified stable " + label + " payload", changed)

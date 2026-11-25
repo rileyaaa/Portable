@@ -360,7 +360,18 @@ def main(name):
         if name == "tzdata":
             old_licenses = {p.split("/", 1)[1]: b for p, b in op.items() if p.startswith(od + "/licenses/")}
             new_licenses = {p.split("/", 1)[1]: b for p, b in np.items() if p.startswith(nd + "/licenses/")}
-            assert old_licenses == new_licenses
+            # Exact tagged license files; the only change is an added copyright
+            # notice in LICENSE. The full Apache-2.0 text is unchanged.
+            assert {p: git_blob(b) for p,b in old_licenses.items()} == {
+                "licenses/LICENSE": "c2f84aeb06f7a520b7cf17bdd9c9c3854dc4c469",
+                "licenses/licenses/LICENSE_APACHE": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"}
+            assert {p: git_blob(b) for p,b in new_licenses.items()} == {
+                "licenses/LICENSE": "a62e827c2862dda1a509f3998a42dbe48ddd0251",
+                "licenses/licenses/LICENSE_APACHE": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64"}
+            assert new_licenses["licenses/LICENSE"] == old_licenses["licenses/LICENSE"].replace(
+                b"Copyright (c) 2020, Paul Ganssle (Google)\n",
+                b"Copyright (c) 2020, Paul Ganssle (Google)\nCopyright (c) 2026, Stan Ulbrych\n",1)
+            print("TZDATA_OFFICIAL_LICENSE_NOTICE=PASS",flush=True)
         old_owned = files(SITE, name) | files(SITE, od)
         if name == "xlsxwriter":
             plain(SITE / "bin", True)
