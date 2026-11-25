@@ -375,6 +375,28 @@ deck_original = output / "original.pptx"
 deck_original.write_bytes(deck.read_bytes())
 assert "All validations PASSED!" in validate_packed("docx", word, "--original", word_original, "--author", "Synthetic")
 print("NATIVE_DOCX_VALIDATOR_AND_REDLINE_BASELINE=PASS", flush=True)
+# The repaired core-properties schema must perform real validation, not just
+# compile or silently ignore a defect. Inject an unknown core property only.
+invalid_word = output / "invalid-core.docx"
+from lxml import etree
+with zipfile.ZipFile(word) as source_zip, zipfile.ZipFile(invalid_word, "w") as target_zip:
+    for entry in source_zip.infolist():
+        payload = source_zip.read(entry.filename)
+        if entry.filename == "docProps/core.xml":
+            tree = etree.fromstring(payload)
+            etree.SubElement(tree, "{http://schemas.openxmlformats.org/package/2006/metadata/core-properties}unexpectedPortableAuditElement").text = "invalid"
+            payload = etree.tostring(tree, encoding="UTF-8", xml_declaration=True)
+        target_zip.writestr(entry, payload)
+before_invalid = invalid_word.read_bytes()
+validator = root / "home/skills/docx/scripts/office/validate.py"
+rejected = subprocess.run([sys.executable, "-B", str(validator), str(invalid_word)],
+                          cwd=root / "work", capture_output=True, timeout=120, check=False)
+rejection = (rejected.stdout + b"\n" + rejected.stderr).decode("utf-8", "replace")
+assert rejected.returncode == 1 and "unexpectedPortableAuditElement" in rejection, ascii(rejection[-4500:])
+assert "VALIDATOR_UNAVAILABLE" not in rejection, ascii(rejection[-4500:])
+assert invalid_word.read_bytes() == before_invalid
+assert_office_scratch_clean()
+print("NATIVE_DOCX_CORE_SCHEMA_REJECTS_INVALID=PASS", flush=True)
 assert "All validations PASSED!" in validate_packed("pptx", deck, "--original", deck_original)
 print("NATIVE_PPTX_VALIDATOR_BASELINE=PASS", flush=True)
 assert "No XSD schema validation is performed for xlsx-family" in validate_packed("xlsx", book)

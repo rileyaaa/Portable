@@ -159,6 +159,33 @@ class OfficeOutputBoundaryTests(unittest.TestCase):
         (source / "doc.xml").write_bytes(b"<document>synthetic</document>")
         return source
 
+    def test_core_properties_schema_has_offline_imports_and_rejects_unknown_elements(self):
+        from lxml import etree
+        from docx import Document
+
+        # Compile each actual shipped schema, without network or synthetic
+        # schema substitutions. Valid core properties use dc/dcterms types.
+        output = self.package / "valid.docx"
+        Document().save(output)
+        import zipfile
+        with zipfile.ZipFile(output) as archive:
+            valid_core = archive.read("docProps/core.xml")
+        for skill in ("docx", "pptx", "xlsx"):
+            with self.subTest(skill=skill):
+                root = ROOT / "home/skills" / skill / "scripts/office/schemas"
+                path = root / "ecma/fouth-edition/opc-coreProperties.xsd"
+                schema = etree.XMLSchema(etree.parse(str(path), etree.XMLParser(no_network=True)))
+                valid = etree.fromstring(valid_core)
+                schema.assertValid(valid)
+                bad = etree.fromstring(valid_core)
+                etree.SubElement(bad, "{http://schemas.openxmlformats.org/package/2006/metadata/core-properties}unexpectedPortableAuditElement").text = "invalid"
+                self.assertFalse(schema.validate(bad))
+                bad_date = etree.fromstring(valid_core)
+                created = bad_date.find("{http://purl.org/dc/terms/}created")
+                self.assertIsNotNone(created)
+                created.text = "not-a-valid-date"
+                self.assertFalse(schema.validate(bad_date))
+
     def test_validator_bootstrap_is_bound_to_its_own_skill_directory(self):
         relative = "home/skills/pptx/scripts/office/validate.py"
         entry = self.package / relative

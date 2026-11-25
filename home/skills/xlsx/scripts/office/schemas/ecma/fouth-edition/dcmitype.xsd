@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Portions of this software may use XML schemas Copyright © 2011 DCMI,
+  the Dublin Core Metadata Initiative (https://www.dublincore.org/).
+  See https://www.dublincore.org/about/copyright/#schemanotice
+  and https://creativecommons.org/licenses/by/4.0/ .
+  The dated schema index lists CC BY 3.0; see
+  https://www.dublincore.org/schemas/xmls/ and https://creativecommons.org/licenses/by/3.0/ .
+  Canonical 2003-04-02 source: https://www.dublincore.org/schemas/xmls/qdc/2003/04/02/dcmitype.xsd
+  Retrieved from the pinned archive mirror:
+  https://github.com/UNC-Libraries/box-c/blob/1af8a888240033409d43a63df2189008144e6367/common-utils/src/main/resources/schemas/dcmitype.xsd
+  Original mirror git blob: 54d9da00a863831eb43181e4eb7686c9380f13fc.
+  Adaptation for offline portable validation: attribution comment only; no element or type definitions changed.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="http://purl.org/dc/dcmitype/"
+           targetNamespace="http://purl.org/dc/dcmitype/"
+           elementFormDefault="qualified"
+           attributeFormDefault="unqualified">
+
+  <xs:annotation>
+    <xs:documentation xml:lang="en">
+      DCMI Type Vocabulary XML Schema
+      XML Schema for http://purl.org/dc/dcmitype/ namespace
+
+      Created 2003-04-02
+
+      Created by 
+
+      Tim Cole (t-cole3@uiuc.edu)
+      Tom Habing (thabing@uiuc.edu)
+      Jane Hunter (jane@dstc.edu.au)
+      Pete Johnston (p.johnston@ukoln.ac.uk),
+      Carl Lagoze (lagoze@cs.cornell.edu)
+
+      This schema defines a simpleType which enumerates
+      the allowable values for the DCMI Type Vocabulary.
+    </xs:documentation>
+
+ 
+  </xs:annotation>
+
+
+  <xs:simpleType name="DCMIType">
+     <xs:union>
+        <xs:simpleType>
+           <xs:restriction base="xs:Name">
+		<xs:enumeration value="Collection"/>
+		<xs:enumeration value="Dataset"/>
+		<xs:enumeration value="Event"/>
+		<xs:enumeration value="Image"/>
+		<xs:enumeration value="InteractiveResource"/>
+		<xs:enumeration value="Service"/>
+		<xs:enumeration value="Software"/>
+		<xs:enumeration value="Sound"/>
+		<xs:enumeration value="Text"/>
+		<xs:enumeration value="PhysicalObject"/>
+            </xs:restriction>
+        </xs:simpleType> 
+     </xs:union>
+  </xs:simpleType>
+
+</xs:schema>
