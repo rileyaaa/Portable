@@ -561,7 +561,11 @@ test('bundled dependencies match recorded bytes and the upstream version lock', 
   const manifest = require('../tool/automation/dependency-manifest.json');
   const lock = require('../tool/automation/playwright/package-lock.json');
   const versions = require('../tool/automation/versions.json');
-  assert.equal(lock.packages['node_modules/@playwright/mcp'].version, versions.playwrightMcp);
+  assert.equal(versions.mcpImplementation, 'playwright-core');
+  assert.equal(versions.playwrightMcp, versions.playwright);
+  assert.deepEqual(Object.keys(lock.packages).sort(), ['', 'node_modules/playwright', 'node_modules/playwright-core']);
+  assert.deepEqual(lock.packages[''].dependencies, {playwright:versions.playwright});
+  assert.equal(lock.packages['node_modules/playwright'].version, versions.playwright);
   assert.equal(lock.packages['node_modules/playwright-core'].version, versions.playwright);
   for (const [name, hash] of Object.entries(manifest.files)) {
     const target = bridge.checkedPath(root, name);

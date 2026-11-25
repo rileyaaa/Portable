@@ -69,8 +69,15 @@ def load_manifest(root):
         raise ValueError("Browser version lock mismatch")
     archive = manifest["archive"]
     official = f"https://storage.googleapis.com/chrome-for-testing-public/{version}/win64/chrome-win64.zip"
+    source = f"https://cdn.playwright.dev/builds/cft/{version}/win64/chrome-win64.zip"
+    if browser.get("revisionSource") == "chrome-for-testing":
+        if browser.get("channel") != "stable" or browser.get("downloadUrl") != official:
+            raise ValueError("Invalid stable Chrome for Testing identity")
+        source = official
+    elif browser.get("revisionSource") is not None or browser.get("channel") is not None:
+        raise ValueError("Unknown browser revision source")
     if (archive["resolvedUrl"] != official or
-            archive["sourceUrl"] != f"https://cdn.playwright.dev/builds/cft/{version}/win64/chrome-win64.zip" or
+            archive["sourceUrl"] != source or
             not re.fullmatch(r"[a-f0-9]{64}", archive["sha256"]) or
             not isinstance(archive["size"], int) or not 0 < archive["size"] <= 1024**3):
         raise ValueError("Invalid pinned browser archive")

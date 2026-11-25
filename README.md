@@ -174,7 +174,7 @@ $env:CODEX_TUI_FULLSCREEN_TRANSCRIPT = "true"
 | Word / PPT / Excel | 保留 `docx`、`pptx`、`xlsx`。用户提供的模板优先；PPT 检查版式、层次、字体与实际预览，Word 保留样式和结构，Excel 检查公式及重算结果。缺渲染/重算工具时明确标注未验证。 |
 | PDF 编辑与大量手册阅读 | 普通编辑使用 `pdf`；`pdf-library` 使用 PyMuPDF4LLM 按页转换并建立本地索引，先搜索后读取命中页，支持增量更新和纯 Markdown ZIP。仅转换格式不保证省 token；避免一次加载全部全文。OCR 引擎尚未预置，扫描/图中文字会标为待处理。 |
 | APK / MuMu | `apk-test-router` 按任务读取插件内唯一的完整流程；你的 `mumu-adb` 保留。测试优先考虑 Appium/UiAutomator2 的 UI 树、resource-id、accessibility 和等待条件，画布/游戏界面仍可能需要截图。完整 SDK/JDK/Appium 尚未预置。 |
-| 网页调试 | `browser-debug` 共用一套 Playwright：任务脚本、可选 MCP、控制台/网络及 CDP 诊断都使用同一份 Chromium，无需 ChromeDriver，也不另装 Chrome DevTools MCP。已包含匹配的 Windows x64 Chromium 155.0.8059.12；同一份浏览器约 458 MB 解压体积。 |
+| 网页调试 | `browser-debug` 共用一套 Playwright：任务脚本、可选 MCP、控制台/网络及 CDP 诊断都使用同一份 Chromium，无需 ChromeDriver，也不另装 Chrome DevTools MCP。已包含匹配的 Windows x64 Chromium 158.0.8127.88；同一份浏览器约 471 MB 解压体积。 |
 | Windows 应用调试 | `windows-desktop` 使用系统 UI Automation，仅处理明确指定的进程主窗口。默认读取控件树，点击/赋值需明确选择；不提供全盘 Shell、注册表或整桌面 MCP。实际 Windows 行为待验。 |
 
 维护模式的 `mcp` / `plugin` 管理命令也需对应开关和 `--portable-extensions`，确保命令处理完整的该类配置；缺少时明确拒绝，不会清空保存的配置。成功修改只回写当前类型，另一类保持不变；查看无变更不回写。首次迁移旧 config 中的扩展时，先保存到 `home\portable-extensions.toml`，再重建生成配置；即使后续启动失败，也可重试。已有持久文件优先（空文件表示已清空），启动不会用旧配置覆盖它。

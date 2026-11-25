@@ -71,8 +71,11 @@ class BrowserInstallTests(unittest.TestCase):
 
     def test_pinned_browser_inventory_matches_installed_official_bytes(self):
         manifest, prefix = browser.load_manifest(ROOT)
-        self.assertEqual(prefix, "tool/automation/browsers/chromium-1247/")
+        self.assertEqual(prefix, "tool/automation/browsers/chromium-1727472/")
         self.assertEqual(manifest["fileCount"], 305)
+        self.assertEqual(manifest["browserVersion"], "158.0.8127.88")
+        self.assertEqual(manifest["archive"]["sourceUrl"], "https://storage.googleapis.com/chrome-for-testing-public/158.0.8127.88/win64/chrome-win64.zip")
+        self.assertEqual(manifest["archive"]["sha256"], "fda73ca9ffc7f02c5c85165cb472152540a76a7cecd8ec11314ea781e4454109")
         browser.verify_payload(ROOT, manifest)
 
 

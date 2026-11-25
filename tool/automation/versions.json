@@ -1,21 +1,25 @@
 {
   "schemaVersion": 1,
-  "checkedAt": "2026-10-23",
+  "checkedAt": "2026-11-25",
   "platform": "win32-x64",
-  "playwrightMcp": "0.0.83",
-  "playwright": "1.64.0-alpha-1790635538000",
-  "source": "https://github.com/microsoft/playwright-mcp",
+  "playwrightMcp": "1.65.1",
+  "playwright": "1.65.1",
+  "source": "https://github.com/microsoft/playwright",
   "dependencyLock": "playwright/package-lock.json",
   "dependencyStatus": "bundled; lifecycle scripts disabled during installation",
   "browser": {
     "engine": "chromium",
-    "version": "155.0.8059.12",
-    "revision": "1247",
-    "executable": "browsers/chromium-1247/chrome-win64/chrome.exe",
-    "downloadUrl": "https://cdn.playwright.dev/builds/cft/155.0.8059.12/win64/chrome-win64.zip",
+    "version": "158.0.8127.88",
+    "revision": "1727472",
+    "executable": "browsers/chromium-1727472/chrome-win64/chrome.exe",
+    "downloadUrl": "https://storage.googleapis.com/chrome-for-testing-public/158.0.8127.88/win64/chrome-win64.zip",
     "payloadBundled": true,
     "chromedriverRequired": false,
-    "payloadManifest": "browser-manifest.json"
+    "payloadManifest": "browser-manifest.json",
+    "revisionSource": "chrome-for-testing",
+    "channel": "stable",
+    "driverDefaultVersion": "159.0.8154.6",
+    "driverDefaultRevision": "1255"
   },
   "browserPolicy": "One Chromium payload shared by task scripts, MCP and CDP diagnostics. No ChromeDriver, second browser, Chrome DevTools MCP, or host profile.",
   "desktopAssessment": {
@@ -24,5 +28,6 @@
     "pythonRequires": ">=3.14",
     "installed": false,
     "reason": "Default filesystem, PowerShell and global UI tools do not enforce package or process boundaries. The portable entry point uses a limited built-in UIAutomation worker instead."
-  }
+  },
+  "mcpImplementation": "playwright-core"
 }

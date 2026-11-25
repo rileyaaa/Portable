@@ -604,3 +604,7 @@ AC 45610185245 had independent real Windows success evidence before its final br
 ## 2026-11-25: packaging 26.2 -> 26.4
 
 Official fixed wheel hashes, RECORD, prior Git payload, licenses, dependency closure and actual old/new Windows consumer checks passed. No extra distribution, dependency, launcher or feature enabled. Full native regression required before push. No real accounts, devices, remote SSH, Office rendering or recalculation tested. Run: https://github.com/rileyaaa/Portable/actions/runs/45643199639
+
+## 2026-11-25: stable browser/MCP pair
+
+Playwright 1.65.1 (built-in MCP) + Chrome for Testing Stable 158.0.8127.88, r1727472. No standalone alpha package, additional browser, driver, automatic registration or permission expansion. Official npm registry signatures, SHA-512/tarball bytes, old Git/dependency inventory, Google Stable metadata, Google object checksum/generation, pinned archive SHA-256 and extracted inventory verified.  Archive SHA-256: fda73ca9ffc7f02c5c85165cb472152540a76a7cecd8ec11314ea781e4454109. Exact filtered tool list/compatible schema and real old-to-new synthetic profile Cookie/localStorage/CDP passed. Default Playwright Chromium 159 is not used because it is not the stable Chrome channel. Existing release workflow remains frozen; only development input validation, not a release. No real user profile/account, external website, device, Office render or recalculation tested. Run: https://github.com/rileyaaa/Portable/actions/runs/45643199639

@@ -14,7 +14,7 @@ description: Use for an explicitly requested browser task, including opening and
 - 交互探索可使用下面的受限 MCP 入口，维持同一浏览器上下文。它屏蔽上游任意 Node 执行、文件上传、安装和配置工具；页面 JavaScript 仍可改变页面或发送网络请求，应只用于本次任务。
 - 性能与进一步诊断复用同一套 Playwright：读取页面 Performance API、控制台和网络信息；确需底层诊断时在授权的任务脚本中使用 `context.newCDPSession(page)` 连接本次启动的同一 Chromium。不要为此增加第二套浏览器或 Chrome DevTools MCP，也不自动发现日常 Chrome 的调试端口。
 
-上述方案都免去 ChromeDriver 版本配对，但 Playwright 与浏览器仍有兼容关系。默认使用依赖指定的完整浏览器版本，共同更新并测试；任意更新一个 Chrome 仍不能保证兼容。
+上述方案都免去 ChromeDriver 版本配对，但 Playwright 与浏览器仍有兼容关系。默认使用 versions.json 固定且实际验证的正式浏览器组合，共同更新并测试；任意更新一个 Chrome 仍不能保证兼容。
 
 ## 便携入口
 
