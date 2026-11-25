@@ -1,0 +1,424 @@
+name: Stable tool refresh - pip 26.3 and certifi 2026.11.20 (one time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/refresh-pip-certifi-stable.yml
+permissions: {}
+concurrency:
+  group: stable-tool-refresh-pip-certifi
+  cancel-in-progress: false
+jobs:
+  refresh:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == 'ddac4fb0c04ce778b8822dcfbcc830fef2a843bc' && github.run_attempt == 1
+    runs-on: windows-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: powershell
+    env:
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      BASE: ddac4fb0c04ce778b8822dcfbcc830fef2a843bc
+      TARGET_BRANCH: dev/stable-tool-refresh
+    steps:
+      - name: Preserve tracked bytes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'git configuration failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Confirm reviewed development baseline and frozen public release
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or (git rev-parse 'HEAD^').Trim() -cne $env:BASE) { throw 'Wrong checkout or parent' }
+          if ((git diff --name-only $env:BASE HEAD) -cne '.github/workflows/refresh-pip-certifi-stable.yml') { throw 'Unexpected starting changes' }
+          if ((git diff --name-only '350bb6eb43dd706eb2bc199abe352b13a2531a90' $env:BASE) -cne '.github/workflows/refresh-rg16-stable.yml') { throw 'Unexpected cleanup diff' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
+            $remote = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen ref or development branch moved' }
+          }
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'LFS verification failed' }
+          & .\tool\python\python.exe -B tool/python-lock.py validate --requirements tool/python-packages.in.txt --lock tool/python-packages.lock.txt
+          if ($LASTEXITCODE) { throw 'Old lock validation failed' }
+          & .\tool\python\python.exe -B tool/python-lock.py validate-runtime --requirements tool/python-packages.in.txt
+          if ($LASTEXITCODE) { throw 'Old runtime ownership failed' }
+
+      - name: Verify official wheels, stage offline, replace only owned packages and test new pip download and install
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import base64, configparser, csv, email.parser, hashlib, importlib.metadata as md, io, json, os
+          from pathlib import Path, PurePosixPath
+          import re, shutil, stat, subprocess, sys, tempfile, urllib.parse, urllib.request, zipfile
+          from packaging.specifiers import SpecifierSet
+          from packaging.version import Version
+          
+          root = Path.cwd()
+          site = root / "tool/python/Lib/site-packages"
+          py = root / "tool/python/python.exe"
+          assert sys.version_info[:3] == (3,14,10) and Path(sys.executable).resolve() == py
+          specs = {
+           "pip": {"old":"26.1.2","version":"26.3","license":"MIT","oldhash":"382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab","sha256":"f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13","url":"https://files.pythonhosted.org/packages/07/25/ee8c38ae72d66b844ce8eb9711ba905dba21ca1a8a0c960057c41cd23337/pip-26.3-py3-none-any.whl"},
+           "certifi":{"old":"2026.5.20","version":"2026.11.20","license":"MPL-2.0","oldhash":"3c52e209ba0a4ad7aebe60436a4ab349c39e1e602e8c134221e546902ad25897","sha256":"7422df25243767b9877031a2248cb14d09ddac9beee846f4cef3d5c9191d488f","url":"https://files.pythonhosted.org/packages/6d/39/5eec3296860b94ac20bb8ed807725b88f6adfab3f343df592afd975f5f86/certifi-2026.11.20-py3-none-any.whl"}
+          }
+          launchers = {"bin/pip.exe","bin/pip3.exe","bin/pip3.14.exe"}
+          def sha(data): return hashlib.sha256(data).hexdigest()
+          def rh(data): return "sha256="+base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("=")
+          def plain(p, directory=False):
+              info=p.lstat()
+              assert not stat.S_ISLNK(info.st_mode) and not getattr(info,"st_file_attributes",0)&0x400, "Linked maintenance path"
+              assert stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode) and info.st_nlink==1
+          def pathsafe(name):
+              assert isinstance(name,str) and name and not name.startswith("/") and "\\" not in name and ":" not in name
+              assert all(p not in ("",".","..") and not p.endswith((" ",".")) for p in name.split("/"))
+              return name
+          def treefiles(parent, prefix):
+              start=parent/prefix
+              plain(start,True)
+              result=set()
+              for current, dirs, files in os.walk(start,followlinks=False):
+                  c=Path(current)
+                  for d in dirs: plain(c/d,True)
+                  for f in files:
+                      p=c/f
+                      plain(p)
+                      result.add(p.relative_to(parent).as_posix())
+              return result
+          def rows(raw):
+              result={}
+              for row in csv.reader(io.StringIO(raw.decode("utf-8-sig"),newline="")):
+                  assert len(row)==3 and row[0] not in result, "Malformed or duplicate RECORD row"
+                  result[row[0]]=tuple(row[1:])
+              return result
+          def info_at(parent,n,v):
+              return parent/(n+"-"+v+".dist-info")
+          def distributions():
+              found={}
+              for d in md.distributions(path=[str(site)]):
+                  name=d.metadata["Name"].lower().replace("_","-")
+                  assert name not in found
+                  found[name]=d.version
+              return found
+          def git(*a):
+              return subprocess.check_output(["git",*a],cwd=root)
+          def listing(*a):
+              return set(git(*a).decode("utf-8").split("\0"))-{""}
+          for p in (*reversed(site.parents),site):
+              plain(p,True)
+          old_versions=distributions()
+          assert len(old_versions)==49
+          tracked=listing("ls-files","-z")
+          site_rel=site.relative_to(root).as_posix()+"/"
+          old_records={}
+          old_entry_points=None
+          old_launchers={}
+          for name,s in specs.items():
+              assert old_versions[name]==s["old"]
+              dist=name+"-"+s["old"]+".dist-info"
+              old_set=treefiles(site,name)|treefiles(site,dist)
+              if name=="pip": old_set|=launchers
+              record=dist+"/RECORD"
+              rr=rows((site/record).read_bytes())
+              assert set(rr)==old_set, "Old RECORD and owned files differ: "+name
+              for f,(digest,size) in rr.items():
+                  pathsafe(f)
+                  assert site_rel+f in tracked, "Unexpected untracked owned file"
+                  plain(site/f)
+                  if f==record:
+                      assert (digest,size)==("","")
+                  else:
+                      data=(site/f).read_bytes()
+                      assert (digest,size)==(rh(data),str(len(data))), "Old installed RECORD mismatch: "+f
+              old_records[name]=old_set
+              if name=="pip":
+                  old_entry_points=(site/dist/"entry_points.txt").read_bytes()
+                  old_launchers={p:(site/p).read_bytes() for p in launchers}
+          print("BASELINE_49_DISTRIBUTIONS_AND_OLD_RECORD_OWNERSHIP=PASS",flush=True)
+          
+          scratch=root/"tmp"
+          scratch.mkdir(exist_ok=True)
+          plain(scratch,True)
+          with tempfile.TemporaryDirectory(prefix="pip-certifi-refresh-",dir=scratch) as own:
+              owned=Path(own)
+              wheelhouse=owned/"wheelhouse"
+              stage=owned/"stage"
+              verified=owned/"online-recheck"
+              reinstall=owned/"offline-reinstall"
+              backup=owned/"original"
+              for d in (wheelhouse,stage,verified,reinstall,backup): d.mkdir()
+              # No runner credentials, host Python or user config in pip subprocesses.
+              env={k:os.environ[k] for k in ("SystemRoot","WINDIR","SystemDrive","ComSpec","PATHEXT","OS","PROCESSOR_ARCHITECTURE") if k in os.environ}
+              windows=Path(env["SystemRoot"])
+              env["PATH"]=os.pathsep.join((str(root/"tool/bin"),str(py.parent),str(windows/"System32"),str(windows)))
+              for k,d in {"HOME":"home","USERPROFILE":"home","APPDATA":"appdata","LOCALAPPDATA":"localappdata","PROGRAMDATA":"programdata","ALLUSERSPROFILE":"programdata","TEMP":"temp","TMP":"temp","TMPDIR":"temp","PIP_CACHE_DIR":"cache","PYTHONUSERBASE":"userbase","PYTHONPYCACHEPREFIX":"pycache"}.items():
+                  p=owned/d
+                  p.mkdir(exist_ok=True)
+                  env[k]=str(p)
+              env.update(PIP_CONFIG_FILE="nul",PYTHONNOUSERSITE="1",PYTHONDONTWRITEBYTECODE="1",CODEX_INSTALL_DIR=str(root))
+              def piprun(*args, expected=None):
+                  proc=subprocess.run([str(py),"-E","-s","-B","-m","pip","--isolated","--disable-pip-version-check","--no-input","--cache-dir",env["PIP_CACHE_DIR"],*map(str,args)],
+                      cwd=root,env=env,capture_output=True,timeout=300)
+                  if proc.returncode:
+                      raise RuntimeError("pip command failed: "+str(args[0])+"; "+proc.stdout.decode("utf-8","replace")[-3000:]+"; "+proc.stderr.decode("utf-8","replace")[-3000:])
+                  if expected is not None: assert expected in proc.stdout.decode("utf-8","replace")
+                  return proc.stdout
+              piprun("check",expected="No broken requirements found.")
+              upstream={}
+              for name,s in specs.items():
+                  version=s["version"]
+                  assert not (Version(version).is_prerelease or Version(version).is_devrelease)
+                  wheel=name+"-"+version+"-py3-none-any.whl"
+                  # Official exact release and digest; fail closed on changed/yanked metadata.
+                  url="https://pypi.org/pypi/"+name+"/"+version+"/json"
+                  req=urllib.request.Request(url,headers={"User-Agent":"Portable-maintenance/1","Accept":"application/json"})
+                  with urllib.request.urlopen(req,timeout=30) as response:
+                      assert urllib.parse.urlsplit(response.url).hostname=="pypi.org"
+                      data=json.load(response)
+                  assert data["info"]["version"]==version
+                  item=[x for x in data["urls"] if x["filename"]==wheel]
+                  assert len(item)==1
+                  item=item[0]
+                  assert not item["yanked"] and item["packagetype"]=="bdist_wheel"
+                  assert item["url"]==s["url"] and item["digests"]["sha256"]==s["sha256"]
+                  assert SpecifierSet(item["requires_python"] or data["info"]["requires_python"]).contains("3.14.10",prereleases=False)
+                  with urllib.request.urlopen(s["url"],timeout=90) as response:
+                      assert urllib.parse.urlsplit(response.url).hostname=="files.pythonhosted.org"
+                      body=response.read(item["size"]+1)
+                  assert len(body)==item["size"] and sha(body)==s["sha256"]
+                  dest=wheelhouse/wheel
+                  dest.write_bytes(body)
+                  dist=name+"-"+version+".dist-info"
+                  rec=dist+"/RECORD"
+                  with zipfile.ZipFile(dest) as z:
+                      files={}
+                      for entry in z.infolist():
+                          if entry.is_dir(): continue
+                          f=pathsafe(entry.filename)
+                          assert f.startswith((name+"/",dist+"/"))
+                          assert not stat.S_ISLNK(entry.external_attr>>16) and not entry.flag_bits&1
+                          assert entry.file_size<30_000_000 and f not in files
+                          assert "__pycache__" not in f and not f.endswith((".pyc",".pth"))
+                          files[f]=z.read(entry)
+                      assert len({f.casefold() for f in files})==len(files)
+                  rr=rows(files[rec])
+                  assert set(rr)==set(files)
+                  for f,content in files.items():
+                      assert rr[f]==(("","") if f==rec else (rh(content),str(len(content)))), "Wheel RECORD mismatch: "+f
+                  metadata=email.parser.BytesParser().parsebytes(files[dist+"/METADATA"],headersonly=True)
+                  assert metadata["Name"].lower()==name and metadata["Version"]==version
+                  assert (metadata.get("License-Expression") or metadata.get("License"))==s["license"]
+                  assert SpecifierSet(metadata["Requires-Python"]).contains("3.14.10",prereleases=False)
+                  licensefiles=metadata.get_all("License-File",[])
+                  assert licensefiles and all(dist+"/licenses/"+f in files for f in licensefiles)
+                  if name=="pip":
+                      old_cp=configparser.ConfigParser(interpolation=None); old_cp.read_string(old_entry_points.decode("utf-8"))
+                      new_cp=configparser.ConfigParser(interpolation=None); new_cp.read_string(files[dist+"/entry_points.txt"].decode("utf-8"))
+                      assert dict(old_cp["console_scripts"])==dict(new_cp["console_scripts"]), "Console entry point change requires review"
+                  upstream[name]=(dist,rec,files)
+                  print("OFFICIAL_WHEEL_VERIFIED="+json.dumps({"name":name,"version":version,"sha256":s["sha256"],"bytes":len(body),"requires_python":metadata["Requires-Python"],"license":s["license"],"license_files":len(licensefiles)},ensure_ascii=True),flush=True)
+              reqfile=owned/"two-wheel-lock.txt"
+              reqfile.write_text("".join(n+"=="+s["version"]+" --hash=sha256:"+s["sha256"]+"\n" for n,s in specs.items()),encoding="ascii",newline="\n")
+              args=("--no-index","--find-links",wheelhouse,"--no-deps","--require-hashes","--only-binary=:all:","--no-compile","--ignore-installed","--requirement",reqfile)
+              piprun("install",*args,"--target",stage)
+              def verify_install(target, preserve_launchers=False):
+                  expected_roots={"pip","certifi","bin"}|{d for d,_,_ in upstream.values()}
+                  assert {p.name for p in target.iterdir()}==expected_roots, "Unexpected installed top-level path"
+                  assert treefiles(target,"bin")==launchers
+                  for name,(dist,rec,files) in upstream.items():
+                      actual=treefiles(target,name)|treefiles(target,dist)
+                      extra={dist+"/INSTALLER",dist+"/REQUESTED"}
+                      assert actual==set(files)|extra, ("Installed extra/missing files",name,sorted(actual-(set(files)|extra)),sorted((set(files)|extra)-actual))
+                      assert (target/dist/"INSTALLER").read_text().strip()=="pip" and (target/dist/"REQUESTED").read_bytes()==b""
+                      for f,content in files.items():
+                          if f!=rec: assert (target/f).read_bytes()==content, "Installed official bytes differ: "+f
+                      # RECORD may refer to the staging home scheme's ../../bin paths.
+                      # Normalize only the three exact generated names, never a supplied
+                      # arbitrary path. Preserve old unexposed vendor EXEs in final repo.
+                      if preserve_launchers and name=="pip":
+                          for f,data in old_launchers.items():
+                              (target/f).write_bytes(data)
+                      owned_files=actual|(launchers if name=="pip" else set())
+                      with (target/rec).open("w",encoding="utf-8",newline="") as handle:
+                          writer=csv.writer(handle,lineterminator="\n")
+                          for f in sorted(owned_files):
+                              if f==rec: writer.writerow((f,"",""))
+                              else:
+                                  content=(target/f).read_bytes()
+                                  writer.writerow((f,rh(content),str(len(content))))
+                      print("STAGED_WHEEL_PAYLOAD_AND_RECORD=PASS "+name,flush=True)
+              verify_install(stage,preserve_launchers=True)
+              # All old roots were proven fully owned above; move only those exact
+              # directories into our private backup, never remove unrelated files.
+              for name,s in specs.items():
+                  old_dist=name+"-"+s["old"]+".dist-info"
+                  new_dist,_,_=upstream[name]
+                  assert not (site/new_dist).exists()
+                  for part in (name,old_dist): (site/part).rename(backup/part)
+                  for part in (name,new_dist): (stage/part).rename(site/part)
+              assert all((site/p).read_bytes()==data for p,data in old_launchers.items())
+              new_versions=distributions()
+              expected=old_versions|{n:s["version"] for n,s in specs.items()}
+              assert new_versions==expected
+              assert set(new_versions)==set(old_versions)
+              print("INSTALLED_VERSION_DELTA=PASS "+json.dumps({n:[old_versions[n],new_versions[n]] for n in specs}),flush=True)
+              # The new pip itself must handle public verified HTTPS downloads and local
+              # offline installation, without relying on cached data or source builds.
+              piprun("--version",expected="pip 26.3 from ")
+              piprun("check",expected="No broken requirements found.")
+              piprun("download","--index-url","https://pypi.org/simple","--no-cache-dir","--no-deps","--only-binary=:all:","--require-hashes","--requirement",reqfile,"--dest",verified)
+              assert {p.name for p in verified.iterdir()}=={p.name for p in wheelhouse.iterdir()}
+              assert all(sha(p.read_bytes())==sha((wheelhouse/p.name).read_bytes()) for p in verified.iterdir())
+              piprun("install",*args,"--target",reinstall)
+              verify_install(reinstall)
+              print("NEW_PIP_OFFICIAL_HTTPS_AND_OFFLINE_REINSTALL=PASS",flush=True)
+              print("VENDOR_LAUNCHERS_UNEXPOSED_ORIGINAL_BYTES_RETAINED=PASS",flush=True)
+          
+          # Only the two exact direct pins and corresponding wheel hashes change.
+          input_path=root/"tool/python-packages.in.txt"
+          lock_path=root/"tool/python-packages.lock.txt"
+          old_input=input_path.read_bytes()
+          new_input=old_input
+          lock=lock_path.read_bytes()
+          old_header=b"# requirements-sha256: "+sha(old_input).encode()
+          assert lock.count(old_header)==1
+          for name,s in specs.items():
+              a=(name+"=="+s["old"]).encode()
+              b=(name+"=="+s["version"]).encode()
+              assert new_input.count(a)==1
+              new_input=new_input.replace(a,b,1)
+              a+=(" --hash=sha256:"+s["oldhash"]).encode()
+              b+=(" --hash=sha256:"+s["sha256"]).encode()
+              assert lock.count(a)==1
+              lock=lock.replace(a,b,1)
+          lock=lock.replace(old_header,b"# requirements-sha256: "+sha(new_input).encode(),1)
+          input_path.write_bytes(new_input); lock_path.write_bytes(lock)
+          def edit(relative,pairs):
+              p=root/relative
+              original=p.read_bytes()
+              content=original.decode("utf-8")
+              newline="\r\n" if b"\r\n" in original else "\n"
+              for a,b in pairs:
+                  a=a.replace("\n",newline); b=b.replace("\n",newline)
+                  assert content.count(a)==1, "Unexpected edit target: "+relative
+                  content=content.replace(a,b,1)
+              p.write_bytes(content.encode("utf-8"))
+          doc_path="tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md"
+          edit(doc_path,[("### Python \u4f9d\u8d56\u4e0e\u547d\u4ee4\u5165\u53e3\n\n","### Python \u4f9d\u8d56\u4e0e\u547d\u4ee4\u5165\u53e3\n\n"+"\u5f53\u524d\u5f00\u53d1\u5019\u9009 pip 26.3\uff08[\u5b98\u65b9 PyPI](https://pypi.org/project/pip/26.3/)\uff0cMIT\uff0cPython >=3.10\uff09\u53ca certifi 2026.11.20\uff08[\u5b98\u65b9 PyPI](https://pypi.org/project/certifi/2026.11.20/)\uff0cMPL-2.0\uff0cPython >=3.7\uff09\u5747\u4e3a py3-none-any \u7a33\u5b9a wheel\uff0c\u56fa\u5b9a Windows Python 3.14.10 \u4e0d\u53d8\u3002\u6458\u8981\u5728 `python-packages.lock.txt`\uff1bpip \u81ea\u5e26 certifi 2026.10.23 \u548c\u9876\u5c42 certifi 2026.11.20 \u5206\u522b\u4fdd\u7559\u5b98\u65b9\u8bc1\u4e66\uff0crequests/httpx \u4f7f\u7528\u9876\u5c42 bundle\uff0cpip \u4f7f\u7528\u4e0a\u6e38 vendored bundle \u5e76\u4fdd\u6301\u5176\u9ed8\u8ba4\u7cfb\u7edf truststore \u884c\u4e3a\uff1b\u4e0d\u9759\u9ed8\u5173\u95ed TLS \u9a8c\u8bc1\u3001\u4e0d\u7ee7\u627f\u5bbf\u4e3b CA \u914d\u7f6e\u3001\u4e0d\u5ba3\u79f0 OS \u4fe1\u4efb\u5e93\u9694\u79bb\u3002\u53d7\u63a7\u7ef4\u62a4\u79bb\u7ebf\u6682\u5b58\u5b89\u88c5\u540e\u6838\u5bf9 wheel \u5168\u90e8\u8f7d\u8377\u548c\u8bb8\u53ef\u8bc1\uff0c\u4e09\u4efd\u65e7 vendor pip EXE \u539f\u5b57\u8282\u4fdd\u7559\uff08\u4e0d\u6267\u884c\u3001\u4e0d\u52a0\u5165 PATH\uff09\uff0c\u91cd\u65b0\u8bb0\u5f55\u771f\u5b9e RECORD\uff0c\u4fdd\u6301\u539f CMD \u5165\u53e3\u548c `setup-tools.ps1` \u4ec5\u540c\u7248\u4fee\u590d\u89c4\u5219\u3002\u9a8c\u6536\u548c\u56de\u9000\u89c1\u5f00\u53d1\u8bb0\u5f55\u3002\n\n")])
+          runurl="https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]
+          edit("DEVELOPMENT.md",[("# \u5f00\u53d1\u4e0e\u7ef4\u62a4\u8bb0\u5f55\n\n","# \u5f00\u53d1\u4e0e\u7ef4\u62a4\u8bb0\u5f55\n\n"+"## 2026-11-25\uff1a\u7a33\u5b9a\u5de5\u5177\u66f4\u65b0\u5f00\u53d1\u5206\u652f\uff0c\u7b2c\u4e8c\u7ec4 pip / certifi\n\n\u56fa\u5b9a Python 3.14.10 x64 \u4e0d\u52a8\uff0c\u4ec5\u4ece\u5df2\u9a8c 350bb6eb \u66f4\u65b0 pip 26.1.2 \u2192 26.3\uff08MIT\uff09\u548c certifi 2026.5.20 \u2192 2026.11.20\uff08MPL-2.0\uff09\u3002\u4e24\u4e2a\u5b98\u65b9 PyPI py3-none-any wheel \u7684 URL \u4e0e SHA-256 \u5df2\u9501\u5b9a\uff0c\u4f7f\u7528\u65e2\u6709 Python/pip \u5728\u5305\u5185\u72ec\u7acb\u6682\u5b58\u4f4d\u7f6e\u8fdb\u884c hash-only/no-index/no-deps \u5b89\u88c5\uff1b\u5b8c\u6574\u6838\u5bf9 wheel RECORD\u3001\u6240\u6709\u5b98\u65b9\u8f7d\u8377\u548c\u8bb8\u53ef\u8bc1\uff0c\u786e\u8ba4\u65e7 RECORD \u5f52\u5c5e\u3001\u65e0\u91cd\u590d\u5143\u6570\u636e\u300149 \u4e2a\u4f9d\u8d56\u7248\u672c\u4e2d\u4ec5\u4e24\u9879\u53d8\u5316\u3002\u4e09\u4efd\u672a\u66b4\u9732\u5230 PATH \u7684\u5386\u53f2 vendor pip EXE \u4fdd\u7559\u539f\u5b57\u8282\uff08\u4e0d\u6267\u884c\uff09\uff0c\u65b0 RECORD \u8bb0\u5f55\u5176\u771f\u5b9e\u6458\u8981\uff0c\u5b98\u65b9 pip \u4ee3\u7801\u53ca dist-info \u5176\u4ed6\u539f\u59cb wheel \u5b57\u8282\u4e0d\u6539\uff1b\u539f\u53ef\u642c\u8fc1 CMD \u548c setup \u4fee\u590d\u95e8\u7981\u4e0d\u6539\u3002\u65b0 pip \u4fdd\u7559\u5176\u4e0a\u6e38\u81ea\u5e26 certifi 2026.10.23\uff0c\u9876\u5c42 certifi \u4e3a 2026.11.20\uff0c\u4e0d\u624b\u5de5\u6df7\u6362\uff1bpip \u9ed8\u8ba4\u4ecd\u6309\u4e0a\u6e38\u4f7f\u7528\u7cfb\u7edf truststore \u4e0e vendored certifi\uff0c\u4e0d\u5ba3\u79f0\u5b8c\u5168\u9694\u79bb OS \u4fe1\u4efb\u5e93\u3002\u901a\u8fc7\u5b9e\u9645\u5b98\u65b9 HTTPS \u4e0b\u8f7d\u3001\u72ec\u7acb\u79bb\u7ebf\u91cd\u65b0\u5b89\u88c5\u3001\u9501\u5b9a\u4e0e\u4f9d\u8d56\u95ed\u5305\u3001\u5e38\u7528/YOLO \u539f\u751f pip \u4e0e CA \u8def\u5f84/\u73af\u5883\u3001\u4e2d\u6587\u642c\u8fc1\u3001Office/PDF\u3001\u6d4f\u89c8\u5668/MCP\u3001\u53d1\u884c\u8f93\u5165\u95e8\u7981\u540e\u624d\u63a8\u9001\u3002\u5408\u6210 Responses/\u73af\u5883\u4e0e\u6587\u4ef6\u4e0d\u4ee3\u8868\u771f\u5b9e\u8d26\u53f7\u6216\u7ebf\u4e0a\u6a21\u578b\uff1b\u5df2\u77e5 ADB\u3001PSModulePath\u3001\u5b9e\u9645\u8bbe\u5907/\u4ea4\u4e92\u5ba1\u6279/\u53ef\u9009\u6e32\u67d3\u548c\u91cd\u7b97\u7b49\u9650\u5236\u4e0d\u53d8\u3002\u56de\u9000\u6574\u4f53\u6062\u590d\u672c\u7ec4\u4e24\u4efd\u5305\u3001dist-info\u3001\u4f9d\u8d56\u8f93\u5165/\u9501\u3001\u6d4b\u8bd5\u548c\u8bf4\u660e\uff0c\u4fdd\u6301\u5df2\u9a8c rg \u63d0\u4ea4\uff0c\u4e0d\u89e6\u53ca main/tag/Release\u3002\n\n"+"[Windows AC]("+runurl+").\n\n")])
+          probe=root/"tests/check_pip_certifi_refresh.py"
+          assert not probe.exists()
+          probe.write_text("\"\"\"Actual relocated Windows pip entry point and CA-consumer audit (synthetic environment).\"\"\"\nimport importlib.metadata as md\nimport json\nimport os\nfrom pathlib import Path\nimport shutil\nimport ssl\nimport subprocess\nimport sys\n\nimport certifi\nimport httpx\nimport pip\nimport requests\nfrom pip._vendor import certifi as pip_certifi\nfrom pip._vendor import requests as pip_requests\n\ndef main():\n    root = Path(os.environ[\"CODEX_INSTALL_DIR\"]).resolve()\n    site = root / \"tool/python/Lib/site-packages\"\n    py = root / \"tool/python/python.exe\"\n    assert sys.version_info[:3] == (3, 14, 10)\n    assert Path(sys.executable).resolve() == py\n    assert sys.flags.isolated and sys.flags.ignore_environment\n    assert all(Path(p).resolve().is_relative_to(root / \"tool/python\") for p in sys.path)\n    assert os.environ[\"PIP_CONFIG_FILE\"].lower() == \"nul\"\n    assert Path(os.environ[\"PIP_CACHE_DIR\"]).resolve().is_relative_to(root)\n    assert Path(os.environ[\"PYTHONUSERBASE\"]).resolve().is_relative_to(root)\n    assert Path(os.environ[\"PYTHONPYCACHEPREFIX\"]).resolve().is_relative_to(root)\n    for key in (\"PIP_INDEX_URL\",\"PIP_EXTRA_INDEX_URL\",\"PIP_TRUSTED_HOST\",\"PIP_CERT\",\"PIP_CLIENT_CERT\",\n                \"SSL_CERT_FILE\",\"SSL_CERT_DIR\",\"REQUESTS_CA_BUNDLE\",\"CURL_CA_BUNDLE\",\"PYTHONHOME\",\"PYTHONPATH\"):\n        assert not os.environ.get(key), \"Unexpected inherited config: \" + key\n    assert pip.__version__ == md.version(\"pip\") == \"26.3\"\n    assert certifi.__version__ == md.version(\"certifi\") == \"2026.11.20\"\n    assert pip_certifi.__version__ == \"2026.10.23\"\n    for name in (\"pip\", \"certifi\"):\n        found = [d for d in md.distributions() if d.metadata[\"Name\"].lower() == name]\n        assert len(found) == 1 and Path(found[0].locate_file(\"\")).resolve() == site\n    for module in (pip, certifi, requests, httpx, pip_certifi, pip_requests):\n        assert Path(module.__file__).resolve().is_relative_to(site)\n    standalone = site / \"certifi/cacert.pem\"\n    vendored = site / \"pip/_vendor/certifi/cacert.pem\"\n    assert Path(certifi.where()).resolve() == standalone\n    assert Path(requests.certs.where()).resolve() == standalone\n    assert Path(requests.utils.DEFAULT_CA_BUNDLE_PATH).resolve() == standalone\n    assert Path(pip_certifi.where()).resolve() == vendored\n    assert Path(pip_requests.certs.where()).resolve() == vendored\n    assert Path(pip_requests.utils.DEFAULT_CA_BUNDLE_PATH).resolve() == vendored\n    def certs(ctx):\n        assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname\n        values = set(ctx.get_ca_certs(binary_form=True))\n        assert values\n        return values\n    expected = certs(ssl.create_default_context(cafile=str(standalone)))\n    assert certs(httpx.create_ssl_context(verify=True, trust_env=True)) == expected\n    pip_roots = certs(ssl.create_default_context(cafile=str(vendored)))\n    print(\"NATIVE_CA_BUNDLES=PASS standalone=2026.11.20 roots=%d vendored=2026.10.23 roots=%d\" % (len(expected), len(pip_roots)), flush=True)\n    # Execute through the same relocatable console entry-point helper used by\n    # the existing .cmd shims (the shell additionally exercises those shims).\n    helper = root / \"tool/bin/portable-python-cli.py\"\n    def run(*args):\n        p = subprocess.run([str(py), \"-E\", \"-s\", \"-B\", str(helper), \"pip\",\n            \"--isolated\", \"--disable-pip-version-check\", \"--no-input\", *args],\n            cwd=Path(__file__).parent, capture_output=True, timeout=90)\n        assert p.returncode == 0, (\"pip\", args, p.returncode, p.stderr.decode(\"utf-8\",\"replace\"))\n        return p.stdout.decode(\"utf-8\",\"strict\").strip()\n    version = run(\"--version\")\n    assert version.startswith(\"pip 26.3 from \") and str(site / \"pip\") in version\n    debug = run(\"debug\")\n    line = next(s for s in debug.splitlines() if s.startswith(\"pip._vendor.certifi.where(): \"))\n    assert Path(line.split(\": \",1)[1]).resolve() == vendored\n    assert Path(run(\"cache\",\"dir\",\"--cache-dir\",os.environ[\"PIP_CACHE_DIR\"])).resolve() == Path(os.environ[\"PIP_CACHE_DIR\"]).resolve()\n    packages = {x[\"name\"].lower():x[\"version\"] for x in json.loads(run(\"list\",\"--format=json\"))}\n    assert len(packages) == 49\n    assert packages[\"pip\"] == \"26.3\" and packages[\"certifi\"] == \"2026.11.20\"\n    assert run(\"check\") == \"No broken requirements found.\"\n    # Do not run vendor EXEs with embedded installation paths.\n    for name in (\"pip.cmd\",\"pip3.cmd\",\"pip3.14.cmd\"):\n        assert Path(shutil.which(name)).resolve() == root / \"tool/bin\" / name\n    print(\"NATIVE_PIP_ENTRYPOINT_CONFIG_AND_CLOSURE=PASS\",flush=True)\n\nif __name__ == \"__main__\":\n    main()\n",encoding="utf-8",newline="\n")
+          relative="tests/check_codex_tool_discovery.py"
+          edit(relative,[
+           ("PROBE_PY = '''","PIP_CERTIFI_PROBE = Path(__file__).with_name(\"check_pip_certifi_refresh.py\").read_text(encoding=\"utf-8\")\n\nPROBE_PY = '''"),
+           ("Run-Checked ($root + '\\tool\\python\\python.exe') @('-B', ($root + '\\work\\tool-probe\\rg-refresh.py'))","Run-Checked ($root + '\\tool\\python\\python.exe') @('-B', ($root + '\\work\\tool-probe\\rg-refresh.py'))\nRun-Checked ($root + '\\tool\\python\\python.exe') @('-B', ($root + '\\work\\tool-probe\\pip-certifi-refresh.py'))\nforeach ($name in @('pip.cmd','pip3.cmd','pip3.14.cmd')) { Test-BundledCommand $name; Run-Checked $name @('--version') }"),
+           ("if ($LASTEXITCODE -ne 0) { throw 'Native YOLO rg regression failed' }","if ($LASTEXITCODE -ne 0) { throw 'Native YOLO rg regression failed' }\n& (Join-Path $env:CODEX_INSTALL_DIR 'tool/python/python.exe') -B (Join-Path $env:CODEX_INSTALL_DIR 'work/tool-probe/pip-certifi-refresh.py')\nif ($LASTEXITCODE -ne 0) { throw 'Native YOLO pip/certifi regression failed' }"),
+           ('        (probe / "rg-refresh.py").write_text(RG_REFRESH_PY, encoding="utf-8")','        (probe / "rg-refresh.py").write_text(RG_REFRESH_PY, encoding="utf-8")\n        (probe / "pip-certifi-refresh.py").write_text(PIP_CERTIFI_PROBE, encoding="utf-8")'),
+           ('            assert "NATIVE_RG16_SEARCH_AND_DISCOVERY=PASS" in evidence and "RG15_RG16_EXACT_LF_CRLF_PARITY=PASS" in evidence, "Missing actual dual-version rg search evidence"','            assert "NATIVE_RG16_SEARCH_AND_DISCOVERY=PASS" in evidence and "RG15_RG16_EXACT_LF_CRLF_PARITY=PASS" in evidence, "Missing actual dual-version rg search evidence"\n            assert "NATIVE_CA_BUNDLES=PASS" in evidence and "NATIVE_PIP_ENTRYPOINT_CONFIG_AND_CLOSURE=PASS" in evidence, "Missing native pip/certifi evidence"'),
+           ('            env["PATH"] = str(windows / "System32")','            env["PATH"] = str(windows / "System32")\n            # Only synthetic inherited values: no actual host configuration.\n            env.update(PIP_CONFIG_FILE=str(owned / "synthetic-host-pip.ini"),\n                       PIP_INDEX_URL="https://invalid.example/simple",\n                       PIP_EXTRA_INDEX_URL="https://invalid.example/extra",\n                       PIP_TRUSTED_HOST="invalid.example", PIP_CERT=str(owned / "absent-ca.pem"),\n                       PIP_CLIENT_CERT=str(owned / "absent-client.pem"),\n                       SSL_CERT_FILE=str(owned / "absent-ca.pem"), SSL_CERT_DIR=str(owned / "absent-ca-dir"),\n                       REQUESTS_CA_BUNDLE=str(owned / "absent-ca.pem"), CURL_CA_BUNDLE=str(owned / "absent-ca.pem"),\n                       PYTHONPATH=str(owned / "absent-pythonpath"), PYTHONHOME=str(owned / "absent-pythonhome"))\n            (owned / "synthetic-host-pip.ini").write_text("[global]\\nindex-url = https://invalid.example/simple\\n", encoding="utf-8")')
+          ])
+          print("PIP_CERTIFI_LOCK_DOC_AND_NATIVE_FIXTURE_READY=PASS",flush=True)
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Controlled wheel refresh failed; do not push' }
+          & .\tool\python\python.exe -B tool/python-lock.py validate --requirements tool/python-packages.in.txt --lock tool/python-packages.lock.txt
+          if ($LASTEXITCODE) { throw 'New lock validation failed' }
+          & .\tool\python\python.exe -B tool/python-lock.py validate-runtime --requirements tool/python-packages.in.txt
+          if ($LASTEXITCODE) { throw 'New runtime ownership failed' }
+      - name: Commit only the exact candidate locally
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import pathlib, subprocess
+          root=pathlib.Path.cwd()
+          site="tool/python/Lib/site-packages/"
+          prefixes=tuple(site+x+"/" for x in ("pip","certifi","pip-26.1.2.dist-info","pip-26.3.dist-info","certifi-2026.5.20.dist-info","certifi-2026.11.20.dist-info"))
+          exact={"tool/python-packages.in.txt","tool/python-packages.lock.txt","tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md","DEVELOPMENT.md","tests/check_pip_certifi_refresh.py","tests/check_codex_tool_discovery.py"}
+          def git(*args): return subprocess.check_output(["git",*args],cwd=root)
+          def names(*args): return set(git(*args).decode("utf-8").split("\0"))-{""}
+          def allowed(p): return p in exact or p.startswith(prefixes)
+          changed=names("diff","--no-renames","--name-only","-z")|names("ls-files","--others","--exclude-standard","-z")
+          assert exact.issubset(changed) and all(allowed(p) for p in changed), ("Unexpected scope",sorted(p for p in changed if not allowed(p)))
+          git("add","-A","--",*[p[:-1] for p in prefixes],*sorted(exact))
+          staged=names("diff","--cached","--no-renames","--name-only","-z")
+          assert staged==changed and all(allowed(p) for p in staged)
+          assert not git("diff","--name-only","-z")
+          assert not git("ls-files","--others","--exclude-standard","-z")
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Refresh pinned pip 26.3 and certifi 2026.11.20 after controlled wheel staging")
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          print("LOCAL_PIP_CERTIFI_CANDIDATE="+git("rev-parse","HEAD").decode().strip(),flush=True)
+          print("EXACT_PAYLOAD_AND_DOCUMENTATION_DIFF_FILES="+str(len(staged)),flush=True)
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Candidate diff gate failed' }
+      - name: Existing runtime, isolation, dependency, path and package regressions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($test in @('test_python_lock.py','test_pip_config_isolation.py','test_python_runtime_dependencies.py','test_python_cli_shims.py','test_python_cli_output.py','test_optional_python_payload.py','test_cli_version_verifier.py','test_runtime_package.py','test_mode_copies.py','test_release_package.py','test_pdf_library*.py','test_office_output_boundaries.py','test_browser_install.py')) {
+            & .\tool\python\python.exe -B -m unittest discover -s tests -p $test -v
+            if ($LASTEXITCODE) { throw "Regression failed: $test" }
+          }
+          foreach ($test in @('test_python_setup.ps1','test_portable_paths.ps1','test_launcher_smoke.ps1','test_runtime_preflight.ps1')) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests' $test)
+            if ($LASTEXITCODE) { throw "Windows regression failed: $test" }
+          }
+      - name: Actual common-mode pip and CA paths, Chinese relocation and browser discovery
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($mode in @('normal','unknown','browser-check')) {
+            & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py $mode
+            if ($LASTEXITCODE) { throw "Native common-mode probe failed: $mode" }
+          }
+      - name: Actual YOLO pip and browser, native MCP and Office PDF chain
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py browser
+          if ($LASTEXITCODE) { throw 'Native YOLO probe failed' }
+          & .\tool\python\python.exe -B tests/check_codex_browser_mcp.py
+          if ($LASTEXITCODE) { throw 'Native MCP integration failed' }
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py documents
+          if ($LASTEXITCODE) { throw 'Native Office/PDF probe failed' }
+      - name: Final LFS and customer input integrity, no archive or artifact
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'LFS gate failed' }
+          & .\tool\python\python.exe -B tool/package-release.py --check
+          if ($LASTEXITCODE) { throw 'Customer input integrity failed' }
+          Write-Output 'PIP_CERTIFI_WINDOWS_NATIVE_VALIDATION=PASS'
+          Write-Output 'Real Windows processes with synthetic model/inputs; no real account, devices, optional renderers or formula calculation tested.'
+      - name: Push only validated fast-forward development commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REF -cne "refs/heads/$env:TARGET_BRANCH" -or $env:TARGET_BRANCH -cne 'dev/stable-tool-refresh') { throw 'Wrong target branch' }
+          $current = (git rev-parse HEAD).Trim()
+          if ((git rev-parse 'HEAD^').Trim() -cne $env:GITHUB_SHA) { throw 'Candidate not direct child' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
+            $remote = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen ref or development branch moved before push' }
+          }
+          $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:GH_TOKEN"))
+          Write-Output "::add-mask::$auth"
+          try {
+            & git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin "HEAD:refs/heads/$env:TARGET_BRANCH"
+            if ($LASTEXITCODE) { throw 'Validated development-only push failed' }
+          } finally {
+            Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+            $auth = $null
+          }
+          $after = (git ls-remote origin "refs/heads/$env:TARGET_BRANCH") -join ''
+          if ($LASTEXITCODE -ne 0 -or $after -cne ($current + [char]9 + "refs/heads/$env:TARGET_BRANCH")) { throw 'Development push readback mismatch' }
+          foreach ($ref in @('refs/heads/main','refs/tags/v0.172.0-portable.1')) {
+            $remote = (git ls-remote origin $ref) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($env:FROZEN + [char]9 + $ref)) { throw 'Frozen ref changed' }
+          }
+          Write-Output "VALIDATED_DEV_COMMIT=$current"
+          Write-Output 'NO_RELEASE_NO_ARTIFACT_NO_MAIN_CHANGE'
