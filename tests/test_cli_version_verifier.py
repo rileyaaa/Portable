@@ -49,5 +49,14 @@ class CliVersionTests(unittest.TestCase):
                     verifier.match(root, candidates)
 
 
+    def test_bundled_cli_manifest_digests(self):
+        import json
+        root = SRC.parents[2]
+        manifest = json.loads((root / 'tool/cli-versions.json').read_bytes())
+        for item in manifest['tools']:
+            with self.subTest(name=item['name']):
+                self.assertEqual(verifier.sha256(root / item['windows_path']), item['windows_sha256'])
+
+
 if __name__ == '__main__':
     unittest.main()

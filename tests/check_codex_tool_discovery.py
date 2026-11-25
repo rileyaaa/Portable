@@ -40,6 +40,76 @@ BROWSER_CHECK_MARKER = "PORTABLE_BROWSER_CHECK_READ_ONLY_0172"
 DOCUMENT_MARKER = "PORTABLE_DOCUMENT_ROUNDTRIP_0172"
 DONE = "native-tool-discovery-ok"
 
+RG_REFRESH_PY = r'''
+import hashlib, json, os, pathlib, shutil, subprocess
+root=pathlib.Path(os.environ["CODEX_INSTALL_DIR"]).resolve()
+exe=root/"tool/bin/rg.exe"
+fixed=root/"codex-path/rg.exe"
+selected=pathlib.Path(shutil.which("rg.exe")).resolve()
+assert selected in {exe,fixed}, "rg host fallback"
+for binary, digest in ((fixed,"14231169855ec5205cf5a1b6f1db358ff4aed4247c86b69ce8aae647c77f6680"),(exe,"a140ac0ec5346e6aa59e13bdb09f001237632bafcede54c13b885e08efcecf64")):
+    with binary.open("rb") as f:
+        assert hashlib.file_digest(f,"sha256").hexdigest()==digest, "Unexpected comparison binary"
+sample=pathlib.Path(__file__).parent/"rg-sample"
+sample.mkdir()
+filename="\u4fbf\u643a.txt"
+needle="needle \u4e2d\u6587"
+def call(binary,args,expected=0,env=None,cwd=None):
+    p=subprocess.run([str(binary),"--no-config",*args],cwd=cwd or sample,capture_output=True,timeout=20,env=env)
+    assert p.returncode==expected, ("rg exit",binary.name,args,p.returncode,p.stderr.decode("utf-8","replace"))
+    return p.stdout
+assert call(exe,["--version"]).splitlines()[0].startswith(b"ripgrep 16.0.0")
+assert call(fixed,["--version"]).splitlines()[0].startswith(b"ripgrep 15.2.0")
+assert call(selected,["--version"]).splitlines()[0].startswith(b"ripgrep 16.0.0" if selected==exe else b"ripgrep 15.2.0")
+def check_search(binary, fixture, label):
+    rows=[json.loads(line) for line in call(binary,["--json","-F","needle","."],cwd=fixture).splitlines()]
+    matches=[r["data"] for r in rows if r["type"]=="match"]
+    files=call(binary,["--files"],cwd=fixture).decode("utf-8").splitlines()
+    # Capture the raw line and actual inventory before assertions.
+    # All inputs and output are owned synthetic fixture data.
+    print("RG_COMPARE="+json.dumps({"fixture":fixture.name,"version":label,
+          "matches":[{"path":m["path"],"lines":m["lines"]} for m in matches],
+          "files":files},ensure_ascii=True),flush=True)
+    assert len(matches)==1
+    assert matches[0]["path"]["text"].endswith(filename)
+    assert len(files)==1 and files[0].endswith(filename)
+    call(binary,["-F","no-match-token","."],expected=1,cwd=fixture)
+    return matches[0]["lines"]["text"]
+for mode, ending in (("windows-default","\r\n"),("explicit-lf","\n")):
+    fixture=sample/mode
+    fixture.mkdir()
+    if mode=="windows-default":
+        # Reproduce the original Windows fixture byte-for-byte.
+        (fixture/filename).write_text(needle+"\n",encoding="utf-8")
+    else:
+        (fixture/filename).write_bytes((needle+"\n").encode("utf-8"))
+    (fixture/"skip.txt").write_text("needle ignored\n",encoding="utf-8")
+    (fixture/".hidden.txt").write_text("needle hidden\n",encoding="utf-8")
+    (fixture/".ignore").write_text("skip.txt\n",encoding="utf-8")
+    expected_bytes=(needle+ending).encode("utf-8")
+    actual_bytes=(fixture/filename).read_bytes()
+    print("RG_FIXTURE_BYTES="+json.dumps({"fixture":mode,"actual_hex":actual_bytes.hex(),"expected_hex":expected_bytes.hex()},ensure_ascii=True),flush=True)
+    assert actual_bytes==expected_bytes, "Unexpected Windows fixture bytes"
+    observed={label:check_search(binary,fixture,label) for label,binary in (("15.2.0",fixed),("16.0.0",exe))}
+    expected_line=expected_bytes.decode("utf-8")
+    if mode=="windows-default":
+        legacy={label:line==needle+"\n" for label,line in observed.items()}
+        print("RG_LEGACY_LF_ASSERTION="+json.dumps(legacy,ensure_ascii=True),flush=True)
+        assert legacy=={"15.2.0":False,"16.0.0":False}, "Original failure not reproduced equally; review instead of accepting the fixture fix"
+    # Compare exact text, including its line ending; no stripping or
+    # normalization. The old and new versions must both agree with
+    # the bytes we wrote, rather than a hard-coded LF assumption.
+    assert observed=={"15.2.0":expected_line,"16.0.0":expected_line}, ("rg line data differs",mode,observed)
+    selected_label="16.0.0" if selected==exe else "15.2.0"
+    assert check_search(selected,fixture,"PATH:"+selected_label)==expected_line
+    env=os.environ.copy()
+    env["RIPGREP_THREADS"]="2"
+    assert call(exe,["-j","1","-F","needle","."],env=env,cwd=fixture)
+print("RG15_RG16_EXACT_LF_CRLF_PARITY=PASS",flush=True)
+print("RG_PATH_RESOLVED="+str(selected.relative_to(root)),flush=True)
+print("NATIVE_RG16_SEARCH_AND_DISCOVERY=PASS",flush=True)
+'''
+
 PROBE_PY = '''
 import importlib, os, pathlib, site, sys, tomllib
 root = pathlib.Path(os.environ["CODEX_INSTALL_DIR"]).resolve()
@@ -185,6 +255,7 @@ try {
 }
 # This absolute path is rooted in the already-verified disposable fixture.
 Run-Checked ($root + '\tool\python\python.exe') @('-B', ($root + '\work\tool-probe\probe.py'))
+Run-Checked ($root + '\tool\python\python.exe') @('-B', ($root + '\work\tool-probe\rg-refresh.py'))
 if ($script:ToolProbeFailures.Count -ne 0) { throw ('Tool probe failures: ' + ($script:ToolProbeFailures -join ', ')) }
 Write-Output 'PORTABLE_CORE_TOOLS_EXECUTED_0172'
 '''
@@ -238,6 +309,8 @@ Write-Output 'DIAG_BEGIN_INLINE_TOOL_PROBE'
 
 BROWSER_PS = r'''
 $ErrorActionPreference = 'Stop'
+& (Join-Path $env:CODEX_INSTALL_DIR 'tool/python/python.exe') -B (Join-Path $env:CODEX_INSTALL_DIR 'work/tool-probe/rg-refresh.py')
+if ($LASTEXITCODE -ne 0) { throw 'Native YOLO rg regression failed' }
 $entry = Join-Path $env:CODEX_INSTALL_DIR 'tool/automation/start-browser.ps1'
 $engine = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
 & $engine -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $entry -TaskAuthorized -Workspace 'work/tool-probe' -TaskScript 'work/tool-probe/page.cjs'
@@ -538,6 +611,8 @@ def handler_for(fixture, mode):
         evidence = json.dumps(outputs, ensure_ascii=False)
         print("NATIVE_TOOL_OUTPUT=" + evidence[:26000], flush=True)
         assert expected in evidence, "Real tool output did not contain success marker: " + expected
+        if mode in {"normal", "unknown", "browser"}:
+            assert "NATIVE_RG16_SEARCH_AND_DISCOVERY=PASS" in evidence and "RG15_RG16_EXACT_LF_CRLF_PARITY=PASS" in evidence, "Missing actual dual-version rg search evidence"
         assert "ENV_DIFFERENCES=" not in evidence, "Actual child environment differs from generated policy"
         if mode in {"normal", "unknown"}:
             required = (
@@ -629,6 +704,7 @@ def main():
         probe = fixture / "work/tool-probe"
         probe.mkdir(parents=True)
         (probe / "probe.py").write_text(PROBE_PY, encoding="utf-8")
+        (probe / "rg-refresh.py").write_text(RG_REFRESH_PY, encoding="utf-8")
         (probe / "probe.ps1").write_text(RESOLUTION_PS, encoding="utf-8-sig")
         (probe / "browser.ps1").write_text(BROWSER_PS, encoding="utf-8-sig")
         (probe / "browser-check.ps1").write_text(BROWSER_CHECK_PS, encoding="utf-8-sig")

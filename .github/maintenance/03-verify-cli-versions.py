@@ -24,11 +24,11 @@ OFFICIAL = {
         "binary": "fd.exe"
     },
     "rg": {
-        "version": "15.2.0",
-        "tag": "15.2.0",
-        "asset": "ripgrep-15.2.0-x86_64-pc-windows-msvc.zip",
-        "size": 1789611,
-        "sha256": "71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5",
+        "version": "16.0.0",
+        "tag": "16.0.0",
+        "asset": "ripgrep-16.0.0-x86_64-pc-windows-msvc.zip",
+        "size": 1782487,
+        "sha256": "f418ae83e63046a94a7b5f3a44bf3a169f66e689164856ecee02547131c73931",
         "binary": "rg.exe"
     },
     "jq": {

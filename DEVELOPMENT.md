@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-25：稳定工具更新开发分支，第一组独立 ripgrep
+
+本组只更新 `tool/bin/rg.exe` 15.2.0 → 16.0.0，官方 Windows x64 MSVC ZIP 通过固定大小和 SHA-256 核验，原 MIT/Unlicense 许可文本逐项对比；`codex-path/rg.exe` 仍由 0.172.0 运行清单固定，不修改 Codex/Host、启动器、权限、PATH 顺序或模式副本。`tool/cli-versions.json` 与既有 CLI verifier 同步固定新工件；Linux 16.0.0 仅记录官方工件摘要，未执行 Linux 新版。回退应整体恢复本组的独立 EXE、清单、verifier 和测试/说明，不恢复或改动 main/tag/Release。Windows 门禁通过才推送实际候选提交，合成 Responses 触发真实 BAT/Codex 和命令，不代表真实在线账号或模型决策。工具全量元数据盘点、实际常用/YOLO、中文搬迁、浏览器/MCP、Office/PDF、原生签名/文件及发行输入结果见本次 AC；网络元数据失败项保持未确认，不据此升级。保留已知 ADB 宿主路径、PowerShell 启动模块路径限制及未测真实设备/交互审批/Office 重算。新版 MCP 0.0.86 仍固定 alpha Playwright，暂不升级该组；Python 3.15 涉及 ABI，暂不跨小版本；优先随后审核 Python pip/certifi 安全修复兼容组，再审核 npm 配套依赖。当前实际 dist-info 与旧 SSH 说明不完全一致，SSH 真实功能及说明另行验证，不在本组冒称已验。
+
+[Windows AC](https://github.com/rileyaaa/Portable/actions/runs/45553475532), rg.exe SHA-256: a140ac0ec5346e6aa59e13bdb09f001237632bafcede54c13b885e08efcecf64.
+
+原 AC #45551379691 在 Windows write_text 默认 CRLF 上误断言 LF。此次同一 Windows runner 对固定 15.2.0/16.0.0 原样复现旧断言，要求两版在 CRLF 和显式 LF 夹具均逐字节返回正确文本，保留中文、忽略规则、JSON、路径和退出码门禁；真实常用/YOLO 测试继续使用同一对照。
+
 ## 2026-11-25：0.172.0 现有功能维护最终验收与收尾（暂用终稿）
 
 [Windows 45535807535](https://github.com/rileyaaa/Portable/actions/runs/45535807535)（job 138941979770，attempt 1）全部成功，验证提交 `c596090712e02a51881161d11acc93dcc3b29afb`，Git tree `b6895c1699de9d2ea41bfe39d28e1aeb16455f23`；收尾前 main 提交与 tree 完全相同。原始日志确认在中文搬迁目录 `Relocated 便携 Portable` 经真实 BAT/Codex 0.172.0 常用模式（workspace-write、on-request、命令网络关闭、默认未启用浏览器 MCP）、包内 Python 3.14 执行；合成 Responses 仅负责发出工具调用，不代表真实在线模型自主决策。原生命令实际退出成功，10 个本地 Skills 进入模型上下文。Python isolated/safe_path/ignore_environment=1，启动路径仅包内三项，_pth 字节未变。三份 Office validate.py 均通过实际绝对路径独立进程执行：DOCX 原文及修订基线通过、非法核心属性实际拒绝且不因 validator unavailable 失败，PPTX 原文基线通过，XLSX 原有明确无 XSD 校验分支和清理通过；三种文件均实际创建、读回，XLSX 仅保留公式未重算。校验输入未改、临时目录清理通过；PDF 真实创建、提取、页渲染及手册库重复 build/search/read/verify/export、只读索引和 ZIP 摘要核对全部通过。PDF 单元 37 项、Office 边界/离线 XSD 22 项、发行输入检查通过。LibreOffice profile 只模拟外部进程，实际临时目录创建/清理经过受限进程验证，不代表 LibreOffice 已安装或实际渲染、重算、宏执行通过。
