@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-25：第四组 typing_extensions 独立稳定更新
+
+仅将已有纯 Python 单模块 typing_extensions 4.15.0 更新到 4.16.0（PSF-2.0，Python >=3.9）；固定 Python 3.14.10、pip/certifi、Node/npm/Corepack、Codex/Host、浏览器/MCP、其他 48 个已装发行包和原 CLI/权限不动。官方 PyPI wheel SHA-256 481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8，旧 wheel f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548；PyPI 发布证明标明官方仓库提交 f29cd28d8ed7642cafb1d18daf5aa41be6a5c0aa。本轮实际核对 wheel 摘要、RECORD、许可证与固定上游模块 Git blob ced78373258ef307c9a94ef15286e6da359e7a80，不声称本地独立验证了 Sigstore 证明。旧包 INSTALLER 为 uv，仍只使用现有固定 pip 在独占目标进行 hash-only、no-index/no-deps/no-compile 安装；不增 console_script、脚本、native binary 或其他依赖。实际同 runner 新旧版本公共导出、TypedDict/Protocol、已有 HTTP 同步异步回环、DOCX/PPTX/XLSX 中文路径创建读回及完整 Windows 原生门禁；不代表真实网络、账号、SSH、用户设备、Office 渲染或公式重算。Python 3.14 中 no_type_check_decorator 仍保留；不启用上游新增 API 作为项目功能。XlsxWriter 新版另有历史 vendor vba_extract.py 变化，暂不混入；SSH 候选边界不变。回退仅恢复该模块、dist-info、输入/锁及本组测试/说明。
+
+Windows AC: https://github.com/rileyaaa/Portable/actions/runs/45579383659
+
 ## 2026-11-25：第三组 npm / Corepack 来源审计完成，保留现版
 
 [Windows AC 45577656242](https://github.com/rileyaaa/Portable/actions/runs/45577656242)（job 139079469743，审计提交 5b8fea2b1bddc482e380a70906b577dc3b1901ba）成功是只读来源与受控离线探针通过，不是升级安装或完整原生回归通过。固定 Node 26.13.1 官方 Windows x64 ZIP SHA-256 e2edda75bfb089654705cf65a13b58933bfd5f57148e8ebda916f58a2474f1f7，包内 node.exe 与官方字节一致；实际 ZIP node_modules 只有 npm，未分发 Corepack。npm 11.20.0 的 1926 个跟踪文件全部与 Git 原始 blob 一致，与官方 Node ZIP 1925 个逐字节相同及 1 个已审核空 .npmrc；无未知来源、无 ZIP 省略文件。与 Registry 11.20.0 同版本 tarball（SHA-256 d1a92f40e6c407b84c3a00c3cf978a10b24fd42f153c527e2016cef7bb34a483）对照为 16 精确、1872 严格换行等价、1 空 .npmrc、37 内容差异，另有 18 个仅 Registry 存在的测试文件。原 npm-completion.md 的 Git/工作树/Node ZIP 均为 943 字节、36 CRLF、SHA-256 04237f3b0bf93e69b73c54e0c947d3b0332c216d45f7639770747f2e68ff143a；Registry 为 908 字节 LF、SHA-256 74f866ad8a9b501e4a21e055b2f183da32940190c3e088e86abb370192ef974c，多一个行尾空格，不是 Git 属性造成。其他真实内容差异包括 tar/minimatch/sigstore/lru-cache/diff 等 JS 运行依赖、文档及许可文件，逐项路径见 AC 日志。npm 11.21.3 官方 Artistic-2.0 工件 SHA-256 ee5fc68e724c4bdba38db9d96d9c661d4e736e4be7001ae44d2fbbaa52159514、Registry ECDSA 签名与 SHA-512/SHA-1 均通过；未获得等价替换依据，不以忽略空白或扩大白名单强行覆盖 Node 官方 bundle，保留 11.20.0。

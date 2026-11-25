@@ -18,7 +18,7 @@ python-docx==1.2.0
 python-pptx==1.0.2
 pillow==12.2.0
 XlsxWriter==3.2.9
-typing-extensions==4.15.0
+typing-extensions==4.16.0
 PySocks==1.7.1
 defusedxml==0.7.1
 PyMuPDF==1.26.6
