@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   provenance:
-    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == '37e49f5e238502efd9129dfb861af4c60399f7f7' && github.run_attempt == 1
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == '6c2fe2e1876daec2f57107b22d906700ed5755cb' && github.run_attempt == 1
     runs-on: windows-latest
     timeout-minutes: 45
     permissions:
@@ -34,7 +34,7 @@ jobs:
       - name: Confirm unchanged production tree and frozen refs
         run: |
           $ErrorActionPreference = 'Stop'
-          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or (git rev-parse 'HEAD^').Trim() -cne '37e49f5e238502efd9129dfb861af4c60399f7f7') { throw 'Wrong checkout or parent' }
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or (git rev-parse 'HEAD^').Trim() -cne '6c2fe2e1876daec2f57107b22d906700ed5755cb') { throw 'Wrong checkout or parent' }
           if ((git diff --name-only HEAD^ HEAD) -cne '.github/workflows/refresh-npm11-stable.yml') { throw 'Unexpected diagnostic changes' }
           foreach ($ref in @('refs/heads/main','refs/tags/v0.172.0-portable.1')) {
             $remote = (git ls-remote origin $ref) -join ''
@@ -162,8 +162,26 @@ jobs:
           blob=https(node_base+node_file,80*1024*1024)
           assert sha(blob)==node_zip_sha
           prefix="node-v26.13.1-win-x64/"
-          node_packages={"npm":{},"corepack":{}}
+          # Node >=25 stopped distributing Corepack (official node #57617,
+          # #59835; v26.13.1 vcbuild.bat packages deps/npm only). Verify the
+          # actual fixed ZIP layout, including the expected absence, rather
+          # than pretending that Corepack came from this ZIP.
+          node_packages={"npm":{}}
           with zipfile.ZipFile(io.BytesIO(blob)) as z:
+              members=z.infolist()
+              roots=sorted({m.filename.split("/",1)[0] for m in members})
+              assert roots==[prefix.rstrip("/")], "Unexpected official ZIP root: "+repr(roots)
+              names=[m.filename.rstrip("/") for m in members]
+              assert len({n.casefold() for n in names})==len(names), "Duplicate or case-colliding ZIP paths"
+              relative=[n[len(prefix):] for n in names if n.startswith(prefix)]
+              top=sorted({n.split("/",1)[0] for n in relative if n})
+              packages=sorted({n[len("node_modules/"):].split("/",1)[0] for n in relative if n.startswith("node_modules/") and n[len("node_modules/"):]})
+              npm_entries=[n for n in relative if n.startswith("node_modules/npm/")]
+              corepack_entries=[n for n in relative if n.casefold()=="node_modules/corepack" or n.casefold().startswith("node_modules/corepack/")]
+              corepack_shims=[n for n in top if n.casefold() in ("corepack","corepack.cmd","corepack.ps1")]
+              print("NODE_ZIP_LAYOUT="+json.dumps({"sha256":node_zip_sha,"roots":roots,"top_level":top,"node_modules_children":packages,"npm_entries":len(npm_entries),"npm_manifest":"node_modules/npm/package.json" in relative,"corepack_entries":len(corepack_entries),"corepack_shims":corepack_shims},ensure_ascii=True),flush=True)
+              assert not corepack_entries and not corepack_shims, "Unexpected bundled Corepack in fixed Node ZIP; stop"
+              assert "npm" in packages and "node_modules/npm/package.json" in relative, "Fixed Node ZIP missing npm manifest"
               exe=z.read(prefix+"node.exe")
               assert sha(exe)==node_exe_sha and exe==node.read_bytes()
               for name,folder in node_packages.items():
@@ -176,9 +194,11 @@ jobs:
                       assert p.casefold() not in seen and m.file_size<25*1024*1024 and not stat.S_ISLNK(m.external_attr>>16) and not (m.flag_bits&1)
                       seen.add(p.casefold())
                       folder[p]=z.read(m)
-                  assert folder and json.loads(folder["package.json"])["name"]==name
-          assert json.loads(node_packages["npm"]["package.json"])["version"]==old
-          assert json.loads(node_packages["corepack"]["package.json"])["version"]=="0.35.0"
+                  assert folder and json.loads(folder["package.json"])["name"]==name, "Invalid bundled component: "+name
+          npm_manifest=json.loads(node_packages["npm"]["package.json"])
+          assert npm_manifest["name"]=="npm" and npm_manifest["version"]==old
+          print("NODE_ZIP_NPM_IDENTITY=PASS "+npm_manifest["version"]+" files="+str(len(node_packages["npm"])),flush=True)
+          print("NODE_ZIP_COREPACK_ABSENCE=PASS independent official registry source required",flush=True)
           print("OFFICIAL_NODE_WINDOWS_ZIP_AND_BUNDLED_EXE=PASS "+node_zip_sha,flush=True)
           del blob,exe
           
@@ -238,7 +258,14 @@ jobs:
               return {name[len(rel):]:blobs[oid] for name,(mode,oid) in tree.items()},actual,{name[len(rel):]:oid for name,(mode,oid) in tree.items()}
           def provenance(name,folder,registry_old):
               raw,wt,oids=raw_tree(folder)
-              node_old=node_packages[name]
+              assert name in ("npm","corepack")
+              # npm has two independently authenticated old distribution
+              # sources. Corepack has its own pinned official registry tarball;
+              # never represent it as a file from the Node ZIP.
+              origin_label="node_zip" if name=="npm" else "standalone_corepack_registry"
+              node_old=node_packages["npm"] if name=="npm" else registry_old
+              assert node_old and json.loads(node_old["package.json"])["name"]==name
+              assert json.loads(node_old["package.json"])["version"]==(old if name=="npm" else "0.35.0")
               if name=="npm":
                   assert oids[suspect]=="a2643dd40f90ecea2e97ba052204f2625f756780"
                   full=folder.relative_to(root).as_posix()+"/"+suspect
@@ -256,7 +283,7 @@ jobs:
                           delta=list(difflib.unified_diff(a,b,fromfile="git-blob",tofile="registry-11.20.0",n=2))
                           print("NPM_COMPLETION_CONTENT_DIFF="+json.dumps("".join(delta)[:5000],ensure_ascii=True),flush=True)
                       except UnicodeError:print("NPM_COMPLETION_CONTENT_DIFF=binary-or-invalid-UTF8",flush=True)
-              counts={"worktree":{},"node_zip":{},"registry":{}}
+              counts={"worktree":{},origin_label:{},"registry":{}}
               unknown=[];registry_deltas=[];node_missing=[];worktree_deltas=[]
               for p in sorted(raw):
                   wb=kind(wt[p],raw[p]);nb=kind(node_old.get(p),raw[p]);rb=kind(registry_old.get(p),raw[p])
@@ -264,24 +291,24 @@ jobs:
                   # prior workflow is an empty npm .npmrc. Never approve its contents.
                   if name=="npm" and p==".npmrc" and raw[p]==b"" and wt[p]==b"" and node_old.get(p,b"")==b"" and registry_old.get(p,b"")==b"":
                       nb=rb="reviewed-empty-npmrc"
-                  for key,val in (("worktree",wb),("node_zip",nb),("registry",rb)):
+                  for key,val in (("worktree",wb),(origin_label,nb),("registry",rb)):
                       counts[key][val]=counts[key].get(val,0)+1
                   if wb!="exact":
                       worktree_deltas.append({"path":p,"kind":wb,"blob":stats(raw[p]),"worktree":stats(wt[p]),"attrs":git("check-attr","-a","--",folder.relative_to(root).as_posix()+"/"+p).decode("utf-8","replace").strip()})
                   if nb not in ("exact","eol-only","reviewed-empty-npmrc"):
-                      unknown.append({"path":p,"kind":nb,"blob":stats(raw[p]),"node_zip":stats(node_old.get(p))})
+                      unknown.append({"path":p,"kind":nb,"blob":stats(raw[p]),"official_origin":origin_label,"official_bytes":stats(node_old.get(p))})
                   if rb not in ("exact","eol-only","reviewed-empty-npmrc"):
-                      registry_deltas.append({"path":p,"kind":rb,"blob":stats(raw[p]),"registry":stats(registry_old.get(p)),"node_zip_class":nb})
+                      registry_deltas.append({"path":p,"kind":rb,"blob":stats(raw[p]),"registry":stats(registry_old.get(p)),"official_origin":origin_label,"origin_class":nb})
               node_missing=sorted(set(node_old)-set(raw))
               registry_missing=sorted(set(registry_old)-set(raw))
-              for label,rows in (("WORKTREE_DELTAS",worktree_deltas),("UNKNOWN_NODE_PROVENANCE",unknown),("REGISTRY_CONTENT_OR_PATH_DELTAS",registry_deltas),("NODE_ZIP_FILES_OMITTED",node_missing),("REGISTRY_FILES_OMITTED",registry_missing)):
+              for label,rows in (("WORKTREE_DELTAS",worktree_deltas),("UNKNOWN_OFFICIAL_PROVENANCE",unknown),("REGISTRY_CONTENT_OR_PATH_DELTAS",registry_deltas),("OFFICIAL_ORIGIN_FILES_OMITTED",node_missing),("REGISTRY_FILES_OMITTED",registry_missing)):
                   for item in rows:
                       print("VENDOR_"+label+"="+json.dumps({"component":name,"detail":item},ensure_ascii=True),flush=True)
               decision=("STOP_WORKTREE_DIFFERS_FROM_RAW_GIT" if worktree_deltas else
                         "STOP_UNEXPLAINED_PROJECT_CONTENT_OR_INVENTORY" if unknown or node_missing else
                         "REVIEW_OFFICIAL_DISTRIBUTION_CONTENT_DIFFERENCES_KEEP_CURRENT" if registry_deltas or registry_missing else
                         "EXACT_OR_STRICT_EOL_PROVENANCE_ONLY")
-              summary={"component":name,"tracked":len(raw),"node_zip":len(node_old),"registry":len(registry_old),"counts":counts,"unknown":len(unknown),"node_omitted":len(node_missing),"registry_content_or_path_deltas":len(registry_deltas),"registry_omitted":len(registry_missing),"decision":decision}
+              summary={"component":name,"tracked":len(raw),"official_origin":origin_label,"origin_files":len(node_old),"node_zip":len(node_old) if name=="npm" else None,"registry":len(registry_old),"counts":counts,"unknown":len(unknown),"origin_omitted":len(node_missing),"registry_content_or_path_deltas":len(registry_deltas),"registry_omitted":len(registry_missing),"decision":decision}
               print("VENDOR_PROVENANCE_SUMMARY="+json.dumps(summary,ensure_ascii=True),flush=True)
               return summary
           
@@ -304,7 +331,9 @@ jobs:
           try:
               cp0,cm0,_,_=verified("corepack","0.35.0",cp_old_sri,"MIT")
               cp1,cm1,_,_=verified("corepack","0.36.0",cp_new_sri,"MIT",signature=True)
-              assert cm1["engines"]["node"]=="^22.22.2 || ^24.15.0 || >=26.0.0"
+              assert cm0["engines"]["node"]==cm1["engines"]["node"]=="^22.22.2 || ^24.15.0 || >=26.0.0"
+              assert cm0["name"]==cm1["name"]=="corepack" and cm0["version"]=="0.35.0" and cm1["version"]=="0.36.0"
+              print("COREPACK_STANDALONE_OFFICIAL_LAYOUT="+json.dumps({"old":{"version":cm0["version"],"top_level":sorted({p.split("/",1)[0] for p in cp0}),"files":len(cp0),"sri":cp_old_sri},"new":{"version":cm1["version"],"top_level":sorted({p.split("/",1)[0] for p in cp1}),"files":len(cp1),"sri":cp_new_sri},"source":"registry.npmjs.org","bundled_in_node_zip":False},ensure_ascii=True),flush=True)
               cp_result=provenance("corepack",core,cp0)
               scratch=root/"tmp"
               scratch.mkdir(exist_ok=True);ordinary(scratch,True)
