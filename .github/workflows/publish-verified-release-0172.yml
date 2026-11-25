@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   publish:
-    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/release-prep/v0.172.0-portable.1' && github.event_name == 'push' && github.event.before == 'f6e1f4791ced40600448854ef12a25b6a2ab1c7b' && github.event.head_commit.message == 'Correct artifact download media type for the verified 0.172.0 candidate' && github.run_attempt == 1
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/release-prep/v0.172.0-portable.1' && github.event_name == 'push' && github.event.before == 'd80d07f4ad23ba355a6e9e03005ba2fbaa02485e' && github.event.head_commit.message == 'Match verified Windows SHA256SUMS CRLF bytes without changing candidate' && github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -216,7 +216,7 @@ jobs:
                       "Customer ZIP digest differs from audited Windows result")
               require(digest(local / MANIFEST) == MANIFEST_SHA, "Manifest digest differs")
               require((local / SUMS).read_bytes() == (
-                  ZIP_SHA + "  " + ZIP + "\n" + MANIFEST_SHA + "  " + MANIFEST + "\n"
+                  ZIP_SHA + "  " + ZIP + "\r\n" + MANIFEST_SHA + "  " + MANIFEST + "\r\n"
               ).encode("ascii"), "Checksum file differs")
               meta = json.loads((local / MANIFEST).read_bytes())
               require(meta["source_commit"] == SOURCE and meta["release_version"] == TAG
