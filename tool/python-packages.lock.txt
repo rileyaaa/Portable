@@ -1,8 +1,8 @@
 # Codex Portable wheel lock v1
-# requirements-sha256: 4ee30b7a15511a06c9517112be078d29ced55e98ea1b01f7e5dec4b5c5b96e08
+# requirements-sha256: 7e1ade634c390f4c1724d3ab61bbba17d03932143aff94bdf10baaeca3400e4f
 # Exact selected wheel hashes; install with --require-hashes --only-binary=:all:.
 altgraph==0.17.5 --hash=sha256:f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597
-anyio==4.13.0 --hash=sha256:08b310f9e24a9594186fd75b4f73f4a4152069e3853f1ed8bfbf58369f4ad708
+anyio==4.16.0 --hash=sha256:c66ae634e0b8228396b801741beb3294326d4b6102f7bba4041c0dfb58c29026
 bcrypt==5.0.0 --hash=sha256:64ee8434b0da054d830fa8e89e1c8bf30061d539044a39524ff7dec90481e5c2
 beautifulsoup4==4.15.0 --hash=sha256:d6f88de62e1d4e38ecb1077eb9724cd0eff29d2a08ca16a401e9b9e93f117cf9
 certifi==2026.5.20 --hash=sha256:3c52e209ba0a4ad7aebe60436a4ab349c39e1e602e8c134221e546902ad25897

@@ -558,3 +558,7 @@ powershell.exe -NoProfile -File .\tests\test_browser_smoke.ps1
 ## 2026-11-25: urllib3 2.7.0 -> 2.8.0
 
 Official fixed wheel hashes, RECORD, prior Git payload, licenses, dependency closure and actual old/new Windows consumer checks passed. No extra distribution or feature enabled. AnyIO's exact added dependency is already satisfied by the fixed typing_extensions 4.16.0. Full native regression required before push. No real accounts, devices, remote SSH, Office rendering or recalculation tested. Run: https://github.com/rileyaaa/Portable/actions/runs/45596716268
+
+## 2026-11-25: anyio 4.13.0 -> 4.16.0
+
+Official fixed wheel hashes, RECORD, prior Git payload, licenses, dependency closure and actual old/new Windows consumer checks passed. No extra distribution or feature enabled. AnyIO's exact added dependency is already satisfied by the fixed typing_extensions 4.16.0. Full native regression required before push. No real accounts, devices, remote SSH, Office rendering or recalculation tested. Run: https://github.com/rileyaaa/Portable/actions/runs/45596716268
