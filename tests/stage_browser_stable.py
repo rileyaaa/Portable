@@ -29,6 +29,9 @@ PW = "1.65.1"
 PW_TAG = "bbd948344ea9a60bf1e6f125c02ca99b2b51593b"
 CHROME = "158.0.8127.88"
 REV = "1727472"
+# Official ZIP and generation independently verified in run 45603065959.
+CHROME_SHA256 = "fda73ca9ffc7f02c5c85165cb472152540a76a7cecd8ec11314ea781e4454109"
+CHROME_GENERATION = "1795322921485140"
 URL = f"https://storage.googleapis.com/chrome-for-testing-public/{CHROME}/win64/chrome-win64.zip"
 # Both archives were independently signature- and byte-verified in run 45601690859.
 NPM_SHA256 = {
@@ -372,6 +375,9 @@ def main():
     tmp=ROOT/"tmp";tmp.mkdir(exist_ok=True);plain(tmp,True)
     with tempfile.TemporaryDirectory(prefix="browser-stable-",dir=tmp) as d:
         own=Path(d);plain(own,True);env=isolated(own)
+        # Prove the corrected native fixture on the retained pair before staging.
+        run([PY,"-B","tests/check_codex_tool_discovery.py","browser"],timeout=420)
+        print("LEGACY_NATIVE_YOLO_CELL_WAIT=PASS",flush=True)
         new_node,dep_manifest=stage_node(own,env)
         work=own/"migration \u4fbf\u643a";work.mkdir()
         old_exe=AUTO/old_versions["browser"]["executable"]
@@ -381,6 +387,8 @@ def main():
                      new_node/"node_modules",old_exe,old_exe,work,"--schema-only"],env,timeout=120)
         assert "MCP_REAL_FILTERED_SCHEMA_COMPATIBILITY=PASS" in listing
         new_chrome,manifest=stage_chrome(own,installer)
+        assert manifest["archive"]["sha256"]==CHROME_SHA256
+        assert manifest["archive"]["googleGeneration"]==CHROME_GENERATION
         new_exe=new_chrome/"chrome-win64/chrome.exe"
         ps=Path(env["SystemRoot"])/"System32/WindowsPowerShell/v1.0/powershell.exe"
         command="$s=Get-AuthenticodeSignature -LiteralPath $env:PORTABLE_TEST_EXE; [pscustomobject]@{status=[string]$s.Status;subject=$s.SignerCertificate.Subject}|ConvertTo-Json -Compress"

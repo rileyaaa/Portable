@@ -8,6 +8,7 @@ import contextlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -39,6 +40,7 @@ BROWSER_MARKER = "PORTABLE_TASK_RENDERED_0172"
 BROWSER_CHECK_MARKER = "PORTABLE_BROWSER_CHECK_READ_ONLY_0172"
 DOCUMENT_MARKER = "PORTABLE_DOCUMENT_ROUNDTRIP_0172"
 DONE = "native-tool-discovery-ok"
+MAX_CELL_WAITS = 10
 
 RG_REFRESH_PY = r'''
 import hashlib, json, os, pathlib, shutil, subprocess
@@ -555,13 +557,90 @@ for path in (word, book, deck):
 print("PORTABLE_DOCUMENT_ROUNDTRIP_0172", flush=True)
 '''
 
+class NativeProbeContinuation:
+    """Consume only issued tool output; resume yielded Code Mode cells.
+
+    Shell session IDs belong inside exec's JS, while cell IDs belong
+    to the outer advertised wait tool. They are not interchangeable.
+    """
+    def __init__(self, custom):
+        self.custom = custom
+        self.call_id = "portable-probe"
+        self.cell_id = None
+        self.wait_count = 0
+        self.finished = False
+        self.evidence = []
+        self.shell_exit = None
+
+    def receive(self, body):
+        assert not self.finished, "Unexpected output after probe completion"
+        outputs = m.call_output(body, self.call_id)
+        assert len(outputs) == 1, "Missing or duplicate output for " + self.call_id
+        print("NATIVE_TOOL_OUTPUT=" + json.dumps(outputs, ensure_ascii=False)[:26000], flush=True)
+        payload = outputs[0]["output"]
+        if not self.custom:
+            assert isinstance(payload, str), "Unexpected direct shell output"
+            header = payload.split("\nOutput:\n", 1)[0]
+            assert re.search(r"(?m)^Process exited with code 0\r?$", header), \
+                "Direct native command did not return successful terminal output"
+            self.evidence.append(payload)
+            self.finished = True
+            return None
+
+        assert isinstance(payload, list) and payload, "Missing Code Mode response header"
+        assert all(part.get("type") == "input_text" for part in payload), "Unexpected native tool output type"
+        header = payload[0]["text"].splitlines()[0]
+        yielded = re.fullmatch(r"Script running with cell ID ([A-Za-z0-9_-]+)", header)
+        assert yielded or header == "Script completed", "Native Code Mode cell failed: " + header
+        for part in payload[1:]:
+            chunk = json.loads(part["text"])
+            assert isinstance(chunk, dict) and not chunk.get("isError"), "Native shell returned an error"
+            assert isinstance(chunk.get("output"), str), "Missing native shell output"
+            assert self.shell_exit is None, "Unexpected output after shell exit"
+            self.evidence.append(chunk["output"])
+            if chunk.get("exit_code") is not None:
+                assert type(chunk["exit_code"]) is int and chunk["exit_code"] == 0, \
+                    "Native shell exit: " + repr(chunk["exit_code"])
+                assert chunk.get("session_id") is None, "Exited shell still reports a session"
+                self.shell_exit = chunk["exit_code"]
+            else:
+                assert type(chunk.get("session_id")) is int, "Native shell neither exited nor yielded"
+
+        if yielded:
+            cell = yielded.group(1)
+            assert self.cell_id is None or self.cell_id == cell, "Code Mode cell changed during wait"
+            self.cell_id = cell
+            assert self.wait_count < MAX_CELL_WAITS, "Code Mode wait budget exhausted"
+            wait = next(((ns, t) for ns, t in m.tool_entries(body.get("tools", []))
+                         if t.get("type") == "function" and t.get("name") == "wait"
+                         and "cell_id" in t.get("parameters", {}).get("properties", {})), None)
+            assert wait is not None, "Yielded native cell without advertised wait tool"
+            ns, tool = wait
+            self.wait_count += 1
+            self.call_id = "portable-probe-wait-" + str(self.wait_count)
+            print("NATIVE_CODE_MODE_WAIT=" + cell + " sequence=" + str(self.wait_count), flush=True)
+            item = {"type": "function_call", "name": tool["name"], "call_id": self.call_id,
+                    "arguments": json.dumps({"cell_id": cell, "yield_time_ms": 30000, "max_tokens": 10000})}
+            if ns is not None:
+                item["namespace"] = ns
+            return item
+
+        assert self.shell_exit == 0, "Completed cell without successful terminal shell result"
+        self.finished = True
+        print("NATIVE_CODE_MODE_TERMINAL_EXIT=0 waits=" + str(self.wait_count), flush=True)
+        return None
+
+
 def handler_for(fixture, mode):
     expected = {"browser": BROWSER_MARKER, "browser-check": BROWSER_CHECK_MARKER,
                 "documents": DOCUMENT_MARKER}.get(mode, TOOL_MARKER)
     script = {"browser": "browser.ps1", "browser-check": "browser-check.ps1"}.get(mode, "probe.ps1")
+    continuation = None
 
     def handler(body, _):
-        if len(m.MODEL_REQUESTS) == 1:
+        nonlocal continuation
+        if continuation is None:
+            assert len(m.MODEL_REQUESTS) == 1, "Unexpected probe start"
             prompt = json.dumps({"instructions": body.get("instructions"), "input": body.get("input")},
                                 ensure_ascii=False)
             absent = sorted(name for name in SKILLS if name not in prompt)
@@ -583,17 +662,22 @@ def handler_for(fixture, mode):
             if custom:
                 ns, tool = custom
                 code = (
+                    # Force a real early yield instead of hiding the race
+                    # by extending a timeout.
+                    ('// @exec: {"yield_time_ms":1000}\n' if mode == "browser" else '') +
                     'const e = ALL_TOOLS.find(x=>x.name.endsWith("exec_command")); '
-                    'if (!e) throw new Error("Shell tool missing: "+JSON.stringify(ALL_TOOLS.map(x=>x.name))); '
+                    'if (!e) throw new Error("Shell tool missing"); '
                     'let r = await tools[e.name](' + json.dumps(args) + '); '
-                    'text(JSON.stringify(r)); '
-                    'for(let i=0;i<5;i++){ '
+                    'for(let i=0;;i++){ '
                     'const v = r.structuredContent || r; '
-                    'if (!v.session_id) break; '
+                    'if(r.isError || v.isError) throw new Error(JSON.stringify(r)); '
+                    'text(JSON.stringify(v)); '
+                    'if (v.exit_code !== undefined && v.exit_code !== null) { '
+                    'if(v.exit_code!==0 || v.session_id!=null) throw new Error("Shell exit "+JSON.stringify(v)); break; } '
+                    'if(!Number.isSafeInteger(v.session_id) || i>=5) throw new Error("Shell did not complete"); '
                     'const w = ALL_TOOLS.find(x=>x.name.endsWith("write_stdin")); '
                     'if (!w) throw new Error("Missing write_stdin"); '
-                    'r=await tools[w.name]({session_id:v.session_id,chars:"",yield_time_ms:30000}); '
-                    'text(JSON.stringify(r)); }'
+                    'r=await tools[w.name]({session_id:v.session_id,chars:"",yield_time_ms:30000}); }'
                 )
                 item = {"type": "custom_tool_call", "call_id": "portable-probe",
                         "name": tool["name"], "input": code}
@@ -606,10 +690,15 @@ def handler_for(fixture, mode):
                         "name": tool["name"], "arguments": json.dumps(args)}
             if ns is not None:
                 item["namespace"] = ns
+            continuation = NativeProbeContinuation(custom is not None)
+            handler.continuation = continuation
             return item
-        outputs = m.call_output(body, "portable-probe")
-        evidence = json.dumps(outputs, ensure_ascii=False)
-        print("NATIVE_TOOL_OUTPUT=" + evidence[:26000], flush=True)
+        follow = continuation.receive(body)
+        if follow is not None:
+            return follow
+        if mode == "browser" and continuation.custom:
+            assert continuation.wait_count > 0, "Forced early browser cell yield was not exercised"
+        evidence = "".join(continuation.evidence)
         assert expected in evidence, "Real tool output did not contain success marker: " + expected
         if mode in {"normal", "unknown", "browser"}:
             assert "NATIVE_RG16_SEARCH_AND_DISCOVERY=PASS" in evidence and "RG15_RG16_EXACT_LF_CRLF_PARITY=PASS" in evidence, "Missing actual dual-version rg search evidence"
@@ -686,7 +775,7 @@ def main():
     scratch.mkdir(exist_ok=True)
     m.ordinary(scratch)
     with extracted_package_fixture(scratch, mode) as owned:
-        fixture = owned / ("Relocated \u4fbf\u643a Portable" if mode in {"unknown", "documents"} else "Relocated Portable")
+        fixture = owned / ("Relocated \u4fbf\u643a Portable" if mode in {"unknown", "documents", "browser"} else "Relocated Portable")
         fixture.mkdir()
         manifest = json.loads((ROOT / "tool/runtime-manifest.json").read_text(encoding="utf-8-sig"))
         bat = "\u542f\u52a8Codex.bat"
@@ -719,7 +808,9 @@ def main():
         fixture_acl_evidence(owned, fixture)
         (fixture / "home/portable-extensions.toml").write_text(
             '[mcp_servers.portable_browser]\ncommand = "synthetic-never-executed"\n', encoding="utf-8")
-        with m.serving(m.provider("", model=model, handler=handler_for(fixture, mode))) as port:
+        handler = handler_for(fixture, mode)
+        with m.serving(m.provider("", model=model, handler=handler,
+                                  max_requests=2 + MAX_CELL_WAITS)) as port:
             (fixture / "env.local.ps1").write_text(
                 '$env:CODEX_AUTH_MODE = "api"\n'
                 '$env:CODEX_PROXY_ENABLED = "false"\n'
@@ -747,7 +838,8 @@ def main():
                 print(out.decode("utf-8", "replace")[-12000:])
                 print(err.decode("utf-8", "replace")[-12000:])
                 raise AssertionError(f"Native fixture failed: {mode}; exit={proc.returncode}; errors={m.MODEL_ERRORS}")
-            assert len(m.MODEL_REQUESTS) == 2
+            assert handler.continuation.finished
+            assert len(m.MODEL_REQUESTS) == 2 + handler.continuation.wait_count
             # CLI --json events record the actual native command exit status,
             # rather than guessing it from marker text or escaped JSON.
             exits = []

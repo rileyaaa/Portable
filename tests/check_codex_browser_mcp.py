@@ -109,7 +109,7 @@ def response_item(body, url):
                 {"type": "output_text", "text": "native-browser-mcp-ok", "annotations": []}]}
 
 
-def provider(url, model="gpt-6-sol", handler=response_item, expected_headers=None, forbidden_headers=()):
+def provider(url, model="gpt-6-sol", handler=response_item, expected_headers=None, forbidden_headers=(), max_requests=2):
     class Provider(http.server.BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -137,7 +137,7 @@ def provider(url, model="gpt-6-sol", handler=response_item, expected_headers=Non
                 body = json.loads(raw)
                 assert body.get("model") == model
                 MODEL_REQUESTS.append(body)
-                assert len(MODEL_REQUESTS) <= 2, "Unexpected additional model turn"
+                assert len(MODEL_REQUESTS) <= max_requests, "Unexpected additional model turn"
                 item = handler(body, url)
                 ident = "resp_synthetic_" + str(len(MODEL_REQUESTS))
                 response = {"id": ident, "object": "response", "status": "completed",
