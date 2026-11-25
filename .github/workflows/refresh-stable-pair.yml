@@ -1,0 +1,199 @@
+name: Stable pair checksum and MCP gates, PDF source integrity (one time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths: [.github/workflows/refresh-stable-pair.yml]
+permissions: {}
+concurrency:
+  group: stable-tool-refresh-pair
+  cancel-in-progress: false
+jobs:
+  refresh:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == '8c39c0d4a0e21f13d7692d90ad9d04c79b815e91' && github.run_attempt == 1
+    runs-on: windows-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: powershell
+    env:
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      BASE: 8c39c0d4a0e21f13d7692d90ad9d04c79b815e91
+      TARGET_BRANCH: dev/stable-tool-refresh
+    steps:
+      - name: Preserve tracked bytes and isolate CI module cache
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'git configuration failed' }
+          $dir = Join-Path $env:RUNNER_TEMP ('http-refresh-pscache-' + [Guid]::NewGuid().ToString('N'))
+          $null = New-Item -ItemType Directory -Path $dir
+          ('PSModuleAnalysisCachePath=' + (Join-Path $dir 'ModuleAnalysisCache')) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Confirm source candidate, frozen references and clean checkout
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or (git rev-parse 'HEAD^').Trim() -cne $env:BASE) { throw 'Wrong checkout or parent' }
+          $changed = @(git diff --name-only $env:BASE HEAD)
+          if ($changed.Count -ne 1 -or $changed[0] -cne '.github/workflows/refresh-stable-pair.yml') { throw 'Unexpected trigger changes' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
+            $remote = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen ref or development branch moved' }
+          }
+          $fixed = @(git diff --name-only c65b836ebf1f93666c35d25be56faf7868ceca3b HEAD -- env.ps1 run-codex.ps1 codex.exe codex-code-mode-host.exe codex-path tool/runtime-manifest.json tool/python tool/python-packages.in.txt tool/python-packages.lock.txt tool/node tool/automation/playwright tool/automation/browsers tool/automation/versions.json tool/automation/dependency-manifest.json tool/automation/browser-manifest.json Version_History)
+          if ($LASTEXITCODE -ne 0 -or $fixed.Count -ne 0) { throw 'Unexpected fixed runtime change' }
+          git lfs install --local
+          if ($LASTEXITCODE) { throw 'LFS hooks unavailable' }
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'LFS verification failed' }
+      - name: Exact source and targeted PDF and staging regressions before any payload changes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import ast, subprocess
+          from pathlib import Path
+          fixed="c65b836ebf1f93666c35d25be56faf7868ceca3b"
+          changed=set(subprocess.check_output(["git","diff","--name-only","--no-renames","-z",fixed,"HEAD"]).decode("utf-8").split("\0"))-{""}
+          expected={".github/workflows/refresh-browser-pdf.yml",".github/workflows/refresh-stable-pair.yml","DEVELOPMENT.md","home/skills/pdf-library/SKILL.md","home/skills/pdf-library/scripts/pdf_library.py","tests/test_pdf_library_database.py","tests/stage_browser_stable.py","tests/test_browser_stage_metadata.py","tests/check_browser_stable_pair.js","tests/check_browser_mcp_stdio.py","tests/test_automation.js","tool/automation/browser-bridge.js"}
+          assert changed==expected,(changed^expected)
+          for p in ("home/skills/pdf-library/scripts/pdf_library.py","tests/test_pdf_library_database.py","tests/stage_browser_stable.py","tests/test_browser_stage_metadata.py","tests/check_browser_mcp_stdio.py"):
+              ast.parse(Path(p).read_text(encoding="utf-8"),filename=p)
+          print("SOURCE_SCOPE_AND_AST=PASS")
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Source scope or syntax failed' }
+          & .\tool\node\node.exe --check tests/check_browser_stable_pair.js
+          if ($LASTEXITCODE) { throw 'Browser pair probe syntax failed' }
+          foreach ($test in @('test_pdf_library_database.py','test_pdf_library.py','test_browser_stage_metadata.py')) {
+            & .\tool\python\python.exe -B -m unittest discover -s tests -p $test -v
+            if ($LASTEXITCODE) { throw "Targeted source regression failed: $test" }
+          }
+          & .\tool\node\node.exe --test tests/test_automation.js
+          if ($LASTEXITCODE) { throw 'Legacy MCP policy regression failed' }
+          Write-Output 'PDF_SOURCE_AND_LEGACY_MCP_POLICY=PASS'
+      - name: Targeted stable browser retry, independently restore only a rejected browser candidate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import os, subprocess, sys
+          from pathlib import Path
+          for stream in (sys.stdout,sys.stderr):stream.reconfigure(encoding="utf-8",errors="backslashreplace")
+          def git(*args):return subprocess.check_output(["git",*args])
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          before=git("rev-parse","HEAD").decode().strip()
+          # Print raw child logs, retain a failed browser group only if its
+          # candidate rollback is exact. The Python groups are independent.
+          p=subprocess.Popen([sys.executable,"-B","tests/stage_browser_stable.py"],stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+          for line in iter(p.stdout.readline,b""):print(line.decode("utf-8","backslashreplace").rstrip("\r\n"),flush=True)
+          rc=p.wait()
+          after=git("rev-parse","HEAD").decode().strip()
+          assert not git("status","--porcelain=v1","--untracked-files=all"),"browser group left a dirty checkout"
+          if rc:
+              assert after==before,"browser failure changed candidate HEAD"
+              print("GROUP_RETAINED=browser (actual first failure above)",flush=True)
+          else:
+              assert after!=before and git("rev-parse","HEAD^").decode().strip()==before
+              with open(os.environ["GITHUB_ENV"],"a",encoding="utf-8",newline="\n") as f:
+                  f.write("BROWSER_PREVALIDATED_HEAD="+after+"\n")
+              print("GROUP_STAGE_PASS=browser",flush=True)
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Browser group integrity or rollback failed; do not push' }
+      - name: Full existing Python and Node regression suite for actual new browser payload
+        if: env.BROWSER_PREVALIDATED_HEAD != ''
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE) { throw 'Full Python regression failed' }
+          foreach ($test in @('test_portable_npm.js','test_automation.js')) {
+            & .\tool\node\node.exe --test (Join-Path 'tests' $test)
+            if ($LASTEXITCODE) { throw "Node regression failed: $test" }
+          }
+      - name: Existing Windows PowerShell path isolation and setup regressions
+        if: env.BROWSER_PREVALIDATED_HEAD != ''
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($test in @('test_python_setup.ps1','test_portable_paths.ps1','test_launcher_smoke.ps1','test_runtime_preflight.ps1','test_npm_entrypoints.ps1','test_automation_paths.ps1','test_automation_process.ps1')) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests' $test)
+            if ($LASTEXITCODE) { throw "Windows regression failed: $test" }
+          }
+      - name: Actual common-mode and relocated tools with read-only browser discovery
+        if: env.BROWSER_PREVALIDATED_HEAD != ''
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($mode in @('normal','unknown','browser-check')) {
+            & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py $mode
+            if ($LASTEXITCODE) { throw "Native common-mode probe failed: $mode" }
+          }
+      - name: Exact browser gate coverage and actual normal-mode Office PDF
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:BROWSER_PREVALIDATED_HEAD) {
+            if ((git rev-parse HEAD).Trim() -cne $env:BROWSER_PREVALIDATED_HEAD) { throw 'Browser-tested candidate changed' }
+            Write-Output 'NATIVE_BROWSER_GATES_ALREADY_PASSED_ON_EXACT_CANDIDATE'
+          } else {
+            # Runtime payloads and startup remain unchanged. The bridge source
+            # DID change, so exercise it on the retained actual legacy pair.
+            if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA) { throw 'Rejected browser changed candidate HEAD' }
+            $changed = @(git diff --name-only c65b836ebf1f93666c35d25be56faf7868ceca3b HEAD -- tool/automation/playwright tool/automation/browsers tool/automation/versions.json tool/automation/dependency-manifest.json tool/automation/browser-manifest.json tool/python tool/python-packages.in.txt tool/python-packages.lock.txt tool/node env.ps1 run-codex.ps1 codex.exe codex-path tool/runtime-manifest.json Version_History)
+            if ($LASTEXITCODE -ne 0 -or $changed.Count -ne 0) { throw 'Unexpected retained runtime difference' }
+            Write-Output 'BROWSER_PAYLOAD_RETAINED_EXACT_PREVIOUS_NATIVE_TREE'
+            & .\tool\python\python.exe -B tests/check_browser_mcp_stdio.py
+            if ($LASTEXITCODE) { throw 'Retained actual MCP stdio compatibility failed' }
+            & .\tool\python\python.exe -B tests/check_codex_browser_mcp.py
+            if ($LASTEXITCODE) { throw 'Retained actual Codex MCP failed' }
+            Write-Output 'RETAINED_BROWSER_NATIVE_MCP_POLICY=PASS'
+          }
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py documents
+          if ($LASTEXITCODE) { throw 'Native Office/PDF probe failed' }
+          Write-Output 'PDF_SOURCE_WINDOWS_NATIVE_VALIDATION=PASS'
+      - name: Final LFS and customer input integrity, no archive or artifact
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Test-Path -LiteralPath '.\Microsoft\Windows\PowerShell\ModuleAnalysisCache') { throw 'Unexpected checkout PowerShell module cache after native tests' }
+          $dirty = @(git status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0 -or $dirty.Count -ne 0) { throw 'Candidate worktree became dirty during native regression' }
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'LFS gate failed' }
+          & .\tool\python\python.exe -B tool/package-release.py --check
+          if ($LASTEXITCODE) { throw 'Customer input integrity failed' }
+          if ($env:BROWSER_PREVALIDATED_HEAD) { Write-Output 'STABLE_BROWSER_FULL_NATIVE_VALIDATION=PASS' } else { Write-Output 'PDF_AND_LEGACY_MCP_SOURCE_VALIDATION=PASS; browser retained' }
+          Write-Output 'Real Windows processes with synthetic model/inputs; no real account, devices, optional renderers or formula calculation tested.'
+      - name: Push only validated fast-forward development commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REF -cne "refs/heads/$env:TARGET_BRANCH" -or $env:TARGET_BRANCH -cne 'dev/stable-tool-refresh') { throw 'Wrong target branch' }
+          $current = (git rev-parse HEAD).Trim()
+          git merge-base --is-ancestor $env:GITHUB_SHA HEAD
+          if ($LASTEXITCODE) { throw 'Candidate not descended from exact trigger' }
+          $count = [int](git rev-list --count "$env:GITHUB_SHA..HEAD")
+          if ($LASTEXITCODE -ne 0 -or $count -gt 1) { throw 'Unexpected local commit count' }
+          if ($count -eq 0) { Write-Output 'NO_BROWSER_CANDIDATE_PUSHED; PDF and retained MCP source gates passed'; return }
+          if ($current -cne $env:BROWSER_PREVALIDATED_HEAD) { throw 'Unvalidated browser candidate' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
+            $remote = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen ref or development branch moved before push' }
+          }
+          $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:GH_TOKEN"))
+          Write-Output "::add-mask::$auth"
+          try {
+            # Git LFS pre-push hook transfers only committed payload objects; no Release or Actions artifact.
+            & git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin "HEAD:refs/heads/$env:TARGET_BRANCH"
+            if ($LASTEXITCODE) { throw 'Validated development-only push failed' }
+          } finally {
+            Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+            $auth = $null
+          }
+          $after = (git ls-remote origin "refs/heads/$env:TARGET_BRANCH") -join ''
+          if ($LASTEXITCODE -ne 0 -or $after -cne ($current + [char]9 + "refs/heads/$env:TARGET_BRANCH")) { throw 'Development push readback mismatch' }
+          foreach ($ref in @('refs/heads/main','refs/tags/v0.172.0-portable.1')) {
+            $remote = (git ls-remote origin $ref) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($env:FROZEN + [char]9 + $ref)) { throw 'Frozen ref changed' }
+          }
+          Write-Output "VALIDATED_DEV_COMMIT=$current"
+          Write-Output 'NO_RELEASE_NO_ARTIFACT_NO_MAIN_CHANGE'
