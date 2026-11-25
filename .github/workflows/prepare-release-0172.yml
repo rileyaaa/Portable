@@ -1,0 +1,283 @@
+name: Prepare verified Windows 0.172.0 Portable r1 candidate (no release)
+on:
+  push:
+    branches: [release-prep/v0.172.0-portable.1]
+    paths:
+      - .github/workflows/prepare-release-0172.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-release-prep-0172-r1
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    if: github.ref == 'refs/heads/release-prep/v0.172.0-portable.1' && github.event_name == 'push'
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: powershell
+    env:
+      SOURCE_SHA: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      RELEASE_VERSION: v0.172.0-portable.1
+    steps:
+      - name: Preserve exact tracked bytes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'Cannot disable checkout EOL conversion' }
+
+      - name: Checkout frozen reviewed main commit, not preparation branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 4fb0b50228057cd0be41fbb191e15e065e64e368
+          fetch-depth: 1
+          lfs: true
+          persist-credentials: false
+
+      - name: Fail closed on wrong source, missing LFS or runtime mismatch
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:SOURCE_SHA) { throw 'Wrong source commit' }
+          $remote = (git ls-remote origin refs/heads/main) -join ''
+          if ($LASTEXITCODE -ne 0 -or -not $remote.StartsWith($env:SOURCE_SHA + [char]9)) { throw 'Frozen main changed' }
+          $tag = (git ls-remote --tags origin "refs/tags/$env:RELEASE_VERSION") -join ''
+          if ($LASTEXITCODE -ne 0 -or $tag) { throw 'Target tag occupied or cannot be checked' }
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'Missing or damaged LFS content' }
+          $version = (& .\codex.exe --version) -join ' '
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '(?<![0-9])0\.172\.0(?![0-9])') { throw 'Codex version mismatch' }
+          $node = (& .\tool\node\node.exe --version) -join ' '
+          if ($LASTEXITCODE -ne 0 -or $node -cne 'v26.13.1') { throw 'Node version mismatch' }
+          $python = (& .\tool\python\python.exe --version) -join ' '
+          if ($LASTEXITCODE -ne 0 -or $python -cne 'Python 3.14.10') { throw 'Python version mismatch' }
+          & .\tool\python\python.exe -B .\tool\package-release.py --check
+          if ($LASTEXITCODE) { throw 'Source/runtime/browser input integrity failed' }
+          Write-Output "FROZEN_SOURCE_GATE=PASS $env:SOURCE_SHA"
+
+      - name: Verify canonical upstream archive bytes and retained executable identities
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'portable-0172-official.tar.gz'
+          $env:OFFICIAL_ARCHIVE = $archive
+          try {
+            & curl.exe --fail --location --retry 3 --max-time 900 --output $archive 'https://github.com/openai/codex/releases/download/rust-v0.172.0/codex-package-x86_64-pc-windows-msvc.tar.gz'
+            if ($LASTEXITCODE) { throw 'Official archive download failed' }
+            if ((Get-Item -LiteralPath $archive).Length -ne 218274372) { throw 'Official archive size differs' }
+            if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'b723674d7caf26a3f55121a02d6cad8f3ac8ddf5860747a6edde1c904cf593af') { throw 'Official archive SHA256 differs' }
+            @'
+          import hashlib, json, os, pathlib, tarfile
+          manifest = json.loads(pathlib.Path("tool/runtime-manifest.json").read_bytes())
+          assert manifest["version"] == "0.172.0"
+          assert manifest["target"] == "x86_64-pc-windows-msvc"
+          assert manifest["archive_sha256"] == "b723674d7caf26a3f55121a02d6cad8f3ac8ddf5860747a6edde1c904cf593af"
+          expected = {r["upstream_path"]: r["sha256"] for name, r in manifest["files"].items() if name.endswith(".exe")}
+          assert len(expected) == 5
+          seen = set()
+          with tarfile.open(os.environ["OFFICIAL_ARCHIVE"], "r|gz") as tar:
+              for member in tar:
+                  if not member.isfile():
+                      continue
+                  matching = [p for p in expected if member.name == p or member.name.endswith("/" + p)]
+                  if not matching:
+                      continue
+                  assert len(matching) == 1
+                  p = matching[0]
+                  assert p not in seen
+                  with tar.extractfile(member) as stream:
+                      assert hashlib.file_digest(stream, "sha256").hexdigest() == expected[p], "Official executable digest differs: " + p
+                  seen.add(p)
+          assert seen == set(expected), "Missing retained executable in official archive"
+          print("UPSTREAM_ARCHIVE_AND_5_EXECUTABLES=PASS")
+          '@ | & .\tool\python\python.exe -B -
+            if ($LASTEXITCODE) { throw 'Official executable verification failed' }
+          } finally {
+            if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive -Force }
+            Remove-Item Env:OFFICIAL_ARCHIVE -ErrorAction SilentlyContinue
+          }
+          $runtime = Get-Content -LiteralPath .\tool\runtime-manifest.json -Raw | ConvertFrom-Json
+          $binaries = @($runtime.files.PSObject.Properties.Name | Where-Object { $_ -like '*.exe' })
+          $binaries += @('tool/node/node.exe', 'tool/python/python.exe', 'tool/automation/browsers/chromium-1247/chrome-win64/chrome.exe')
+          foreach ($name in $binaries) {
+            $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path (Get-Location) $name)
+            $status = [string]$signature.Status
+            Write-Output "AUTHENTICODE $name $status"
+            if ($status -notin @('Valid','NotSigned')) { throw "Signature verification failed for $name ($status)" }
+          }
+          Write-Output 'Unsigned upstream components, if any, are reported as NotSigned; no project signing is performed.'
+
+      - name: Existing native Windows release regressions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($test in @('test_runtime_package.py','test_release_package.py','test_portable_ssh.py','test_mode_copies.py','test_cli_version_verifier.py','test_optional_python_payload.py','test_python_runtime_dependencies.py','test_browser_install.py')) {
+            & .\tool\python\python.exe -B -m unittest discover -s tests -p $test -v
+            if ($LASTEXITCODE) { throw "Release regression failed: $test" }
+          }
+          foreach ($test in @('test_launcher_smoke.ps1','test_runtime_preflight.ps1','test_browser_smoke.ps1')) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests' $test)
+            if ($LASTEXITCODE) { throw "Native Windows smoke failed: $test" }
+          }
+          & .\tool\python\python.exe -B .\tool\package-release.py --check
+          if ($LASTEXITCODE) { throw 'Post-regression input integrity failed' }
+
+      - name: Build reproducible customer ZIP and independently audit every member
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import hashlib, importlib.util, json, os, pathlib, re, shutil, stat, subprocess, sys, zipfile
+
+          root = pathlib.Path.cwd()
+          source = os.environ["SOURCE_SHA"]
+          tag = os.environ["RELEASE_VERSION"]
+          assert tag == "v0.172.0-portable.1"
+          spec = importlib.util.spec_from_file_location("release_builder", root / "tool/package-release.py")
+          release = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(release)
+
+          def digest(path):
+              with path.open("rb") as stream:
+                  return hashlib.file_digest(stream, "sha256").hexdigest()
+
+          def build():
+              result = json.loads(subprocess.check_output(
+                  [sys.executable, "-B", "tool/package-release.py", "--version", tag],
+                  cwd=root))
+              assert result["source_commit"] == source, "Packaging source mismatch"
+              return result
+
+          commit, _, names = release.clean_checkout(root)
+          assert commit == source
+          included, excluded = release.customer_files(names)
+          first = build()
+          second = build()
+          archive = pathlib.Path(first["archive"])
+          manifest = pathlib.Path(first["manifest"])
+          checksums = pathlib.Path(first["checksums"])
+          outputs = {archive.name, "release-manifest.json", "SHA256SUMS"}
+          assert archive.name == "Codex-Portable-v0.172.0-portable.1-windows-x64.zip"
+          assert {p.name for p in pathlib.Path(first["output_dir"]).iterdir()} == outputs
+          assert {p.name for p in pathlib.Path(second["output_dir"]).iterdir()} == outputs
+          for key in ("archive", "manifest", "checksums"):
+              assert digest(pathlib.Path(first[key])) == digest(pathlib.Path(second[key])), "Reproducible build differs: " + key
+          archive_hash = digest(archive)
+          manifest_hash = digest(manifest)
+          assert archive_hash == first["archive_sha256"]
+          assert checksums.read_text(encoding="ascii").splitlines() == [
+              archive_hash + "  " + archive.name, manifest_hash + "  " + manifest.name]
+          meta = json.loads(manifest.read_bytes())
+          assert meta["source_commit"] == source and meta["release_version"] == tag
+          assert meta["target"] == "x86_64-pc-windows-msvc" and meta["codex_version"] == "0.172.0"
+          assert meta["package_kind"] == "customer" and meta["archive"] == archive.name
+          assert meta["source_file_count"] == len(names) and meta["excluded_file_count"] == len(excluded)
+          assert meta["excluded_files"] == excluded
+          assert list(meta["files"]) == included and meta["file_count"] == len(included)
+          assert set(included).isdisjoint(excluded)
+
+          # Additional deny checks over the distributable ZIP only. Never inspect
+          # a host profile, environment credentials, untracked files, or logs.
+          private_names = {
+              "auth.json", "credentials.json", "credential.json", "secrets.json",
+              ".netrc", ".pypirc", "id_rsa", "id_ed25519", "id_ecdsa",
+              "cookies.sqlite", "login data", "local state", "env.local.ps1",
+              ".git-credentials", "known_hosts", "session.jsonl",
+          }
+          secret = re.compile(
+              rb"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----\r?\n[A-Za-z0-9+/]{48,}"
+              rb"|(?<![A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{60,255}"
+              rb"|sk-proj-[A-Za-z0-9_-]{40,255}|sk-ant-api03-[A-Za-z0-9_-]{40,255}"
+              rb"|AKIA[0-9A-Z]{16})(?![A-Za-z0-9_])"
+          )
+          total = 0
+          with zipfile.ZipFile(archive) as zipped:
+              assert zipped.namelist() == ["Codex/" + name for name in included]
+              assert len(set(n.casefold() for n in zipped.namelist())) == len(included)
+              for name, record in meta["files"].items():
+                  release.safe_name(name)
+                  parts = name.lower().split("/")
+                  assert not any(p in {".ssh", ".aws", ".gnupg", "__pycache__"} for p in parts), "Private path or cache entry in candidate"
+                  assert parts[-1] not in private_names and not parts[-1].startswith(".env"), "Credential-like filename in candidate"
+                  assert not parts[-1].endswith((".pfx", ".p12", ".kdbx", ".key", ".pyc")), "Private key/cache filename in candidate"
+                  info = zipped.getinfo("Codex/" + name)
+                  assert not info.is_dir() and stat.S_ISREG(info.external_attr >> 16)
+                  assert not (info.flag_bits & 1), "Unexpected encrypted ZIP entry"
+                  assert info.file_size == record["size"]
+                  local = root.joinpath(*name.split("/"))
+                  assert local.stat().st_size == record["size"] and digest(local) == record["sha256"], "Source-to-manifest mismatch"
+                  if parts[0] in release.STATE_ROOTS:
+                      assert info.file_size == 0, "Nonempty runtime state placeholder"
+                  h = hashlib.sha256()
+                  tail = b""
+                  length = 0
+                  with zipped.open(info) as member:
+                      for chunk in iter(lambda: member.read(1024 * 1024), b""):
+                          h.update(chunk)
+                          length += len(chunk)
+                          sample = tail + chunk
+                          if secret.search(sample):
+                              raise RuntimeError("Potential credential/key pattern in distributable member; upload refused: " + name)
+                          tail = sample[-512:]
+                  assert length == record["size"] and h.hexdigest() == record["sha256"], "ZIP member mismatch"
+                  total += length
+              assert total == meta["uncompressed_bytes"]
+              runtime = json.loads(zipped.read("Codex/tool/runtime-manifest.json"))
+              assert runtime["version"] == "0.172.0"
+              for name, record in runtime["files"].items():
+                  assert meta["files"][name]["sha256"] == record["sha256"], "Internal runtime manifest mismatch"
+              versions = json.loads(zipped.read("Codex/tool/automation/versions.json"))
+              browser = json.loads(zipped.read("Codex/tool/automation/browser-manifest.json"))
+              assert meta["browser_version"] == browser["browserVersion"] == versions["browser"]["version"]
+              assert meta["browser_revision"] == browser["revision"]
+              assert meta["browser_archive_sha256"] == browser["archive"]["sha256"]
+              for name, record in browser["files"].items():
+                  assert meta["files"][name]["sha256"] == record["sha256"], "Internal browser manifest mismatch"
+
+          assert release.clean_checkout(root)[0] == source, "Source changed"
+          # Recheck frozen main and target tag before staging the only upload.
+          remote = release.git(root, "ls-remote", "origin", "refs/heads/main").decode().strip()
+          assert remote == source + "\trefs/heads/main", "Frozen main changed before staging"
+          assert not release.git(root, "ls-remote", "--tags", "origin", "refs/tags/" + tag).strip(), "Target tag became occupied"
+          stage = pathlib.Path(os.environ["RUNNER_TEMP"]) / "portable-0172-candidate"
+          stage.mkdir()
+          for path in (archive, manifest, checksums):
+              dest = stage / path.name
+              shutil.copyfile(path, dest)
+              assert digest(dest) == digest(path), "Staged artifact bytes differ"
+          assert {p.name for p in stage.iterdir()} == outputs
+          report = (
+              "CANDIDATE_VERIFIED=PASS\n"
+              f"SOURCE_COMMIT={source}\n"
+              f"RELEASE_CANDIDATE={tag}\n"
+              f"ZIP_SHA256={archive_hash}\n"
+              f"MANIFEST_SHA256={manifest_hash}\n"
+              f"ZIP_BYTES={archive.stat().st_size}\n"
+              f"FILE_COUNT={len(included)}\n"
+              f"SOURCE_FILE_COUNT={len(names)}\n"
+              f"EXCLUDED_FILE_COUNT={len(excluded)}\n"
+              f"UNCOMPRESSED_BYTES={total}\n"
+              "REPRODUCIBLE_ZIP_AND_METADATA=PASS\n"
+              "ALL_MEMBERS_SIZE_SHA256_CRC_AND_INTERNAL_MANIFESTS=PASS\n"
+              "PRIVATE_PATH_AND_KNOWN_CREDENTIAL_PATTERN_SCREEN=PASS (not an exhaustive secret detector)\n"
+              "CANDIDATE_ONLY_NOT_A_RELEASE\n"
+          )
+          print(report)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
+              stream.write("## Verified Windows customer ZIP candidate (not a Release)\n\n")
+              stream.write("~~~text\n" + report + "~~~\n")
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Candidate build or independent audit failed; no upload' }
+
+      - name: Upload only the verified distributable candidate and checksums
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: Codex-Portable-v0.172.0-portable.1-windows-x64-verified-candidate
+          path: |
+            ${{ runner.temp }}/portable-0172-candidate/Codex-Portable-v0.172.0-portable.1-windows-x64.zip
+            ${{ runner.temp }}/portable-0172-candidate/release-manifest.json
+            ${{ runner.temp }}/portable-0172-candidate/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: false
