@@ -1,0 +1,426 @@
+name: Stable tool refresh - standalone ripgrep 16 on Windows (one time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/refresh-rg16-stable.yml
+permissions: {}
+concurrency:
+  group: stable-tool-refresh-rg16
+  cancel-in-progress: false
+jobs:
+  refresh:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == '4fb0b50228057cd0be41fbb191e15e065e64e368' && github.run_attempt == 1
+    runs-on: windows-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: powershell
+    env:
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      TARGET_BRANCH: dev/stable-tool-refresh
+    steps:
+      - name: Preserve official tracked bytes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'git configuration failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Confirm release baseline and exact development scope
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA) { throw 'Wrong checkout' }
+          if ((git rev-parse 'HEAD^').Trim() -cne $env:FROZEN) { throw 'Wrong parent' }
+          if ((git diff --name-only $env:FROZEN HEAD) -cne '.github/workflows/refresh-rg16-stable.yml') { throw 'Unexpected starting changes' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
+            $remote = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen ref or development branch moved' }
+          }
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'LFS verification failed' }
+
+      - name: Inventory installed tool and dependency versions, licenses and official stable metadata (read only)
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import concurrent.futures, importlib.metadata as md, json, os, pathlib, re, subprocess, sys, urllib.error, urllib.parse, urllib.request, xml.etree.ElementTree as ET
+          from packaging.version import Version, InvalidVersion
+          from packaging.tags import sys_tags
+          from packaging.utils import parse_wheel_filename, canonicalize_name
+          from packaging.specifiers import SpecifierSet
+
+          root = pathlib.Path.cwd()
+          def emit(kind, row):
+              print("INVENTORY_" + kind + "=" + json.dumps(row, ensure_ascii=True, separators=(",", ":")), flush=True)
+          def fetch(url):
+              req = urllib.request.Request(url, headers={"User-Agent":"Portable-stable-inventory/1", "Accept":"application/json"})
+              with urllib.request.urlopen(req, timeout=20) as r:
+                  if urllib.parse.urlsplit(r.url).hostname not in {"pypi.org","registry.npmjs.org","googlechromelabs.github.io","dl.google.com"}:
+                      raise ValueError("Unexpected metadata redirect")
+                  return r.read(32*1024*1024+1)
+          def get(url):
+              return json.loads(fetch(url))
+          def error(e):
+              return "HTTP " + str(e.code) if isinstance(e,urllib.error.HTTPError) else type(e).__name__
+          def stable(v):
+              try:
+                  p=Version(v)
+                  return not (p.is_prerelease or p.is_devrelease)
+              except InvalidVersion:
+                  return False
+          tags = {t:i for i,t in enumerate(sys_tags())}
+          py = ".".join(map(str,sys.version_info[:3]))
+          lock = {}
+          for line in (root/"tool/python-packages.lock.txt").read_text(encoding="utf-8").splitlines():
+              m=re.match(r"^([^=]+)==([^ ]+) --hash=sha256:([0-9a-f]{64})$",line)
+              if m: lock[canonicalize_name(m[1])]=(m[2],m[3])
+          packages=[]
+          for d in md.distributions(path=[str(root/"tool/python/Lib/site-packages")]):
+              n=d.metadata["Name"]
+              if not n: continue
+              license=d.metadata.get("License-Expression") or d.metadata.get("License") or "; ".join(x for x in d.metadata.get_all("Classifier",[]) if x.startswith("License ::"))
+              if len(license)>240: license="License text in installed distribution metadata (see retained license files)"
+              packages.append({"name":n,"current":d.version,"license":license or "not declared in metadata","locked":lock.get(canonicalize_name(n))})
+          def wheel_rank(f):
+              if f.get("yanked") or not f["filename"].endswith(".whl"): return None
+              try:
+                  if f.get("requires_python") and not SpecifierSet(f["requires_python"]).contains(py,prereleases=False): return None
+                  _,_,_,ftags=parse_wheel_filename(f["filename"])
+                  ranks=[tags[t] for t in ftags if t in tags]
+                  return min(ranks) if ranks else None
+              except (ValueError,TypeError): return None
+          def pyrow(row):
+              name=row["name"]
+              try:
+                  j=get("https://pypi.org/pypi/"+urllib.parse.quote(name,safe="")+"/json")
+                  releases=j.get("releases",{})
+                  versions=sorted((v for v,fs in releases.items() if stable(v) and any(not f.get("yanked") for f in fs)),key=Version,reverse=True)
+                  row["latest_stable"]=versions[0] if versions else None
+                  row["upstream_current_lock_match"]=bool(row["locked"] and any(f.get("digests",{}).get("sha256")==row["locked"][1] for f in releases.get(row["current"],[])))
+                  for v in versions:
+                      candidates=[(rank,f) for f in releases[v] if (rank:=wheel_rank(f)) is not None]
+                      if not candidates: continue
+                      candidates.sort(key=lambda a:(a[0],a[1]["filename"]))
+                      f=candidates[0][1]
+                      row.update(latest_compatible=v,wheel=f["filename"],sha256=f["digests"]["sha256"],url=f["url"],requires_python=f.get("requires_python"))
+                      break
+                  if not row.get("latest_compatible"): row["status"]="no stable compatible wheel verified"
+                  else: row["status"]="metadata only; not installed"
+              except Exception as e: row["status"]="unconfirmed: "+error(e)
+              return row
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+              pyrows=list(pool.map(pyrow,sorted(packages,key=lambda x:x["name"].lower())))
+          for row in pyrows: emit("PYTHON",row)
+
+          tracked=subprocess.check_output(["git","ls-files","-z"],cwd=root).decode("utf-8").split("\0")
+          scopes=("tool/node/node_modules/","tool/automation/playwright/node_modules/")
+          npm={}
+          def package_root(rest):
+              parts=rest.split("/")
+              if parts[-1]!="package.json": return False
+              parts=parts[:-1]
+              while parts:
+                  if parts[0].startswith("@"):
+                      if len(parts)<2: return False
+                      parts=parts[2:]
+                  else: parts=parts[1:]
+                  if not parts: return True
+                  if parts.pop(0)!="node_modules": return False
+              return False
+          for path in tracked:
+              prefix=next((p for p in scopes if path.startswith(p)),None)
+              if prefix is None or not package_root(path[len(prefix):]): continue
+              j=json.loads((root/path).read_bytes())
+              if not j.get("name") or not j.get("version"): continue
+              key=(j["name"],j["version"])
+              row=npm.setdefault(key,{"name":key[0],"current":key[1],"license":j.get("license","not declared"),"paths":[]})
+              row["paths"].append(path)
+          def npmrow(row):
+              n=urllib.parse.quote(row["name"],safe="")
+              def fields(j):
+                  d=j.get("dist",{})
+                  return {"version":j.get("version"),"integrity":d.get("integrity"),"sha1":d.get("shasum"),"url":d.get("tarball"),"engines":j.get("engines"),"license":j.get("license")}
+              try:
+                  current=get("https://registry.npmjs.org/"+n+"/"+urllib.parse.quote(row["current"],safe=""))
+                  latest=get("https://registry.npmjs.org/"+n+"/latest")
+                  row["upstream_current"]=fields(current)
+                  row["latest_stable"]=fields(latest) if re.fullmatch(r"\d+\.\d+\.\d+(?:\+[0-9A-Za-z.-]+)?",latest.get("version","")) else None
+                  if row["name"] in {"@playwright/mcp","playwright","playwright-core","npm","corepack"}:
+                      row["latest_dependencies"]=latest.get("dependencies",{})
+                  row["status"]="registry metadata only; grouped dependency upgrade required"
+              except Exception as e: row["status"]="unconfirmed: "+error(e)
+              return row
+          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+              npmrows=list(pool.map(npmrow,sorted(npm.values(),key=lambda r:(r["name"],r["current"]))))
+          for row in npmrows: emit("NPM",row)
+          emit("NODE_NATIVE",json.loads(subprocess.check_output([str(root/"tool/node/node.exe"),"-p","JSON.stringify(process.versions)"])))
+          emit("PYTHON_NATIVE",{"version":py,"platform":sys.platform,"architecture":os.environ.get("PROCESSOR_ARCHITECTURE")})
+          for relative in ("tool/cli-versions.json","tool/runtime-manifest.json","tool/automation/versions.json"):
+              emit("PINNED",{"path":relative,"metadata":json.loads((root/relative).read_bytes())})
+          browser=json.loads((root/"tool/automation/browser-manifest.json").read_bytes())
+          emit("BROWSER_CURRENT",{"version":browser["browserVersion"],"revision":browser["revision"],"archive":browser["archive"],"license":"Chromium BSD and bundled third-party notices; retain existing distribution notices"})
+          try:
+              data=get("https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json")
+              s=data["channels"]["Stable"]
+              emit("BROWSER_STABLE",{"version":s["version"],"revision":s["revision"],"win64":[x for x in s["downloads"]["chrome"] if x["platform"]=="win64"],"status":"CfT does not publish sha256 in this metadata; not a Playwright compatibility claim"})
+          except Exception as e: emit("BROWSER_STABLE",{"status":"unconfirmed: "+error(e)})
+          try:
+              tree=ET.fromstring(fetch("https://dl.google.com/android/repository/repository2-3.xml"))
+              local=lambda e:e.tag.rsplit("}",1)[-1]
+              for p in tree.iter():
+                  if local(p)!="remotePackage" or p.get("path")!="platform-tools": continue
+                  rev=next((x for x in p if local(x)=="revision"),None)
+                  chan=next((x.get("ref") for x in p if local(x)=="channelRef"),"channel-0")
+                  for a in p.iter():
+                      if local(a)!="archive": continue
+                      fields={local(x):x.text for x in a.iter() if x.text and x.text.strip()}
+                      if fields.get("host-os")=="windows":
+                          emit("ANDROID_UPSTREAM",{"channel":chan,"revision":{local(x):x.text for x in rev} if rev is not None else None,"archive":fields.get("url"),"checksum":fields.get("checksum"),"checksum_type":next((x.get("type") for x in a.iter() if local(x)=="checksum"),None),"license_ref":next((x.get("ref") for x in p if local(x)=="uses-license"),None)})
+          except Exception as e: emit("ANDROID_UPSTREAM",{"status":"unconfirmed: "+error(e)})
+          emit("NATIVE_CLI_STABLE",{"fd":"10.5.2","jq":"1.8.2","7zip":"26.06","ripgrep":"16.0.0","rg_windows_archive_sha256":"f418ae83e63046a94a7b5f3a44bf3a169f66e689164856ecee02547131c73931","rg_license":"MIT OR Unlicense","python_3_14":"3.14.10","python_latest":"3.15.2","node_lts":"26.13.1","npm_latest":"11.21.3","android_stable":"37.0.3","mcp_latest":"0.0.86","mcp_latest_pins":"1.66.0-alpha-2026-11-18","playwright_stable":"1.65.1"})
+          for path in ("tool/git","tool/uv-tools","tool/android/cli","tool/android/sdk","tool/android/jdk","tool/office","tool/pdf","tool/media","tool/ocr","tool/automation/appium"):
+              emit("OPTIONAL_PATH",{"path":path,"tracked_files":sum(x.startswith(path+"/") for x in tracked),"status":"placeholder or optional; no new installations"})
+          summary={"python_distributions":len(pyrows),"python_latest_compatible_verified":sum(bool(x.get("latest_compatible")) for x in pyrows),"npm_distinct_name_versions":len(npmrows),"npm_latest_stable_verified":sum(bool(x.get("latest_stable")) for x in npmrows),"scope":"metadata only, no dependency installation"}
+          emit("SUMMARY",summary)
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a",encoding="utf-8") as out:
+              out.write("## Stable dependency inventory (metadata only)\n\n"+json.dumps(summary,ensure_ascii=True)+"\n\nFull per-distribution metadata, license and upstream wheel/tarball digests are in INVENTORY_* job log records. Unknowns are retained, not upgraded.\n")
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Dependency inventory failed' }
+
+      - name: Download and verify only official ripgrep 16 Windows x64, preserve fixed Codex copy
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'ripgrep-16.0.0-x86_64-pc-windows-msvc.zip'
+          $env:RG_ARCHIVE = $archive
+          try {
+            & curl.exe --fail --location --retry 2 --max-time 240 --output $archive 'https://github.com/BurntSushi/ripgrep/releases/download/16.0.0/ripgrep-16.0.0-x86_64-pc-windows-msvc.zip'
+            if ($LASTEXITCODE) { throw 'Official rg download failed' }
+            @'
+          import hashlib,json,os,pathlib,stat,struct,zipfile,subprocess
+          root=pathlib.Path.cwd()
+          archive=pathlib.Path(os.environ["RG_ARCHIVE"])
+          sha=lambda b:hashlib.sha256(b).hexdigest()
+          assert archive.stat().st_size==1782487
+          assert sha(archive.read_bytes())=="f418ae83e63046a94a7b5f3a44bf3a169f66e689164856ecee02547131c73931"
+          pinned="14231169855ec5205cf5a1b6f1db358ff4aed4247c86b69ce8aae647c77f6680"
+          assert sha((root/"tool/bin/rg.exe").read_bytes())==pinned
+          assert sha((root/"codex-path/rg.exe").read_bytes())==pinned
+          with zipfile.ZipFile(archive) as z:
+              def member(name):
+                  m=[i for i in z.infolist() if not i.is_dir() and pathlib.PurePosixPath(i.filename).name==name]
+                  assert len(m)==1 and m[0].file_size<30_000_000, "Unexpected archive member: "+name
+                  assert not (m[0].flag_bits&1)
+                  return z.read(m[0])
+              binary=member("rg.exe")
+              assert binary[:2]==b"MZ"
+              offset=struct.unpack_from("<I",binary,0x3c)[0]
+              assert binary[offset:offset+6]==b"PE\0\0\x64\x86"
+              for name in ("COPYING","LICENSE-MIT","UNLICENSE"):
+                  old=(root/"tool/licenses/ripgrep"/name).read_bytes()
+                  new=member(name)
+                  assert old.replace(b"\r\n",b"\n")==new.replace(b"\r\n",b"\n"), "License change requires review: "+name
+              print("RG16_LICENSES_MATCH=PASS",flush=True)
+          newsha=sha(binary)
+          assert newsha!=pinned
+          (root/"tool/bin/rg.exe").write_bytes(binary)
+          cli=root/"tool/cli-versions.json"
+          meta=json.loads(cli.read_bytes())
+          rg=next(x for x in meta["tools"] if x["name"]=="rg")
+          assert rg["version"]=="15.2.0" and rg["windows_sha256"]==pinned
+          rg.update(version="16.0.0",windows_sha256=newsha,official_windows_asset=archive.name,
+                    official_windows_asset_sha256="f418ae83e63046a94a7b5f3a44bf3a169f66e689164856ecee02547131c73931",
+                    linux_asset="ripgrep-16.0.0-x86_64-unknown-linux-musl.tar.gz",
+                    linux_asset_sha256="54268ab4643c00a290a29b0086066d64b3f56236dd805ec64629a86f9bd29fd0",
+                    linux_asset_url="https://github.com/BurntSushi/ripgrep/releases/download/16.0.0/ripgrep-16.0.0-x86_64-unknown-linux-musl.tar.gz",
+                    linux_validation="official asset metadata only; rg 16 Linux runtime not tested in this batch")
+          meta["scope"]="Windows bundled executable byte identity; Linux upstream asset metadata (rg 16 Linux runtime not tested)"
+          cli.write_text(json.dumps(meta,ensure_ascii=False,indent=2)+"\n",encoding="utf-8",newline="\n")
+          def edit(relative, pairs):
+              p=root/relative
+              original=p.read_bytes()
+              content=original.decode("utf-8")
+              newline="\r\n" if b"\r\n" in original else "\n"
+              for old,new in pairs:
+                  old=old.replace("\n",newline)
+                  new=new.replace("\n",newline)
+                  assert content.count(old)==1, "Expected unique edit: "+relative
+                  content=content.replace(old,new,1)
+              p.write_bytes(content.encode("utf-8"))
+          edit(".github/maintenance/03-verify-cli-versions.py",[
+              ('"version": "15.2.0",','"version": "16.0.0",'),
+              ('"tag": "15.2.0",','"tag": "16.0.0",'),
+              ('ripgrep-15.2.0-x86_64-pc-windows-msvc.zip','ripgrep-16.0.0-x86_64-pc-windows-msvc.zip'),
+              ('"size": 1789611,','"size": 1782487,'),
+              ('71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5','f418ae83e63046a94a7b5f3a44bf3a169f66e689164856ecee02547131c73931')])
+          edit("tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md",[
+              ("\u5305\u5185 Windows \u6587\u4ef6\u4e0e\u5b98\u65b9\u53d1\u884c\u5de5\u4ef6\u9010\u5b57\u8282\u4e00\u81f4\uff1afd **10.5.2**\u3001ripgrep **15.2.0**\u3001jq **1.8.2**\u3002","\u5305\u5185\u72ec\u7acb Windows CLI \u4e0e\u5b98\u65b9\u5de5\u4ef6\u9010\u5b57\u8282\u6838\u9a8c\uff1afd **10.5.2**\u3001ripgrep **16.0.0**\uff08\u4ec5 `tool/bin/rg.exe`\uff09\u3001jq **1.8.2**\u3002"),
+              ("\uff1b\u7248\u672c\u6838\u9a8c\u4e0d\u4ee3\u8868 Windows \u529f\u80fd\u6d4b\u8bd5\u901a\u8fc7\u3002","\uff1b16.0.0 \u4e0d\u66ff\u6362 Codex \u56fa\u5b9a\u7684 codex-path/rg.exe\uff0c\u4e0d\u4fee\u6539 PATH \u4f18\u5148\u987a\u5e8f\u3002Windows \u539f\u751f\u56de\u5f52\u89c1\u5f00\u53d1\u8bb0\u5f55\uff1bLinux 16.0.0 \u4ec5\u8bb0\u5f55\u5b98\u65b9\u5de5\u4ef6\u6458\u8981\uff0c\u672a\u8fd0\u884c\u3002")])
+          runurl="https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]
+          edit("DEVELOPMENT.md",[
+              ("# \u5f00\u53d1\u4e0e\u7ef4\u62a4\u8bb0\u5f55\n\n","# \u5f00\u53d1\u4e0e\u7ef4\u62a4\u8bb0\u5f55\n\n"+"## 2026-11-25\uff1a\u7a33\u5b9a\u5de5\u5177\u66f4\u65b0\u5f00\u53d1\u5206\u652f\uff0c\u7b2c\u4e00\u7ec4\u72ec\u7acb ripgrep\n\n\u672c\u7ec4\u53ea\u66f4\u65b0 `tool/bin/rg.exe` 15.2.0 \u2192 16.0.0\uff0c\u5b98\u65b9 Windows x64 MSVC ZIP \u901a\u8fc7\u56fa\u5b9a\u5927\u5c0f\u548c SHA-256 \u6838\u9a8c\uff0c\u539f MIT/Unlicense \u8bb8\u53ef\u6587\u672c\u9010\u9879\u5bf9\u6bd4\uff1b`codex-path/rg.exe` \u4ecd\u7531 0.172.0 \u8fd0\u884c\u6e05\u5355\u56fa\u5b9a\uff0c\u4e0d\u4fee\u6539 Codex/Host\u3001\u542f\u52a8\u5668\u3001\u6743\u9650\u3001PATH \u987a\u5e8f\u6216\u6a21\u5f0f\u526f\u672c\u3002`tool/cli-versions.json` \u4e0e\u65e2\u6709 CLI verifier \u540c\u6b65\u56fa\u5b9a\u65b0\u5de5\u4ef6\uff1bLinux 16.0.0 \u4ec5\u8bb0\u5f55\u5b98\u65b9\u5de5\u4ef6\u6458\u8981\uff0c\u672a\u6267\u884c Linux \u65b0\u7248\u3002\u56de\u9000\u5e94\u6574\u4f53\u6062\u590d\u672c\u7ec4\u7684\u72ec\u7acb EXE\u3001\u6e05\u5355\u3001verifier \u548c\u6d4b\u8bd5/\u8bf4\u660e\uff0c\u4e0d\u6062\u590d\u6216\u6539\u52a8 main/tag/Release\u3002Windows \u95e8\u7981\u901a\u8fc7\u624d\u63a8\u9001\u5b9e\u9645\u5019\u9009\u63d0\u4ea4\uff0c\u5408\u6210 Responses \u89e6\u53d1\u771f\u5b9e BAT/Codex \u548c\u547d\u4ee4\uff0c\u4e0d\u4ee3\u8868\u771f\u5b9e\u5728\u7ebf\u8d26\u53f7\u6216\u6a21\u578b\u51b3\u7b56\u3002\u5de5\u5177\u5168\u91cf\u5143\u6570\u636e\u76d8\u70b9\u3001\u5b9e\u9645\u5e38\u7528/YOLO\u3001\u4e2d\u6587\u642c\u8fc1\u3001\u6d4f\u89c8\u5668/MCP\u3001Office/PDF\u3001\u539f\u751f\u7b7e\u540d/\u6587\u4ef6\u53ca\u53d1\u884c\u8f93\u5165\u7ed3\u679c\u89c1\u672c\u6b21 AC\uff1b\u7f51\u7edc\u5143\u6570\u636e\u5931\u8d25\u9879\u4fdd\u6301\u672a\u786e\u8ba4\uff0c\u4e0d\u636e\u6b64\u5347\u7ea7\u3002\u4fdd\u7559\u5df2\u77e5 ADB \u5bbf\u4e3b\u8def\u5f84\u3001PowerShell \u542f\u52a8\u6a21\u5757\u8def\u5f84\u9650\u5236\u53ca\u672a\u6d4b\u771f\u5b9e\u8bbe\u5907/\u4ea4\u4e92\u5ba1\u6279/Office \u91cd\u7b97\u3002\u65b0\u7248 MCP 0.0.86 \u4ecd\u56fa\u5b9a alpha Playwright\uff0c\u6682\u4e0d\u5347\u7ea7\u8be5\u7ec4\uff1bPython 3.15 \u6d89\u53ca ABI\uff0c\u6682\u4e0d\u8de8\u5c0f\u7248\u672c\uff1b\u4f18\u5148\u968f\u540e\u5ba1\u6838 Python pip/certifi \u5b89\u5168\u4fee\u590d\u517c\u5bb9\u7ec4\uff0c\u518d\u5ba1\u6838 npm \u914d\u5957\u4f9d\u8d56\u3002\u5f53\u524d\u5b9e\u9645 dist-info \u4e0e\u65e7 SSH \u8bf4\u660e\u4e0d\u5b8c\u5168\u4e00\u81f4\uff0cSSH \u771f\u5b9e\u529f\u80fd\u53ca\u8bf4\u660e\u53e6\u884c\u9a8c\u8bc1\uff0c\u4e0d\u5728\u672c\u7ec4\u5192\u79f0\u5df2\u9a8c\u3002\n\n"+"[Windows AC]("+runurl+"), rg.exe SHA-256: "+newsha+".\n\n")])
+          p=root/"tests/test_cli_version_verifier.py"
+          edit(str(p.relative_to(root)),[
+              ("\n\nif __name__ == '__main__':",
+               "\n\n    def test_bundled_cli_manifest_digests(self):\n        import json\n        root = SRC.parents[2]\n        manifest = json.loads((root / 'tool/cli-versions.json').read_bytes())\n        for item in manifest['tools']:\n            with self.subTest(name=item['name']):\n                self.assertEqual(verifier.sha256(root / item['windows_path']), item['windows_sha256'])\n\n\nif __name__ == '__main__':")])
+          # Reuse the real Codex tool-discovery fixture in both existing modes.
+          probe=r'''
+          import hashlib, json, os, pathlib, shutil, subprocess
+          root=pathlib.Path(os.environ["CODEX_INSTALL_DIR"]).resolve()
+          exe=root/"tool/bin/rg.exe"
+          fixed=root/"codex-path/rg.exe"
+          selected=pathlib.Path(shutil.which("rg.exe")).resolve()
+          assert selected in {exe,fixed}, "rg host fallback"
+          with fixed.open("rb") as f:
+              assert hashlib.file_digest(f,"sha256").hexdigest()=="14231169855ec5205cf5a1b6f1db358ff4aed4247c86b69ce8aae647c77f6680"
+          fixture=pathlib.Path(__file__).parent/"rg-sample"
+          fixture.mkdir()
+          filename="\u4fbf\u643a.txt"
+          (fixture/filename).write_text("needle \u4e2d\u6587\n",encoding="utf-8")
+          (fixture/"skip.txt").write_text("needle ignored\n",encoding="utf-8")
+          (fixture/".hidden.txt").write_text("needle hidden\n",encoding="utf-8")
+          (fixture/".ignore").write_text("skip.txt\n",encoding="utf-8")
+          def call(binary,args,expected=0,env=None):
+              p=subprocess.run([str(binary),"--no-config",*args],cwd=fixture,capture_output=True,timeout=20,env=env)
+              assert p.returncode==expected, ("rg exit",p.returncode,p.stderr.decode("utf-8","replace"))
+              return p.stdout
+          assert call(exe,["--version"]).splitlines()[0].startswith(b"ripgrep 16.0.0")
+          fixed_version=call(fixed,["--version"]).splitlines()[0]
+          assert fixed_version.startswith(b"ripgrep 15.2.0")
+          selected_version=call(selected,["--version"]).splitlines()[0]
+          assert selected_version.startswith(b"ripgrep 16.0.0" if selected==exe else b"ripgrep 15.2.0")
+          def check_search(binary):
+              rows=[json.loads(line) for line in call(binary,["--json","-F","needle","."]).splitlines()]
+              matches=[r["data"] for r in rows if r["type"]=="match"]
+              assert len(matches)==1
+              assert matches[0]["path"]["text"].endswith(filename)
+              assert matches[0]["lines"]["text"]=="needle \u4e2d\u6587\n"
+              assert call(binary,["--files"]).decode("utf-8").strip().endswith(filename)
+              assert len(call(binary,["--files"]).splitlines())==1
+              call(binary,["-F","no-match-token","."],expected=1)
+          check_search(exe)
+          check_search(selected)
+          env=os.environ.copy()
+          env["RIPGREP_THREADS"]="2"
+          assert call(exe,["-j","1","-F","needle","."],env=env)
+          print("RG_PATH_RESOLVED="+str(selected.relative_to(root)),flush=True)
+          print("NATIVE_RG16_SEARCH_AND_DISCOVERY=PASS",flush=True)
+          '''.strip()+"\n"
+          relative="tests/check_codex_tool_discovery.py"
+          edit(relative,[
+              ("PROBE_PY = '''","RG_REFRESH_PY = r'''"+ "\n"+probe+"'''\n\nPROBE_PY = '''"),
+              ("Run-Checked ($root + '\\tool\\python\\python.exe') @('-B', ($root + '\\work\\tool-probe\\probe.py'))",
+               "Run-Checked ($root + '\\tool\\python\\python.exe') @('-B', ($root + '\\work\\tool-probe\\probe.py'))\nRun-Checked ($root + '\\tool\\python\\python.exe') @('-B', ($root + '\\work\\tool-probe\\rg-refresh.py'))"),
+              ("BROWSER_PS = r'''\n$ErrorActionPreference = 'Stop'",
+               "BROWSER_PS = r'''\n$ErrorActionPreference = 'Stop'\n& (Join-Path $env:CODEX_INSTALL_DIR 'tool/python/python.exe') -B (Join-Path $env:CODEX_INSTALL_DIR 'work/tool-probe/rg-refresh.py')\nif ($LASTEXITCODE -ne 0) { throw 'Native YOLO rg regression failed' }"),
+              ('        (probe / "probe.py").write_text(PROBE_PY, encoding="utf-8")',
+               '        (probe / "probe.py").write_text(PROBE_PY, encoding="utf-8")\n        (probe / "rg-refresh.py").write_text(RG_REFRESH_PY, encoding="utf-8")'),
+              ('        assert expected in evidence, "Real tool output did not contain success marker: " + expected',
+               '        assert expected in evidence, "Real tool output did not contain success marker: " + expected\n        if mode in {"normal", "unknown", "browser"}:\n            assert "NATIVE_RG16_SEARCH_AND_DISCOVERY=PASS" in evidence, "Missing actual rg 16 search evidence"')])
+          print("RG16_EXE_SHA256="+newsha,flush=True)
+          print("RG16_ARCHIVE_AND_PE_IDENTITY=PASS",flush=True)
+          print("CODEX_PINNED_RG_UNCHANGED=PASS",flush=True)
+          '@ | & .\tool\python\python.exe -B -
+            if ($LASTEXITCODE) { throw 'Pinned rg payload or targeted source edit failed' }
+          } finally {
+            if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive -Force }
+            Remove-Item Env:RG_ARCHIVE -ErrorAction SilentlyContinue
+          }
+          $version = (& .\tool\bin\rg.exe --version) -join ' '
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch '^ripgrep 16\.0\.0(?: |$)') { throw 'Standalone rg version failed' }
+          Write-Output $version
+          $sig = Get-AuthenticodeSignature -LiteralPath .\tool\bin\rg.exe
+          Write-Output ('RG16_AUTHENTICODE=' + $sig.Status)
+          if ([string]$sig.Status -notin @('Valid','NotSigned')) { throw 'Unexpected rg Authenticode status' }
+
+      - name: Commit exact seven-file candidate locally, never push before validation
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import pathlib,subprocess
+          root=pathlib.Path.cwd()
+          expected={"tool/bin/rg.exe","tool/cli-versions.json",".github/maintenance/03-verify-cli-versions.py","tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md","DEVELOPMENT.md","tests/test_cli_version_verifier.py","tests/check_codex_tool_discovery.py"}
+          def git(*args):
+              return subprocess.check_output(["git",*args],cwd=root)
+          def names(*args):
+              return set(git(*args).decode("utf-8").strip("\0").split("\0"))- {""}
+          assert names("diff","--name-only","-z")==expected
+          git("add","--",*sorted(expected))
+          assert names("diff","--cached","--name-only","-z")==expected
+          assert not git("diff","--name-only","-z")
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Refresh standalone ripgrep to verified stable 16.0.0")
+          print("LOCAL_CANDIDATE_COMMIT="+git("rev-parse","HEAD").decode().strip(),flush=True)
+          assert not git("status","--porcelain=v1","--untracked-files=no")
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Candidate diff or local commit failed' }
+
+      - name: Fixed runtime, CLI manifest, isolation, path and release regressions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($test in @('test_cli_version_verifier.py','test_runtime_package.py','test_mode_copies.py','test_release_package.py','test_pdf_library*.py','test_office_output_boundaries.py')) {
+            & .\tool\python\python.exe -B -m unittest discover -s tests -p $test -v
+            if ($LASTEXITCODE) { throw "Regression failed: $test" }
+          }
+          foreach ($test in @('test_portable_paths.ps1','test_launcher_smoke.ps1','test_runtime_preflight.ps1')) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests' $test)
+            if ($LASTEXITCODE) { throw "Windows regression failed: $test" }
+          }
+      - name: Actual common-mode core tools and Chinese relocation
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($mode in @('normal','unknown','browser-check')) {
+            & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py $mode
+            if ($LASTEXITCODE) { throw "Actual native common-mode probe failed: $mode" }
+          }
+      - name: Actual YOLO tool and browser, native MCP and real Office PDF chain
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py browser
+          if ($LASTEXITCODE) { throw 'YOLO rg/browser probe failed' }
+          & .\tool\python\python.exe -B tests/check_codex_browser_mcp.py
+          if ($LASTEXITCODE) { throw 'Native MCP integration failed' }
+          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py documents
+          if ($LASTEXITCODE) { throw 'Native Office/PDF probe failed' }
+      - name: Final clean source and customer input gate (no archive upload)
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'LFS gate failed' }
+          & .\tool\python\python.exe -B tool/package-release.py --check
+          if ($LASTEXITCODE) { throw 'Customer input integrity failed' }
+          Write-Output 'RG16_WINDOWS_NATIVE_VALIDATION=PASS'
+          Write-Output 'Synthetic API only; ADB host profile, PSModulePath startup, online account/approvals, device and optional renderers remain separate.'
+      - name: Push only the validated fast-forward development candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REF -cne "refs/heads/$env:TARGET_BRANCH" -or $env:TARGET_BRANCH -cne 'dev/stable-tool-refresh') { throw 'Wrong target branch' }
+          $current = (git rev-parse HEAD).Trim()
+          if ((git rev-parse 'HEAD^').Trim() -cne $env:GITHUB_SHA) { throw 'Candidate not direct child' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
+            $remote = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen ref or development branch moved before push' }
+          }
+          $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:GH_TOKEN"))
+          Write-Output "::add-mask::$auth"
+          try {
+            & git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin "HEAD:refs/heads/$env:TARGET_BRANCH"
+            if ($LASTEXITCODE) { throw 'Validated development-only push failed' }
+          } finally {
+            Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+            $auth = $null
+          }
+          $after = (git ls-remote origin "refs/heads/$env:TARGET_BRANCH") -join ''
+          if ($LASTEXITCODE -ne 0 -or $after -cne ($current + [char]9 + "refs/heads/$env:TARGET_BRANCH")) { throw 'Development push readback mismatch' }
+          foreach ($ref in @('refs/heads/main','refs/tags/v0.172.0-portable.1')) {
+            $remote = (git ls-remote origin $ref) -join ''
+            if ($LASTEXITCODE -ne 0 -or $remote -cne ($env:FROZEN + [char]9 + $ref)) { throw 'Frozen ref changed' }
+          }
+          Write-Output "VALIDATED_DEV_COMMIT=$current"
+          Write-Output 'NO_RELEASE_NO_ARTIFACT_NO_MAIN_CHANGE'
