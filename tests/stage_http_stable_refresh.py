@@ -1,0 +1,221 @@
+import base64, csv, email.parser, hashlib, importlib.metadata as md, io, json, os, re, shutil, stat, subprocess, sys, tempfile, zipfile
+from pathlib import Path
+import urllib.parse, urllib.request
+from packaging.requirements import Requirement
+from packaging.specifiers import SpecifierSet
+for stream in (sys.stdout,sys.stderr): stream.reconfigure(encoding="utf-8",errors="backslashreplace")
+assert os.environ.get("GITHUB_ACTIONS")=="true" and os.environ.get("GITHUB_REPOSITORY")=="rileyaaa/Portable" and os.environ.get("GITHUB_REF")=="refs/heads/dev/stable-tool-refresh"
+root=Path.cwd()
+py=root/"tool/python/python.exe"
+site=root/"tool/python/Lib/site-packages"
+prefix=site.relative_to(root).as_posix()+"/"
+specs={
+    "urllib3":("2.7.0","2.8.0","9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897","0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3"),
+    "anyio":("4.13.0","4.16.0","08b310f9e24a9594186fd75b4f73f4a4152069e3853f1ed8bfbf58369f4ad708","c66ae634e0b8228396b801741beb3294326d4b6102f7bba4041c0dfb58c29026"),
+}
+def sha(data): return hashlib.sha256(data).hexdigest()
+def rh(data): return "sha256="+base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("=")
+def norm(name): return re.sub(r"[-_.]+","-",name.lower())
+def git(*args): return subprocess.check_output(["git",*map(str,args)],cwd=root)
+def names(*args): return set(git(*args).decode("utf-8").split("\0"))-{""}
+def plain(path, directory=False):
+    s=path.lstat()
+    assert not stat.S_ISLNK(s.st_mode) and not getattr(s,"st_file_attributes",0)&0x400,str(path)
+    assert stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode) and s.st_nlink==1,str(path)
+def files(parent, top):
+    p=parent/top
+    plain(p,True)
+    result=set()
+    for current,dirs,leaves in os.walk(p,followlinks=False):
+        d=Path(current)
+        for child in dirs: plain(d/child,True)
+        for child in leaves:
+            f=d/child;plain(f)
+            result.add(f.relative_to(parent).as_posix())
+    return result
+def records(raw):
+    r={}
+    for row in csv.reader(io.StringIO(raw.decode("utf-8-sig"),newline="")):
+        assert len(row)==3 and row[0] not in r
+        r[row[0]]=tuple(row[1:])
+    return r
+def dist(name,v): return name+"-"+v+".dist-info"
+def check_record(parent,d,owned):
+    rec=d+"/RECORD"
+    r=records((parent/rec).read_bytes())
+    assert set(r)==owned,("record ownership differs",d,sorted(set(r)^owned))
+    for path in owned:
+        f=parent/path;plain(f)
+        assert r[path]==(("", "") if path==rec else (rh(f.read_bytes()),str(f.stat().st_size))),path
+def distributions():
+    found={}
+    for d in md.distributions(path=[str(site)]):
+        n=norm(d.metadata["Name"]);assert n not in found
+        found[n]=d.version
+    return found
+def fetch_wheel(name,v,expected,wheelhouse,installed):
+    filename=name+"-"+v+"-py3-none-any.whl"
+    request=urllib.request.Request("https://pypi.org/pypi/"+name+"/"+v+"/json",headers={"User-Agent":"Portable-fixed-wheel-audit/1","Accept":"application/json"})
+    with urllib.request.urlopen(request,timeout=40) as res:
+        assert urllib.parse.urlsplit(res.url).hostname=="pypi.org"
+        release=json.load(res)
+    assert norm(release["info"]["name"])==name and release["info"]["version"]==v
+    items=[x for x in release["urls"] if x["filename"]==filename]
+    assert len(items)==1
+    item=items[0]
+    assert item["packagetype"]=="bdist_wheel" and not item["yanked"] and item["digests"]["sha256"]==expected and 0<item["size"]<2*1024*1024
+    u=urllib.parse.urlsplit(item["url"])
+    assert u.scheme=="https" and u.hostname=="files.pythonhosted.org" and u.username is None and u.password is None and u.path.endswith("/"+filename)
+    with urllib.request.urlopen(item["url"],timeout=60) as res:
+        assert urllib.parse.urlsplit(res.url).hostname=="files.pythonhosted.org"
+        data=res.read(item["size"]+1)
+    assert len(data)==item["size"] and sha(data)==expected
+    with (wheelhouse/filename).open("xb") as f: f.write(data)
+    d=dist(name,v);payload={};seen=set()
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        assert len(z.infolist())<1000
+        for m in z.infolist():
+            p=m.filename.rstrip("/")
+            parts=p.split("/")
+            assert p and parts[0] in (name,d) and all(part and part not in (".","..",".git") and not part.endswith((" ",".")) and not re.search(r'[<>:"\\|?*\x00-\x1f]',part) and not re.fullmatch(r"(?i)(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?",part) for part in parts),p
+            assert p.casefold() not in seen and not stat.S_ISLNK(m.external_attr>>16) and not(m.flag_bits&1) and m.file_size<2*1024*1024,p
+            seen.add(p.casefold())
+            if m.is_dir(): continue
+            if parts[0]==name:
+                worker = name=="urllib3" and p=="urllib3/contrib/emscripten/emscripten_fetch_worker.js"
+                assert (worker or p.endswith((".py",".pyi","/py.typed"))) and "__pycache__" not in parts,p
+                if worker:
+                    # Identical blob in both official 2.7.0/2.8.0 tags and the existing vendor tree.
+                    raw=z.read(m)
+                    assert hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\0"+raw).hexdigest()=="faf141e1fa4113a0c14480d1681ddecb9678ced4",p
+            else:
+                assert "/".join(parts[1:]) in {"METADATA","WHEEL","RECORD","entry_points.txt","top_level.txt","licenses/LICENSE","licenses/LICENSE.txt"},p
+            payload[p]=z.read(m)
+    rr=records(payload[d+"/RECORD"])
+    assert set(rr)==set(payload)
+    for p,b in payload.items(): assert rr[p]==(("", "") if p==d+"/RECORD" else (rh(b),str(len(b)))),p
+    meta=email.parser.BytesParser().parsebytes(payload[d+"/METADATA"])
+    assert norm(meta["Name"])==name and meta["Version"]==v and meta["License-Expression"]=="MIT"
+    assert SpecifierSet(meta["Requires-Python"]).contains("3.14.10")
+    active={}
+    for raw in meta.get_all("Requires-Dist",[]):
+        req=Requirement(raw)
+        if req.marker is not None and not req.marker.evaluate({"extra":""}): continue
+        n=norm(req.name)
+        assert n in installed and req.specifier.contains(installed[n]),(name,raw)
+        active[n]=raw
+    wheel=email.parser.BytesParser().parsebytes(payload[d+"/WHEEL"])
+    assert wheel["Root-Is-Purelib"].lower()=="true" and wheel.get_all("Tag")==["py3-none-any"]
+    print("HTTP_OFFICIAL_WHEEL="+json.dumps({"name":name,"version":v,"sha256":expected,"url":item["url"],"files":len(payload),"active_requirements":active},ensure_ascii=True),flush=True)
+    return payload,active
+def run(argv,env,cwd=root,timeout=240):
+    p=subprocess.run([str(x) for x in argv],cwd=cwd,env=env,capture_output=True,timeout=timeout)
+    out=p.stdout.decode("utf-8","backslashreplace")
+    print(out,flush=True);print(p.stderr.decode("utf-8","backslashreplace"),flush=True)
+    assert p.returncode==0,"Process failed: "+str(argv[0])+" exit="+str(p.returncode)
+    return out
+assert sys.version_info[:3]==(3,14,10) and Path(sys.executable).resolve()==py
+assert sys.flags.isolated and sys.flags.ignore_environment and sys.flags.safe_path
+assert not git("status","--porcelain=v1","--untracked-files=all")
+for p in (*reversed(site.parents),site):plain(p,True)
+old_versions=distributions()
+assert len(old_versions)==49 and old_versions["pip"]=="26.1.2" and old_versions["certifi"]=="2026.5.20" and old_versions["typing-extensions"]=="4.16.0"
+assert all(old_versions[n]==v[0] for n,v in specs.items())
+new_versions=old_versions|{n:v[1] for n,v in specs.items()}
+scratch=root/"tmp";scratch.mkdir(exist_ok=True);plain(scratch,True)
+test=root/"tests/check_http_stable_refresh.py"
+assert test.is_file()
+allowed=set();required=set();all_old=set();all_new=set()
+with tempfile.TemporaryDirectory(prefix="http-refresh-",dir=scratch) as tmp:
+    own=Path(tmp);plain(own,True)
+    env={k:os.environ[k] for k in ("SystemRoot","WINDIR","SystemDrive","ComSpec","PATHEXT","OS","PROCESSOR_ARCHITECTURE") if k in os.environ}
+    windows=Path(env["SystemRoot"])
+    env["PATH"]=os.pathsep.join((str(py.parent),str(root/"tool/bin"),str(windows/"System32"),str(windows)))
+    for key,rel in (("HOME","home"),("USERPROFILE","home"),("APPDATA","appdata"),("LOCALAPPDATA","localappdata"),("PROGRAMDATA","programdata"),("ALLUSERSPROFILE","programdata"),("TEMP","temp"),("TMP","temp"),("TMPDIR","temp"),("PIP_CACHE_DIR","pip-cache"),("PYTHONUSERBASE","python-user"),("PYTHONPYCACHEPREFIX","pycache")):
+        p=own/rel;p.mkdir(exist_ok=True);env[key]=str(p)
+    env.update(PIP_CONFIG_FILE=os.devnull,PSModuleAnalysisCachePath=str(own/"ModuleAnalysisCache"),POWERSHELL_TELEMETRY_OPTOUT="1")
+    def pip(*args):
+        return run([py,"-B","-m","pip","--isolated","--disable-pip-version-check","--no-input","--cache-dir",env["PIP_CACHE_DIR"],*args],env)
+    def consumer(uv,av):
+        assert "HTTP_STABLE_LOOPBACK_PROXY_STREAM_ASYNC=PASS" in run([py,"-B",test,uv,av],env)
+        out=run([py,"-B",root/"tests/check_typing_extensions_refresh.py","4.16.0"],env)
+        assert "EXISTING_HTTP_SYNC_ASYNC_LOOPBACK=PASS" in out and "EXISTING_OFFICE_ROUNDTRIP=PASS" in out
+    assert "No broken requirements found." in pip("check")
+    consumer(specs["urllib3"][0],specs["anyio"][0])
+    wheelhouse=own/"wheelhouse";wheelhouse.mkdir()
+    plans=[]
+    for n,(old,new,oldsha,newsha) in specs.items():
+        od,nd=dist(n,old),dist(n,new)
+        assert not os.path.lexists(site/nd)
+        old_payload,old_deps=fetch_wheel(n,old,oldsha,wheelhouse,old_versions)
+        new_payload,new_deps=fetch_wheel(n,new,newsha,wheelhouse,new_versions)
+        assert set(old_deps)==set(new_deps),("default dependency closure changed",n,old_deps,new_deps)
+        old_meta={p.split("/",1)[1]:b for p,b in old_payload.items() if p.startswith(od+"/")}
+        new_meta={p.split("/",1)[1]:b for p,b in new_payload.items() if p.startswith(nd+"/")}
+        assert {p:b for p,b in old_meta.items() if p.startswith("licenses/")}=={p:b for p,b in new_meta.items() if p.startswith("licenses/")},("license change needs review",n)
+        assert old_meta.get("entry_points.txt")==new_meta.get("entry_points.txt"),("entry point change needs review",n)
+        owned_old=files(site,n)|files(site,od)
+        expected_old=set(old_payload)|{od+"/INSTALLER",od+"/REQUESTED"}
+        assert owned_old==expected_old,("old wheel inventory differs",n,sorted(owned_old^expected_old))
+        assert names("ls-files","-z","--",prefix+n,prefix+od)=={prefix+p for p in owned_old}
+        check_record(site,od,owned_old)
+        for p in owned_old:
+            assert git("cat-file","blob","HEAD:"+prefix+p)==(site/p).read_bytes(),p
+        for p,b in old_payload.items():
+            if p!=od+"/RECORD": assert (site/p).read_bytes()==b,("old vendor byte mismatch",p)
+        for p in site.glob("*.dist-info/RECORD"):
+            plain(p.parent,True);plain(p)
+            if p.parent.name!=od: assert not(set(records(p.read_bytes()))&owned_old),("shared ownership",p.name)
+        assert (site/od/"INSTALLER").read_bytes()==b"uv" and (site/od/"REQUESTED").read_bytes()==b""
+        print("HTTP_OLD_WHEEL_GIT_RECORD=PASS "+n+" files="+str(len(owned_old)),flush=True)
+        target=own/("stage-"+n);target.mkdir()
+        req=own/(n+".lock");req.write_text(n+"=="+new+" --hash=sha256:"+newsha+"\n",encoding="ascii",newline="\n")
+        pip("install","--no-index","--find-links",wheelhouse,"--no-deps","--require-hashes","--only-binary=:all:","--no-compile","--ignore-installed","--requirement",req,"--target",target)
+        assert {p.name for p in target.iterdir()}=={n,nd}
+        owned_new=files(target,n)|files(target,nd)
+        assert owned_new==set(new_payload)|{nd+"/INSTALLER",nd+"/REQUESTED"}
+        check_record(target,nd,owned_new)
+        for p,b in new_payload.items():
+            if p!=nd+"/RECORD": assert (target/p).read_bytes()==b,p
+        assert (target/nd/"INSTALLER").read_bytes().strip()==b"pip" and (target/nd/"REQUESTED").read_bytes()==b""
+        all_old.update(prefix+p for p in owned_old);all_new.update(prefix+p for p in owned_new)
+        plans.append((n,od,nd,target,owned_new))
+        print("HTTP_NEW_STAGED_WHEEL_RECORD=PASS "+n+" files="+str(len(owned_new)),flush=True)
+    # All candidates are verified before either replaces its owned tree.
+    backup=own/"old";backup.mkdir()
+    for n,od,nd,target,owned_new in plans:
+        for p in (n,od):(site/p).rename(backup/p)
+        for p in (n,nd):(target/p).rename(site/p)
+        check_record(site,nd,owned_new)
+    assert distributions()==new_versions
+    assert "No broken requirements found." in pip("check")
+    consumer(specs["urllib3"][1],specs["anyio"][1])
+    print("ONLY_TWO_OF_49_DISTRIBUTIONS_CHANGED=PASS",flush=True)
+inp=root/"tool/python-packages.in.txt";lockpath=root/"tool/python-packages.lock.txt"
+raw=inp.read_bytes();new_input=raw;lock=lockpath.read_bytes()
+def once(data,a,b):
+    assert data.count(a)==1,a
+    return data.replace(a,b,1)
+for n,(old,new,oldsha,newsha) in specs.items():
+    new_input=once(new_input,(n+"=="+old).encode(),(n+"=="+new).encode())
+    lock=once(lock,(n+"=="+old+" --hash=sha256:"+oldsha).encode(),(n+"=="+new+" --hash=sha256:"+newsha).encode())
+lock=once(lock,b"# requirements-sha256: "+sha(raw).encode(),b"# requirements-sha256: "+sha(new_input).encode())
+inp.write_bytes(new_input);lockpath.write_bytes(lock)
+def prepend(path,anchor,addition):
+    data=path.read_bytes()
+    newline="\r\n" if b"\r\n" in data else "\n"
+    a=anchor.replace("\n",newline).encode("utf-8")
+    b=addition.replace("\n",newline).encode("utf-8")
+    path.write_bytes(once(data,a,a+b))
+runurl="https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]
+prepend(root/"DEVELOPMENT.md","# \u5f00\u53d1\u4e0e\u7ef4\u62a4\u8bb0\u5f55\n\n","## 2026-11-25\uff1a\u7b2c\u516d\u7ec4 Python HTTP \u7a33\u5b9a\u7ec4\u4ef6\u66f4\u65b0\n\n\u4ec5\u5c06\u5df2\u6709 urllib3 2.7.0 \u2192 2.8.0\u3001anyio 4.13.0 \u2192 4.16.0 \u66f4\u65b0\u4e3a\u5b98\u65b9\u7a33\u5b9a\u7eaf Python wheel\uff1b\u56fa\u5b9a Python 3.14.10\u3001requests/httpx\u3001pip/certifi\u3001\u5176\u4f59 47 \u4e2a\u53d1\u884c\u5305\u548c\u539f\u6709\u542f\u52a8/\u6a21\u5f0f/\u6743\u9650\u4e0d\u52a8\u3002urllib3 \u4e0a\u6e38\u4fee\u590d HTTPS \u4ee3\u7406 TLS \u914d\u7f6e\u3001\u5206\u5757\u957f\u5ea6\u65e0\u754c\u7f13\u51b2\u53ca Deflate \u6d41\u5f0f\u5faa\u73af\uff1bAnyIO \u4fee\u590d\u53d6\u6d88\u4e0e\u8fde\u63a5\u5173\u95ed\u95ee\u9898\u3002\u4e24\u4efd\u65b0 wheel SHA-256 \u5206\u522b\u4e3a 0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3\u3001c66ae634e0b8228396b801741beb3294326d4b6102f7bba4041c0dfb58c29026\uff0cPyPI provenance \u5206\u522b\u6307\u5411 b1d30ab61fe0db8f11092805e8c5ac43e091064a\u30010ddd02d6a44a68cfdf0210783c2a2a1b02334d9a\uff08\u672a\u72ec\u7acb\u9a8c\u8bc1 Sigstore\uff09\u3002\u6838\u5bf9\u65e7\u5b98\u65b9 wheel / Git / RECORD\u3001\u8bb8\u53ef\u4e0e entry point\u3001Python 3.14 \u4f9d\u8d56\u95ed\u5305\uff1b\u7528\u56fa\u5b9a pip \u5728\u5305\u5185\u72ec\u5360 staging hash-only \u5b89\u88c5\uff0c\u672a\u542f\u7528\u65b0\u589e API\u3002\u4e24\u7248\u771f\u5b9e\u540c\u6b65/\u5f02\u6b65\u56de\u73af\u3001HTTP \u4ee3\u7406\u8ba4\u8bc1\u3001\u91cd\u5b9a\u5411\u3001\u538b\u7f29\u5206\u5757\u6d41\u53ca Office \u4e2d\u6587\u8def\u5f84\u8bfb\u56de\uff1b\u5b8c\u6574 Windows \u95e8\u7981\u6210\u529f\u624d\u63a8\u9001\u5019\u9009\u3002\u672a\u5ba3\u79f0\u771f\u5b9e HTTPS \u4ee3\u7406 TLS\u3001\u7ebf\u4e0a\u8d26\u53f7/SSH\u3001\u8bbe\u5907\u6216 Office \u91cd\u7b97\u5df2\u9a8c\u3002\u539f\u6d4f\u89c8\u5668/MCP \u914d\u5bf9\u4fdd\u7559\uff1a\u6b63\u5f0f MCP 0.0.86 \u4ecd\u56fa\u5b9a 1.66.0-alpha-2026-11-18\uff0c\u4e0d\u5f15\u5165\u65b0\u9884\u89c8\u4f9d\u8d56\u3002Windows AC: "+runurl+"\n\n")
+prepend(root/"tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md","### Python \u4f9d\u8d56\u4e0e\u547d\u4ee4\u5165\u53e3\n\n","\u5f00\u53d1\u5206\u652f\u7b2c\u516d\u6279\u66f4\u65b0 urllib3 2.8.0\u3001anyio 4.16.0\uff0c\u4fdd\u7559 requests 2.34.2\u3001httpx 0.28.1 \u4e0e\u539f\u4ee3\u7406/\u53d8\u91cf\u7ea6\u5b9a\uff1b\u56fa\u5b9a wheel \u6458\u8981\u3001\u5f52\u5c5e\u53ca\u9a8c\u6536\u8303\u56f4\u89c1 DEVELOPMENT.md\u3002\u65e0\u9700\u65b0\u589e\u5305\u7ba1\u7406\u5668\u6216 CLI\u3002\n\n")
+fixed={"DEVELOPMENT.md","tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md","tool/python-packages.in.txt","tool/python-packages.lock.txt"}
+allowed=all_old|all_new|fixed
+required=(all_old^all_new)|fixed
+changed=names("diff","--no-renames","--name-only","-z")|names("ls-files","--others","--exclude-standard","-z")
+assert required<=changed<=allowed,("candidate scope",sorted(required-changed),sorted(changed-allowed))
+git("add","-A","--",*sorted(changed))
+assert names("diff","--cached","--no-renames","--name-only","-z")==changed
+assert not git("diff","--name-only","-z") and not git("ls-files","--others","--exclude-standard","-z")
+print("HTTP_STABLE_SCOPE_READY=PASS files="+str(len(changed)),flush=True)

@@ -1,5 +1,13 @@
 # 开发与维护记录
 
+## 2026-11-25：独立候选合批与首因记录
+
+[45588115342](https://github.com/rileyaaa/Portable/actions/runs/45588115342) 的源代码 62 项及旧版 HTTP/Office 回归通过；在旧 urllib3 官方 wheel 内容校验时，因为已随原包安装的 `urllib3/contrib/emscripten/emscripten_fetch_worker.js` 不属于原 Python 后缀列表而停止，尚未替换载荷。仓库、官方 2.7.0 与 2.8.0 标签该文件 Git blob 均为 `faf141e1fa4113a0c14480d1681ddecb9678ced4`，故仅增加这一固定路径及固定 blob 检查，不开放其他 JS 或改变工件验证边界。
+
+将 HTTP、tzdata 2026.2→2026.6、XlsxWriter 3.2.9→3.3.4 分开进行工件/旧新真实消费者验收，失败组还原自身路径，其他组独立继续；成功候选统一经过现有 Windows 原生门禁方可推送。Excel 旧版日期序列、数组公式文本以及 SINGLE 公式替换有可复现错误；时区数据按 IANA 2026f 检查历史/当前实际偏移，不调用宿主时区数据。XlsxWriter 兼顾已安装的 VBA 提取脚本首行固定旧盘符，不新增宏执行、CLI 或功能。仅将官方稳定版作为候选，不声称升级已经成功。
+
+浏览器：上游 Playwright 1.65.1 稳定标签 bbd948344ea9a60bf1e6f125c02ca99b2b51593b 已包含 MCP createConnection 和 stdio transport；可作为旧 standalone alpha 配套的替代路线，仍需实际 npm 工件、配套 Chromium 159.0.8154.6/revision 1255 及既有过滤、隔离、搬迁验收，不能直接绕过便携桥接层或独立替换其中之一。
+
 ## 2026-11-25：第六组 HTTP 候选首轮基线测试纠正
 
 Windows AC #45587545731 在替换任何 wheel 之前停止：旧 urllib3 2.7.0 的 `response.stream(11)` 直接读取 gzip 编码字节，原探针却要求解压后的内容。独立用旧 2.7.0 回环 HTTP 复现；显式 `decode_content=True` 后压缩流、HTTP 代理认证、重定向、requests、httpx、AnyIO 同步/异步测试通过；另保留显式 `decode_content=False` 的原始 gzip 字节及独立解压校验。此前 Windows 已通过 SSH 17、PDF 索引 23、PDF 15、登录 HTTP 7 项源码回归。此次只纠正探针契约和一次性入口，不改产品 HTTP 实现，不放宽依赖归属或原生门禁，不重跑无关旧候选。候选未进入安装，urllib3/AnyIO 仍为原版。
