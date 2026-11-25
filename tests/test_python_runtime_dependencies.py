@@ -72,7 +72,7 @@ class PythonRuntimeDependencyTests(unittest.TestCase):
              '-m', 'PyInstaller', '--version'],
             cwd=ROOT, capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), '6.21.0')
+        self.assertEqual(result.stdout.strip(), '6.22.3')
 
 
 if __name__ == "__main__":

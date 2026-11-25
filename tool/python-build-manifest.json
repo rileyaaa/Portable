@@ -1,38 +1,38 @@
 {
   "schema": 1,
   "source_commit": "fcaf45e5dfe4c97f096475f211a423b6d882c4ae",
-  "note": "Exact historical Git objects, not new wheel downloads. Packaging remains opt-in via package-local python -m PyInstaller; no compilation was performed during restoration.",
+  "note": "Unchanged build closure retains historical Git objects from source_commit; PyInstaller and hooks refreshed from exact official wheels, full wheel RECORD and selected upstream tag source/license checked. No host Python or vendor EXE executed. See linked native build evidence in DEVELOPMENT.md.",
   "packages": {
-    "pyinstaller": "6.21.0",
-    "pyinstaller-hooks-contrib": "2026.6",
+    "pyinstaller": "6.22.3",
+    "pyinstaller-hooks-contrib": "2026.10",
     "altgraph": "0.17.5",
     "pefile": "2024.8.26",
     "pywin32-ctypes": "0.2.3",
     "setuptools": "82.0.1"
   },
   "existing_dependency": {
-    "packaging": "26.2"
+    "packaging": "26.4"
   },
   "objects": [
     {
       "path": "tool/python/Lib/site-packages/PyInstaller",
       "type": "tree",
-      "sha": "c611536f0a60ea58732901e8789b27ded3106585"
+      "sha": "e5c33121b6e41ab69cebe18d972de8e0d7e9144f"
     },
     {
-      "path": "tool/python/Lib/site-packages/pyinstaller-6.21.0.dist-info",
+      "path": "tool/python/Lib/site-packages/pyinstaller-6.22.3.dist-info",
       "type": "tree",
-      "sha": "2d279476a75e0d9b16ede6da1c8f31a054902585"
+      "sha": "299e391a5176ad1f7b57ad63764a23f31283e57b"
     },
     {
       "path": "tool/python/Lib/site-packages/_pyinstaller_hooks_contrib",
       "type": "tree",
-      "sha": "9e30cc3b9327769b0fcfba48e4a24c65fe0ca0b4"
+      "sha": "b728a79d92cd1b2951b05b1b84f355c74384fd2c"
     },
     {
-      "path": "tool/python/Lib/site-packages/pyinstaller_hooks_contrib-2026.6.dist-info",
+      "path": "tool/python/Lib/site-packages/pyinstaller_hooks_contrib-2026.10.dist-info",
       "type": "tree",
-      "sha": "dabcde454f36b79095dc123a484ba8ba948308ed"
+      "sha": "5a37ae882beb4314138c64bf97a9f03466982f38"
     },
     {
       "path": "tool/python/Lib/site-packages/altgraph",
@@ -105,5 +105,52 @@
       "sha": "2cc433a4a55e3b41fa31089918fb62096092f89f"
     }
   ],
-  "excluded_generated": "_distutils_hack/__pycache__ from the historical tree is intentionally not restored."
+  "excluded_generated": "_distutils_hack/__pycache__ from the historical tree is intentionally not restored.",
+  "historical_replaced_objects": [
+    {
+      "path": "tool/python/Lib/site-packages/PyInstaller",
+      "type": "tree",
+      "sha": "c611536f0a60ea58732901e8789b27ded3106585"
+    },
+    {
+      "path": "tool/python/Lib/site-packages/pyinstaller-6.21.0.dist-info",
+      "type": "tree",
+      "sha": "2d279476a75e0d9b16ede6da1c8f31a054902585"
+    },
+    {
+      "path": "tool/python/Lib/site-packages/_pyinstaller_hooks_contrib",
+      "type": "tree",
+      "sha": "9e30cc3b9327769b0fcfba48e4a24c65fe0ca0b4"
+    },
+    {
+      "path": "tool/python/Lib/site-packages/pyinstaller_hooks_contrib-2026.6.dist-info",
+      "type": "tree",
+      "sha": "dabcde454f36b79095dc123a484ba8ba948308ed"
+    }
+  ],
+  "official_refresh": {
+    "pyinstaller": {
+      "version": "6.22.3",
+      "filename": "pyinstaller-6.22.3-py3-none-win_amd64.whl",
+      "sha256": "500bd58c7bf7e584a8435adccbd763a0b918d5c12b08d74ff50fd79b2915458b",
+      "url": "https://files.pythonhosted.org/packages/24/83/c5422204772a27aef643280fdc887b7ef55679989096b21dceb1b9625fc4/pyinstaller-6.22.3-py3-none-win_amd64.whl",
+      "upstream_tag": "pyinstaller/pyinstaller@v6.22.3",
+      "source_blobs": {
+        "PyInstaller/__main__.py": "f36090b4b2666f558b8092a499478ea360a701a1",
+        "PyInstaller/__init__.py": "b0f7e62677dc8e7c096262370aa3aef27dd47702"
+      },
+      "license_blob": "d6caec5ab5778c36bd7e26d8d7a48eba1ac23dee"
+    },
+    "pyinstaller-hooks-contrib": {
+      "version": "2026.10",
+      "filename": "pyinstaller_hooks_contrib-2026.10-py3-none-any.whl",
+      "sha256": "dfc3cde20a7ce6c92e803016e66eed4b7050467e2c5f886a3745d89b258c6d6d",
+      "url": "https://files.pythonhosted.org/packages/08/10/4a6d13adaa93d0bbcfea082a78965e970cae7a8bfa82ac1557a1dc8f1cba/pyinstaller_hooks_contrib-2026.10-py3-none-any.whl",
+      "upstream_tag": "pyinstaller/pyinstaller-hooks-contrib@v2026.10",
+      "source_blobs": {
+        "_pyinstaller_hooks_contrib/__init__.py": "9efdf5f7230b43e172329402433943d2759f7a09"
+      },
+      "license_blob": "99bef9e7dc1e29e876057749037f409516eb0509"
+    }
+  }
 }
