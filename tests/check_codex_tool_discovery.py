@@ -587,8 +587,16 @@ class NativeProbeContinuation:
             self.finished = True
             return None
 
+        # Native 0.172.0 serializes a yielded cell with no output as a string
+        # (AC 45610185245); once chunks exist it uses input_text parts.
+        # Accept only that exact empty-running shape, never string success.
+        if isinstance(payload, str):
+            assert re.fullmatch(r"Script running with cell ID [A-Za-z0-9_-]+\r?\nWall time [0-9]+(?:\.[0-9]+)? seconds\r?\nOutput:\r?\n", payload), \
+                "Unexpected scalar Code Mode response"
+            payload = [{"type": "input_text", "text": payload}]
         assert isinstance(payload, list) and payload, "Missing Code Mode response header"
-        assert all(part.get("type") == "input_text" for part in payload), "Unexpected native tool output type"
+        assert all(isinstance(part, dict) and part.get("type") == "input_text"
+                   and isinstance(part.get("text"), str) for part in payload), "Unexpected native tool output type"
         header = payload[0]["text"].splitlines()[0]
         yielded = re.fullmatch(r"Script running with cell ID ([A-Za-z0-9_-]+)", header)
         assert yielded or header == "Script completed", "Native Code Mode cell failed: " + header
