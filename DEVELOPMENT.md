@@ -543,3 +543,9 @@ powershell.exe -NoProfile -File .\tests\test_browser_smoke.ps1
 **真实使用待验：** 新盘符、中文/空格目录下的完整正常/维护会话及跨电脑迁移；真实 Agent/Host 工具调用与实际命令环境；Python 安装器的真实重装；授权条件下的三种登录模式、刷新凭据、代理和 Windows 沙箱。合成 NTFS、BAT、进程与浏览器检查已覆盖相应自动化行为，不代替上述完整使用流程。语音已排除，不再列为待验功能。旧版本的历史验收记录不代替 0.164.0 的实际结果，也不据离线测试宣称项目没有其他 bug。
 
 **已知实现注意点：** PS5.1 的 `File.Replace`、泛型集合和原生空参数传递曾有兼容问题，后续改动应保留对应处理；认证多文件切换依赖 transition/logout 标记与 snapshot 归属，不可猜测回收；缺少 Host 时恢复匹配完整布局，不能用关闭 Code Mode 作为修复。当前 checkout 不包含历史 checker/updater 套件，不引用不存在的脚本或把旧版本哈希当成当前身份。
+
+## 2026-11-25: fixed stable dependency candidate
+
+xlsxwriter 3.2.9 -> 3.3.4
+
+Official wheel SHA-256, RECORD, previous Git payload, dependency closure and actual Windows consumer checks passed. No extra distribution or feature enabled. Full native regression must pass before this commit is pushed. Run: https://github.com/rileyaaa/Portable/actions/runs/45589159314
