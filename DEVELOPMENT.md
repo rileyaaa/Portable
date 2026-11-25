@@ -2,7 +2,7 @@
 
 ## 2026-11-24：Office 原生校验及临时目录兼容性
 
-在 PDF 手册库实际 ACL 问题解决后，检查现有三个相同的 Office helper 副本，发现 packed validate、原文件 schema 比对、Word redlining、PPT 原始缺陷比对及 LibreOffice profile 同样采用 Python TemporaryDirectory。统一使用现有包内 tmp/office 下唯一、Windows 继承 ACL/POSIX 0700 的自有目录，保留归档安全检查、已有 profile 策略、退出码和原权限；不改宿主 ACL。validate 使用 ExitStack 保证成功、失败及提前退出清理，并与 PDF CLI 一致处理非交互 UTF-8；三份公共 helper/validator 同步。补原生常用模式 DOCX 原文/redline 校验、PPTX 原文基线和 XLSX 明确不支持 XSD 分支及清理实测；仅 mock LibreOffice profile 调用，不安装/启动 LibreOffice，不声称真实渲染、公式重算或宏执行通过。未取得专项 AC 结果。ADB 宿主路径和 PowerShell 启动路径限制仍保留。
+在 PDF 手册库实际 ACL 问题解决后，检查现有三个相同的 Office helper 副本，发现 packed validate、原文件 schema 比对、Word redlining、PPT 原始缺陷比对及 LibreOffice profile 同样采用 Python TemporaryDirectory。统一使用现有包内 tmp/office 下唯一、Windows 继承 ACL/POSIX 0700 的自有目录，保留归档安全检查、已有 profile 策略、退出码和原权限；不改宿主 ACL。validate 使用 ExitStack 保证成功、失败及提前退出清理，并与 PDF CLI 一致处理非交互 UTF-8；三份公共 helper/validator 同步。补原生常用模式 DOCX 原文/redline 校验、PPTX 原文基线和 XLSX 明确不支持 XSD 分支及清理实测；仅 mock LibreOffice profile 调用，不安装/启动 LibreOffice，不声称真实渲染、公式重算或宏执行通过。[Windows 45412482193](https://github.com/rileyaaa/Portable/actions/runs/45412482193) PDF 37 项、Office 19 项边界与发行输入成功；首次实际常用模式 Word validate.py 在 `from helpers import` 处报 ModuleNotFoundError，工具退出 1 后合成 API 因缺少成功标记返回 400（连带错误，不是协议故障）。根因与固定 python314._pth 启用 isolated/safe_path、未自动添加脚本目录一致；三份 validate.py 现有内容完全相同。仅修 docx/pptx/xlsx 三份直接校验 CLI 入口：从自身已校验的包内普通文件布局导出 office 目录，添加进本进程 sys.path；不改 _pth、PYTHONPATH、宿主环境、其他 Office CLI 或固定依赖。补同一受限原生 Python 的 isolated/safe_path/ignore_environment、初始 sys.path、无环境 helpers、_pth 字节不变及入口本地路径/链接拒绝测试。原生 DOCX/PPTX/XLSX（明确不支持 XSD 分支）、PDF 实验和单独标记的 LibreOffice profile mock 保留，待复验；ADB 宿主路径和 PowerShell 启动路径限制仍保留，不为已知限制重构。
 
 ## 2026-11-24：Office/PDF 实际业务路径补充验证
 

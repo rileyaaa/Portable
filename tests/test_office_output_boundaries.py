@@ -159,6 +159,35 @@ class OfficeOutputBoundaryTests(unittest.TestCase):
         (source / "doc.xml").write_bytes(b"<document>synthetic</document>")
         return source
 
+    def test_validator_bootstrap_is_bound_to_its_own_skill_directory(self):
+        relative = "home/skills/pptx/scripts/office/validate.py"
+        entry = self.package / relative
+        shutil.copyfile(ROOT / relative, entry)
+        validators = entry.parent / "validators"
+        validators.mkdir()
+        (validators / "__init__.py").write_bytes(b"# synthetic marker")
+        namespace = {"__file__": str(entry), "Path": Path, "stat": stat}
+        bootstrap = self.source_function(relative, "_office_import_directory", namespace)
+        self.assertEqual(bootstrap(), entry.parent)
+        # The environment and cwd do not select the import directory.
+        with mock.patch.dict(os.environ, {"CODEX_INSTALL_DIR": str(self.outside),
+                                          "PYTHONPATH": str(self.outside)}):
+            self.assertEqual(bootstrap(), entry.parent)
+        (validators / "__init__.py").unlink()
+        with self.assertRaises(FileNotFoundError):
+            bootstrap()
+
+    def test_validator_bootstrap_rejects_linked_sibling_package(self):
+        relative = "home/skills/pptx/scripts/office/validate.py"
+        entry = self.package / relative
+        shutil.copyfile(ROOT / relative, entry)
+        (self.outside / "__init__.py").write_bytes(b"# unrelated marker")
+        self.directory_link(self.outside, entry.parent / "validators")
+        namespace = {"__file__": str(entry), "Path": Path, "stat": stat}
+        bootstrap = self.source_function(relative, "_office_import_directory", namespace)
+        with self.assertRaisesRegex(RuntimeError, "link or non-directory"):
+            bootstrap()
+
     def test_office_scratch_inherits_package_path_and_cleans_on_success_or_exit(self):
         scratch = self.package / "tmp" / "office"
         scratch.mkdir(parents=True)

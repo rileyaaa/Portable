@@ -15,12 +15,44 @@ Auto-repair fixes:
 
 import argparse
 from contextlib import ExitStack
+import stat
 import sys
 import zipfile
 from pathlib import Path
 
 import defusedxml.ElementTree as ET
 from defusedxml.common import DefusedXmlException
+
+def _office_import_directory() -> Path:
+    """Locate the two sibling packages without changing embedded Python isolation."""
+    script = Path(__file__).absolute()
+    if len(script.parents) < 6:
+        raise RuntimeError("Office validator is outside its bundled layout")
+    skill = script.parents[2].name
+    root = script.parents[5]
+    if skill not in {"docx", "pptx", "xlsx"} or script.relative_to(root).parts != (
+        "home", "skills", skill, "scripts", "office", "validate.py"
+    ):
+        raise RuntimeError("Office validator is outside its bundled layout")
+
+    directory = script.parent
+    for entry in (*reversed(script.parents), directory / "helpers", directory / "validators"):
+        info = entry.lstat()
+        if not stat.S_ISDIR(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+            raise RuntimeError("Office validator import path crosses a link or non-directory")
+    for entry in (script, root / "env.ps1", root / "codex.exe",
+                  directory / "helpers/__init__.py", directory / "validators/__init__.py"):
+        info = entry.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or
+                getattr(info, "st_file_attributes", 0) & 0x400):
+            raise RuntimeError("Office validator requires ordinary single-link package files")
+    return directory
+
+
+# The pinned python314._pth enables safe_path, so direct script execution does
+# not add the script directory. Add only this verified bundled Office directory
+# to this process, never cwd, PYTHONPATH, a host directory or the package root.
+sys.path.insert(0, str(_office_import_directory()))
 
 from helpers import OOXML_FAMILY, ensure_portable_tree_no_reparse, portable_temporary_directory, resolve_portable_path, rezip, safe_extract
 from validators import DOCXSchemaValidator, PPTXSchemaValidator, RedliningValidator

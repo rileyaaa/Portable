@@ -274,6 +274,7 @@ module.exports = async ({page}) => {
 # This does not exercise optional Office renderers, OCR, or formula calculation.
 DOCUMENTS_PY = r'''
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -290,6 +291,17 @@ from pptx.util import Inches
 
 root = Path(os.environ["CODEX_INSTALL_DIR"]).resolve()
 assert Path(sys.executable).resolve() == root / "tool/python/python.exe"
+# Establish the reason for the old direct-entry failure using the real
+# embedded interpreter inside the relocated, restricted Codex shell.
+assert sys.flags.isolated and sys.flags.safe_path and sys.flags.ignore_environment
+startup_paths = {Path(item).resolve() for item in sys.path if item}
+assert (root / "work").resolve() not in startup_paths
+assert (root / "work/tool-probe").resolve() not in startup_paths
+assert importlib.util.find_spec("helpers") is None, "Unexpected ambient helpers package"
+for skill in ("docx", "pptx", "xlsx"):
+    assert (root / "home/skills" / skill / "scripts/office").resolve() not in startup_paths
+print("NATIVE_EMBEDDED_PTH_ISOLATION=PASS; isolated/safe_path/ignore_environment=1; no ambient helpers", flush=True)
+print("NATIVE_EMBEDDED_STARTUP_PATH=" + ascii(sys.path), flush=True)
 for module in (docx, openpyxl, pandas, pptx, pymupdf):
     assert Path(module.__file__).resolve().is_relative_to(root / "tool/python"), module.__name__
 work = root / "work/tool-probe"
@@ -346,6 +358,7 @@ def assert_office_scratch_clean():
 def validate_packed(skill, path, *args):
     entry = root / "home/skills" / skill / "scripts/office/validate.py"
     original_bytes = path.read_bytes()
+    # A direct absolute invocation from work, with no PYTHONPATH or runpy shim.
     result = subprocess.run([sys.executable, "-B", str(entry), str(path), *map(str, args)],
                             cwd=root / "work", capture_output=True, timeout=120, check=False)
     transcript = (result.stdout + b"\n" + result.stderr).decode("utf-8", "replace")
@@ -598,6 +611,9 @@ def main():
         (probe / "browser.ps1").write_text(BROWSER_PS, encoding="utf-8-sig")
         (probe / "browser-check.ps1").write_text(BROWSER_CHECK_PS, encoding="utf-8-sig")
         if mode == "documents":
+            pth = fixture / "tool/python/python314._pth"
+            original_pth = (ROOT / "tool/python/python314._pth").read_bytes()
+            assert pth.read_bytes() == original_pth
             (probe / "documents.py").write_text(DOCUMENTS_PY, encoding="utf-8")
         (probe / "page.cjs").write_text(BROWSER_JS, encoding="utf-8")
         for sentinel in (fixture / "protected-audit.txt", owned / "outside-workspace-audit.txt"):
@@ -659,6 +675,8 @@ def main():
             if mode == "browser":
                 assert (fixture / "cache/browser/profile").is_dir()
             if mode == "documents":
+                assert pth.read_bytes() == original_pth, "Embedded isolation file changed"
+                print("EMBEDDED_PTH_BYTES_UNCHANGED=PASS", flush=True)
                 outputs = probe / "document-results"
                 for filename in ("\u4fbf\u643a.docx", "\u4fbf\u643a.xlsx", "\u4fbf\u643a.pptx", "manuals.zip"):
                     assert (outputs / filename).is_file(), "Missing native document output: " + filename
