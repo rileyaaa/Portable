@@ -1,0 +1,140 @@
+name: Archive completed 0.172.0 preparation history and delete only its branch (one time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/archive-release-prep-0172.yml
+permissions: {}
+concurrency:
+  group: portable-archive-release-prep-0172
+  cancel-in-progress: false
+jobs:
+  archive:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == '87188accfc9b2c09de24ff5bf64062ec2a674693' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Confirm frozen release, complete history, and idle branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,subprocess,tempfile,base64,urllib.request,urllib.error,urllib.parse
+          from pathlib import Path
+          REPO="rileyaaa/Portable"
+          API="https://api.github.com/repos/"+REPO
+          MAIN="4fb0b50228057cd0be41fbb191e15e065e64e368"
+          DEV="dev/stable-tool-refresh"
+          BEFORE="87188accfc9b2c09de24ff5bf64062ec2a674693"
+          HEAD=os.environ["GITHUB_SHA"]
+          PREP="release-prep/v0.172.0-portable.1"
+          TIP="c19978a0c6ce2a0f3d1496b4fc7de66f19996fca"
+          TAG="v0.172.0-portable.1"
+          ARCHIVE="archive/release-prep-v0.172.0-portable.1"
+          TREE="08b4bb5979772ba347faad47a3fccb1a9dfecd4a"
+          TOKEN=os.environ["GH_TOKEN"]
+          RUN=int(os.environ["GITHUB_RUN_ID"])
+          HISTORY=[
+              "1b720d7f53e2adb774ef53cec3381128f0332c4f",
+              "f6e1f4791ced40600448854ef12a25b6a2ab1c7b",
+              "d80d07f4ad23ba355a6e9e03005ba2fbaa02485e",
+              "a8bb9c3f435463d7c7cdf69ca2057f743056636a",
+              "b5449ad7a5666971f2452d41c9011ac5e6aa3b2d",
+              TIP,
+          ]
+          ASSETS={
+              "Codex-Portable-v0.172.0-portable.1-windows-x64.zip":(567888467,"a406e4487bde19057491b6515f7abcab74faf2e3437366b0b23f9940af5760dc"),
+              "release-manifest.json":(1732194,"1c50016f81b22cb9dd6df52b41dd1686a99d90ef63da12a0ee0c71f25a829fd8"),
+              "SHA256SUMS":(207,"2ea5fea72dbb968ef82498e8d2316899ad81e492753d72c84902bb6d33f4e381"),
+          }
+          def require(ok,why):
+              if not ok: raise RuntimeError(why)
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs):
+                  raise RuntimeError("Unexpected API redirect")
+          opener=urllib.request.build_opener(NoRedirect)
+          def get(path,missing=False):
+              req=urllib.request.Request(API+path,headers={"Authorization":"Bearer "+TOKEN,"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","User-Agent":"portable-release-history-archive"})
+              try:
+                  with opener.open(req,timeout=30) as r: return json.load(r)
+              except urllib.error.HTTPError as e:
+                  if missing and e.code==404: return None
+                  raise RuntimeError("GitHub metadata HTTP "+str(e.code)) from None
+          def refs(ref,missing=False):
+              obj=get("/git/ref/"+ref,missing)
+              if obj is None:return None
+              require(obj["object"]["type"]=="commit","Unexpected ref type")
+              return obj["object"]["sha"]
+          def frozen():
+              require(refs("heads/main")==MAIN and refs("tags/"+TAG)==MAIN,"Frozen refs moved")
+              release=get("/releases/tags/"+TAG)
+              require(release["id"]==457670743 and release["target_commitish"]==MAIN and not release["draft"] and not release["prerelease"],"Release mismatch")
+              require(len(release["assets"])==3 and {a["name"]:(a["size"],a["digest"],a["state"]) for a in release["assets"]}=={n:(s,"sha256:"+h,"uploaded") for n,(s,h) in ASSETS.items()},"Release assets mismatch")
+          def idle():
+              for name in (DEV,PREP):
+                  query=urllib.parse.urlencode({"branch":name,"per_page":100})
+                  result=get("/actions/runs?"+query)
+                  require(result["total_count"]==len(result["workflow_runs"]),"Incomplete run list")
+                  for r in result["workflow_runs"]:
+                      if r["id"]==RUN:continue
+                      require(r["status"]=="completed","Concurrent branch action")
+              failed=get("/actions/runs/45565688956")
+              require(failed["status"]=="completed" and failed["conclusion"]=="failure" and failed["head_sha"]==BEFORE,"Unexpected latest upgrade run")
+              for rid,commit in ((45547706779,HISTORY[0]),(45550231717,HISTORY[3])):
+                  r=get("/actions/runs/"+str(rid))
+                  require(r["status"]=="completed" and r["conclusion"]=="success" and r["head_sha"]==commit,"Publication evidence mismatch")
+          def branch_map():
+              data=get("/branches?per_page=100")
+              require(len(data)<100,"Incomplete branch listing")
+              return {x["name"]:x["commit"]["sha"] for x in data}
+          require(os.environ["GITHUB_REPOSITORY"]==REPO and os.environ["GITHUB_REF"]=="refs/heads/"+DEV and os.environ["GITHUB_RUN_ATTEMPT"]=="1","Unexpected execution context")
+          repo=get("")
+          require(repo["id"]==1426337408 and repo["default_branch"]=="main" and not repo["archived"],"Wrong repository")
+          require(branch_map()=={"main":MAIN,DEV:HEAD,PREP:TIP},"Unexpected branch tips")
+          require(refs("tags/"+ARCHIVE,True) is None,"Archive tag already exists")
+          change=get("/compare/"+BEFORE+"..."+HEAD)
+          require(change["ahead_by"]==1 and change["behind_by"]==0 and [f["filename"] for f in change["files"]]==[".github/workflows/archive-release-prep-0172.yml"],"Unexpected development change")
+          compare=get("/compare/"+MAIN+"..."+TIP)
+          require(compare["ahead_by"]==6 and compare["behind_by"]==0 and [c["sha"] for c in compare["commits"]]==HISTORY and compare["files"]==[],"Unexpected preparation history")
+          require(get("/git/commits/"+MAIN)["tree"]["sha"]==TREE and get("/git/commits/"+TIP)["tree"]["sha"]==TREE,"Preparation tree not identical to main")
+          frozen()
+          idle()
+          print("ARCHIVE_PRECHECK=PASS",flush=True)
+          # No checkout or LFS download. Fetch just the exact preparation ref
+          # without blobs; Git protocol enforces the expected old SHA on delete.
+          auth=base64.b64encode(("x-access-token:"+TOKEN).encode()).decode()
+          print("::add-mask::"+auth,flush=True)
+          with tempfile.TemporaryDirectory(prefix="portable-release-history-",dir=os.environ["RUNNER_TEMP"]) as td:
+              def git(*args):
+                  result=subprocess.run(["git","-c","http.https://github.com/.extraheader=AUTHORIZATION: basic "+auth,*args],cwd=td,capture_output=True,timeout=120)
+                  require(result.returncode==0,"Git operation failed: "+args[0])
+                  return result.stdout.decode().strip()
+              git("init","--bare")
+              git("remote","add","origin","https://github.com/"+REPO+".git")
+              git("fetch","--no-tags","--filter=blob:none","origin","refs/heads/"+PREP)
+              require(git("rev-parse","FETCH_HEAD")==TIP,"Fetched preparation ref mismatch")
+              git("tag",ARCHIVE,TIP)
+              require(refs("tags/"+ARCHIVE,True) is None,"Archive tag became occupied")
+              git("push","origin","refs/tags/"+ARCHIVE+":refs/tags/"+ARCHIVE)
+              require(refs("tags/"+ARCHIVE)==TIP,"Archive tag readback failed")
+              print("ARCHIVE_TAG_READBACK=PASS "+ARCHIVE+" "+TIP,flush=True)
+              frozen()
+              idle()
+              require(branch_map()=={"main":MAIN,DEV:HEAD,PREP:TIP},"Branch moved before deletion")
+              # Delete only the exact old branch ref, never force-update a
+              # branch or an existing tag. A concurrent ref movement fails.
+              git("push","--force-with-lease=refs/heads/"+PREP+":"+TIP,"origin",":refs/heads/"+PREP)
+          require(refs("heads/"+PREP,True) is None,"Preparation branch still exists")
+          require(branch_map()=={"main":MAIN,DEV:HEAD},"Unexpected remaining branches")
+          require(refs("tags/"+ARCHIVE)==TIP,"Archive lost")
+          frozen()
+          idle()
+          print("EXACT_PREPARATION_BRANCH_DELETED=PASS",flush=True)
+          print("FINAL_BRANCHES=main,dev/stable-tool-refresh",flush=True)
+          print("FORMAL_RELEASE_AND_ACTIONS_HISTORY_UNCHANGED=PASS",flush=True)
+          PY
