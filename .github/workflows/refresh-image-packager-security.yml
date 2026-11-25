@@ -1,0 +1,164 @@
+name: Independent Pillow and PyInstaller security wheel acceptance (one time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths: [.github/workflows/refresh-image-packager-security.yml]
+permissions: {}
+concurrency:
+  group: stable-tool-refresh-image-packager
+  cancel-in-progress: false
+jobs:
+  refresh:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == '83efc0490ad372277098825fd4a1019e70d20698' && github.run_attempt == 1
+    runs-on: windows-latest
+    timeout-minutes: 100
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: powershell
+    env:
+      BASE: 1a230a507da111e9bf54b7b39c347297c333c0e0
+      PARENT: 83efc0490ad372277098825fd4a1019e70d20698
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      TARGET_BRANCH: dev/stable-tool-refresh
+    steps:
+      - name: Preserve tracked bytes and isolate CI PowerShell cache
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'Git configuration failed' }
+          $cache = Join-Path $env:RUNNER_TEMP ('image-packager-pscache-' + [Guid]::NewGuid().ToString('N'))
+          $null = New-Item -ItemType Directory -Path $cache
+          ('PSModuleAnalysisCachePath=' + (Join-Path $cache 'ModuleAnalysisCache')) | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Confirm exact accepted baseline and frozen refs
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or (git rev-parse 'HEAD^').Trim() -cne $env:PARENT) { throw 'Wrong checkout' }
+          $changes = @(git diff --name-only $env:BASE HEAD)
+          $expected = @('tests/check_image_packager_refresh.py','tests/stage_image_packager_security.py','.github/workflows/refresh-image-packager-security.yml')
+          if ($LASTEXITCODE -or $changes.Count -ne 3 -or @(Compare-Object $expected $changes).Count -ne 0) { throw 'Unexpected initial developer diff' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
+            $remote = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen or developer ref changed' }
+          }
+          git checkout --detach $env:GITHUB_SHA
+          if ($LASTEXITCODE) { throw 'Detached CI checkout failed' }
+          git lfs install --local
+          if ($LASTEXITCODE) { throw 'LFS hook unavailable' }
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'Existing accepted LFS integrity failed' }
+          & .\tool\python\python.exe -B tool/python-lock.py validate --requirements tool/python-packages.in.txt --lock tool/python-packages.lock.txt
+          if ($LASTEXITCODE) { throw 'Baseline lock invalid' }
+          & .\tool\python\python.exe -B tool/python-lock.py validate-runtime --requirements tool/python-packages.in.txt
+          if ($LASTEXITCODE) { throw 'Baseline installed closure invalid' }
+          'SCOPE_CONFIRMED=true' | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          & .\tool\python\python.exe -B -c "from pathlib import Path; [compile(p.read_bytes(),str(p),'exec') for p in (Path('tests/check_image_packager_refresh.py'),Path('tests/stage_image_packager_security.py'))]"
+          if ($LASTEXITCODE) { throw 'Targeted fixture syntax failed' }
+          'FIXTURES_READY=true' | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Independently accept and deliver Pillow 13.0.0
+        id: image
+        if: env.FIXTURES_READY == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/stage_image_packager_security.py image
+          if ($LASTEXITCODE) { throw 'Image candidate not accepted; see actual first failure' }
+      - name: Independently accept and deliver PyInstaller 6.22.3 and hooks 2026.10
+        id: packager
+        if: always() && env.FIXTURES_READY == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/stage_image_packager_security.py packager
+          if ($LASTEXITCODE) { throw 'Packager candidate not accepted; see actual first failure' }
+      - name: Record exact outcomes and remove only this one-time trigger and staging helper
+        if: always() && env.SCOPE_CONFIRMED == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import base64,json,os,subprocess,sys
+          from pathlib import Path
+          for stream in (sys.stdout,sys.stderr):stream.reconfigure(encoding="utf-8",errors="backslashreplace")
+          branch="refs/heads/dev/stable-tool-refresh";frozen=os.environ["FROZEN"]
+          trigger=os.environ["GITHUB_SHA"]
+          assert os.environ["GITHUB_REF"]==branch
+          auth=base64.b64encode(("x-access-token:"+os.environ.pop("GH_TOKEN")).encode()).decode()
+          print("::add-mask::"+auth,flush=True)
+          cfg=["-c","http.https://github.com/.extraheader=AUTHORIZATION: basic "+auth]
+          def git(*a):return subprocess.check_output(["git",*a])
+          def rev(ref="HEAD"):return git("rev-parse",ref).decode().strip()
+          def ref(name):
+              v,n=git(*cfg,"ls-remote","origin",name).decode().strip().split("\t")
+              assert n==name
+              return v
+          def names(*a):return set(git(*a).decode("utf-8").split("\0"))-{""}
+          assert ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          path=Path(os.environ["RUNNER_TEMP"])/("portable-image-packager-"+os.environ["GITHUB_RUN_ID"]+".json")
+          state=json.loads(path.read_bytes()) if path.exists() else {"trigger":trigger,"groups":{}}
+          assert state["trigger"]==trigger
+          groups=state["groups"]
+          head=ref(branch)
+          known=trigger
+          for group in ("image","packager"):
+              data=groups.get(group,{})
+              if data.get("status")=="delivered":
+                  assert data["base"]==known
+                  known=data["commit"]
+              else:
+                  assert data.get("status")!="remote-unconfirmed","Unknown remote outcome; preserve actual remote ref for investigation"
+          assert head==known and rev()==head,"unexpected remote or local HEAD; do not overwrite it"
+          assert not git("status","--porcelain=v1","--untracked-files=all"),"dirty checkout; do not clean unknown files"
+          assert subprocess.run(["git","symbolic-ref","-q","HEAD"],capture_output=True).returncode!=0
+          url="https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]
+          image=groups.get("image",{});packager=groups.get("packager",{})
+          image_ok=image.get("status")=="delivered";build_ok=packager.get("status")=="delivered"
+          lines=["\n## 2026-11-26: Pillow and PyInstaller targeted security closeout\n",
+                 "Independent candidates from pinned official Windows wheels; no repeat full browser/MCP or CA suite. No exploit inputs, elevated frozen execution or launcher/permission changes. Prior exact browser/LFS and pip/certifi proof retained.",
+                 "Pillow: "+("13.0.0 delivered "+image["commit"]+"; official wheel SHA-256 f7cbb7a64e7ec664775195e4f81923bc8a93d9451b963f844e59118f63147a7a, RECORD and tagged source/license verified, real moved normal/YOLO image/PDF/Office checks passed." if image_ok else "12.2.0 retained; "+image.get("error","candidate did not reach acceptance; see actual job failure.")),
+                 "PyInstaller: "+("6.22.3 and required hooks-contrib 2026.10 delivered "+packager["commit"]+"; exact official wheels, AMD64 bootloaders, RECORD, source/license and build object manifest verified; real moved normal-mode onedir and YOLO onefile builds and executable readback passed. Only ordinary generated apps, not every hook/GUI/elevated path." if build_ok else "6.21.0 and hooks 2026.6 retained; "+packager.get("error","candidate did not reach acceptance; see actual job failure.")),
+                 "No other dependency refresh. Known ADB/PSModulePath, host OS trust store, real accounts/devices/SSH, optional Office rendering and calculation remain outside the completed scope. "+url+"\n"]
+          dev=Path("DEVELOPMENT.md");dev.write_bytes(dev.read_bytes()+("\n\n".join(lines)).encode())
+          doc=Path("tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md")
+          raw=doc.read_bytes()
+          if build_ok:
+              old="\u5df2\u6062\u590d\u5386\u53f2 PyInstaller 6.21.0 \u53ca\u5fc5\u8981\u4f9d\u8d56".encode()
+              new="PyInstaller 6.22.3 / hooks-contrib 2026.10\uff08\u5df2\u9a8c\u8bc1\uff09".encode()
+              assert raw.count(old)==1
+              raw=raw.replace(old,new,1)
+          raw+=("\n### 2026-11-26 image/packaging security closeout\n\nPillow "+("13.0.0" if image_ok else "12.2.0 retained")+
+                "; PyInstaller "+("6.22.3 / hooks 2026.10" if build_ok else "6.21.0 / hooks 2026.6 retained")+
+                ". Existing package-local paths, launchers and policy unchanged. Exact acceptance and retained reasons: "+url+"; DEVELOPMENT.md.\n").encode()
+          doc.write_bytes(raw)
+          helper="tests/stage_image_packager_security.py";workflow=".github/workflows/refresh-image-packager-security.yml"
+          deleted={helper,workflow}
+          if not (image_ok or build_ok):
+              deleted.add("tests/check_image_packager_refresh.py")
+          git("rm","--",*sorted(deleted))
+          git("add","--","DEVELOPMENT.md",doc.as_posix())
+          assert names("diff","--cached","--name-only","-z")==deleted|{"DEVELOPMENT.md",doc.as_posix()}
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Record independent image and packager security outcomes and retire temporary trigger")
+          final=rev()
+          assert ref(branch)==head
+          subprocess.run(["git",*cfg,"push","origin","HEAD:"+branch],check=True)
+          assert ref(branch)==final and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          subprocess.run(["git",*cfg,"fetch","--no-tags","origin",branch],check=True)
+          assert rev("FETCH_HEAD")==final and rev("FETCH_HEAD^{tree}")==rev("HEAD^{tree}")
+          print("FINAL_DEV_COMMIT="+final,flush=True)
+          print("IMAGE_PACKAGER_RESULTS="+json.dumps({"image":image,"packager":packager},ensure_ascii=True),flush=True)
+          print("TEMPORARY_TRIGGER_REMOVED=PASS",flush=True)
+          if not (image_ok and build_ok):raise SystemExit(1)
+          print("IMAGE_PACKAGER_SECURITY_CLOSEOUT=PASS",flush=True)
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'One or more candidates retained, or cleanup/readback failed; see actual group and cleanup markers' }
