@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-25：第二组 pip / certifi 暂缓，保留原固定版本
+
+仅在 dev/stable-tool-refresh 进行候选验证，实际跟踪的 pip 26.1.2、certifi 2026.5.20、Python 3.14.10 及依赖锁均未替换。目标 pip 26.3 / certifi 2026.11.20（MIT / MPL-2.0）官方 wheel 固定 SHA-256 分别为 f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13 与 7422df25243767b9877031a2248cb14d09ddac9beee846f4cef3d5c9191d488f。原入口 main→cli 是上游正式安全变更；新旧三个 CMD 的普通 wheel 安装、自更新拒绝、官方 python -m pip 的暂存安装、CA/锁/RECORD 与依赖闭包已取得真实对照。原生配置隔离的 kinds→Kind 仅是测试内部 API 变化；[AC 45565688956](https://github.com/rileyaaa/Portable/actions/runs/45565688956) 两版真实 config list（合成配置发现位置）四组对照、PowerShell 缓存隔离、候选范围、原生常用/未知模型、中文搬迁、常用浏览器只读均通过。该候选本地提交 8a639f34 未推送，YOLO 浏览器调用出现 Script running with cell ID 1、write_stdin Unknown process id，合成 Responses 未取得任务完成标记；不能据此认定新版 pip 导致浏览器回归或仅为夹具问题。该次后续 MCP、Office/PDF、发行门禁未执行。
+
+修正候选夹具编辑锚点后，[AC 45571984323](https://github.com/rileyaaa/Portable/actions/runs/45571984323) 最终在暂存脚本第 515 行将含中文的诊断输出写至 cp1252 stdout 时发生 UnicodeEncodeError，冻结版实际浏览器对照未完成、候选未推送。按用户阶段边界停止本批，不重跑、不宣称已通过完整兼容性验收；不修改生产包装器、pip 保护、固定 Codex/Host、权限或浏览器。移除已用完的一次性 workflow，原验证提交与 Actions 历史保留。以后如恢复本组，先修 CI 输出编码并完成同场冻结/候选浏览器及剩余完整原生门禁，不将部分通过当作完整通过。下一独立组先审核 npm/Corepack 稳定工件及其与现有包装器的兼容性。正式 main/tag/Release 不变。
+
 ## 2026-11-25：稳定工具更新开发分支，第一组独立 ripgrep
 
 本组只更新 `tool/bin/rg.exe` 15.2.0 → 16.0.0，官方 Windows x64 MSVC ZIP 通过固定大小和 SHA-256 核验，原 MIT/Unlicense 许可文本逐项对比；`codex-path/rg.exe` 仍由 0.172.0 运行清单固定，不修改 Codex/Host、启动器、权限、PATH 顺序或模式副本。`tool/cli-versions.json` 与既有 CLI verifier 同步固定新工件；Linux 16.0.0 仅记录官方工件摘要，未执行 Linux 新版。回退应整体恢复本组的独立 EXE、清单、verifier 和测试/说明，不恢复或改动 main/tag/Release。Windows 门禁通过才推送实际候选提交，合成 Responses 触发真实 BAT/Codex 和命令，不代表真实在线账号或模型决策。工具全量元数据盘点、实际常用/YOLO、中文搬迁、浏览器/MCP、Office/PDF、原生签名/文件及发行输入结果见本次 AC；网络元数据失败项保持未确认，不据此升级。保留已知 ADB 宿主路径、PowerShell 启动模块路径限制及未测真实设备/交互审批/Office 重算。新版 MCP 0.0.86 仍固定 alpha Playwright，暂不升级该组；Python 3.15 涉及 ABI，暂不跨小版本；优先随后审核 Python pip/certifi 安全修复兼容组，再审核 npm 配套依赖。当前实际 dist-info 与旧 SSH 说明不完全一致，SSH 真实功能及说明另行验证，不在本组冒称已验。
