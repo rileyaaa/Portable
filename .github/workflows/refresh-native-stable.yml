@@ -1,4 +1,4 @@
-name: Native continuation, independent stable wheels and PDF export (one time)
+name: Verified release-source wheel and scalar-yield native acceptance (one time)
 on:
   push:
     branches: [dev/stable-tool-refresh]
@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   refresh:
-    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == 'adbdd3f84105a6b8b8aacf4203eaf3bbff74e952' && github.run_attempt == 1
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == '0f872d25cf22779081dc2c4bf62bb7eda0fffac7' && github.run_attempt == 1
     runs-on: windows-latest
     timeout-minutes: 120
     permissions:
@@ -19,7 +19,7 @@ jobs:
         shell: powershell
     env:
       FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
-      BASE: adbdd3f84105a6b8b8aacf4203eaf3bbff74e952
+      BASE: 0f872d25cf22779081dc2c4bf62bb7eda0fffac7
       TARGET_BRANCH: dev/stable-tool-refresh
     steps:
       - name: Preserve tracked bytes and isolate CI module cache
@@ -120,8 +120,7 @@ jobs:
               print("GROUP_STAGE_PASS=browser",flush=True)
           '@ | & .\tool\python\python.exe -B -
           if ($LASTEXITCODE) { throw 'Browser group integrity or rollback failed; do not push' }
-      - name: Full existing Python and Node regression suite for actual changed runtime payload
-        if: env.BROWSER_PREVALIDATED_HEAD != '' || env.PACKAGING_PREVALIDATED_HEAD != ''
+      - name: Full existing Python and Node regression suite on actual staged or retained payload
         run: |
           $ErrorActionPreference = 'Stop'
           & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
@@ -131,7 +130,6 @@ jobs:
             if ($LASTEXITCODE) { throw "Node regression failed: $test" }
           }
       - name: Existing Windows PowerShell path isolation and setup regressions
-        if: env.BROWSER_PREVALIDATED_HEAD != '' || env.PACKAGING_PREVALIDATED_HEAD != ''
         run: |
           $ErrorActionPreference = 'Stop'
           foreach ($test in @('test_python_setup.ps1','test_portable_paths.ps1','test_launcher_smoke.ps1','test_runtime_preflight.ps1','test_npm_entrypoints.ps1','test_automation_paths.ps1','test_automation_process.ps1')) {
@@ -139,7 +137,6 @@ jobs:
             if ($LASTEXITCODE) { throw "Windows regression failed: $test" }
           }
       - name: Actual common-mode and relocated tools with read-only browser discovery
-        if: env.BROWSER_PREVALIDATED_HEAD != '' || env.PACKAGING_PREVALIDATED_HEAD != ''
         run: |
           $ErrorActionPreference = 'Stop'
           foreach ($mode in @('normal','unknown','browser-check')) {
@@ -172,7 +169,8 @@ jobs:
           & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py documents
           if ($LASTEXITCODE) { throw 'Native Office/PDF probe failed' }
           Write-Output 'PDF_SOURCE_WINDOWS_NATIVE_VALIDATION=PASS'
-          if (-not $env:BROWSER_PREVALIDATED_HEAD -and -not $env:LEGACY_BROWSER_PREVALIDATED_HEAD) { throw 'Corrected retained native YOLO fixture did not pass; see first failure above; do not push payload candidates' }
+          # Keep the independent PDF/native evidence even if the retained YOLO fixture fails.
+          # The final integrity and acceptance step still requires the exact legacy/new native proof.
       - name: Final LFS and customer input integrity, no archive or artifact
         run: |
           $ErrorActionPreference = 'Stop'
@@ -183,7 +181,10 @@ jobs:
           if ($LASTEXITCODE) { throw 'LFS gate failed' }
           & .\tool\python\python.exe -B tool/package-release.py --check
           if ($LASTEXITCODE) { throw 'Customer input integrity failed' }
-          if ($env:BROWSER_PREVALIDATED_HEAD) { Write-Output 'STABLE_BROWSER_FULL_NATIVE_VALIDATION=PASS' } else { Write-Output 'PDF_AND_LEGACY_MCP_SOURCE_VALIDATION=PASS; browser retained' }
+          Write-Output 'CUSTOMER_INPUT_AND_INDEPENDENT_NATIVE_GATES=PASS'
+          if ($env:BROWSER_PREVALIDATED_HEAD) { Write-Output 'STABLE_BROWSER_FULL_NATIVE_VALIDATION=PASS' }
+          elseif ($env:LEGACY_BROWSER_PREVALIDATED_HEAD) { Write-Output 'PDF_AND_LEGACY_MCP_SOURCE_VALIDATION=PASS; browser retained' }
+          else { throw 'Corrected retained native YOLO fixture still did not pass; no payload push. See the actual first failure, independent gates logged above.' }
           Write-Output 'Real Windows processes with synthetic model/inputs; no real account, devices, optional renderers or formula calculation tested.'
       - name: Push only validated fast-forward development commit
         env:
