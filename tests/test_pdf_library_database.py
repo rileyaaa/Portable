@@ -452,6 +452,45 @@ class PdfLibraryDatabaseTests(unittest.TestCase):
 
 
 
+    def test_changed_source_during_first_render_does_not_publish_stale_digest(self):
+        source, pdf = self._synthetic_pdf()
+        changed = b'changed synthetic source during render'
+        with self.assertRaisesRegex(ValueError, 'Source PDF changed during conversion'):
+            self._build_with_stub_renderer(source, lambda: pdf.write_bytes(changed))
+        self.assertEqual(pdf.read_bytes(), changed)
+        self.assertFalse((self.library / 'manuals/synthetic.md').exists())
+        with closing(sqlite3.connect(self.database)) as connection:
+            self.assertEqual(connection.execute('SELECT count(*) FROM documents').fetchone()[0], 0)
+            self.assertEqual(connection.execute('SELECT count(*) FROM pages').fetchone()[0], 0)
+        self.assertEqual(self._build_with_stub_renderer(source)['documents'], 1)
+        with closing(sqlite3.connect(self.database)) as connection:
+            self.assertEqual(connection.execute('SELECT source_sha FROM documents').fetchone()[0],
+                             self.module.sha256(pdf))
+
+    def test_changed_source_during_rebuild_preserves_existing_manual_and_index(self):
+        source, pdf = self._synthetic_pdf()
+        self._build_with_stub_renderer(source)
+        output = self.library / 'manuals/synthetic.md'
+        old = output.read_bytes()
+        with closing(sqlite3.connect(self.database)) as connection:
+            original_doc = connection.execute('SELECT * FROM documents').fetchall()
+            original_pages = connection.execute('SELECT * FROM pages').fetchall()
+        pdf.write_bytes(b'changed synthetic source before render')
+        changed = b'changed again during render'
+        with self.assertRaisesRegex(ValueError, 'Source PDF changed during conversion'):
+            self._build_with_stub_renderer(source, lambda: pdf.write_bytes(changed))
+        self.assertEqual(pdf.read_bytes(), changed)
+        self.assertEqual(output.read_bytes(), old)
+        with closing(sqlite3.connect(self.database)) as connection:
+            self.assertEqual(connection.execute('SELECT * FROM documents').fetchall(), original_doc)
+            self.assertEqual(connection.execute('SELECT * FROM pages').fetchall(), original_pages)
+        self.assertTrue(self.module.verify_library(self.library)['strict_ok'])
+        self.assertEqual(self._build_with_stub_renderer(source)['reused'], 0)
+        with closing(sqlite3.connect(self.database)) as connection:
+            self.assertEqual(connection.execute('SELECT source_sha FROM documents').fetchone()[0],
+                             self.module.sha256(pdf))
+        self.assertEqual(self._build_with_stub_renderer(source)['reused'], 1)
+
     def test_verify_export_and_reuse_reject_inconsistent_index_pages(self):
         source, _ = self._synthetic_pdf()
         (source / 'another.pdf').write_bytes(b'second synthetic PDF fixture')

@@ -14,6 +14,7 @@ import sys
 import tarfile
 import tempfile
 import urllib.request
+from urllib.parse import quote
 import zipfile
 
 from cryptography.hazmat.primitives import hashes, serialization
@@ -29,6 +30,11 @@ PW_TAG = "bbd948344ea9a60bf1e6f125c02ca99b2b51593b"
 CHROME = "158.0.8127.88"
 REV = "1727472"
 URL = f"https://storage.googleapis.com/chrome-for-testing-public/{CHROME}/win64/chrome-win64.zip"
+# Both archives were independently signature- and byte-verified in run 45601690859.
+NPM_SHA256 = {
+    "playwright": "e2ebec5abb40f511c7a4442e83042fd8a4e654c3367e120b76e94a61a8f91e01",
+    "playwright-core": "6f5a60be62a4fddfbe7d10c448d8fbd54547da3358f2f8a04211440471ee863e",
+}
 REG = "https://registry.npmjs.org/"
 CFT = "https://googlechromelabs.github.io/chrome-for-testing/"
 TOOL_DOC = "tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md"
@@ -129,6 +135,7 @@ def npm_payload(name,keys):
             verified.append(key["keyid"])
     assert verified,("no verified registry signature",name)
     raw=fetch(url,40*1024*1024)
+    assert sha(raw)==NPM_SHA256[name],("previously verified npm archive changed",name)
     assert "sha512-"+base64.b64encode(hashlib.sha512(raw).digest()).decode()==integrity
     assert hashlib.sha1(raw).hexdigest()==dist["shasum"]
     payload={};seen=set();total=0
@@ -211,6 +218,73 @@ def stage_node(own,env):
     print("STABLE_NPM_INSTALLED_OFFICIAL_BYTES=PASS",flush=True)
     return target,manifest
 
+def google_hashes(headers):
+    """GCS permits separate x-goog-hash fields or a comma-separated field."""
+    result={}
+    for field in headers.get_all("x-goog-hash",[]):
+        for part in field.split(","):
+            name,sep,value=part.strip().partition("=")
+            assert sep and name and value,("malformed Google hash",part)
+            if name not in ("md5","crc32c"):continue
+            assert len(base64.b64decode(value,validate=True))=={"md5":16,"crc32c":4}[name]
+            assert name not in result or result[name]==value,("conflicting Google hash",name)
+            result[name]=value
+    return result
+
+def crc32c_table():
+    table=[]
+    for i in range(256):
+        for _ in range(8):
+            i=(i>>1)^(0x82f63b78 if i&1 else 0)
+        table.append(i)
+    return tuple(table)
+
+CRC32C_TABLE=crc32c_table()
+def crc32c_update(state,data):
+    for value in data:
+        state=CRC32C_TABLE[(state^value)&255]^(state>>8)
+    return state
+
+def crc32c_encode(state):
+    return base64.b64encode((state^0xffffffff).to_bytes(4,"big")).decode()
+
+def google_metadata_url(generation):
+    assert generation.isdigit() and int(generation)>0
+    obj=f"{CHROME}/win64/chrome-win64.zip"
+    return "https://storage.googleapis.com/storage/v1/b/chrome-for-testing-public/o/"+quote(obj,safe="")+"?generation="+generation
+
+def google_expected(headers,size,generation):
+    result=google_hashes(headers)
+    if "md5" not in result:
+        metadata=data_json(google_metadata_url(generation))
+        assert metadata["bucket"]=="chrome-for-testing-public"
+        assert metadata["name"]==f"{CHROME}/win64/chrome-win64.zip"
+        assert metadata["generation"]==generation and int(metadata["size"])==size
+        for field,name,length in (("md5Hash","md5",16),("crc32c","crc32c",4)):
+            if field not in metadata:continue
+            value=metadata[field]
+            assert len(base64.b64decode(value,validate=True))==length
+            assert name not in result or result[name]==value,("Google metadata hash mismatch",name)
+            result[name]=value
+    assert "md5" in result or "crc32c" in result,"no official Google object checksum"
+    return result
+
+def verify_generation_bytes(generation,size,expected_sha):
+    # CRC32C-only objects are permitted by Google. In that case also compare
+    # SHA-256 from a second, generation-pinned official media request.
+    url=google_metadata_url(generation)+"&alt=media"
+    with opener.open(urllib.request.Request(url,headers={"User-Agent":"Portable-stable-audit/1","Accept-Encoding":"identity"}),timeout=120) as res:
+        assert res.url==url
+        assert int(res.headers["Content-Length"])==size
+        returned=res.headers.get("x-goog-generation")
+        assert returned is None or returned==generation
+        assert res.headers.get("Content-Encoding","identity")=="identity"
+        count=0;h=hashlib.sha256()
+        while chunk:=res.read(1024*1024):
+            count+=len(chunk);assert count<=size
+            h.update(chunk)
+    assert count==size and h.hexdigest()==expected_sha,"generation-pinned Google media bytes differ"
+
 def stage_chrome(own,installer):
     metadata=data_json(CFT+"last-known-good-versions-with-downloads.json")
     stable=metadata["channels"]["Stable"]
@@ -220,23 +294,31 @@ def stage_chrome(own,installer):
     assert specific["version"]==CHROME and specific["revision"]==REV
     assert {x["url"] for x in specific["downloads"]["chrome"] if x["platform"]=="win64"}=={URL}
     archive=own/"chrome-win64.zip"
-    md5=hashlib.md5(usedforsecurity=False);hash256=hashlib.sha256()
-    with opener.open(urllib.request.Request(URL,headers={"User-Agent":"Portable-stable-audit/1"}),timeout=120) as res:
+    md5=hashlib.md5(usedforsecurity=False);hash256=hashlib.sha256();crc=0xffffffff
+    with opener.open(urllib.request.Request(URL,headers={"User-Agent":"Portable-stable-audit/1","Accept-Encoding":"identity"}),timeout=120) as res:
         assert res.url==URL
+        assert res.headers.get("Content-Encoding","identity")=="identity"
         size=int(res.headers["Content-Length"]);assert 0<size<=1024**3
-        google_hash=dict(p.strip().split("=",1) for p in res.headers.get("x-goog-hash","").split(",") if "=" in p)
-        assert google_hash.get("md5"),"official Google Storage MD5 not available"
-        generation=res.headers.get("x-goog-generation");assert generation and generation.isdigit()
+        generation=res.headers.get("x-goog-generation")
+        assert generation and generation.isdigit() and int(generation)>0
+        google_hash=google_expected(res.headers,size,generation)
+        print("GOOGLE_OFFICIAL_OBJECT_CHECKSUMS="+json.dumps({"generation":generation,"size":size,"hashes":google_hash}),flush=True)
         count=0
         with archive.open("xb") as out:
             while chunk:=res.read(1024*1024):
                 count+=len(chunk);assert count<=size
-                md5.update(chunk);hash256.update(chunk);out.write(chunk)
-    assert count==size and base64.b64encode(md5.digest()).decode()==google_hash["md5"]
+                if "md5" in google_hash:md5.update(chunk)
+                if "crc32c" in google_hash:crc=crc32c_update(crc,chunk)
+                hash256.update(chunk);out.write(chunk)
+    assert count==size
+    if "md5" in google_hash:assert base64.b64encode(md5.digest()).decode()==google_hash["md5"],"Google MD5 mismatch"
+    if "crc32c" in google_hash:assert crc32c_encode(crc)==google_hash["crc32c"],"Google CRC32C mismatch"
+    if "md5" not in google_hash:verify_generation_bytes(generation,size,hash256.hexdigest())
     prefix="tool/automation/browsers/chromium-"+REV+"/"
     manifest={"schemaVersion":1,"browserVersion":CHROME,"revision":REV,"platform":"win32-x64",
         "archive":{"sourceUrl":URL,"resolvedUrl":URL,"sha256":hash256.hexdigest(),"size":size,
-                   "googleMd5":google_hash["md5"],"googleGeneration":generation,"stableMetadataTimestamp":metadata["timestamp"]},
+                   "googleHashes":google_hash,"googleGeneration":generation,"stableMetadataTimestamp":metadata["timestamp"],
+                   "generationMediaSha256Verified":"md5" not in google_hash},
         "files":{}}
     total=0;seen=set()
     with zipfile.ZipFile(archive) as z:
@@ -291,8 +373,14 @@ def main():
     with tempfile.TemporaryDirectory(prefix="browser-stable-",dir=tmp) as d:
         own=Path(d);plain(own,True);env=isolated(own)
         new_node,dep_manifest=stage_node(own,env)
-        new_chrome,manifest=stage_chrome(own,installer)
         work=own/"migration \u4fbf\u643a";work.mkdir()
+        old_exe=AUTO/old_versions["browser"]["executable"]
+        # Real MCP initialization/listing is independent of the Chrome download.
+        # The probe supplies a context getter which fails if anything launches.
+        listing=run([NODE,ROOT/"tests/check_browser_stable_pair.js",AUTO/"playwright/node_modules",
+                     new_node/"node_modules",old_exe,old_exe,work,"--schema-only"],env,timeout=120)
+        assert "MCP_REAL_FILTERED_SCHEMA_COMPATIBILITY=PASS" in listing
+        new_chrome,manifest=stage_chrome(own,installer)
         new_exe=new_chrome/"chrome-win64/chrome.exe"
         ps=Path(env["SystemRoot"])/"System32/WindowsPowerShell/v1.0/powershell.exe"
         command="$s=Get-AuthenticodeSignature -LiteralPath $env:PORTABLE_TEST_EXE; [pscustomobject]@{status=[string]$s.Status;subject=$s.SignerCertificate.Subject}|ConvertTo-Json -Compress"
@@ -358,7 +446,7 @@ def main():
               f"Playwright {PW} (built-in MCP) + Chrome for Testing Stable {CHROME}, r{REV}. "
               "No standalone alpha package, additional browser, driver, automatic registration or permission expansion. "
               "Official npm registry signatures, SHA-512/tarball bytes, old Git/dependency inventory, Google Stable metadata, "
-              "Google object MD5/generation, pinned archive SHA-256 and extracted inventory verified. "
+              "Google object checksum/generation, pinned archive SHA-256 and extracted inventory verified.  "
               f"Archive SHA-256: {manifest['archive']['sha256']}. Exact filtered tool list/compatible schema and real old-to-new synthetic profile Cookie/localStorage/CDP passed. "
               "Default Playwright Chromium 159 is not used because it is not the stable Chrome channel. "
               "Existing release workflow remains frozen; only development input validation, not a release. "

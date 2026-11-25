@@ -16,6 +16,27 @@ const allowedTools = new Set([
   'browser_evaluate', 'browser_generate_locator',
 ]);
 
+// Preserve the existing portable MCP surface when a stable upstream package
+// adds optional parameters. In particular, the service owns one persistent
+// context; isolatedContext must never create a second context through MCP.
+const disabledArguments = new Map([
+  ['browser_find', ['maxResults']],
+  ['browser_network_requests', ['all']],
+  ['browser_tabs', ['isolatedContext']],
+]);
+
+function legacyToolSchema(tool) {
+  const blocked = disabledArguments.get(tool.name);
+  const schema = tool.inputSchema;
+  if (!blocked || !schema?.properties || !blocked.some(key => Object.hasOwn(schema.properties, key)))
+    return tool;
+  if (blocked.some(key => schema.required?.includes(key)))
+    throw new Error('Incompatible required MCP argument');
+  const properties = {...schema.properties};
+  for (const key of blocked) delete properties[key];
+  return {...tool, inputSchema: {...schema, properties}};
+}
+
 function checkedPath(root, input, {directory = false, missing = false} = {}) {
   if (typeof input !== 'string' || !input || /(^|[\\/])\.\.([\\/]|$)/.test(input) || input.includes('\0'))
     throw new Error('Invalid package path');
@@ -205,6 +226,9 @@ function validateToolCall(workspace, params) {
   if (!supplied || typeof supplied !== 'object' || Array.isArray(supplied))
     throw new Error('Tool arguments must be an object');
   const args = {...supplied};
+  for (const key of disabledArguments.get(params.name) ?? []) {
+    if (Object.hasOwn(args, key)) throw new Error('Argument is not enabled by the portable browser policy');
+  }
   // Upstream consumes _meta.cwd before schema parsing; never let it redirect
   // relative output after we have validated it against the selected workspace.
   delete args._meta;
@@ -296,7 +320,7 @@ class PolicyTransport {
       if (method === undefined) return;
       this.pending.delete(message.id);
       if (method === 'tools/list' && message.result?.tools)
-        message = {...message, result: {...message.result, tools: message.result.tools.filter(t => allowedTools.has(t.name))}};
+        message = {...message, result: {...message.result, tools: message.result.tools.filter(t => allowedTools.has(t.name)).map(legacyToolSchema)}};
     }
     return this.inner.send(message);
   }

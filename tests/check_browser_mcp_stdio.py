@@ -270,9 +270,17 @@ def main():
                 rejected = client.request("tools/call", {
                     "name": "browser_navigate", "arguments": {"url": "file:///C:/refused"}})
                 assert "error" in rejected
+                for name,args in (
+                    ("browser_find", {"text":"Click me","maxResults":1}),
+                    ("browser_network_requests", {"static":True,"all":True}),
+                    ("browser_tabs", {"action":"new","isolatedContext":"unowned"}),
+                ):
+                    refused=client.request("tools/call",{"name":name,"arguments":args})
+                    assert "error" in refused, (name,refused)
                 client.call("browser_navigate", url=url)
                 snap = client.call("browser_snapshot")
                 assert "Portable MCP smoke" in json.dumps(snap)
+                assert "Click me" in json.dumps(client.call("browser_find",text="Click me"))
                 client.call("browser_click", target="button", element="Click me")
                 clicked = client.call("browser_evaluate", function="() => document.body.dataset.clicked")
                 assert "yes" in json.dumps(clicked)
@@ -284,6 +292,9 @@ def main():
                     "() => { document.cookie = 'portable_mcp=persisted; Max-Age=3600; Path=/'; "
                     "return document.cookie; }"))
                 assert "portable_mcp=persisted" in json.dumps(seeded)
+                client.call("browser_tabs",action="new",url=url)
+                assert "portable_mcp=persisted" in json.dumps(client.call("browser_evaluate",function="() => document.cookie"))
+                client.call("browser_tabs",action="close")
                 client.call("browser_close")
                 client.call("browser_navigate", url=url)
                 cookies = client.call("browser_evaluate", function="() => document.cookie")

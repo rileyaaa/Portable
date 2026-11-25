@@ -393,6 +393,41 @@ test('transport strips client roots and refuses requests without forwarding them
   assert.ok(!Object.hasOwn(sanitized, '_meta'));
 });
 
+test('stable upstream optional arguments cannot enlarge the legacy MCP surface', async () => {
+  const inner = new MemoryTransport();
+  const policy = new bridge.PolicyTransport(inner, root);
+  const forwarded = [];
+  policy.onmessage = message => forwarded.push(message);
+  await policy.start();
+  const additions = {
+    browser_find: ['maxResults', {type:'number'}, {text:'needle',maxResults:1}],
+    browser_network_requests: ['all', {type:'boolean'}, {static:true,all:true}],
+    browser_tabs: ['isolatedContext', {type:'string'}, {action:'new',isolatedContext:'other'}],
+  };
+  const tools = Object.entries(additions).map(([name,[key,schema]])=>({
+    name,inputSchema:{type:'object',properties:{[key]:schema,filename:{type:'string'}},additionalProperties:false},
+  }));
+  const before = JSON.stringify(tools);
+  const listing = inner.request({jsonrpc:'2.0',id:1,method:'tools/list'});
+  await policy.send({jsonrpc:'2.0',id:1,result:{tools}});
+  const result = await listing;
+  assert.equal(JSON.stringify(tools),before,'Upstream schema must not be mutated');
+  assert.equal(result.result.tools.length,3);
+  for (const tool of result.result.tools) {
+    const [key,,args]=additions[tool.name];
+    assert.ok(!Object.hasOwn(tool.inputSchema.properties,key));
+    assert.ok(Object.hasOwn(tool.inputSchema.properties,'filename'));
+    const rejected=await inner.request({jsonrpc:'2.0',id:forwarded.length+2,method:'tools/call',params:{name:tool.name,arguments:args}});
+    assert.match(rejected.error.message,/Argument is not enabled/);
+  }
+  assert.equal(forwarded.length,1);
+  assert.deepEqual(bridge.validateToolCall(root,{name:'browser_tabs',arguments:{action:'new',url:'https://example.test/'}}),
+                   {action:'new',url:'https://example.test/'});
+  assert.deepEqual(bridge.validateToolCall(root,{name:'browser_find',arguments:{text:'needle'}}),{text:'needle'});
+  assert.deepEqual(bridge.validateToolCall(root,{name:'browser_network_requests',arguments:{static:true}}),{static:true});
+  await policy.close();
+});
+
 test('cancellation frees slots, drops late results and preserves the active request cap', async () => {
   const inner = new MemoryTransport();
   const policy = new bridge.PolicyTransport(inner, root);

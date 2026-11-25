@@ -553,6 +553,10 @@ def build_library(input_path: Path, library_path: Path, *, ocr="none",
             if previous is None and output.exists():
                 raise ValueError("Refusing to replace an unowned Markdown output")
             pages = _render_document(path, ocr=ocr, language=language)
+            # Conversion may take a long time. Do not publish output with
+            # the hash of a source that was replaced or edited during it.
+            if sha256(path) != digest:
+                raise ValueError("Source PDF changed during conversion; retry with stable input")
             text = "# " + Path(name).stem.replace("\n", " ") + "\n\n" + \
                 "\n".join(page["markdown"] for page in pages)
             check_markdown(text)

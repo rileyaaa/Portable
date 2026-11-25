@@ -8,7 +8,8 @@ const {EventEmitter} = require('node:events');
 const bridge = require('../tool/automation/browser-bridge');
 const [oldDeps, newDeps, oldExe, newExe, work] = process.argv.slice(2);
 assert.equal(process.platform, 'win32');
-assert.equal(process.argv.length, 7);
+const schemaOnly=process.argv[7]==='--schema-only';
+assert.equal(process.argv.length, schemaOnly ? 8 : 7);
 const root = path.resolve(__dirname, '..');
 for (const dir of [oldDeps, newDeps, work]) bridge.checkedPath(root, dir, {directory:true});
 for (const exe of [oldExe,newExe]) bridge.checkedPath(root,exe);
@@ -27,7 +28,7 @@ class MemoryTransport {
     });
   }
 }
-async function schema(deps, exe) {
+async function schema(deps, exe, raw = false) {
   const {tools:{createConnection}}=require(path.join(deps,'playwright-core/lib/coreBundle'));
   const server=await createConnection({
     browser:{browserName:'chromium',isolated:false,userDataDir:path.join(work,'schema-profile'),
@@ -37,16 +38,16 @@ async function schema(deps, exe) {
     outputDir:work,outputMaxSize:50*1024*1024,saveSession:false,codegen:'none',
   },()=>{throw Error('listing must not launch browser');});
   const inner=new MemoryTransport();
-  const policy=new bridge.PolicyTransport(inner,work);
+  const policy=raw ? inner : new bridge.PolicyTransport(inner,work);
   try {
     await server.connect(policy);
     const init=await inner.request({jsonrpc:'2.0',id:1,method:'initialize',
-      params:{protocolVersion:'2025-06-18',capabilities:{roots:{listChanged:true}},clientInfo:{name:'portable-compatibility',version:'1'}}});
+      params:{protocolVersion:'2025-06-18',capabilities:raw?{}:{roots:{listChanged:true}},clientInfo:{name:'portable-compatibility',version:'1'}}});
     assert.ok(init.result,JSON.stringify(init));
     inner.onmessage({jsonrpc:'2.0',method:'notifications/initialized'});
     const response=await inner.request({jsonrpc:'2.0',id:2,method:'tools/list'});
     assert.ok(response.result,JSON.stringify(response));
-    return Object.fromEntries(response.result.tools.map(t=>[t.name,t.inputSchema]));
+    return Object.fromEntries(response.result.tools.filter(t=>bridge.allowedTools.has(t.name)).map(t=>[t.name,t.inputSchema]));
   } finally { await server.close(); }
 }
 function compatible(oldValue,newValue,label) {
@@ -74,7 +75,19 @@ function compatible(oldValue,newValue,label) {
 }
 async function main() {
   process.chdir(work);
+  const rawOld=await schema(oldDeps,oldExe,true),rawNew=await schema(newDeps,newExe,true);
   const old=await schema(oldDeps,oldExe),candidate=await schema(newDeps,newExe);
+  // The unfiltered test servers only initialize and list tools; no upstream
+  // tools are executed. Assert the compatibility adapter did not hide any
+  // parameter that was actually present in the original pinned MCP.
+  assert.deepEqual(old,rawOld,'legacy policy removed an existing parameter');
+  for (const [name,key] of [['browser_find','maxResults'],['browser_network_requests','all'],['browser_tabs','isolatedContext']]) {
+    assert.ok(!Object.hasOwn(rawOld[name].properties||{},key),name+' legacy already offered '+key);
+    assert.ok(Object.hasOwn(rawNew[name].properties||{},key),name+' expected upstream addition '+key);
+    assert.ok(!rawNew[name].required?.includes(key),name+' new required argument');
+    assert.ok(!Object.hasOwn(candidate[name].properties||{},key),name+' leaked new argument '+key);
+  }
+  console.log('MCP_LEGACY_ARGUMENT_SURFACE=PASS');
   console.log('MCP_OLD_TOOLS='+JSON.stringify(Object.keys(old).sort()));
   console.log('MCP_NEW_TOOLS='+JSON.stringify(Object.keys(candidate).sort()));
   assert.deepEqual(Object.keys(candidate).sort(),Object.keys(old).sort(),'filtered MCP tool set changed');
@@ -84,6 +97,7 @@ async function main() {
   }
   assert.ok(old.browser_navigate&&old.browser_click&&old.browser_snapshot&&old.browser_evaluate&&old.browser_close);
   console.log('MCP_REAL_FILTERED_SCHEMA_COMPATIBILITY=PASS');
+  if(schemaOnly)return;
   const server=http.createServer((req,res)=>{res.writeHead(200,{'Content-Type':'text/html'});res.end('<title>Portable migration</title><button id="button" onclick="document.body.dataset.clicked=\'yes\'">Click</button>');});
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
   try {
