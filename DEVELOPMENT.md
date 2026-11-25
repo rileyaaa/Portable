@@ -1,5 +1,9 @@
 # 开发与维护记录
 
+## 2026-11-25：稳定浏览器候选精确纠正
+
+只修复 AC 45596716268 已证实的 registry 公钥指纹算法（P-256、OpenSSH wire blob 的 SHA-256，无 padding，匹配 registry keyid，再验证 name@version:integrity 的原 ECDSA 签名；不允许过期签名键），以及源代码确定存在的 Path 拼接优先级错误。两把官方公开 key 各自验证、错误 DER 指纹和错误 scheme 必须拒绝；小型合成 CFT archive 验证真实暂存及原 extractor，不替代官方工件/实际 Windows 验收。稳定 Playwright 1.65.1 与官方 Chrome for Testing Stable 158.0.8127.88 保持原候选；须通过实际旧/新 MCP 工具与参数、合成 profile 迁移、原生浏览器/MCP、原模式隔离和完整性，禁止回退宿主或增加能力。前批已验 HTTP/时区/XlsxWriter/typing_extensions 不重复暂存。若浏览器未换载荷，仅对本轮 PDF 源码做必要局部/原生验收并核对冻结的其他路径；不把 workflow success 当作浏览器更换成功。
+
 ## 2026-11-25：HTTP / 时区正式候选落地，浏览器保留原因
 
 [AC 45596716268](https://github.com/rileyaaa/Portable/actions/runs/45596716268)（job 139144594270）completed/success。实际推送 urllib3 2.8.0（52d2a8f2d454a01a7dcb77910e689980513a1836）、AnyIO 4.16.0（429f3aa34125e1acb84aa87377b1e1998e33f3a8）、tzdata 2026.6（167056c7ba2091c612652cfdd8f7b0ec21d2dba9）。新旧回环 HTTP/代理/压缩流/异步、已满足的 typing_extensions 4.16.0 依赖、时区版权声明与包内偏移均通过；324 项 Python、Node/PowerShell、实际常用/未知模型、YOLO、浏览器只读/实际 MCP、Office/PDF 及发行输入门禁全过。实际 dev tree a51c039d6a0531999c4c881d4cc1f948defc7fc7。浏览器组在 stage_browser_stable.py 第 108 行 keyid 指纹断言停止，未验证签名正文、未安装新 npm 载荷或浏览器，未进入新旧 MCP 契约与 profile 测试；现有版本/清单/载荷不变。独立用官方 registry 两把公钥复现：keyid 对应 SSH wire-format 公钥摘要（不是 DER SubjectPublicKeyInfo 字节的摘要），两把均精确匹配；后续仅纠正该验证算法和已审查的暂存实现。清理已完成的一次性 workflow，不重跑已落地 Python 候选。真实 Windows 消费者由合成模型/输入驱动；未测真实账号、设备、SSH、外部网站、可选渲染器和公式重算。main/tag/Release 不变。

@@ -86,6 +86,20 @@ def safe_name(s):
                not re.fullmatch(r"(?i)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?",p)
                for p in s.split("/")),s
 
+def registry_public_key(key):
+    """npm registry keyids fingerprint the SSH wire blob, not SPKI DER."""
+    assert key["keytype"]==key["scheme"]=="ecdsa-sha2-nistp256"
+    der=base64.b64decode(key["key"],validate=True)
+    public=serialization.load_der_public_key(der)
+    assert isinstance(public,ec.EllipticCurvePublicKey) and isinstance(public.curve,ec.SECP256R1)
+    kind,encoded=public.public_bytes(serialization.Encoding.OpenSSH,
+                                    serialization.PublicFormat.OpenSSH).split()
+    assert kind==b"ecdsa-sha2-nistp256"
+    wire=base64.b64decode(encoded,validate=True)
+    fingerprint="SHA256:"+base64.b64encode(hashlib.sha256(wire).digest()).decode().rstrip("=")
+    assert key["keyid"]==fingerprint,("npm registry public key fingerprint mismatch",key["keyid"])
+    return public
+
 def npm_payload(name,keys):
     meta=data_json(REG+name+"/"+PW)
     assert meta["name"]==name and meta["version"]==PW and meta["license"]=="Apache-2.0"
@@ -104,10 +118,12 @@ def npm_payload(name,keys):
     for sig in signatures:
         for key in keys:
             if key["keyid"]!=sig["keyid"]:continue
-            der=base64.b64decode(key["key"],validate=True)
-            assert key["keyid"]=="SHA256:"+base64.b64encode(hashlib.sha256(der).digest()).decode().rstrip("=")
-            public=serialization.load_der_public_key(der)
-            assert isinstance(public,ec.EllipticCurvePublicKey)
+            public=registry_public_key(key)
+            # The currently published stable artifacts must use an active
+            # registry signing key. Do not accept expired historical keys.
+            if key.get("expires") is not None:
+                from datetime import datetime,timezone
+                assert datetime.fromisoformat(key["expires"].replace("Z","+00:00"))>datetime.now(timezone.utc)
             public.verify(base64.b64decode(sig["sig"],validate=True),
                           (name+"@"+PW+":"+integrity).encode(),ec.ECDSA(hashes.SHA256()))
             verified.append(key["keyid"])
@@ -232,7 +248,7 @@ def stage_chrome(own,installer):
             with z.open(member) as f:h=hashlib.file_digest(f,"sha256").hexdigest()
             manifest["files"][prefix+member.filename]={"size":member.file_size,"sha256":h}
     manifest["fileCount"]=len(seen);manifest["uncompressedBytes"]=total
-    target=own/"chromium-"+REV
+    target=own/("chromium-"+REV)
     target.mkdir()
     installer.extract_archive(ROOT,archive,target,manifest,prefix)
     exe=target/"chrome-win64/chrome.exe"
