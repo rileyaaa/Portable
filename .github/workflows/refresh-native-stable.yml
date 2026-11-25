@@ -1,4 +1,4 @@
-name: Recover previously validated stable payload and LFS delivery (one time)
+name: Independent verified wheel delivery and targeted LFS object recovery (one time)
 on:
   push:
     branches: [dev/stable-tool-refresh]
@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   refresh:
-    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == 'c6f33e9ddf856bc66840c3efae013da4051a9913' && github.run_attempt == 1
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == '3dc13d1272fc5213bc737065cbbec625bc32ec2e' && github.run_attempt == 1
     runs-on: windows-latest
     timeout-minutes: 120
     permissions:
@@ -19,7 +19,7 @@ jobs:
         shell: powershell
     env:
       FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
-      BASE: c6f33e9ddf856bc66840c3efae013da4051a9913
+      BASE: 3dc13d1272fc5213bc737065cbbec625bc32ec2e
       TARGET_BRANCH: dev/stable-tool-refresh
     steps:
       - name: Preserve tracked bytes and isolate CI module cache
@@ -51,178 +51,246 @@ jobs:
           if ($LASTEXITCODE) { throw 'LFS hooks unavailable' }
           git lfs fsck
           if ($LASTEXITCODE) { throw 'LFS verification failed' }
-      - name: Restore original validation source and rebuild pinned official payloads
-        run: |
-          $ErrorActionPreference = 'Stop'
-          git checkout --detach $env:BASE
-          if ($LASTEXITCODE) { throw 'Original checkout failed' }
-          $run = $env:GITHUB_RUN_ID
-          try {
-            # Preserve the exact historical validation links in rebuilt docs.
-            $env:GITHUB_RUN_ID = '45643199639'
-            & .\tool\python\python.exe -B tests/stage_stable_batch.py
-            if ($LASTEXITCODE -or (git rev-parse 'HEAD^').Trim() -cne $env:BASE) { throw 'Packaging reconstruction failed' }
-            $a = (git rev-parse HEAD).Trim()
-            & .\tool\python\python.exe -B tests/stage_browser_stable.py
-            if ($LASTEXITCODE -or (git rev-parse 'HEAD^').Trim() -cne $a) { throw 'Browser reconstruction failed' }
-          } finally { $env:GITHUB_RUN_ID = $run }
-          ('REBUILT_PACKAGING=' + $a) | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-          ('REBUILT_BROWSER=' + (git rev-parse HEAD).Trim()) | Out-File $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Prove original tested Git tree or require full native fallback
-        run: |
-          $ErrorActionPreference = 'Stop'
-          @'
-          import os,subprocess,hashlib,re
-          from datetime import datetime
-          def git(*a):return subprocess.check_output(["git",*a])
-          def identity(current,expected,parent,stamp):
-              header,message=git("cat-file","commit",current).split(b"\n\n",1)
-              assert header.count(b"\nparent ")==1 and b"\ngpgsig " not in header
-              lines=re.sub(rb"(?m)^parent [0-9a-f]{40}$",b"parent "+parent.encode(),header).split(b"\n")
-              ids={}
-              for i,line in enumerate(lines):
-                  m=re.fullmatch(rb"(author|committer) (.+) ([0-9]+) ([+-][0-9]{4})",line)
-                  if m:ids[m[1]]=(i,m[1]+b" "+m[2],m[4])
-              ia,a,az=ids[b"author"];ic,c,cz=ids[b"committer"]
-              t0=int(datetime.fromisoformat(stamp.replace("Z","+00:00")).timestamp())
-              for t in range(t0-180,t0+11):
-                  for d in (0,-1,1,-2,2,-3,3):
-                      lines[ia]=a+b" "+str(t+d).encode()+b" "+az
-                      lines[ic]=c+b" "+str(t).encode()+b" "+cz
-                      raw=b"\n".join(lines)+b"\n\n"+message
-                      if hashlib.sha1(b"commit "+str(len(raw)).encode()+b"\0"+raw).hexdigest()==expected:
-                          print("EXACT_PRIOR_COMMIT_IDENTITY="+expected+" tree="+git("rev-parse",current+"^{tree}").decode().strip(),flush=True)
-                          return True
-              print("PRIOR_IDENTITY_NOT_REPRODUCED="+expected,flush=True)
-              return False
-          a="87cf53424025fd450c066c17dc82afdc74cec20c"
-          b="7465a542aa7b20928463f5b1f48cbc989172f653"
-          pa=identity(os.environ["REBUILT_PACKAGING"],a,os.environ["BASE"],"2026-11-25T15:18:35Z")
-          pb=identity(os.environ["REBUILT_BROWSER"],b,a,"2026-11-25T15:25:15Z")
-          result=str(pa and pb).lower()
-          with open(os.environ["GITHUB_ENV"],"a",encoding="utf-8",newline="\n") as f:f.write("EXACT_PRIOR_TREE="+result+"\n")
-          print("EXACT_PRIOR_TREE="+result,flush=True)
-          '@ | & .\tool\python\python.exe -B -
-          if ($LASTEXITCODE) { throw 'Identity proof failed' }
-      - name: Full existing Python and Node regression suite on actual staged or retained payload
-        if: env.EXACT_PRIOR_TREE != 'true'
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & .\tool\python\python.exe -B -m unittest discover -s tests -p 'test_*.py' -v
-          if ($LASTEXITCODE) { throw 'Full Python regression failed' }
-          foreach ($test in @('test_portable_npm.js','test_automation.js')) {
-            & .\tool\node\node.exe --test (Join-Path 'tests' $test)
-            if ($LASTEXITCODE) { throw "Node regression failed: $test" }
-          }
-      - name: Existing Windows PowerShell path isolation and setup regressions
-        if: env.EXACT_PRIOR_TREE != 'true'
-        run: |
-          $ErrorActionPreference = 'Stop'
-          foreach ($test in @('test_python_setup.ps1','test_portable_paths.ps1','test_launcher_smoke.ps1','test_runtime_preflight.ps1','test_npm_entrypoints.ps1','test_automation_paths.ps1','test_automation_process.ps1')) {
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path 'tests' $test)
-            if ($LASTEXITCODE) { throw "Windows regression failed: $test" }
-          }
-      - name: Actual common-mode and relocated tools with read-only browser discovery
-        if: env.EXACT_PRIOR_TREE != 'true'
-        run: |
-          $ErrorActionPreference = 'Stop'
-          foreach ($mode in @('normal','unknown','browser-check')) {
-            & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py $mode
-            if ($LASTEXITCODE) { throw "Native common-mode probe failed: $mode" }
-          }
-      - name: Complete native document gate when prior identity cannot be established
-        if: env.EXACT_PRIOR_TREE != 'true'
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & .\tool\python\python.exe -B tests/check_codex_tool_discovery.py documents
-          if ($LASTEXITCODE) { throw 'Native Office/PDF failed' }
-          Write-Output 'REBUILT_FULL_NATIVE_GATES=PASS'
-      - name: Customer integrity and exact payload transplant onto current dev
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if ((git rev-parse HEAD).Trim() -cne $env:REBUILT_BROWSER) { throw 'Unexpected rebuilt HEAD' }
-          git lfs fsck
-          if ($LASTEXITCODE) { throw 'LFS fsck failed' }
-          & .\tool\python\python.exe -B tool/package-release.py --check
-          if ($LASTEXITCODE) { throw 'Customer integrity failed' }
-          git checkout --detach $env:GITHUB_SHA
-          if ($LASTEXITCODE) { throw 'Trigger checkout failed' }
-          foreach ($commit in @($env:REBUILT_PACKAGING,$env:REBUILT_BROWSER)) {
-            git -c 'user.name=github-actions[bot]' -c 'user.email=41898282+github-actions[bot]@users.noreply.github.com' cherry-pick $commit
-            if ($LASTEXITCODE) { throw 'Candidate transplant failed' }
-          }
-          $changed = @(git diff --name-only --no-renames $env:REBUILT_BROWSER HEAD)
-          if ($LASTEXITCODE -or $changed.Count -ne 1 -or $changed[0] -cne '.github/workflows/refresh-native-stable.yml') { throw 'Recovered payload tree differs' }
-          git lfs fsck
-          if ($LASTEXITCODE) { throw 'Transplanted LFS check failed' }
-          if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Dirty checkout' }
-          Write-Output ('DELIVERY_CANDIDATE=' + (git rev-parse HEAD).Trim())
-      - name: Normal LFS pre-upload, normal dev push and independent fresh LFS download
+      - name: Deliver exact prior packaging tree independently, no new LFS objects
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:GITHUB_REF -cne 'refs/heads/dev/stable-tool-refresh') { throw 'Wrong branch' }
-          $current = (git rev-parse HEAD).Trim()
-          $auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:GH_TOKEN"))
-          Write-Output "::add-mask::$auth"
-          $cfg = @('-c',"http.https://github.com/.extraheader=AUTHORIZATION: basic $auth",'-c','lfs.transfer.batchSize=12','-c','lfs.concurrenttransfers=3')
-          function Invoke-Transfer([string[]]$gitArgs) {
-            foreach ($delay in @(0,10,30,60)) {
-              if ($delay) { Start-Sleep -Seconds $delay }
-              $ErrorActionPreference = 'Continue'
-              $out = @(& git @cfg @gitArgs 2>&1)
-              $rc = $LASTEXITCODE
-              $ErrorActionPreference = 'Stop'
-              $out | ForEach-Object { Write-Output $_.ToString() }
-              if ($rc -eq 0) { return }
-              if (($out | Out-String) -notmatch '\b(429|502|503|504)\b|timed out|connection reset|temporarily unavailable|unexpected EOF') { throw 'Non-transient transfer failure' }
-              Write-Output 'Transient Git/LFS failure; bounded retry'
-            }
-            throw 'Git/LFS retry budget exhausted'
-          }
-          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
-            $remote = (git ls-remote origin $pair[0]) -join ''
-            if ($LASTEXITCODE -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Ref moved' }
-          }
-          git merge-base --is-ancestor $env:GITHUB_SHA HEAD
-          if ($LASTEXITCODE) { throw 'Non-fast-forward candidate' }
-          try {
-            Invoke-Transfer @('lfs','push','origin','HEAD')
-            Write-Output 'LFS_PREUPLOAD=PASS'
-            Invoke-Transfer @('push','origin',"HEAD:refs/heads/$env:TARGET_BRANCH")
-            $remote = (git ls-remote origin "refs/heads/$env:TARGET_BRANCH") -join ''
-            if ($LASTEXITCODE -or $remote -cne ($current + [char]9 + "refs/heads/$env:TARGET_BRANCH")) { throw 'Remote dev readback mismatch' }
-            Write-Output "REMOTE_DEV_COMMIT=$current"
-            Invoke-Transfer @('fetch','origin',"refs/heads/$env:TARGET_BRANCH")
-            if ((git rev-parse FETCH_HEAD).Trim() -cne $current) { throw 'Fetched remote commit mismatch' }
-            $env:READBACK = Join-Path $env:RUNNER_TEMP ('lfs-readback-' + [Guid]::NewGuid().ToString('N'))
-            $null = New-Item -ItemType Directory -Path $env:READBACK
-            Invoke-Transfer @('-c',"lfs.storage=$env:READBACK",'lfs','fetch','--refetch','--include=tool/automation/browsers/chromium-1727472/**','--exclude=','origin',$current)
           @'
-          import hashlib,json,os,subprocess
+          import base64, os, subprocess, sys, time
+          def git(*a):return subprocess.check_output(["git",*a]).decode("utf-8").strip()
+          def run(*a):subprocess.run(list(a),check=True)
+          def clean():assert not git("status","--porcelain=v1","--untracked-files=all")
+          trigger=os.environ["GITHUB_SHA"]
+          branch="refs/heads/dev/stable-tool-refresh"
+          frozen=os.environ["FROZEN"]
+          assert os.environ["GITHUB_REF"]==branch and git("rev-parse","HEAD")==trigger
+          auth=base64.b64encode(("x-access-token:"+os.environ.pop("GH_TOKEN")).encode()).decode()
+          print("::add-mask::"+auth,flush=True)
+          cfg=["-c","http.https://github.com/.extraheader=AUTHORIZATION: basic "+auth]
+          def ref(name):
+              value,actual=git(*cfg,"ls-remote","origin",name).split("\t")
+              assert name==actual
+              return value
+          assert ref(branch)==trigger and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          base="c6f33e9ddf856bc66840c3efae013da4051a9913"
+          run("git","checkout","--detach",base);clean()
+          env=os.environ.copy();env["GITHUB_RUN_ID"]="45643199639"
+          subprocess.run([sys.executable,"-B","tests/stage_stable_batch.py"],env=env,check=True)
+          original=git("rev-parse","HEAD");clean()
+          assert git("rev-parse","HEAD^")==base
+          assert git("rev-parse","HEAD^{tree}")=="a5716887b9d4f3a87896b0345d9411eb87816242"
+          print("EXACT_PRIOR_PACKAGING_TREE=PASS "+original,flush=True)
+          assert not git("diff","--name-only",base,original,"--","tool/automation","tool/node",".gitattributes","codex.exe","codex-path")
+          run("git","checkout","--detach",trigger)
+          run("git","-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","cherry-pick",original)
+          head=git("rev-parse","HEAD");clean()
+          assert git("diff","--name-only",original,head)==".github/workflows/refresh-native-stable.yml"
+          run(sys.executable,"-B","tool/package-release.py","--check")
+          run("git","lfs","fsck")
+          assert ref(branch)==trigger
+          for delay in (0,10,30):
+              if delay:time.sleep(delay)
+              result=subprocess.run(["git",*cfg,"push","origin","HEAD:"+branch])
+              if ref(branch)==head:break
+              assert ref(branch)==trigger
+          assert ref(branch)==head and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          run("git",*cfg,"fetch","--no-tags","origin",branch)
+          assert git("rev-parse","FETCH_HEAD")==head
+          assert git("rev-parse","FETCH_HEAD^{tree}")==git("rev-parse","HEAD^{tree}")
+          print("PACKAGING_REMOTE_COMMIT="+head,flush=True)
+          with open(os.environ["GITHUB_ENV"],"a",encoding="utf-8",newline="\n") as f:
+              f.write("PACKAGING_HEAD="+head+"\nORIGINAL_PACKAGING="+original+"\n")
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Independent packaging delivery failed' }
+      - name: Reconstruct prior browser bytes only, no repeat native suite
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import os, subprocess, sys
           from pathlib import Path
+          def git(*a):return subprocess.check_output(["git",*a]).decode("utf-8").strip()
+          assert git("rev-parse","HEAD")==os.environ["PACKAGING_HEAD"]
+          subprocess.run(["git","checkout","--detach",os.environ["ORIGINAL_PACKAGING"]],check=True)
+          path=Path("tests/stage_browser_stable.py")
+          source=path.read_text(encoding="utf-8")
+          def cut(a,b):
+              global source
+              assert source.count(a)==1
+              i=source.index(a);j=source.index(b,i+len(a))
+              source=source[:i]+source[j:]
+          # These are only previously completed native execution checks.
+          # Keep npm signatures, archive SHA/generation, exact extraction,
+          # manifests, installation integrity and scoped Git staging intact.
+          cut("        # Prove the corrected native fixture","        new_node,dep_manifest=stage_node")
+          cut("        work=own/","        new_chrome,manifest=stage_chrome")
+          cut("        output=run([NODE,ROOT/","        versions=old_versions")
+          cut('            run([NODE,"--test","tests/test_automation.js"]','            expected=set(old_deps)')
+          source=source.replace("BROWSER_STABLE_STAGE_PASS=","BROWSER_BYTES_RECONSTRUCTED_LOCAL=")
+          previous=os.environ["GITHUB_RUN_ID"]
+          try:
+              # Preserve historical validation note, not a claim of new tests.
+              os.environ["GITHUB_RUN_ID"]="45643199639"
+              exec(compile(source,str(path),"exec"),{"__name__":"__main__","__file__":str(path)})
+          finally:os.environ["GITHUB_RUN_ID"]=previous
+          original=git("rev-parse","HEAD")
+          assert git("rev-parse","HEAD^")==os.environ["ORIGINAL_PACKAGING"]
+          assert git("rev-parse","HEAD^{tree}")=="4381bd0c2343b5855cb522aa4797a44db4417f27","prior exact browser tree not reproduced"
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          print("EXACT_PRIOR_BROWSER_TREE=PASS "+original,flush=True)
+          subprocess.run(["git","checkout","--detach",os.environ["PACKAGING_HEAD"]],check=True)
+          subprocess.run(["git","-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","cherry-pick",original],check=True)
+          head=git("rev-parse","HEAD")
+          assert git("diff","--name-only",original,head)==".github/workflows/refresh-native-stable.yml"
+          subprocess.run(["git","lfs","fsck"],check=True)
+          subprocess.run([sys.executable,"-B","tool/package-release.py","--check"],check=True)
+          with open(os.environ["GITHUB_ENV"],"a",encoding="utf-8",newline="\n") as f:f.write("BROWSER_CANDIDATE="+head+"\n")
+          print("EXACT_BROWSER_DELIVERY_CANDIDATE="+head,flush=True)
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Browser reconstruction did not prove the prior tree; packaging retained' }
+      - name: Audit remote objects in empty storage and transfer only unresolved OIDs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import base64, hashlib, json, os, re, subprocess, sys, tempfile, time
+          from pathlib import Path
+          for s in (sys.stdout,sys.stderr):s.reconfigure(encoding="utf-8",errors="backslashreplace")
+          head=os.environ["BROWSER_CANDIDATE"];pack=os.environ["PACKAGING_HEAD"]
+          branch="refs/heads/dev/stable-tool-refresh";frozen=os.environ["FROZEN"]
+          assert os.environ["GITHUB_REF"]==branch
+          auth=base64.b64encode(("x-access-token:"+os.environ.pop("GH_TOKEN")).encode()).decode()
+          print("::add-mask::"+auth,flush=True)
+          cfg=["-c","http.https://github.com/.extraheader=AUTHORIZATION: basic "+auth,"-c","lfs.transfer.batchSize=8","-c","lfs.concurrenttransfers=2"]
+          def git(*a):return subprocess.check_output(["git",*a])
+          def ref(name):
+              value,actual=git(*cfg,"ls-remote","origin",name).decode().strip().split("\t")
+              assert actual==name
+              return value
+          def frozen_refs():assert ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          def net(label,*args):
+              try:
+                  p=subprocess.run(["git",*cfg,*args],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=360)
+              except subprocess.TimeoutExpired:
+                  print(label+" TIMEOUT",flush=True);return False
+              msg=p.stdout.decode("utf-8","replace")
+              # Do not print signed download URLs, authentication or response bodies.
+              for line in msg.splitlines():
+                  if re.search(r"HTTP (?:4|5)\d\d|error confirming object|error getting verify links|object does not exist|not found|Uploading LFS objects|Fetching",line,re.I):
+                      print(re.sub(r"https?://\S+","[endpoint]",line).replace(auth,"***")[:400],flush=True)
+              print(label+" EXIT="+str(p.returncode),flush=True)
+              return p.returncode==0
+          assert git("rev-parse","HEAD").decode().strip()==head and ref(branch)==pack
+          frozen_refs()
           m=json.loads(Path("tool/automation/browser-manifest.json").read_bytes())
+          old=json.loads(git("show",pack+":tool/automation/browser-manifest.json"))
+          old_oids={v["sha256"] for v in old["files"].values()}
           assert m["fileCount"]==305 and m["uncompressedBytes"]==470523246
           objects={}
-          for path,v in m["files"].items():
-              oid,size=v["sha256"],v["size"]
-              pointer=subprocess.check_output(["git","cat-file","blob","HEAD:"+path])
-              assert pointer==("version https://git-lfs.github.com/spec/v1\noid sha256:"+oid+"\nsize "+str(size)+"\n").encode(),path
-              p=Path(os.environ["READBACK"])/"objects"/oid[:2]/oid[2:4]/oid
-              assert p.is_file() and p.stat().st_size==size,oid
-              with p.open("rb") as f:assert hashlib.file_digest(f,"sha256").hexdigest()==oid,oid
-              objects[oid]=size
-          print("REMOTE_LFS_FRESH_DOWNLOAD=PASS files=305 unique_objects="+str(len(objects))+" bytes="+str(sum(objects.values())),flush=True)
+          for path,item in m["files"].items():
+              oid,size=item["sha256"],item["size"]
+              assert re.fullmatch("[a-f0-9]{64}",oid) and path.startswith("tool/automation/browsers/chromium-1727472/")
+              assert git("cat-file","blob",head+":"+path)==("version https://git-lfs.github.com/spec/v1\noid sha256:"+oid+"\nsize "+str(size)+"\n").encode(),path
+              file=Path(path)
+              with file.open("rb") as f:assert file.stat().st_size==size and hashlib.file_digest(f,"sha256").hexdigest()==oid,path
+              assert oid not in objects or objects[oid][1]==size
+              objects[oid]=(path,size)
+          print("LFS_CANDIDATE_INVENTORY="+str(len(objects))+" unique; new_vs_old="+str(len(set(objects)-old_oids)),flush=True)
+          with tempfile.TemporaryDirectory(prefix="lfs-remote-audit-",dir=os.environ["RUNNER_TEMP"]) as temp:
+              store=Path(temp);assert not list(store.iterdir())
+              def good(oid):
+                  path=store/"objects"/oid[:2]/oid[2:4]/oid
+                  if not path.is_file() or path.stat().st_size!=objects[oid][1]:return False
+                  with path.open("rb") as f:return hashlib.file_digest(f,"sha256").hexdigest()==oid
+              def fetch(oids):
+                  if not oids:return
+                  paths=",".join(objects[o][0] for o in oids)
+                  net("LFS_DOWNLOAD_"+str(len(oids)),"-c","lfs.storage="+str(store),"lfs","fetch","--include="+paths,"--exclude=","origin",head)
+              def missing(oids):return [o for o in oids if not good(o)]
+              # Start with new objects; old shared OIDs are checked too before push.
+              new=sorted(set(objects)-old_oids)
+              old_shared=sorted(set(objects)&old_oids)
+              for group in (new,old_shared):
+                  for i in range(0,len(group),16):fetch(group[i:i+16])
+              unresolved=missing(list(objects))
+              print("REMOTE_INITIAL_UNRETRIEVED="+str(len(unresolved)),flush=True)
+              for oid in unresolved:
+                  print("OID_READBACK_RETRY "+oid+" "+str(objects[oid]),flush=True)
+                  fetch([oid])
+              unresolved=missing(list(objects))
+              for oid in unresolved:
+                  print("REMOTE_UNRETRIEVED_OID "+oid+" "+str(objects[oid]),flush=True)
+              # If the service broadly fails, stop instead of re-uploading a batch.
+              assert len(unresolved)<=4,"multiple remote objects unavailable; retain old browser without batch reupload"
+              for oid in unresolved:
+                  for n in range(2):
+                      if good(oid):break
+                      print("TARGETED_LFS_UPLOAD "+oid+" "+str(objects[oid]),flush=True)
+                      net("LFS_UPLOAD_"+oid,"lfs","push","--object-id","origin",oid)
+                      fetch([oid])
+                      if not good(oid) and n==0:time.sleep(15)
+              unresolved=missing(list(objects))
+              for oid in unresolved:print("RETAINED_UNRETRIEVED_OID "+oid+" "+str(objects[oid]),flush=True)
+              assert not unresolved,"specific LFS objects still cannot be downloaded and verified"
+              print("REMOTE_LFS_FRESH_DOWNLOAD=PASS files=305 unique_objects="+str(len(objects))+" bytes="+str(sum(v[1] for v in objects.values())),flush=True)
+              # This is the normal push with the normal LFS hook, not an
+              # unchecked pointer-only ref update. Recheck frozen refs first.
+              frozen_refs();assert ref(branch)==pack
+              for delay in (0,15,30):
+                  if delay:time.sleep(delay)
+                  net("NORMAL_GIT_PUSH","push","origin","HEAD:"+branch)
+                  if ref(branch)==head:break
+                  assert ref(branch)==pack
+              assert ref(branch)==head,"normal push still failed after all objects were read back"
+              assert net("REMOTE_GIT_FETCH","fetch","--no-tags","origin",branch)
+              assert git("rev-parse","FETCH_HEAD").decode().strip()==head
+              assert git("rev-parse","FETCH_HEAD^{tree}")==git("rev-parse","HEAD^{tree}")
+              frozen_refs()
+              print("BROWSER_REMOTE_COMMIT="+head,flush=True)
+              with open(os.environ["GITHUB_ENV"],"a",encoding="utf-8",newline="\n") as f:f.write("BROWSER_REMOTE_HEAD="+head+"\n")
           '@ | & .\tool\python\python.exe -B -
-            if ($LASTEXITCODE) { throw 'Remote LFS object integrity failed' }
-            foreach ($ref in @('refs/heads/main','refs/tags/v0.172.0-portable.1')) {
-              $remote = (git ls-remote origin $ref) -join ''
-              if ($LASTEXITCODE -or $remote -cne ($env:FROZEN + [char]9 + $ref)) { throw 'Frozen ref changed' }
-            }
-            Write-Output "VALIDATED_DEV_COMMIT=$current"
-            Write-Output 'RECOVERY_READBACK_PASS; no Release, main/tag change or Artifact'
-          } finally {
-            Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
-            $auth = $null
-          }
+          if ($LASTEXITCODE) { throw 'Targeted remote recovery incomplete; inspect exact OID output; independent packaging already delivered' }
+      - name: Record verified independent result and retire this one-time trigger
+        if: always() && env.PACKAGING_HEAD != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import base64,os,subprocess
+          from pathlib import Path
+          branch="refs/heads/dev/stable-tool-refresh";frozen=os.environ["FROZEN"]
+          auth=base64.b64encode(("x-access-token:"+os.environ.pop("GH_TOKEN")).encode()).decode()
+          print("::add-mask::"+auth,flush=True)
+          cfg=["-c","http.https://github.com/.extraheader=AUTHORIZATION: basic "+auth]
+          def git(*a):return subprocess.check_output(["git",*a]).decode("utf-8").strip()
+          def ref(name):
+              value,actual=git(*cfg,"ls-remote","origin",name).split("\t")
+              assert actual==name
+              return value
+          pack=os.environ["PACKAGING_HEAD"];browser=os.environ.get("BROWSER_REMOTE_HEAD")
+          head=ref(branch)
+          assert head==(browser or pack),"unexpected remote state; do not rewrite it"
+          assert ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          git("checkout","--detach",head)
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          note=("\n## Stable payload delivery closeout\n\n"
+                "AC 45643199639 passed all native gates but LFS returned 502. AC 45650347051 reproduced exact prior trees "
+                "a5716887b9d4f3a87896b0345d9411eb87816242 and 4381bd0c2343b5855cb522aa4797a44db4417f27; "
+                "the final LFS upload reported 78/79 and error confirming object. Packaging 26.4 independently landed at "+pack+". "
+                +("Browser/MCP exact prior payload landed at "+browser+" after all 305 browser paths were downloaded from remote LFS into empty storage and checked against the manifest. "
+                  if browser else "Browser/MCP stable candidate retained locally only; current legacy browser stays unchanged. See exact reconstruction/remote OID or push failure in recovery job. ")
+                +"No repeat full native suite, no main/tag/Release change; actual accounts, devices, SSH and optional rendering remain untested. "
+                "Recovery: https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]+"\n")
+          path=Path("DEVELOPMENT.md");path.write_bytes(path.read_bytes()+note.encode())
+          workflow=".github/workflows/refresh-native-stable.yml"
+          git("rm","--",workflow);git("add","--","DEVELOPMENT.md")
+          assert set(git("diff","--cached","--name-only").splitlines())=={workflow,"DEVELOPMENT.md"}
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Record verified independent delivery and remove one-time recovery workflow")
+          final=git("rev-parse","HEAD");assert ref(branch)==head
+          subprocess.run(["git",*cfg,"push","origin","HEAD:"+branch],check=True)
+          assert ref(branch)==final and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          print("FINAL_DEV_COMMIT="+final+" packaging="+pack+" browser="+(browser or "RETAINED"),flush=True)
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Cleanup or remote closeout readback failed; preserve actual remote state' }
