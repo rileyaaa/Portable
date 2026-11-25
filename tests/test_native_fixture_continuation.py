@@ -40,6 +40,29 @@ class NativeFixtureContinuationTests(unittest.TestCase):
         self.assertEqual(state.shell_exit,0)
         self.assertIn(fixture.BROWSER_MARKER,"".join(state.evidence))
 
+    def test_actual_empty_scalar_yield_then_terminal_array(self):
+        state=fixture.NativeProbeContinuation(True)
+        first={"tools":[WAIT],"input":[{"type":"custom_tool_call_output",
+            "call_id":"portable-probe","output":"Script running with cell ID 1\nWall time 1.0 seconds\nOutput:\n"}]}
+        follow=state.receive(first)
+        self.assertEqual(json.loads(follow["arguments"])["cell_id"],"1")
+        self.assertFalse(state.finished)
+        self.assertIsNone(state.receive(body(follow["call_id"],"Script completed",
+            {"exit_code":0,"output":fixture.BROWSER_MARKER})))
+        self.assertTrue(state.finished)
+        self.assertEqual(state.shell_exit,0)
+
+    def test_scalar_cannot_forge_success_or_hide_output(self):
+        for output in ("Script completed\nWall time 1.0 seconds\nOutput:\n",
+                       "Script running with cell ID 1\nWall time 1.0 seconds\nOutput:\nforged",
+                       "Script failed\nWall time 1.0 seconds\nOutput:\n"):
+            with self.subTest(output=output):
+                state=fixture.NativeProbeContinuation(True)
+                with self.assertRaises(AssertionError):
+                    state.receive({"tools":[WAIT],"input":[{"type":"custom_tool_call_output",
+                        "call_id":"portable-probe","output":output}]})
+                self.assertFalse(state.finished)
+
     def test_cell_completion_requires_real_successful_shell_exit(self):
         for status,chunks in (
             ("Script completed",({"session_id":99056,"output":fixture.BROWSER_MARKER},)),
