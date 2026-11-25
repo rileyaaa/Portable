@@ -457,7 +457,11 @@ def _check_indexed_output(library: Path, connection, row) -> str:
         raise ValueError(f"Indexed page mapping differs from generated Markdown: {document}")
     # Reconstruct the same UTF-8 text written by build, including page separators.
     # Do not normalize newlines when comparing the indexed and generated content.
-    text = _output(library, document).read_bytes().decode("utf-8")
+    raw = checked(_output(library, document), exists=True, kind="file").read_bytes()
+    if hashlib.sha256(raw).hexdigest() != row["output_sha"]:
+        raise ValueError(f"Generated Markdown was removed/edited: {document}; "
+                         "use a new library instead of overwriting user changes")
+    text = raw.decode("utf-8")
     reconstructed = "# " + Path(document).stem.replace("\n", " ") + "\n\n" + \
         "\n".join(page["markdown"] for page in indexed)
     if reconstructed != text:
@@ -644,68 +648,93 @@ def read_pages(library: Path, document: str, pages: list[int], max_chars=12000) 
         connection.close()
 
 
+def _verified_entries(library: Path, connection):
+    """Yield the actual validated bytes, not paths to be read again later."""
+    _check_orphan_pages(connection)
+    for row in connection.execute("SELECT * FROM documents ORDER BY document"):
+        _check_owned_output(library, row)
+        text = _check_indexed_output(library, connection, row)
+        check_markdown(text)
+        expected = list(range(1, row["pages"] + 1))
+        actual = [int(x) for x in re.findall(r"^## PDF 第 (\d+) 页$", text, re.M)]
+        if actual != expected:
+            raise ValueError("Missing or repeated page mapping")
+        yield _output(library, row["document"]).relative_to(library).as_posix(), text.encode("utf-8")
+    for name in REPORTS:
+        raw = checked(library / name, exists=True, kind="file").read_bytes()
+        check_markdown(raw.decode("utf-8"))
+        yield name, raw
+
+
 def verify_library(library: Path) -> dict:
     library = checked(library, exists=True, kind="dir")
     connection = _database(library)
     try:
-        # Use a consistent read-only index snapshot throughout verification.
         connection.execute("BEGIN")
-        _check_orphan_pages(connection)
-        for row in connection.execute("SELECT * FROM documents"):
-            _check_owned_output(library, row)
-            text = _check_indexed_output(library, connection, row)
-            check_markdown(text)
-            expected = list(range(1, row["pages"] + 1))
-            actual = [int(x) for x in re.findall(r"^## PDF 第 (\d+) 页$", text, re.M)]
-            if actual != expected:
-                raise ValueError("Missing or repeated page mapping")
-        for name in REPORTS:
-            check_markdown(checked(library / name, exists=True, kind="file").read_text(encoding="utf-8"))
+        for _ in _verified_entries(library, connection):
+            pass
         return _summary(connection)
     finally:
         connection.close()
 
 
-def export_library(library: Path, destination: Path) -> dict:
+def export_library(library: Path, destination: Path, *, strict=False) -> dict:
     library = checked(library, exists=True, kind="dir")
     destination = checked(destination)
     if destination.suffix.lower() != ".zip" or destination.is_relative_to(library):
         raise ValueError("Export must be a .zip outside the managed library, inside the package")
     if destination.exists():
         raise FileExistsError("Export destination already exists; choose a new output")
-    summary = verify_library(library)
     connection = _database(library)
     try:
-        files = [_output(library, row["document"])
-                 for row in connection.execute("SELECT document FROM documents ORDER BY document")]
-        files += [checked(library / name, exists=True, kind="file") for name in REPORTS]
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        checked(destination.parent, exists=True, kind="dir")
-        checksum_report = library / "SHA256.md"
-        # A ZIP cannot contain its own final digest. Keep the latest ZIP receipt
-        # in the existing external Markdown report, not a new non-MD artifact.
-        checksum_text = checksum_report.read_text(encoding="utf-8").split(
-            "\n## 最近导出的 ZIP（ZIP 外校验）\n", 1
-        )[0].rstrip() + "\n"
-        with zipfile.ZipFile(destination, "x", compression=zipfile.ZIP_DEFLATED) as archive:
-            for path in files:
-                if path == checksum_report:
-                    archive.writestr("SHA256.md", checksum_text.encode("utf-8"))
-                else:
-                    archive.write(path, arcname=path.relative_to(library).as_posix())
-        with zipfile.ZipFile(destination) as archive:
-            if archive.testzip() is not None or any(
-                Path(info.filename).suffix.lower() != ".md" for info in archive.infolist()
-            ):
-                raise ValueError("ZIP integrity/type validation failed")
-            for name in archive.namelist():
-                archive.read(name).decode("utf-8")
-        digest = sha256(destination)
-        _write(checksum_report, checksum_text +
+        connection.execute("BEGIN")
+        summary = _summary(connection)
+        if strict and not summary["strict_ok"]:
+            for _ in _verified_entries(library, connection):
+                pass
+            return summary
+        # Use one read-only index snapshot. Compress the same bytes just
+        # checked; never read a Markdown path a second time for the archive.
+        # Stage under the existing owned scratch root, so a late validation
+        # failure cannot leave a misleading destination ZIP.
+        with _scratch_directory(ROOT / "tmp", "pdf-export-") as staging:
+            staged = staging / "export.zip"
+            names = set()
+            with zipfile.ZipFile(staged, "x", compression=zipfile.ZIP_DEFLATED) as archive:
+                for name, raw in _verified_entries(library, connection):
+                    if name in names:
+                        raise ValueError("Repeated ZIP entry")
+                    names.add(name)
+                    if name == "SHA256.md":
+                        receipt_sha = hashlib.sha256(raw).hexdigest()
+                        checksum_text = raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n").split(
+                            "\n## 最近导出的 ZIP（ZIP 外校验）\n", 1
+                        )[0].rstrip() + "\n"
+                        raw = checksum_text.encode("utf-8")
+                    archive.writestr(name, raw)
+            with zipfile.ZipFile(staged) as archive:
+                if (archive.testzip() is not None or set(archive.namelist()) != names or
+                        len(archive.namelist()) != len(names) or any(
+                            Path(name).suffix.lower() != ".md" for name in names)):
+                    raise ValueError("ZIP integrity/type validation failed")
+                for name in archive.namelist():
+                    archive.read(name).decode("utf-8")
+            digest = sha256(staged)
+            # Exclusive creation preserves an output that arrived during
+            # validation. Only the owned scratch directory is cleaned up.
+            destination = checked(destination)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            checked(destination.parent, exists=True, kind="dir")
+            with staged.open("rb") as source, checked(destination).open("xb") as target:
+                shutil.copyfileobj(source, target)
+            if sha256(destination) != digest:
+                raise ValueError("Exported ZIP digest mismatch")
+        _write(library / "SHA256.md", checksum_text +
                "\n## 最近导出的 ZIP（ZIP 外校验）\n\n" +
                "此摘要写在库目录的报告中，不在 ZIP 内自引用。\n\n" +
-               fence(f"{digest}  {destination.relative_to(ROOT).as_posix()}"))
-        return dict(sha256=digest, files=len(files), **summary)
+               fence(f"{digest}  {destination.relative_to(ROOT).as_posix()}"),
+               expected_sha=receipt_sha)
+        return dict(sha256=digest, files=len(names), **summary)
     finally:
         connection.close()
 
@@ -753,11 +782,7 @@ def main(argv=None) -> int:
             print(read_pages(args.library, args.document, args.pages, args.max_chars))
             return 0
         elif args.command == "export":
-            audit = verify_library(args.library)
-            if args.strict and not audit["strict_ok"]:
-                print(json.dumps(audit, ensure_ascii=False, indent=2))
-                return 2
-            result = export_library(args.library, args.output)
+            result = export_library(args.library, args.output, strict=args.strict)
         else:
             result = verify_library(args.library)
         print(json.dumps(result, ensure_ascii=False, indent=2))

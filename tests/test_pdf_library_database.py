@@ -10,6 +10,7 @@ import subprocess
 import subprocess
 import tempfile
 import unittest
+import zipfile
 from types import SimpleNamespace
 from unittest import mock
 
@@ -533,6 +534,66 @@ class PdfLibraryDatabaseTests(unittest.TestCase):
         self.database.write_bytes(original)
         self.assertTrue(self.module.verify_library(self.library)['strict_ok'])
         self.assertEqual(self._build_with_stub_renderer(source)['reused'], 2)
+
+    def test_export_writes_verified_bytes_even_if_markdown_changes_after_check(self):
+        source, _ = self._synthetic_pdf()
+        self._build_with_stub_renderer(source)
+        output = self.library / 'manuals/synthetic.md'
+        original = output.read_bytes()
+        edit = b'User-edited text after validation'
+        real_check = self.module._check_indexed_output
+
+        def edit_after_check(*args):
+            text = real_check(*args)
+            output.write_bytes(edit)
+            return text
+
+        destination = self.package / 'work/export.zip'
+        with mock.patch.object(self.module, '_check_indexed_output', side_effect=edit_after_check):
+            result = self.module.export_library(self.library, destination, strict=True)
+        self.assertTrue(result['strict_ok'])
+        with zipfile.ZipFile(destination) as archive:
+            self.assertEqual(archive.read('manuals/synthetic.md'), original)
+        self.assertEqual(output.read_bytes(), edit)
+        with self.assertRaisesRegex(ValueError, 'removed/edited'):
+            self.module.verify_library(self.library)
+
+    def test_strict_export_refuses_incomplete_snapshot_without_output(self):
+        source, _ = self._synthetic_pdf()
+        self._build_with_stub_renderer(source)
+        with closing(sqlite3.connect(self.database)) as connection:
+            connection.execute("UPDATE pages SET ocr_status='missing'")
+            connection.commit()
+        destination = self.package / 'work/incomplete.zip'
+        result = self.module.export_library(self.library, destination, strict=True)
+        self.assertFalse(result['strict_ok'])
+        self.assertFalse(destination.exists())
+        self.assertFalse(self.module.export_library(self.library, destination)['strict_ok'])
+        self.assertTrue(destination.is_file())
+
+    def test_export_late_validation_or_arriving_destination_is_non_destructive(self):
+        source, _ = self._synthetic_pdf()
+        self._build_with_stub_renderer(source)
+        destination = self.package / 'work/export.zip'
+        report = self.library / 'OCR.md'
+        original = report.read_bytes()
+        report.write_text('<table>unvalidated report</table>', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'layout HTML'):
+            self.module.export_library(self.library, destination)
+        self.assertFalse(destination.exists())
+        self.assertFalse(list((self.package / 'tmp').glob('pdf-export-*')))
+        report.write_bytes(original)
+        real_entries = self.module._verified_entries
+
+        def arrive_during_validation(*args):
+            yield from real_entries(*args)
+            destination.write_bytes(b'user-owned destination')
+
+        with mock.patch.object(self.module, '_verified_entries', side_effect=arrive_during_validation):
+            with self.assertRaises(FileExistsError):
+                self.module.export_library(self.library, destination)
+        self.assertEqual(destination.read_bytes(), b'user-owned destination')
+        self.assertFalse(list((self.package / 'tmp').glob('pdf-export-*')))
 
     def test_rejected_crashed_wal_database_keeps_all_original_files(self):
         self.library.mkdir(parents=True)
