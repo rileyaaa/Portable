@@ -234,6 +234,11 @@ class PolicyTransport {
       try {
         if (!message || message.jsonrpc !== '2.0') throw new Error('Invalid JSON-RPC message');
         const method = message.method;
+        const validId = typeof message.id === 'string' || Number.isSafeInteger(message.id);
+        if (['initialize', 'tools/list', 'tools/call', 'ping'].includes(method) && !validId)
+          throw new Error('MCP request requires a string or integer ID');
+        if (['notifications/initialized', 'notifications/cancelled'].includes(method) && message.id !== undefined)
+          throw new Error('MCP notification must not contain a request ID');
         if (method === 'initialize') {
           // Upstream otherwise trusts arbitrary roots supplied by the client.
           message = {...message, params: {...message.params, capabilities: {}}};
@@ -241,7 +246,6 @@ class PolicyTransport {
           const args = validateToolCall(this.workspace, message.params);
           message = {...message, params: {...message.params, arguments: args}};
         } else if (method === 'notifications/cancelled') {
-          if (message.id !== undefined) throw new Error('Cancellation must be a notification');
           const {requestId, reason} = message.params ?? {};
           if (this.pending.get(requestId) === 'initialize') return;
           if ((typeof requestId === 'string' || Number.isSafeInteger(requestId)) &&
@@ -275,7 +279,9 @@ class PolicyTransport {
         if (admitted) this.pending.delete(message.id);
         if (message?.id !== undefined)
           void Promise.resolve().then(() => this.inner.send({
-            jsonrpc: '2.0', id: message.id, error: {code: -32602, message: error.message},
+            jsonrpc: '2.0',
+            id: typeof message.id === 'string' || Number.isSafeInteger(message.id) ? message.id : null,
+            error: {code: -32602, message: error.message},
           })).catch(sendError => this.onerror?.(sendError));
       }
     };
@@ -315,7 +321,9 @@ async function main() {
   const dependencies = path.join(__dirname, 'playwright', 'node_modules');
   checkTree(root, dependencies);
   process.chdir(workspace);
-  const {createConnection} = require('./playwright/node_modules/@playwright/mcp');
+  // The existing standalone MCP package is a thin re-export of this API.
+  // Keep the same policy transport and owned context for stable Playwright.
+  const {tools: {createConnection}} = require('./playwright/node_modules/playwright-core/lib/coreBundle');
   const {chromium} = require('./playwright/node_modules/playwright');
   const owner = createBrowserOwner(chromium, browser, () => checkBrowserTrees(root, executable));
   const {StdioServerTransport} = require('./playwright/node_modules/playwright-core/lib/utilsBundle');

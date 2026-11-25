@@ -426,6 +426,30 @@ test('cancellation frees slots, drops late results and preserves the active requ
   assert.equal(policy.pending.size, 0);
 });
 
+test('malformed MCP calls and request-shaped notifications do not close or launch a browser', async () => {
+  const inner = new MemoryTransport();
+  let closed = 0;
+  const forwarded = [];
+  const policy = new bridge.PolicyTransport(inner, root, async () => { closed++; });
+  policy.onmessage = message => forwarded.push(message);
+  await policy.start();
+  for (const fields of [{}, {id:null}, {id:{}}, {id:1.5}]) {
+    inner.onmessage({jsonrpc:'2.0', method:'tools/call', params:{name:'browser_close'}, ...fields});
+    inner.onmessage({jsonrpc:'2.0', method:'tools/call', params:{name:'browser_navigate',arguments:{url:'https://example.test/'}}, ...fields});
+  }
+  inner.onmessage({jsonrpc:'2.0', id:3, method:'notifications/initialized'});
+  inner.onmessage({jsonrpc:'2.0', id:4, method:'notifications/cancelled',params:{requestId:3}});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(closed, 0);
+  assert.deepEqual(forwarded, []);
+  assert.equal(policy.pending.size, 0);
+  assert.ok(inner.sent.every(message => message.error));
+  const response = await inner.request({jsonrpc:'2.0', id:'valid-close', method:'tools/call', params:{name:'browser_close'}});
+  assert.equal(closed, 1);
+  assert.match(response.result.content[0].text, /profile retained/);
+  await policy.close();
+});
+
 test('cancelled local close still finishes without an obsolete response', async () => {
   const inner = new MemoryTransport();
   let finishClose;
@@ -465,7 +489,7 @@ test('a disconnected client during browser_close reports transport failure witho
 });
 
 test('real pinned MCP initializes and lists filtered tools without browser startup', async () => {
-  const {createConnection} = require('../tool/automation/playwright/node_modules/@playwright/mcp');
+  const {tools: {createConnection}} = require('../tool/automation/playwright/node_modules/playwright-core/lib/coreBundle');
   const server = await createConnection({
     browser: {browserName: 'chromium', isolated: true}, capabilities: [], saveSession: false,
   });

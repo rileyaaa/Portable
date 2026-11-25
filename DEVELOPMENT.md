@@ -1,5 +1,9 @@
 # 开发与维护记录
 
+## 2026-11-25：浏览器既有 MCP 调用边界与稳定版入口兼容
+
+现有 @playwright/mcp 0.0.83 的 index.js 仅从 playwright-core/lib/coreBundle 取得 tools.createConnection 再导出。入口直接使用同一官方函数，PowerShell 只读检查对应实际依赖文件；仍使用原 PolicyTransport、上下文拥有者、互斥锁、启动变量、代理及显式授权，不开新工具、不回退宿主。原代码将没有请求 ID 的 tools/call 也进入自有 browser_close 分支，可能在畸形通知时实际关闭 Chromium；现在 request-only 方法要求字符串或安全整数 ID，通知不能携带 ID，补零启动/零关闭及合法关闭回归。版本/载荷尚未更换，需按旧、新真实 MCP 契约及 Windows 原生门禁验证。
+
 ## 2026-11-25：独立合批实际落地及清理
 
 [AC 45589159314](https://github.com/rileyaaa/Portable/actions/runs/45589159314)（job 139118456825）completed/success，实际推送 acd8b73146648c18d8363f0ba7e67eab0b830a53，tree 66634e2972a34d99c59eb0d3840cc6a41e457fa1。仅 XlsxWriter 3.3.4 真正替换（61 个候选文件含输入/锁），新旧日期序列、公式文本、SINGLE、pandas/openpyxl 中文路径及显式包内 Python VBA 提取脚本通过；保留官方脚本原始 #!python，不执行宏。全量 Python 324 项、Node、PowerShell、真实常用/未知模型、浏览器只读、YOLO 浏览器持久化、stdio/native MCP、Office/PDF 及发行输入完整性全部通过。常用/YOLO 由合成 Responses 驱动真实 Windows 程序，不代表真实在线模型/账号、SSH 服务器、设备、可选 Office 渲染或公式重算已验。

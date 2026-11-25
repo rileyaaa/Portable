@@ -57,7 +57,9 @@ if ($TaskScript) {
     if ([IO.Path]::GetExtension($TaskScript) -ne '.cjs') { throw 'Browser task scripts must be .cjs modules inside the selected workspace.' }
     $bridge = Assert-AutomationPath -Root $root -Path (Join-Path $PSScriptRoot 'browser-task.js')
 }
-[void](Assert-AutomationPath -Root $root -Path (Join-Path $PSScriptRoot 'playwright\node_modules\@playwright\mcp\index.js'))
+[void](Assert-AutomationPath -Root $root -Path (Join-Path $PSScriptRoot 'playwright\node_modules\playwright-core\lib\coreBundle.js'))
+[void](Assert-AutomationPath -Root $root -Path (Join-Path $PSScriptRoot 'playwright\node_modules\playwright-core\lib\utilsBundle.js'))
+[void](Assert-AutomationPath -Root $root -Path (Join-Path $PSScriptRoot 'playwright\node_modules\playwright\index.js'))
 if ($Check) {
     [PSCustomObject]@{
         PackageRoot = $root; Workspace = $Workspace
