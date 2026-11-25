@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   refresh:
-    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == 'ee33a2ce498ea07d40d627b8742ed33517a17b3f' && github.run_attempt == 1
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == '4e829d5aa49de2446d76abbd58af6dd1fa73c5ac' && github.run_attempt == 1
     runs-on: windows-latest
     timeout-minutes: 120
     permissions:
@@ -36,7 +36,7 @@ jobs:
       - name: Confirm reviewed development baseline and frozen public release
         run: |
           $ErrorActionPreference = 'Stop'
-          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or (git rev-parse 'HEAD^').Trim() -cne 'ee33a2ce498ea07d40d627b8742ed33517a17b3f') { throw 'Wrong checkout or parent' }
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or (git rev-parse 'HEAD^').Trim() -cne '4e829d5aa49de2446d76abbd58af6dd1fa73c5ac') { throw 'Wrong checkout or parent' }
           if ((git diff --name-only $env:BASE HEAD) -cne '.github/workflows/refresh-pip-certifi-stable.yml') { throw 'Unexpected starting changes' }
           if ((git diff --name-only '350bb6eb43dd706eb2bc199abe352b13a2531a90' $env:BASE) -cne '.github/workflows/refresh-rg16-stable.yml') { throw 'Unexpected cleanup diff' }
           foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
@@ -174,13 +174,17 @@ jobs:
               cli_helper=root/"tool/bin/portable-python-cli.py"
               cmd=windows/"System32/cmd.exe"
               alias_bytes={name:(root/"tool/bin"/name).read_bytes() for name in aliases}
-              def alias_run(name,argv,cwd=root,code=0):
+              def alias_run(name,argv,cwd=root,code=0,expected_error=None):
                   assert name in aliases and (root/"tool/bin"/name).read_bytes()==alias_bytes[name]
                   shim=root/"tool/bin"/name
                   # A fixed CMD executable and owned paths; no shell-supplied user text.
                   command=f'"{cmd}" /d /s /c ""{shim}" '+subprocess.list2cmdline(list(map(str,argv)))+'"'
                   p=subprocess.run(command,executable=str(cmd),cwd=cwd,env=env,capture_output=True,timeout=300)
                   assert p.returncode==code, (name,argv[0],p.returncode,p.stdout.decode("utf-8","replace")[-1000:],p.stderr.decode("utf-8","replace")[-1000:])
+                  if expected_error is not None:
+                      err=p.stderr.decode("utf-8","strict")
+                      assert code!=0 and expected_error in err, "Unexpected failure reason: "+name
+                      assert str(py)+" -m pip" in err, "Missing official module invocation guidance"
                   return p.stdout.decode("utf-8","strict").strip()
               flags=("--isolated","--disable-pip-version-check","--no-input")
               def check_entry_contract(version):
@@ -235,6 +239,15 @@ jobs:
                       if raw is not None: assert rec[entry]==(rh(raw),str(len(raw)))
                       else: assert entry not in rec
                       old_wheel_entries[name]=raw
+                      if name=="pip":
+                          # The running old version must use the guard and entry
+                          # code from the same hash-verified official wheel.
+                          for relative in ("pip/_internal/utils/misc.py","pip/_internal/commands/install.py","pip/_internal/cli/main.py","pip/__main__.py"):
+                              assert z.namelist().count(relative)==1
+                              original=z.read(relative)
+                              assert rec[relative]==(rh(original),str(len(original)))
+                              assert (site/relative).read_bytes()==original, "Old installed guard/entry code differs: "+relative
+                          print("OLD_PIP_GUARD_AND_ENTRY_OFFICIAL_BYTES=PASS",flush=True)
                   installed=site/dist/"entry_points.txt"
                   installed_raw=installed.read_bytes() if installed.exists() else None
                   assert read_entry_map(installed_raw)==read_entry_map(raw), "Installed old metadata differs from official wheel"
@@ -319,16 +332,21 @@ jobs:
                       assert old_raw is None and new_raw is None and not old_map and not new_map, "Unexpected certifi console entry"
                       print("CERTIFI_NO_CONSOLE_ENTRY_CHANGE=PASS",flush=True)
                   upstream[name]=(dist,rec,files)
-                  print("OFFICIAL_WHEEL_VERIFIED="+json.dumps({"name":name,"version":version,"sha256":s["sha256"],"bytes":len(body),"requires_python":metadata["Requires-Python"],"license":s["license"],"license_files":len(licensefiles)},ensure_ascii=True),flush=True)
+                  print("OFFICIAL_WHEEL_VERIFIED="+json.dumps({"name":name,"version":version,"sha256":s["sha256"],"bytes":dest.stat().st_size,"requires_python":metadata["Requires-Python"],"license":s["license"],"license_files":len(licensefiles)},ensure_ascii=True),flush=True)
               reqfile=owned/"two-wheel-lock.txt"
               reqfile.write_text("".join(n+"=="+s["version"]+" --hash=sha256:"+s["sha256"]+"\n" for n,s in specs.items()),encoding="ascii",newline="\n")
               args=("--no-index","--find-links",wheelhouse,"--no-deps","--require-hashes","--only-binary=:all:","--no-compile","--ignore-installed","--requirement",reqfile)
               piprun("install",*args,"--target",stage)
-              def verify_install(target, preserve_launchers=False):
-                  expected_roots={"pip","certifi","bin"}|{d for d,_,_ in upstream.values()}
+              def verify_install(target, preserve_launchers=False, selected=("pip","certifi")):
+                  chosen=set(selected)
+                  assert chosen and chosen.issubset(upstream)
+                  assert not preserve_launchers or chosen=={"pip","certifi"}
+                  expected_roots=chosen|{upstream[n][0] for n in chosen}
+                  if "pip" in chosen: expected_roots.add("bin")
                   assert {p.name for p in target.iterdir()}==expected_roots, "Unexpected installed top-level path"
-                  assert treefiles(target,"bin")==launchers
-                  for name,(dist,rec,files) in upstream.items():
+                  if "pip" in chosen: assert treefiles(target,"bin")==launchers
+                  for name in selected:
+                      dist,rec,files=upstream[name]
                       actual=treefiles(target,name)|treefiles(target,dist)
                       extra={dist+"/INSTALLER",dist+"/REQUESTED"}
                       assert actual==set(files)|extra, ("Installed extra/missing files",name,sorted(actual-(set(files)|extra)),sorted((set(files)|extra)-actual))
@@ -342,6 +360,16 @@ jobs:
                           for f,data in old_launchers.items():
                               (target/f).write_bytes(data)
                       owned_files=actual|(launchers if name=="pip" else set())
+                      if name=="certifi":
+                          # An ordinary wheel has no generated launcher paths.
+                          # Verify pip's real installed RECORD before rewriting it.
+                          installed_rows=rows((target/rec).read_bytes())
+                          assert set(installed_rows)==owned_files, "Installed certifi RECORD inventory differs"
+                          for f in owned_files:
+                              if f==rec: assert installed_rows[f]==("","")
+                              else:
+                                  data=(target/f).read_bytes()
+                                  assert installed_rows[f]==(rh(data),str(len(data))), "Installed certifi RECORD digest differs: "+f
                       with (target/rec).open("w",encoding="utf-8",newline="") as handle:
                           writer=csv.writer(handle,lineterminator="\n")
                           for f in sorted(owned_files):
@@ -350,7 +378,51 @@ jobs:
                                   content=(target/f).read_bytes()
                                   writer.writerow((f,rh(content),str(len(content))))
                       print("STAGED_WHEEL_PAYLOAD_AND_RECORD=PASS "+name,flush=True)
+              # Use the exact same two verified wheels, command flags and owned
+              # destinations for the old/new guard test. The supported module
+              # path above is the only path used to install pip itself.
+              ordinary_lock=owned/"ordinary-certifi-lock.txt"
+              ordinary=specs["certifi"]
+              ordinary_lock.write_text("certifi=="+ordinary["version"]+" --hash=sha256:"+ordinary["sha256"]+"\n",encoding="ascii",newline="\n")
+              assert args[-2]=="--requirement" and args[-1]==reqfile
+              ordinary_args=(*args[:-1],ordinary_lock)
+              def runtime_snapshot():
+                  data={}
+                  for name in specs:
+                      version=distributions()[name]
+                      dist=name+"-"+version+".dist-info"
+                      for f in treefiles(site,name)|treefiles(site,dist):
+                          data[f]=sha((site/f).read_bytes())
+                  for f in launchers: data[f]=sha((site/f).read_bytes())
+                  return data
+              def check_install_contract(version):
+                  baseline=runtime_snapshot()
+                  before=distributions()
+                  assert before["pip"]==version
+                  assert env["PIP_CONFIG_FILE"]=="nul" and all(Path(env[k]).is_relative_to(owned) for k in ("HOME","USERPROFILE","APPDATA","LOCALAPPDATA","PROGRAMDATA","TEMP","TMP","PIP_CACHE_DIR","PYTHONUSERBASE","PYTHONPYCACHEPREFIX"))
+                  assert not any(k in env for k in ("PIP_INDEX_URL","PIP_EXTRA_INDEX_URL","PIP_TRUSTED_HOST","PIP_CERT","PIP_CLIENT_CERT","SSL_CERT_FILE","SSL_CERT_DIR","REQUESTS_CA_BUNDLE","CURL_CA_BUNDLE","PYTHONPATH","PYTHONHOME"))
+                  # Put both test types in fresh package-owned directories, also
+                  # exercising CMD argument quoting with Unicode and spaces.
+                  area=owned/("Windows \u4fbf\u643a pip "+version)
+                  area.mkdir()
+                  for name in aliases:
+                      rejected=area/(name+" protected pip")
+                      rejected.mkdir()
+                      alias_run(name,(*flags,"--cache-dir",env["PIP_CACHE_DIR"],"install",*args,"--target",rejected),code=1,expected_error="To modify pip, please run the following command:")
+                      assert not list(rejected.iterdir()), "Rejected self-modification wrote target files"
+                      print("WINDOWS_PIP_SELF_MODIFICATION_GUARD=PASS "+version+" "+name+" exit=1 target_empty=true",flush=True)
+                      target=area/(name+" ordinary certifi")
+                      target.mkdir()
+                      alias_run(name,(*flags,"--cache-dir",env["PIP_CACHE_DIR"],"install",*ordinary_args,"--target",target))
+                      verify_install(target,selected=("certifi",))
+                      assert distributions()==before, "Ordinary wheel install modified current runtime versions"
+                      print("WINDOWS_CMD_ORDINARY_WHEEL_INSTALL=PASS "+version+" "+name+" exit=0 sha256="+ordinary["sha256"],flush=True)
+                  assert runtime_snapshot()==baseline and distributions()==before, "Staging/guard probes changed live runtime"
+                  assert all((root/"tool/bin"/name).read_bytes()==data for name,data in alias_bytes.items())
+                  print("WINDOWS_PIP_INSTALL_CONTRACT_ISOLATION=PASS "+version,flush=True)
               verify_install(stage,preserve_launchers=True)
+              print("SUPPORTED_MODULE_PIP_INSTALL=PASS runner=26.1.2 target_pip=26.3",flush=True)
+              check_install_contract("26.1.2")
               # All old roots were proven fully owned above; move only those exact
               # directories into our private backup, never remove unrelated files.
               for name,s in specs.items():
@@ -375,14 +447,9 @@ jobs:
               assert all(sha(p.read_bytes())==sha((wheelhouse/p.name).read_bytes()) for p in verified.iterdir())
               piprun("install",*args,"--target",reinstall)
               verify_install(reinstall)
-              # Also perform an actual hash-only offline install via the versioned
-              # CMD entry point (the official cli=True path), not just python -m.
-              alias_stage=owned/"alias-offline-reinstall"
-              alias_stage.mkdir()
-              alias_run("pip3.14.cmd",(*flags,"--cache-dir",env["PIP_CACHE_DIR"],"install",*args,"--target",alias_stage))
-              verify_install(alias_stage)
-              assert all((root/"tool/bin"/name).read_bytes()==data for name,data in alias_bytes.items())
-              print("NEW_PIP_VERSIONED_CMD_OFFLINE_REINSTALL=PASS",flush=True)
+              print("SUPPORTED_MODULE_PIP_INSTALL=PASS runner=26.3 target_pip=26.3",flush=True)
+              check_install_contract("26.3")
+              print("OLD_NEW_WINDOWS_SELF_GUARD_AND_ORDINARY_CMD_INSTALL_PARITY=PASS",flush=True)
               print("NEW_PIP_OFFICIAL_HTTPS_AND_OFFLINE_REINSTALL=PASS",flush=True)
               print("VENDOR_LAUNCHERS_UNEXPOSED_ORIGINAL_BYTES_RETAINED=PASS",flush=True)
           
@@ -416,9 +483,9 @@ jobs:
                   content=content.replace(a,b,1)
               p.write_bytes(content.encode("utf-8"))
           doc_path="tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md"
-          edit(doc_path,[("### Python \u4f9d\u8d56\u4e0e\u547d\u4ee4\u5165\u53e3\n\n","### Python \u4f9d\u8d56\u4e0e\u547d\u4ee4\u5165\u53e3\n\n"+"\u5f53\u524d\u5f00\u53d1\u5019\u9009 pip 26.3\uff08[\u5b98\u65b9 PyPI](https://pypi.org/project/pip/26.3/)\uff0cMIT\uff0cPython >=3.10\uff09\u53ca certifi 2026.11.20\uff08[\u5b98\u65b9 PyPI](https://pypi.org/project/certifi/2026.11.20/)\uff0cMPL-2.0\uff0cPython >=3.7\uff09\u5747\u4e3a py3-none-any \u7a33\u5b9a wheel\uff0c\u56fa\u5b9a Windows Python 3.14.10 \u4e0d\u53d8\u3002\u6458\u8981\u5728 `python-packages.lock.txt`\uff1bpip \u81ea\u5e26 certifi 2026.10.23 \u548c\u9876\u5c42 certifi 2026.11.20 \u5206\u522b\u4fdd\u7559\u5b98\u65b9\u8bc1\u4e66\uff0crequests/httpx \u4f7f\u7528\u9876\u5c42 bundle\uff0cpip \u4f7f\u7528\u4e0a\u6e38 vendored bundle \u5e76\u4fdd\u6301\u5176\u9ed8\u8ba4\u7cfb\u7edf truststore \u884c\u4e3a\uff1b\u4e0d\u9759\u9ed8\u5173\u95ed TLS \u9a8c\u8bc1\u3001\u4e0d\u7ee7\u627f\u5bbf\u4e3b CA \u914d\u7f6e\u3001\u4e0d\u5ba3\u79f0 OS \u4fe1\u4efb\u5e93\u9694\u79bb\u3002\u53d7\u63a7\u7ef4\u62a4\u79bb\u7ebf\u6682\u5b58\u5b89\u88c5\u540e\u6838\u5bf9 wheel \u5168\u90e8\u8f7d\u8377\u548c\u8bb8\u53ef\u8bc1\uff0c\u4e09\u4efd\u65e7 vendor pip EXE \u539f\u5b57\u8282\u4fdd\u7559\uff08\u4e0d\u6267\u884c\u3001\u4e0d\u52a0\u5165 PATH\uff09\uff0c\u91cd\u65b0\u8bb0\u5f55\u771f\u5b9e RECORD\uff0c\u4fdd\u6301\u539f CMD \u5165\u53e3\u548c `setup-tools.ps1` \u4ec5\u540c\u7248\u4fee\u590d\u89c4\u5219\u3002\u9a8c\u6536\u548c\u56de\u9000\u89c1\u5f00\u53d1\u8bb0\u5f55\u3002\n\n")])
+          edit(doc_path,[("### Python \u4f9d\u8d56\u4e0e\u547d\u4ee4\u5165\u53e3\n\n","### Python \u4f9d\u8d56\u4e0e\u547d\u4ee4\u5165\u53e3\n\n"+"\u5f53\u524d\u5f00\u53d1\u5019\u9009 pip 26.3\uff08[\u5b98\u65b9 PyPI](https://pypi.org/project/pip/26.3/)\uff0cMIT\uff0cPython >=3.10\uff09\u53ca certifi 2026.11.20\uff08[\u5b98\u65b9 PyPI](https://pypi.org/project/certifi/2026.11.20/)\uff0cMPL-2.0\uff0cPython >=3.7\uff09\u5747\u4e3a py3-none-any \u7a33\u5b9a wheel\uff0c\u56fa\u5b9a Windows Python 3.14.10 \u4e0d\u53d8\u3002\u6458\u8981\u5728 `python-packages.lock.txt`\uff1bpip \u81ea\u5e26 certifi 2026.10.23 \u548c\u9876\u5c42 certifi 2026.11.20 \u5206\u522b\u4fdd\u7559\u5b98\u65b9\u8bc1\u4e66\uff0crequests/httpx \u4f7f\u7528\u9876\u5c42 bundle\uff0cpip \u4f7f\u7528\u4e0a\u6e38 vendored bundle \u5e76\u4fdd\u6301\u5176\u9ed8\u8ba4\u7cfb\u7edf truststore \u884c\u4e3a\uff1b\u4e0d\u9759\u9ed8\u5173\u95ed TLS \u9a8c\u8bc1\u3001\u4e0d\u7ee7\u627f\u5bbf\u4e3b CA \u914d\u7f6e\u3001\u4e0d\u5ba3\u79f0 OS \u4fe1\u4efb\u5e93\u9694\u79bb\u3002\u53d7\u63a7\u7ef4\u62a4\u79bb\u7ebf\u6682\u5b58\u5b89\u88c5\u540e\u6838\u5bf9 wheel \u5168\u90e8\u8f7d\u8377\u548c\u8bb8\u53ef\u8bc1\uff0c\u4e09\u4efd\u65e7 vendor pip EXE \u539f\u5b57\u8282\u4fdd\u7559\uff08\u4e0d\u6267\u884c\u3001\u4e0d\u52a0\u5165 PATH\uff09\uff0c\u91cd\u65b0\u8bb0\u5f55\u771f\u5b9e RECORD\uff0c\u4fdd\u6301\u539f CMD \u5165\u53e3\u548c `setup-tools.ps1` \u4ec5\u540c\u7248\u4fee\u590d\u89c4\u5219\u3002Windows \u4e0b\u542b pip \u81ea\u8eab\u7684\u5b89\u88c5\u6309\u5b98\u65b9\u4fdd\u62a4\u4f7f\u7528\u5305\u5185 `python.exe -m pip`\uff0c\u4e0d\u901a\u8fc7 CMD \u81ea\u66f4\u65b0\uff1b\u4e09\u4e2a CMD \u7ee7\u7eed\u652f\u6301\u666e\u901a wheel \u5b89\u88c5\uff0c\u6309\u73b0\u6709\u6743\u9650\u4e0e\u5305\u5185\u76ee\u6807\u6267\u884c\u3002\u9a8c\u6536\u548c\u56de\u9000\u89c1\u5f00\u53d1\u8bb0\u5f55\u3002\n\n")])
           runurl="https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]
-          edit("DEVELOPMENT.md",[("# \u5f00\u53d1\u4e0e\u7ef4\u62a4\u8bb0\u5f55\n\n","# \u5f00\u53d1\u4e0e\u7ef4\u62a4\u8bb0\u5f55\n\n"+"## 2026-11-25\uff1a\u7a33\u5b9a\u5de5\u5177\u66f4\u65b0\u5f00\u53d1\u5206\u652f\uff0c\u7b2c\u4e8c\u7ec4 pip / certifi\n\n\u56fa\u5b9a Python 3.14.10 x64 \u4e0d\u52a8\uff0c\u4ec5\u4ece\u5df2\u9a8c 350bb6eb \u66f4\u65b0 pip 26.1.2 \u2192 26.3\uff08MIT\uff09\u548c certifi 2026.5.20 \u2192 2026.11.20\uff08MPL-2.0\uff09\u3002\u4e24\u4e2a\u5b98\u65b9 PyPI py3-none-any wheel \u7684 URL \u4e0e SHA-256 \u5df2\u9501\u5b9a\uff0c\u4f7f\u7528\u65e2\u6709 Python/pip \u5728\u5305\u5185\u72ec\u7acb\u6682\u5b58\u4f4d\u7f6e\u8fdb\u884c hash-only/no-index/no-deps \u5b89\u88c5\uff1b\u5b8c\u6574\u6838\u5bf9 wheel RECORD\u3001\u6240\u6709\u5b98\u65b9\u8f7d\u8377\u548c\u8bb8\u53ef\u8bc1\uff0c\u786e\u8ba4\u65e7 RECORD \u5f52\u5c5e\u3001\u65e0\u91cd\u590d\u5143\u6570\u636e\u300149 \u4e2a\u4f9d\u8d56\u7248\u672c\u4e2d\u4ec5\u4e24\u9879\u53d8\u5316\u3002\u4e09\u4efd\u672a\u66b4\u9732\u5230 PATH \u7684\u5386\u53f2 vendor pip EXE \u4fdd\u7559\u539f\u5b57\u8282\uff08\u4e0d\u6267\u884c\uff09\uff0c\u65b0 RECORD \u8bb0\u5f55\u5176\u771f\u5b9e\u6458\u8981\uff0c\u5b98\u65b9 pip \u4ee3\u7801\u53ca dist-info \u5176\u4ed6\u539f\u59cb wheel \u5b57\u8282\u4e0d\u6539\uff1b\u539f\u53ef\u642c\u8fc1 CMD \u548c setup \u4fee\u590d\u95e8\u7981\u4e0d\u6539\u3002\u65b0 pip \u4fdd\u7559\u5176\u4e0a\u6e38\u81ea\u5e26 certifi 2026.10.23\uff0c\u9876\u5c42 certifi \u4e3a 2026.11.20\uff0c\u4e0d\u624b\u5de5\u6df7\u6362\uff1bpip \u9ed8\u8ba4\u4ecd\u6309\u4e0a\u6e38\u4f7f\u7528\u7cfb\u7edf truststore \u4e0e vendored certifi\uff0c\u4e0d\u5ba3\u79f0\u5b8c\u5168\u9694\u79bb OS \u4fe1\u4efb\u5e93\u3002\u901a\u8fc7\u5b9e\u9645\u5b98\u65b9 HTTPS \u4e0b\u8f7d\u3001\u72ec\u7acb\u79bb\u7ebf\u91cd\u65b0\u5b89\u88c5\u3001\u9501\u5b9a\u4e0e\u4f9d\u8d56\u95ed\u5305\u3001\u5e38\u7528/YOLO \u539f\u751f pip \u4e0e CA \u8def\u5f84/\u73af\u5883\u3001\u4e2d\u6587\u642c\u8fc1\u3001Office/PDF\u3001\u6d4f\u89c8\u5668/MCP\u3001\u53d1\u884c\u8f93\u5165\u95e8\u7981\u540e\u624d\u63a8\u9001\u3002\u5408\u6210 Responses/\u73af\u5883\u4e0e\u6587\u4ef6\u4e0d\u4ee3\u8868\u771f\u5b9e\u8d26\u53f7\u6216\u7ebf\u4e0a\u6a21\u578b\uff1b\u5df2\u77e5 ADB\u3001PSModulePath\u3001\u5b9e\u9645\u8bbe\u5907/\u4ea4\u4e92\u5ba1\u6279/\u53ef\u9009\u6e32\u67d3\u548c\u91cd\u7b97\u7b49\u9650\u5236\u4e0d\u53d8\u3002\u56de\u9000\u6574\u4f53\u6062\u590d\u672c\u7ec4\u4e24\u4efd\u5305\u3001dist-info\u3001\u4f9d\u8d56\u8f93\u5165/\u9501\u3001\u6d4b\u8bd5\u548c\u8bf4\u660e\uff0c\u4fdd\u6301\u5df2\u9a8c rg \u63d0\u4ea4\uff0c\u4e0d\u89e6\u53ca main/tag/Release\u3002\n\n"+"\u539f AC #45555952802 \u88ab console_scripts \u4e25\u683c\u6bd4\u8f83\u62e6\u622a\uff1a\u4e0d\u662f\u683c\u5f0f\u53d8\u5316\uff0c\u800c\u662f\u5b98\u65b9 pip/pip3 \u7531 pip._internal.cli.main:main \u6539\u4e3a :cli\uff0c\u540e\u8005\u4f7f\u7528 cli=True \u5f00\u542f\u4e0a\u6e38\u5b89\u88c5\u9636\u6bb5\u5bfc\u5165\u4fdd\u62a4\u3002\u91cd\u65b0\u4e0b\u8f7d\u5e76\u6838\u5bf9\u65e7\u3001\u65b0\u56db\u4efd\u56fa\u5b9a wheel \u6458\u8981\u3001\u539f\u59cb entry_points\u3001\u5df2\u88c5\u65e7\u5143\u6570\u636e\u548c\u8bed\u4e49\uff1b\u53ea\u51c6\u8bb8\u8be5\u7cbe\u786e\u7684\u4e24\u9879\u5165\u53e3\u76ee\u6807\u53d8\u5316\uff0c\u6838\u5bf9\u65b0\u7248 cli/main \u4e0e python -m pip \u7684\u6e90\u7801\u59d4\u6d3e\uff0ccertifi \u4e24\u7248\u65e0 console_scripts\u3002\u65e7/\u65b0\u7248\u4e09\u4efd CMD \u540c\u73af\u5883\u5b9e\u9645\u6267\u884c\u7248\u672c\u3001check\u3001cache\u3001list\u3001\u975e\u6cd5\u547d\u4ee4\u9000\u51fa\u7801\uff1b\u65b0\u7248\u901a\u8fc7\u7248\u672c\u5316 CMD \u8fdb\u884c hash-only \u79bb\u7ebf\u5b89\u88c5\u53ca\u5305\u5185\u5e38\u7528/YOLO \u4e2d\u6587\u8def\u5f84\u539f\u751f\u5165\u53e3\u6d4b\u8bd5\u3002\u751f\u4ea7 helper\u3001CMD\u3001\u6743\u9650\u53ca\u5176\u4ed6 gate \u539f\u6837\u4fdd\u7559\uff0c\u672a\u6267\u884c\u5386\u53f2 vendor EXE\u3002\n\n"+"[Windows AC]("+runurl+").\n\n")])
+          edit("DEVELOPMENT.md",[("# \u5f00\u53d1\u4e0e\u7ef4\u62a4\u8bb0\u5f55\n\n","# \u5f00\u53d1\u4e0e\u7ef4\u62a4\u8bb0\u5f55\n\n"+"## 2026-11-25\uff1a\u7a33\u5b9a\u5de5\u5177\u66f4\u65b0\u5f00\u53d1\u5206\u652f\uff0c\u7b2c\u4e8c\u7ec4 pip / certifi\n\n\u56fa\u5b9a Python 3.14.10 x64 \u4e0d\u52a8\uff0c\u4ec5\u4ece\u5df2\u9a8c 350bb6eb \u66f4\u65b0 pip 26.1.2 \u2192 26.3\uff08MIT\uff09\u548c certifi 2026.5.20 \u2192 2026.11.20\uff08MPL-2.0\uff09\u3002\u4e24\u4e2a\u5b98\u65b9 PyPI py3-none-any wheel \u7684 URL \u4e0e SHA-256 \u5df2\u9501\u5b9a\uff0c\u4f7f\u7528\u65e2\u6709 Python/pip \u5728\u5305\u5185\u72ec\u7acb\u6682\u5b58\u4f4d\u7f6e\u8fdb\u884c hash-only/no-index/no-deps \u5b89\u88c5\uff1b\u5b8c\u6574\u6838\u5bf9 wheel RECORD\u3001\u6240\u6709\u5b98\u65b9\u8f7d\u8377\u548c\u8bb8\u53ef\u8bc1\uff0c\u786e\u8ba4\u65e7 RECORD \u5f52\u5c5e\u3001\u65e0\u91cd\u590d\u5143\u6570\u636e\u300149 \u4e2a\u4f9d\u8d56\u7248\u672c\u4e2d\u4ec5\u4e24\u9879\u53d8\u5316\u3002\u4e09\u4efd\u672a\u66b4\u9732\u5230 PATH \u7684\u5386\u53f2 vendor pip EXE \u4fdd\u7559\u539f\u5b57\u8282\uff08\u4e0d\u6267\u884c\uff09\uff0c\u65b0 RECORD \u8bb0\u5f55\u5176\u771f\u5b9e\u6458\u8981\uff0c\u5b98\u65b9 pip \u4ee3\u7801\u53ca dist-info \u5176\u4ed6\u539f\u59cb wheel \u5b57\u8282\u4e0d\u6539\uff1b\u539f\u53ef\u642c\u8fc1 CMD \u548c setup \u4fee\u590d\u95e8\u7981\u4e0d\u6539\u3002\u65b0 pip \u4fdd\u7559\u5176\u4e0a\u6e38\u81ea\u5e26 certifi 2026.10.23\uff0c\u9876\u5c42 certifi \u4e3a 2026.11.20\uff0c\u4e0d\u624b\u5de5\u6df7\u6362\uff1bpip \u9ed8\u8ba4\u4ecd\u6309\u4e0a\u6e38\u4f7f\u7528\u7cfb\u7edf truststore \u4e0e vendored certifi\uff0c\u4e0d\u5ba3\u79f0\u5b8c\u5168\u9694\u79bb OS \u4fe1\u4efb\u5e93\u3002\u901a\u8fc7\u5b9e\u9645\u5b98\u65b9 HTTPS \u4e0b\u8f7d\u3001\u72ec\u7acb\u79bb\u7ebf\u91cd\u65b0\u5b89\u88c5\u3001\u9501\u5b9a\u4e0e\u4f9d\u8d56\u95ed\u5305\u3001\u5e38\u7528/YOLO \u539f\u751f pip \u4e0e CA \u8def\u5f84/\u73af\u5883\u3001\u4e2d\u6587\u642c\u8fc1\u3001Office/PDF\u3001\u6d4f\u89c8\u5668/MCP\u3001\u53d1\u884c\u8f93\u5165\u95e8\u7981\u540e\u624d\u63a8\u9001\u3002\u5408\u6210 Responses/\u73af\u5883\u4e0e\u6587\u4ef6\u4e0d\u4ee3\u8868\u771f\u5b9e\u8d26\u53f7\u6216\u7ebf\u4e0a\u6a21\u578b\uff1b\u5df2\u77e5 ADB\u3001PSModulePath\u3001\u5b9e\u9645\u8bbe\u5907/\u4ea4\u4e92\u5ba1\u6279/\u53ef\u9009\u6e32\u67d3\u548c\u91cd\u7b97\u7b49\u9650\u5236\u4e0d\u53d8\u3002\u56de\u9000\u6574\u4f53\u6062\u590d\u672c\u7ec4\u4e24\u4efd\u5305\u3001dist-info\u3001\u4f9d\u8d56\u8f93\u5165/\u9501\u3001\u6d4b\u8bd5\u548c\u8bf4\u660e\uff0c\u4fdd\u6301\u5df2\u9a8c rg \u63d0\u4ea4\uff0c\u4e0d\u89e6\u53ca main/tag/Release\u3002\n\n"+"\u539f AC #45555952802 \u88ab console_scripts \u4e25\u683c\u6bd4\u8f83\u62e6\u622a\uff1a\u4e0d\u662f\u683c\u5f0f\u53d8\u5316\uff0c\u800c\u662f\u5b98\u65b9 pip/pip3 \u7531 pip._internal.cli.main:main \u6539\u4e3a :cli\uff0c\u540e\u8005\u4f7f\u7528 cli=True \u5f00\u542f\u4e0a\u6e38\u5b89\u88c5\u9636\u6bb5\u5bfc\u5165\u4fdd\u62a4\u3002\u91cd\u65b0\u4e0b\u8f7d\u5e76\u6838\u5bf9\u65e7\u3001\u65b0\u56db\u4efd\u56fa\u5b9a wheel \u6458\u8981\u3001\u539f\u59cb entry_points\u3001\u5df2\u88c5\u65e7\u5143\u6570\u636e\u548c\u8bed\u4e49\uff1b\u53ea\u51c6\u8bb8\u8be5\u7cbe\u786e\u7684\u4e24\u9879\u5165\u53e3\u76ee\u6807\u53d8\u5316\uff0c\u6838\u5bf9\u65b0\u7248 cli/main \u4e0e python -m pip \u7684\u6e90\u7801\u59d4\u6d3e\uff0ccertifi \u4e24\u7248\u65e0 console_scripts\u3002\u65e7/\u65b0\u7248\u4e09\u4efd CMD \u540c\u73af\u5883\u5b9e\u9645\u6267\u884c\u7248\u672c\u3001check\u3001cache\u3001list\u3001\u975e\u6cd5\u547d\u4ee4\u9000\u51fa\u7801\uff1b\u65b0\u7248\u901a\u8fc7\u4e09\u4e2a CMD \u8fdb\u884c\u666e\u901a certifi wheel \u7684 hash-only \u79bb\u7ebf\u5b89\u88c5\u53ca\u5305\u5185\u5e38\u7528/YOLO \u4e2d\u6587\u8def\u5f84\u539f\u751f\u5165\u53e3\u6d4b\u8bd5\uff1bpip \u81ea\u8eab\u53ea\u8d70\u5b98\u65b9 python -m pip\u3002\u751f\u4ea7 helper\u3001CMD\u3001\u6743\u9650\u53ca\u5176\u4ed6 gate \u539f\u6837\u4fdd\u7559\uff0c\u672a\u6267\u884c\u5386\u53f2 vendor EXE\u3002\n\n"+"\u539f AC #45556915855 \u5df2\u901a\u8fc7\u65b0\u65e7\u5165\u53e3\u3001\u5b98\u65b9 wheel \u4e0e\u5b9e\u9645\u4f9d\u8d56\u66ff\u6362\u68c0\u67e5\uff0c\u6700\u540e\u9519\u8bef\u662f\u542b pip \u81ea\u8eab\u7684 CMD \u5b89\u88c5\u89e6\u53d1 Windows \u5b98\u65b9\u81ea\u4fee\u6539\u4fdd\u62a4\u300226.1.2 \u4e0e 26.3 \u7684\u4e0a\u6e38 protect_pip_from_modification_on_windows \u5b9e\u73b0\u4e00\u81f4\uff1b\u9879\u76ee\u672c\u6765\u53ea\u627f\u8bfa\u53d7\u63a7\u6682\u5b58\u548c\u5305\u5185 python -m pip \u7ef4\u62a4\u56fa\u5b9a\u96c6\uff0c\u4e0d\u627f\u8bfa CMD \u81ea\u66f4\u65b0\u3002\u672c\u6b21\u4ece\u76f8\u540c\u56fa\u5b9a wheel \u96c6\u5408\u5bf9\u7167\uff1a\u4e24\u7248\u4e09\u4e2a CMD \u542b pip \u7684\u5b89\u88c5\u5747\u987b\u5b9e\u9645\u8fd4\u56de 1\u3001\u63d0\u793a\u5b98\u65b9\u6a21\u5757\u5165\u53e3\u3001\u7a7a\u76ee\u6807\u65e0\u5199\u5165\uff1b\u4ec5\u5b98\u65b9\u6a21\u5757\u5165\u53e3\u5728\u72ec\u7acb\u76ee\u6807\u5b89\u88c5 pip\u3002\u4e09\u4e2a CMD \u5206\u522b\u5728\u4e2d\u6587/\u7a7a\u683c\u6682\u5b58\u76ee\u6807\u6210\u529f\u79bb\u7ebf\u5b89\u88c5\u540c\u4e00 certifi wheel\uff0c\u6838\u5bf9\u5b98\u65b9\u5b57\u8282\u3001\u8bb8\u53ef\u8bc1\u3001\u5b9e\u9645 RECORD\u3001\u7248\u672c\u548c\u8fd0\u884c\u65f6\u5feb\u7167\uff1b\u4e0d\u4fee\u6539\u4fdd\u62a4\u51fd\u6570\u3001argv\u3001CMD\u3001helper \u6216\u6743\u9650\u3002\u53e6\u4fee\u590d\u4e0a\u8f6e\u65e5\u5fd7\u4e2d AST \u5c40\u90e8\u53d8\u91cf body \u8986\u76d6\u4e0b\u8f7d\u5b57\u8282\u5bfc\u81f4 pip wheel \u5927\u5c0f\u88ab\u9519\u8bef\u6253\u5370\u4e3a 1 \u7684\u8bca\u65ad\u5b57\u6bb5\uff0c\u5b9e\u9645\u5de5\u4ef6\u54c8\u5e0c\u95e8\u7981\u672a\u6539\u53d8\u3002\n\n"+"[Windows AC]("+runurl+").\n\n")])
           probe=root/"tests/check_pip_certifi_refresh.py"
           assert not probe.exists()
           probe.write_text("\"\"\"Actual relocated Windows pip entry point and CA-consumer audit (synthetic environment).\"\"\"\nimport importlib.metadata as md\nimport json\nimport os\nfrom pathlib import Path\nimport shutil\nimport ssl\nimport subprocess\nimport sys\n\nimport certifi\nimport httpx\nimport pip\nimport requests\nfrom pip._vendor import certifi as pip_certifi\nfrom pip._vendor import requests as pip_requests\n\ndef main():\n    root = Path(os.environ[\"CODEX_INSTALL_DIR\"]).resolve()\n    site = root / \"tool/python/Lib/site-packages\"\n    py = root / \"tool/python/python.exe\"\n    assert sys.version_info[:3] == (3, 14, 10)\n    assert Path(sys.executable).resolve() == py\n    assert sys.flags.isolated and sys.flags.ignore_environment\n    assert all(Path(p).resolve().is_relative_to(root / \"tool/python\") for p in sys.path)\n    assert os.environ[\"PIP_CONFIG_FILE\"].lower() == \"nul\"\n    assert Path(os.environ[\"PIP_CACHE_DIR\"]).resolve().is_relative_to(root)\n    assert Path(os.environ[\"PYTHONUSERBASE\"]).resolve().is_relative_to(root)\n    assert Path(os.environ[\"PYTHONPYCACHEPREFIX\"]).resolve().is_relative_to(root)\n    for key in (\"PIP_INDEX_URL\",\"PIP_EXTRA_INDEX_URL\",\"PIP_TRUSTED_HOST\",\"PIP_CERT\",\"PIP_CLIENT_CERT\",\n                \"SSL_CERT_FILE\",\"SSL_CERT_DIR\",\"REQUESTS_CA_BUNDLE\",\"CURL_CA_BUNDLE\",\"PYTHONHOME\",\"PYTHONPATH\"):\n        assert not os.environ.get(key), \"Unexpected inherited config: \" + key\n    assert pip.__version__ == md.version(\"pip\") == \"26.3\"\n    from pip._internal.cli.main import cli\n    entry_points = {e.name:e for e in md.distribution(\"pip\").entry_points if e.group==\"console_scripts\"}\n    assert set(entry_points)=={\"pip\",\"pip3\"}\n    assert all(e.value==\"pip._internal.cli.main:cli\" and e.load() is cli for e in entry_points.values())\n    assert certifi.__version__ == md.version(\"certifi\") == \"2026.11.20\"\n    assert pip_certifi.__version__ == \"2026.10.23\"\n    for name in (\"pip\", \"certifi\"):\n        found = [d for d in md.distributions() if d.metadata[\"Name\"].lower() == name]\n        assert len(found) == 1 and Path(found[0].locate_file(\"\")).resolve() == site\n    for module in (pip, certifi, requests, httpx, pip_certifi, pip_requests):\n        assert Path(module.__file__).resolve().is_relative_to(site)\n    standalone = site / \"certifi/cacert.pem\"\n    vendored = site / \"pip/_vendor/certifi/cacert.pem\"\n    assert Path(certifi.where()).resolve() == standalone\n    assert Path(requests.certs.where()).resolve() == standalone\n    assert Path(requests.utils.DEFAULT_CA_BUNDLE_PATH).resolve() == standalone\n    assert Path(pip_certifi.where()).resolve() == vendored\n    assert Path(pip_requests.certs.where()).resolve() == vendored\n    assert Path(pip_requests.utils.DEFAULT_CA_BUNDLE_PATH).resolve() == vendored\n    def certs(ctx):\n        assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname\n        values = set(ctx.get_ca_certs(binary_form=True))\n        assert values\n        return values\n    expected = certs(ssl.create_default_context(cafile=str(standalone)))\n    assert certs(httpx.create_ssl_context(verify=True, trust_env=True)) == expected\n    pip_roots = certs(ssl.create_default_context(cafile=str(vendored)))\n    print(\"NATIVE_CA_BUNDLES=PASS standalone=2026.11.20 roots=%d vendored=2026.10.23 roots=%d\" % (len(expected), len(pip_roots)), flush=True)\n    # Execute through the same relocatable console entry-point helper used by\n    # the existing .cmd shims (the shell additionally exercises those shims).\n    helper = root / \"tool/bin/portable-python-cli.py\"\n    def run(*args):\n        p = subprocess.run([str(py), \"-E\", \"-s\", \"-B\", str(helper), \"pip\",\n            \"--isolated\", \"--disable-pip-version-check\", \"--no-input\", *args],\n            cwd=Path(__file__).parent, capture_output=True, timeout=90)\n        assert p.returncode == 0, (\"pip\", args, p.returncode, p.stderr.decode(\"utf-8\",\"replace\"))\n        return p.stdout.decode(\"utf-8\",\"strict\").strip()\n    version = run(\"--version\")\n    assert version.startswith(\"pip 26.3 from \") and str(site / \"pip\") in version\n    debug = run(\"debug\")\n    line = next(s for s in debug.splitlines() if s.startswith(\"pip._vendor.certifi.where(): \"))\n    assert Path(line.split(\": \",1)[1]).resolve() == vendored\n    assert Path(run(\"cache\",\"dir\",\"--cache-dir\",os.environ[\"PIP_CACHE_DIR\"])).resolve() == Path(os.environ[\"PIP_CACHE_DIR\"]).resolve()\n    packages = {x[\"name\"].lower():x[\"version\"] for x in json.loads(run(\"list\",\"--format=json\"))}\n    assert len(packages) == 49\n    assert packages[\"pip\"] == \"26.3\" and packages[\"certifi\"] == \"2026.11.20\"\n    assert run(\"check\") == \"No broken requirements found.\"\n    # Exercise the actual relocated CMD aliases in the native Codex child\n    # with the existing sandbox policy. Do not execute vendor EXEs.\n    cmd = Path(os.environ[\"SystemRoot\"]) / \"System32/cmd.exe\"\n    for name in (\"pip.cmd\",\"pip3.cmd\",\"pip3.14.cmd\"):\n        shim = root / \"tool/bin\" / name\n        assert Path(shutil.which(name)).resolve() == shim\n        def alias(*args, code=0):\n            argv = [\"--isolated\",\"--disable-pip-version-check\",\"--no-input\",*args]\n            command = f'\"{cmd}\" /d /s /c \"\"{shim}\" '+subprocess.list2cmdline(argv)+'\"'\n            p = subprocess.run(command,executable=str(cmd),cwd=Path(__file__).parent,capture_output=True,timeout=90)\n            assert p.returncode == code, (name,args,p.returncode,p.stderr.decode(\"utf-8\",\"replace\")[-1000:])\n            return p.stdout.decode(\"utf-8\",\"strict\").strip()\n        assert alias(\"--version\")==version\n        assert alias(\"check\")==\"No broken requirements found.\"\n        assert Path(alias(\"cache\",\"dir\",\"--cache-dir\",os.environ[\"PIP_CACHE_DIR\"])).resolve()==Path(os.environ[\"PIP_CACHE_DIR\"]).resolve()\n        assert {x[\"name\"].lower():x[\"version\"] for x in json.loads(alias(\"list\",\"--format=json\"))}==packages\n        alias(\"portable-invalid-command\",code=1)\n        print(\"NATIVE_PIP_CMD_ALIAS=PASS \"+name,flush=True)\n    print(\"NATIVE_PIP_OFFICIAL_CLI_ENTRY_AND_ALIASES=PASS\",flush=True)\n    print(\"NATIVE_PIP_ENTRYPOINT_CONFIG_AND_CLOSURE=PASS\",flush=True)\n\nif __name__ == \"__main__\":\n    main()\n",encoding="utf-8",newline="\n")
