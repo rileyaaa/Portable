@@ -1,5 +1,11 @@
 # 开发与维护记录
 
+## 2026-11-25：独立合批实际落地及清理
+
+[AC 45589159314](https://github.com/rileyaaa/Portable/actions/runs/45589159314)（job 139118456825）completed/success，实际推送 acd8b73146648c18d8363f0ba7e67eab0b830a53，tree 66634e2972a34d99c59eb0d3840cc6a41e457fa1。仅 XlsxWriter 3.3.4 真正替换（61 个候选文件含输入/锁），新旧日期序列、公式文本、SINGLE、pandas/openpyxl 中文路径及显式包内 Python VBA 提取脚本通过；保留官方脚本原始 #!python，不执行宏。全量 Python 324 项、Node、PowerShell、真实常用/未知模型、浏览器只读、YOLO 浏览器持久化、stdio/native MCP、Office/PDF 及发行输入完整性全部通过。常用/YOLO 由合成 Responses 驱动真实 Windows 程序，不代表真实在线模型/账号、SSH 服务器、设备、可选 Office 渲染或公式重算已验。
+
+HTTP 官方新旧 wheel 与旧版实际消费者通过；在 AnyIO 4.16.0 增加直接依赖 typing_extensions>=4.16.0; python_version < "3.15" 时被过严的直接依赖名称集合相等检查拒绝。包内已验 4.16.0 可满足，未安装新轮子。tzdata 官方新旧 wheel 及旧偏移通过，因许可字节不同拒绝。上游 python/tzdata 2026.2 和 2026.6 LICENSE blob 分别 c2f84aeb06f7a520b7cf17bdd9c9c3854dc4c469 和 a62e827c2862dda1a509f3998a42dbe48ddd0251，仅新增 Copyright (c) 2026, Stan Ulbrych 一行，完整 Apache 2.0 文本 blob 261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64 不变。下一次只针对上述具体新证据调整审查；当前锁仍 urllib3 2.7.0、anyio 4.13.0、tzdata 2026.2。清理本次已完成的一次性 workflow，保留历史日志与开发测试，不复跑已落地 XlsxWriter 候选。main、正式 tag、Release 不变。保留已知 ADB 宿主目录及 PowerShell 启动模块路径未完全隔离的历史限制。
+
 ## 2026-11-25：独立候选合批与首因记录
 
 [45588115342](https://github.com/rileyaaa/Portable/actions/runs/45588115342) 的源代码 62 项及旧版 HTTP/Office 回归通过；在旧 urllib3 官方 wheel 内容校验时，因为已随原包安装的 `urllib3/contrib/emscripten/emscripten_fetch_worker.js` 不属于原 Python 后缀列表而停止，尚未替换载荷。仓库、官方 2.7.0 与 2.8.0 标签该文件 Git blob 均为 `faf141e1fa4113a0c14480d1681ddecb9678ced4`，故仅增加这一固定路径及固定 blob 检查，不开放其他 JS 或改变工件验证边界。
@@ -544,8 +550,3 @@ powershell.exe -NoProfile -File .\tests\test_browser_smoke.ps1
 
 **已知实现注意点：** PS5.1 的 `File.Replace`、泛型集合和原生空参数传递曾有兼容问题，后续改动应保留对应处理；认证多文件切换依赖 transition/logout 标记与 snapshot 归属，不可猜测回收；缺少 Host 时恢复匹配完整布局，不能用关闭 Code Mode 作为修复。当前 checkout 不包含历史 checker/updater 套件，不引用不存在的脚本或把旧版本哈希当成当前身份。
 
-## 2026-11-25: fixed stable dependency candidate
-
-xlsxwriter 3.2.9 -> 3.3.4
-
-Official wheel SHA-256, RECORD, previous Git payload, dependency closure and actual Windows consumer checks passed. No extra distribution or feature enabled. Full native regression must pass before this commit is pushed. Run: https://github.com/rileyaaa/Portable/actions/runs/45589159314
