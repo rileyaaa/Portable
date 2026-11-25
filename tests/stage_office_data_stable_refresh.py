@@ -31,11 +31,72 @@ PY = ROOT / "tool/python/python.exe"
 SITE = ROOT / "tool/python/Lib/site-packages"
 PREFIX = SITE.relative_to(ROOT).as_posix() + "/"
 SPECS = {
+    "packaging": ("26.2", "26.4", "5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e",
+                  "81383611a09c1bc0b08b76e0fd5829d7c6824c65b27a6aee339da133f4233ea2", "py3-none-any", "Apache-2.0 OR BSD-2-Clause"),
     "xlsxwriter": ("3.2.9", "3.3.4", "9a5db42bc5dff014806c58a20b9eae7322a134abb6fce3c92c181bfb275ec5b3",
                    "da62fecb24fdd0f003c874c86109b9e1245ae89533052745ab85a085eb2b04d7", "py3-none-any", "BSD-2-Clause"),
     "tzdata": ("2026.2", "2026.6", "bbe9af844f658da81a5f95019480da3a89415801f6cc966806612cc7169bffe7",
                "0a10eec6e13ef16b627fabed9a5f2ba61a62b1c67f327305f4e7e412a70b4aec", "py2.py3-none-any", "Apache-2.0"),
 }
+# Exact upstream tag / PyPI publishing commit blobs, including unchanged licenses.
+# 26.4 wheel provenance: pypa/packaging@8fb1b46edad14e6fa2f0af581d65d7567f70e3b0.
+PACKAGING_SOURCE = {
+    "26.2": {
+        "LICENSE": "6f62d44e4ef733c0e713afcd2371fed7f2b3de67",
+        "LICENSE.APACHE": "f433b1a53f5b830a205fd2df78e2b34974656c7b",
+        "LICENSE.BSD": "42ce7b75c92fb01a3f6ed17eea363f756b7da582",
+        "packaging/__init__.py": "a6bdf59cd713d41593ba3da47032a831a1be1504",
+        "packaging/_elffile.py": "497b0645217512ae2ba8ff61341fd2bbfa3648cd",
+        "packaging/_manylinux.py": "0e79e8a882be74fe76c80ccf49a9cd68fb636fd4",
+        "packaging/_musllinux.py": "4e8116a79ca80d60657542a23b4bbcbc3c518eaf",
+        "packaging/_parser.py": "d320269e1531d822003bde7a826ba24eecca3bae",
+        "packaging/_structures.py": "4306784d9a26466aa0a210cb2f262903c67d46ca",
+        "packaging/_tokenizer.py": "5ab891ccb8e9048cf64573ca303357efe6afae32",
+        "packaging/dependency_groups.py": "413e5cb4b40d734564b99092320bb58a8f3c2c2b",
+        "packaging/direct_url.py": "5d1c56ca9d6fcd92111b0a86258853224509abb0",
+        "packaging/errors.py": "d1d47cf6c3416179750bf5bf170aafe9d0fa6497",
+        "packaging/licenses/__init__.py": "36e46ed02ca7aa6690928cf33868ae9cd1ab1d17",
+        "packaging/licenses/_spdx.py": "a277af28220b6dbe4599471104d1c7a2bd1e1288",
+        "packaging/markers.py": "564451f530bad3dbbd95ae7575835967b1ea45df",
+        "packaging/metadata.py": "dccb627dea31193b8bb1082223dcdc4305fcfb18",
+        "packaging/py.typed": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+        "packaging/pylock.py": "84e25378fc6fa21d2d637dbcc6cd43c0dd2ad1d4",
+        "packaging/requirements.py": "5892aee6ee2e391673a8609eecb5e43be4931a89",
+        "packaging/specifiers.py": "b165dc0f7c8201f2291780ce0273af8127105ab0",
+        "packaging/tags.py": "9980ab3c63c0c4caf0045af55751a19a4d68ed92",
+        "packaging/utils.py": "cbd3be27c4211f73330a318debf6a490b8b9d8ba",
+        "packaging/version.py": "97f23fd9ad66a66ecfb8ebbabebc08d4cc51d683"
+    },
+    "26.4": {
+        "LICENSE": "6f62d44e4ef733c0e713afcd2371fed7f2b3de67",
+        "LICENSE.APACHE": "f433b1a53f5b830a205fd2df78e2b34974656c7b",
+        "LICENSE.BSD": "42ce7b75c92fb01a3f6ed17eea363f756b7da582",
+        "packaging/__init__.py": "f21b8e55f69c7caeccdab3dc2c03675e9066fea3",
+        "packaging/_elffile.py": "cdb2d327698d7ef14a0953978e10ecedbe2053b1",
+        "packaging/_manylinux.py": "30dcde4fc595e41c0d7e74a4a5522a849d809f2e",
+        "packaging/_musllinux.py": "64056fb8b6c6b4971b65b0103815d3bb91e160a5",
+        "packaging/_parser.py": "a93de75403940a0d73d4e7064b1c54a5d72ea766",
+        "packaging/_ranges.py": "7add170125c08ccfac5a71d44575c2a6ac42431e",
+        "packaging/_structures.py": "39667513ac082d8bed1c7bb81322bd4c6f92f0b8",
+        "packaging/_tokenizer.py": "7fbc14ade7651dffe87ca8389b97733b2958bd71",
+        "packaging/dependency_groups.py": "d17703719032719339e5a6387c14f0c01369f8dc",
+        "packaging/direct_url.py": "87c2669902701f913fa85fc0c4440694083370b4",
+        "packaging/errors.py": "08f3fab7d0f66afb91427b07272b0f5c276ae2ab",
+        "packaging/licenses/__init__.py": "6387485290dcb59e829418076b215219615d47b4",
+        "packaging/licenses/_spdx.py": "5f98b80aa4515bb17f7a2d08b05e4622dc8d59aa",
+        "packaging/markers.py": "1e16254da86e17f899a16560b9be7a972764b8f4",
+        "packaging/metadata.py": "436097183907d4eb5766f619a465c38d54303aea",
+        "packaging/py.typed": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+        "packaging/pylock.py": "5421e8863339f3c18ffbc63067d3fc3744afe905",
+        "packaging/ranges.py": "87693d9bf91a23ea2c1c4ff05630411cc6fa9d05",
+        "packaging/requirements.py": "9be385b098e28011ad021518b3f88c0671a08214",
+        "packaging/specifiers.py": "5d0ffc88eb427df2851a767df2af67d58eb027ca",
+        "packaging/tags.py": "c4392c399dff6641cc0c8d6441e3b31220db5784",
+        "packaging/utils.py": "bc31b32e1b13e55d8dd3c45b8df5b10d4198d186",
+        "packaging/version.py": "1c17a9d55c6f82175c433786382832cec6ba4555"
+    }
+}
+
 # GitHub tagged runtime files (not tests/examples other than the installed script).
 # PyPI wheel hashes above remain the primary byte-level identity.
 XLSX_SOURCE = {
@@ -259,6 +320,8 @@ def wheel_payload(name, version, sha, tag, license_id, wheelhouse):
             if parts[0] == name:
                 if name == "xlsxwriter":
                     assert len(parts) == 2 and p.endswith(".py"), p
+                elif name == "packaging":
+                    assert p in PACKAGING_SOURCE[version], p
                 else:
                     assert (p == "tzdata/__init__.py" or p == "tzdata/zones" or
                             p.startswith("tzdata/zoneinfo/")), p
@@ -270,7 +333,8 @@ def wheel_payload(name, version, sha, tag, license_id, wheelhouse):
                         assert not raw.strip(), p
             elif parts[0] == dist:
                 assert "/".join(parts[1:]) in {"METADATA", "WHEEL", "RECORD", "top_level.txt", "LICENSE.txt",
-                    "licenses/LICENSE.txt", "licenses/LICENSE", "licenses/licenses/LICENSE_APACHE"}, p
+                    "licenses/LICENSE.txt", "licenses/LICENSE", "licenses/licenses/LICENSE_APACHE",
+                    "licenses/LICENSE.APACHE", "licenses/LICENSE.BSD"}, p
             else:
                 assert name == "xlsxwriter" and p == data_script, p
             payload[p] = raw
@@ -285,7 +349,7 @@ def wheel_payload(name, version, sha, tag, license_id, wheelhouse):
     assert not meta.get_all("Requires-Dist", [])
     wheel = email.parser.BytesParser().parsebytes(payload[dist + "/WHEEL"])
     assert wheel["Root-Is-Purelib"].lower() == "true"
-    assert set(wheel.get_all("Tag")) == ({"py3-none-any"} if name == "xlsxwriter" else {"py2-none-any", "py3-none-any"})
+    assert set(wheel.get_all("Tag")) == ({"py3-none-any"} if name in {"xlsxwriter", "packaging"} else {"py2-none-any", "py3-none-any"})
     if name == "xlsxwriter":
         source = XLSX_SOURCE[version]
         mapped = {p: git_blob(b) for p, b in payload.items() if p.startswith("xlsxwriter/")}
@@ -296,6 +360,14 @@ def wheel_payload(name, version, sha, tag, license_id, wheelhouse):
         assert mapped == source, ("tag-to-wheel source mismatch", sorted(set(mapped) ^ set(source)),
                                   sorted(p for p in mapped.keys() & source.keys() if mapped[p] != source[p]))
         payload["bin/vba_extract.py"] = payload.pop(data_script)
+    if name == "packaging":
+        mapped = {p: git_blob(b) for p, b in payload.items() if p.startswith("packaging/")}
+        for p, b in payload.items():
+            if p.startswith(dist + "/licenses/"):
+                mapped[p.removeprefix(dist + "/licenses/")] = git_blob(b)
+        assert mapped == PACKAGING_SOURCE[version], ("packaging source or license mismatch",
+                                                     sorted(set(mapped) ^ set(PACKAGING_SOURCE[version])))
+        assert set(meta.get_all("License-File", [])) == {"LICENSE", "LICENSE.APACHE", "LICENSE.BSD"}
     print("OFFICIAL_WHEEL_AND_SOURCE=PASS " + name + " " + version + " " + sha, flush=True)
     return dist, payload
 
@@ -325,7 +397,8 @@ def main(name):
     old, new, old_sha, new_sha, tag, license_id = SPECS[name]
     before = versions()
     assert len(before) == 49 and before[name] == old and before["pip"] == "26.1.2"
-    probe = ROOT / "tests/check_office_data_stable_refresh.py"
+    probe = ROOT / ("tests/check_packaging_stable_refresh.py" if name == "packaging"
+                    else "tests/check_office_data_stable_refresh.py")
     assert probe.is_file()
     tmp = ROOT / "tmp"
     tmp.mkdir(exist_ok=True)
@@ -348,7 +421,8 @@ def main(name):
             return run([PY, "-B", "-m", "pip", "--isolated", "--disable-pip-version-check",
                         "--no-input", "--cache-dir", env["PIP_CACHE_DIR"], *args], env)
         def consumer(version):
-            marker = "XLSX_STABLE_REGRESSION=PASS" if name == "xlsxwriter" else "TZDATA_PACKAGE_ONLY_OFFSETS=PASS"
+            marker = {"xlsxwriter": "XLSX_STABLE_REGRESSION=PASS", "tzdata": "TZDATA_PACKAGE_ONLY_OFFSETS=PASS",
+                      "packaging": "PACKAGING_STABLE_REGRESSION=PASS"}[name]
             assert marker in run([PY, "-B", probe, name, version], env)
         assert "No broken requirements found." in pip("check")
         consumer(old)

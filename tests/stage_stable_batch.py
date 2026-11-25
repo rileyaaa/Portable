@@ -17,9 +17,7 @@ SITE = "tool/python/Lib/site-packages/"
 SHARED = {"tool/python-packages.in.txt", "tool/python-packages.lock.txt",
           "DEVELOPMENT.md", "tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md"}
 GROUPS = [
-    ("urllib3", "tests/stage_http_stable_refresh.py", ["urllib3"], {"urllib3": ("2.7.0","2.8.0")}),
-    ("anyio", "tests/stage_http_stable_refresh.py", ["anyio"], {"anyio": ("4.13.0","4.16.0")}),
-    ("tzdata", "tests/stage_office_data_stable_refresh.py", ["tzdata"], {"tzdata": ("2026.2","2026.6")}),
+    ("packaging", "tests/stage_office_data_stable_refresh.py", ["packaging"], {"packaging": ("26.2","26.4")}),
 ]
 
 
@@ -146,7 +144,7 @@ def main():
         summary = ", ".join(f"{n} {old} -> {new}" for n,(old,new) in pins.items())
         note = ("## 2026-11-25: " + summary +
                 "\n\nOfficial fixed wheel hashes, RECORD, prior Git payload, licenses, dependency closure and actual old/new Windows consumer checks passed. "
-                "No extra distribution or feature enabled. AnyIO's exact added dependency is already satisfied by the fixed typing_extensions 4.16.0. "
+                "No extra distribution, dependency, launcher or feature enabled. "
                 "Full native regression required before push. No real accounts, devices, remote SSH, Office rendering or recalculation tested. Run: " + runurl)
         append_record(ROOT / "DEVELOPMENT.md", note)
         append_record(ROOT / "tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md", summary + " (Windows validation: " + runurl + ")")
