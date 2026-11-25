@@ -554,3 +554,7 @@ powershell.exe -NoProfile -File .\tests\test_browser_smoke.ps1
 
 **已知实现注意点：** PS5.1 的 `File.Replace`、泛型集合和原生空参数传递曾有兼容问题，后续改动应保留对应处理；认证多文件切换依赖 transition/logout 标记与 snapshot 归属，不可猜测回收；缺少 Host 时恢复匹配完整布局，不能用关闭 Code Mode 作为修复。当前 checkout 不包含历史 checker/updater 套件，不引用不存在的脚本或把旧版本哈希当成当前身份。
 
+
+## 2026-11-25: urllib3 2.7.0 -> 2.8.0
+
+Official fixed wheel hashes, RECORD, prior Git payload, licenses, dependency closure and actual old/new Windows consumer checks passed. No extra distribution or feature enabled. AnyIO's exact added dependency is already satisfied by the fixed typing_extensions 4.16.0. Full native regression required before push. No real accounts, devices, remote SSH, Office rendering or recalculation tested. Run: https://github.com/rileyaaa/Portable/actions/runs/45596716268

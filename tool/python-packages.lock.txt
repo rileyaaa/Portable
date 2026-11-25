@@ -1,5 +1,5 @@
 # Codex Portable wheel lock v1
-# requirements-sha256: dd36e685990596329879e17b5338b7a54e3a03adb27548073f8bf07c12aaaedf
+# requirements-sha256: 4ee30b7a15511a06c9517112be078d29ced55e98ea1b01f7e5dec4b5c5b96e08
 # Exact selected wheel hashes; install with --require-hashes --only-binary=:all:.
 altgraph==0.17.5 --hash=sha256:f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597
 anyio==4.13.0 --hash=sha256:08b310f9e24a9594186fd75b4f73f4a4152069e3853f1ed8bfbf58369f4ad708
@@ -48,5 +48,5 @@ soupsieve==2.8.4 --hash=sha256:e7e6b0769c8f51ed59acab6e994b00621096cfb1c640a7509
 tabulate==0.9.0 --hash=sha256:024ca478df22e9340661486f85298cff5f6dcdba14f3813e8830015b9ed1948f
 typing-extensions==4.16.0 --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
 tzdata==2026.2 --hash=sha256:bbe9af844f658da81a5f95019480da3a89415801f6cc966806612cc7169bffe7
-urllib3==2.7.0 --hash=sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897
+urllib3==2.8.0 --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3
 xlsxwriter==3.3.4 --hash=sha256:da62fecb24fdd0f003c874c86109b9e1245ae89533052745ab85a085eb2b04d7
