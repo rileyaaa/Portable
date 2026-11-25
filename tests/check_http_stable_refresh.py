@@ -66,9 +66,16 @@ def main():
         try:
             response = pool.request("GET", url + "/data", preload_content=False, timeout=5)
             try:
-                assert response.status == 200 and b"".join(response.stream(11)) == DATA
+                assert response.status == 200 and b"".join(response.stream(11, decode_content=True)) == DATA
             finally:
                 response.release_conn()
+            raw = pool.request("GET", url + "/data", preload_content=False, timeout=5)
+            try:
+                assert raw.status == 200
+                encoded = b"".join(raw.stream(11, decode_content=False))
+                assert encoded.startswith(b"\x1f\x8b") and gzip.decompress(encoded) == DATA
+            finally:
+                raw.release_conn()
             with requests.Session() as session:
                 session.trust_env = False
                 with session.get(url + "/redirect", stream=True, timeout=5) as response:

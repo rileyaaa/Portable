@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   refresh:
-    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == '2ae8cb98b23c60aaf199af339c069ecaeaff4e30' && github.run_attempt == 1
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == 'cfecb132d9222bfd572b5ee56d3569bbfc213610' && github.run_attempt == 1
     runs-on: windows-latest
     timeout-minutes: 120
     permissions:
@@ -19,7 +19,7 @@ jobs:
         shell: powershell
     env:
       FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
-      BASE: 2ae8cb98b23c60aaf199af339c069ecaeaff4e30
+      BASE: cfecb132d9222bfd572b5ee56d3569bbfc213610
       TARGET_BRANCH: dev/stable-tool-refresh
     steps:
       - name: Preserve tracked bytes and isolate CI module cache
@@ -40,7 +40,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or (git rev-parse 'HEAD^').Trim() -cne $env:BASE) { throw 'Wrong checkout or parent' }
           $changed = @(git diff --name-only $env:BASE HEAD)
-          if ($changed.Count -ne 2 -or $changed -cnotcontains '.github/workflows/refresh-http-stable.yml' -or $changed -cnotcontains 'tests/check_http_stable_refresh.py') { throw 'Unexpected trigger changes' }
+          if ($changed.Count -ne 3 -or $changed -cnotcontains '.github/workflows/refresh-http-stable.yml' -or $changed -cnotcontains 'tests/check_http_stable_refresh.py' -or $changed -cnotcontains 'DEVELOPMENT.md') { throw 'Unexpected trigger changes' }
           foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
             $remote = (git ls-remote origin $pair[0]) -join ''
             if ($LASTEXITCODE -ne 0 -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen ref or development branch moved' }
