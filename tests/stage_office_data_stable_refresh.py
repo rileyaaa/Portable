@@ -39,7 +39,9 @@ SPECS = {
                "0a10eec6e13ef16b627fabed9a5f2ba61a62b1c67f327305f4e7e412a70b4aec", "py2.py3-none-any", "Apache-2.0"),
 }
 # Exact upstream tag / PyPI publishing commit blobs, including unchanged licenses.
-# 26.4 wheel provenance: pypa/packaging@8fb1b46edad14e6fa2f0af581d65d7567f70e3b0.
+# 26.4 release tag: pypa/packaging@19a13d0652ab358ac6be3f069a7fb2f1b304ac73.
+# 8fb1b46edad14e6fa2f0af581d65d7567f70e3b0 is the subsequent development bump;
+# the only packaged source difference is __init__.py (26.5.dev0 vs 26.4).
 PACKAGING_SOURCE = {
     "26.2": {
         "LICENSE": "6f62d44e4ef733c0e713afcd2371fed7f2b3de67",
@@ -71,7 +73,7 @@ PACKAGING_SOURCE = {
         "LICENSE": "6f62d44e4ef733c0e713afcd2371fed7f2b3de67",
         "LICENSE.APACHE": "f433b1a53f5b830a205fd2df78e2b34974656c7b",
         "LICENSE.BSD": "42ce7b75c92fb01a3f6ed17eea363f756b7da582",
-        "packaging/__init__.py": "f21b8e55f69c7caeccdab3dc2c03675e9066fea3",
+        "packaging/__init__.py": "0670bccf8cea15ed81e6391a5ad6ff6a2394d109",
         "packaging/_elffile.py": "cdb2d327698d7ef14a0953978e10ecedbe2053b1",
         "packaging/_manylinux.py": "30dcde4fc595e41c0d7e74a4a5522a849d809f2e",
         "packaging/_musllinux.py": "64056fb8b6c6b4971b65b0103815d3bb91e160a5",
@@ -365,8 +367,11 @@ def wheel_payload(name, version, sha, tag, license_id, wheelhouse):
         for p, b in payload.items():
             if p.startswith(dist + "/licenses/"):
                 mapped[p.removeprefix(dist + "/licenses/")] = git_blob(b)
-        assert mapped == PACKAGING_SOURCE[version], ("packaging source or license mismatch",
-                                                     sorted(set(mapped) ^ set(PACKAGING_SOURCE[version])))
+        source = PACKAGING_SOURCE[version]
+        assert mapped == source, ("packaging source or license mismatch",
+                                  sorted(set(mapped) ^ set(source)),
+                                  sorted((p, source[p], mapped[p])
+                                         for p in mapped.keys() & source.keys() if mapped[p] != source[p]))
         assert set(meta.get_all("License-File", [])) == {"LICENSE", "LICENSE.APACHE", "LICENSE.BSD"}
     print("OFFICIAL_WHEEL_AND_SOURCE=PASS " + name + " " + version + " " + sha, flush=True)
     return dist, payload
