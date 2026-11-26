@@ -717,3 +717,8 @@ Run 45764713894; tests/llvm_full_ocr_45764713894.json. Windows=success; full bui
 ## Qualified course OCR customer candidate
 
 Run 45768950297; tests/qualified_course_ocr_45768950297.json. Windows=success; source notice=True; distribution qualified=True; actual whole-customer acceptance=True; delivered=True; artifact=15093123477. Old private technical test, original ZIP, Office, dual-window not rerun. Main and official release unchanged.
+
+
+## Candidate closeout defect pass: isolated document entrypoints
+
+Base is qualified OCR customer source 4040a2f plus final evidence 527e808. Existing optional Office accept_changes/recalc/thumbnail and eight PDF form tools lacked the same guarded script-directory bootstrap already used by validate/merge/comment/add_slide. The isolated embedded Python does not supply that path. Added only exact layout/ordinary-file sibling admission and redirected UTF-8. PDF bounding box checker now exits nonzero on its existing FAILURE diagnostics; UTF-8 JSON input/output is explicit. DOCX acceptance stages output in owned package tmp and publishes only after successful optional LibreOffice execution and intact DOCX checks; missing/failed renderer must not overwrite the requested document. Existing formula recalc refuses unavailable local LibreOffice before other work; invalid nonpositive thumbnail column counts rejected. Optional tools/dependencies remain absent; no claim of real rendering or recalculation. Actual new Windows candidate tests pending; previous original ZIP and qualified OCR evidence unchanged. SSH private ACL and ADB host home restrictions remain in place pending safe proof.
