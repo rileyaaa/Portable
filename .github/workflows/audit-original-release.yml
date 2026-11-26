@@ -1,0 +1,142 @@
+name: Audit exact original v0.172.0-portable.1 Windows customer ZIP (one time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths: [.github/workflows/audit-original-release.yml]
+permissions: {}
+concurrency:
+  group: portable-original-release-audit
+  cancel-in-progress: false
+jobs:
+  audit:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1
+    runs-on: windows-latest
+    timeout-minutes: 150
+    permissions:
+      contents: write
+      actions: read
+    defaults:
+      run:
+        shell: powershell
+    env:
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      HARNESS: fbc3b63c73cb507455f78c2315ebb5a4604d9a58
+      TARGET_BRANCH: dev/stable-tool-refresh
+    steps:
+      - name: Preserve exact source fixture bytes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'Git config failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          lfs: false
+          persist-credentials: false
+      - name: Confirm prior candidate run ended, dev scope and frozen release refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or (git rev-parse 'HEAD^').Trim() -cne $event.before) { throw 'Unexpected checkout or push parent' }
+          $changes = @(git diff --name-only $event.before HEAD)
+          $expected = @('tests/audit_release_zip.py','tests/audit_release_zip_consumer.py','.github/workflows/audit-original-release.yml')
+          if ($LASTEXITCODE -or $changes.Count -ne $expected.Count -or @(Compare-Object $expected $changes).Count -ne 0) { throw 'Unexpected developer diff' }
+          $prior = Invoke-RestMethod -Uri 'https://api.github.com/repos/rileyaaa/Portable/actions/runs/45732692780' -Headers @{Authorization=('Bearer '+$env:GH_TOKEN);Accept='application/vnd.github+json';'User-Agent'='portable-original-release-audit'}
+          if ($prior.status -cne 'completed') { throw 'Previous independent candidate job is still running' }
+          if (Test-Path -LiteralPath '.github/workflows/refresh-remaining-stable.yml') { throw 'Previous trigger is not cleaned' }
+          if (Test-Path -LiteralPath 'tests/stage_remaining_stable_refresh.py') { throw 'Previous staging helper is not cleaned' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
+            $remote = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen or developer ref changed' }
+          }
+          git diff --exit-code $env:HARNESS HEAD -- tests/check_codex_tool_discovery.py tests/check_codex_browser_mcp.py tests/check_browser_mcp_stdio.py
+          if ($LASTEXITCODE) { throw 'Accepted orchestration fixtures changed' }
+          # No checkout tool binary or LFS pointer is executed. Host Python
+          # is used solely for download, digest, archive and peer orchestration.
+          $hostPython = (Get-Command python.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          if ([IO.Path]::GetFullPath($hostPython).StartsWith([IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected orchestrator path' }
+          $owned = Join-Path $env:RUNNER_TEMP ('portable-original-release-' + $env:GITHUB_RUN_ID)
+          if (Test-Path -LiteralPath $owned) { throw 'Audit directory already exists' }
+          $null = New-Item -ItemType Directory -Path $owned
+          "AUDIT_PYTHON=$hostPython" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "AUDIT_REPORT=$(Join-Path $owned 'audit.json')" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          'AUDIT_SCOPE_CONFIRMED=true' | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          & $hostPython -I -B -c "from pathlib import Path; [compile(p.read_bytes(),str(p),'exec') for p in (Path('tests/audit_release_zip.py'),Path('tests/audit_release_zip_consumer.py'))]"
+          if ($LASTEXITCODE) { throw 'Audit harness syntax failed' }
+          'AUDIT_READY=true' | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Download exact original ZIP and run independent native consumer cases
+        id: audit
+        if: env.AUDIT_READY == 'true'
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:AUDIT_PYTHON -I -B tests/audit_release_zip.py $env:AUDIT_REPORT
+          if ($LASTEXITCODE) { throw 'Original release audit reported actual failures or incomplete execution; see row evidence' }
+      - name: Record actual row evidence and remove only this one-time entry
+        if: always() && env.AUDIT_SCOPE_CONFIRMED == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import base64,json,os,subprocess,sys
+          from collections import Counter
+          from pathlib import Path
+          branch="refs/heads/dev/stable-tool-refresh"
+          frozen=os.environ["FROZEN"];start=os.environ["GITHUB_SHA"]
+          assert os.environ["GITHUB_REF"]==branch
+          auth=base64.b64encode(("x-access-token:"+os.environ.pop("GH_TOKEN")).encode()).decode()
+          print("::add-mask::"+auth,flush=True)
+          cfg=["-c","http.https://github.com/.extraheader=AUTHORIZATION: basic "+auth]
+          def git(*args):return subprocess.check_output(["git",*args])
+          def rev(ref="HEAD"):return git("rev-parse",ref).decode().strip()
+          def ref(name):
+              v,n=git(*cfg,"ls-remote","origin",name).decode().strip().split("\t")
+              assert n==name
+              return v
+          assert rev()==ref(branch)==start
+          assert ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          report=Path(os.environ["AUDIT_REPORT"])
+          if report.exists():
+              result=json.loads(report.read_bytes())
+              assert result["metadata"]["source_commit"]==frozen
+              assert result["metadata"]["tag"]=="v0.172.0-portable.1"
+              assert result["metadata"]["run_id"]==os.environ["GITHUB_RUN_ID"]
+          else:
+              result={"metadata":{"source_commit":frozen,"tag":"v0.172.0-portable.1","run_id":os.environ["GITHUB_RUN_ID"],"completed":False},"rows":[{"mode":"orchestrator","item":"audit did not produce a report","status":"FAIL","detail":"See the actual prerequisite or audit step failure."}]}
+          counts=dict(Counter(r["status"] for r in result["rows"]))
+          result["metadata"]["workflow_audit_step_outcome"]=os.environ.get("AUDIT_OUTCOME","unknown")
+          result["metadata"]["status_counts"]=counts
+          target=Path("tests/release_audit_v0.172.0-portable.1.json")
+          assert not target.exists(),"Do not overwrite a previous original-release audit"
+          target.write_text(json.dumps(result,indent=2,ensure_ascii=True)+"\n",encoding="utf-8")
+          url="https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]
+          notes=Path("DEVELOPMENT.md")
+          note=("\n\n## Original published v0.172.0-portable.1 customer ZIP audit\n\n"
+                "Separate from the dev stable-wheel results. Original release asset SHA-256 a406e4487bde19057491b6515f7abcab74faf2e3437366b0b23f9940af5760dc; source commit "+frozen+
+                ". Actual row evidence and per-entry, distribution, npm and variable inventories: tests/release_audit_v0.172.0-portable.1.json. Run "+url+
+                ". Harness completed="+str(result["metadata"].get("completed",False))+"; exact statuses "+json.dumps(counts,sort_keys=True)+
+                ". This is not a claim that every tool, environment variable, optional dependency or real device/account path passed. Distinguish actual consumer failures, harness failures, integrity-only, propagation-only, unexercised and not-applicable cases. No customer payload changed, no release created, original attachments untouched. The one-time workflow is removed; developer-only harness and evidence retained.\n")
+          notes.write_bytes(notes.read_bytes()+note.encode())
+          workflow=".github/workflows/audit-original-release.yml"
+          git("rm","--",workflow);git("add","--",str(target),"DEVELOPMENT.md")
+          paths=set(git("diff","--cached","--name-only","-z").decode().split("\0"))-{""}
+          assert paths=={workflow,target.as_posix(),"DEVELOPMENT.md"},paths
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Record actual original customer ZIP audit evidence and retire temporary trigger")
+          final=rev()
+          assert ref(branch)==start
+          subprocess.run(["git",*cfg,"push","origin","HEAD:"+branch],check=True)
+          assert ref(branch)==final and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          subprocess.run(["git",*cfg,"fetch","--no-tags","origin",branch],check=True)
+          assert rev("FETCH_HEAD")==final and rev("FETCH_HEAD^{tree}")==rev("HEAD^{tree}")
+          print("ORIGINAL_RELEASE_AUDIT_FINAL_DEV="+final,flush=True)
+          print("ORIGINAL_RELEASE_AUDIT_REPORT="+target.as_posix(),flush=True)
+          print("ORIGINAL_RELEASE_AUDIT_STATUS="+json.dumps(counts,sort_keys=True),flush=True)
+          print("TEMPORARY_TRIGGER_REMOVED=PASS",flush=True)
+          if os.environ.get("AUDIT_OUTCOME")!="success" or counts.get("FAIL") or not result["metadata"].get("completed"):raise SystemExit(1)
+          '@ | & $env:AUDIT_PYTHON -I -B -
+          if ($LASTEXITCODE) { throw 'Audit reported failures/incomplete execution or cleanup failed; inspect actual evidence' }
