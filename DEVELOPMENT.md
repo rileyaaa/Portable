@@ -682,3 +682,8 @@ Original ZIP only: run 45754353202, tests/ocr_native_contract_repair_45754353202
 ## Course OCR bounded product entry (development, distribution gate closed)
 
 Added strict PNG preflight before either engine; bounded full decoding with the already bundled Pillow, no other formats, empty output distinct from failure, sanitized native diagnostic codes, fixed chi_sim/config digests, explicit local native payload inventory and executable digest. Windows engine remains first; only absent zh-Hans-CN can select a qualified bundled fallback. Native distribution lock false, customer packager refuses any native OCR payload; no unqualified binary or model committed. Tests and native build/link evidence are separate from original ZIP and browser/Office acceptance. No permission or format expansion.
+
+
+## Course PNG OCR product and LLVM-MinGW preflight evidence
+
+Source ca7ac2d183a036794d1acfa6c965c2c6d4e4e907; https://github.com/rileyaaa/Portable/actions/runs/45761867152. Result tests/course_ocr_product_45761867152.json. Product job=success; product contract=True; static link evidence=True; LLVM job=failure; LLVM static probe=False. No distribution clearance or customer ZIP; private technical ZIP not uploaded. Previous candidate 15085655070 unchanged. No original audit, dual-window or Office repeat.
