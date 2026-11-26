@@ -1,0 +1,326 @@
+{
+  "repository": "openai/codex",
+  "tag": "rust-v0.172.0",
+  "commit": "3d86e43b075adeba2193ec5c22ac92f55afd82e6",
+  "source_prefix": "codex-rs/skills/src/assets/samples/",
+  "source_tree_api": "https://api.github.com/repos/openai/codex/git/trees/3d86e43b075adeba2193ec5c22ac92f55afd82e6?recursive=1",
+  "runtime_binary_sha256": "3f42b12274b353ecb3ec555e6c8d0a43f6c6cb29c3a546179bc12dee4855deb6",
+  "observed_windows_marker": "408224ce9771867c",
+  "observed_marker_run": "45744922536",
+  "source_file_count": 52,
+  "verification": "Exact Git blob identity, or explicitly recorded CRLF-only UTF-8 text checkout conversion whose LF-normalized bytes match the source Git blob and size. Binary exact only. Two actual pinned native refreshes must agree on every byte and marker before any source seed replacement.",
+  "files": {
+    "create-statusline/SKILL.md": {
+      "git_blob_sha1": "1c4f8e2fc3ca3bc82b571d8249d12236e82b1b59",
+      "size": 2781,
+      "mode": "100644",
+      "text": true
+    },
+    "create-statusline/agents/openai.yaml": {
+      "git_blob_sha1": "5b1f887a9138416870f64ba2fe21602e4a59cfa7",
+      "size": 43,
+      "mode": "100644",
+      "text": true
+    },
+    "create-statusline/assets/statusline.py": {
+      "git_blob_sha1": "0dc04236cc60b3401d1dc9fdacb28e59bbc838ed",
+      "size": 3329,
+      "mode": "100644",
+      "text": true
+    },
+    "create-statusline/references/statusline.d.ts": {
+      "git_blob_sha1": "d0581ca6f865118ba99af712da51b6ed7c9f0a55",
+      "size": 5391,
+      "mode": "100644",
+      "text": true
+    },
+    "imagegen/LICENSE.txt": {
+      "git_blob_sha1": "13e25df86ce06eb6488e6a6bc5c5847f5dedc352",
+      "size": 10776,
+      "mode": "100644",
+      "text": true
+    },
+    "imagegen/SKILL.md": {
+      "git_blob_sha1": "c39b1f921ce679f08416ab16ceb01945835bb950",
+      "size": 19201,
+      "mode": "100644",
+      "text": true
+    },
+    "imagegen/agents/openai.yaml": {
+      "git_blob_sha1": "5e01d4410ef4918b45d942175e7ddc39ba7ab5d2",
+      "size": 275,
+      "mode": "100644",
+      "text": true
+    },
+    "imagegen/assets/imagegen-small.svg": {
+      "git_blob_sha1": "20128b2dba2b93ecd7c398bb379b6049dc94a944",
+      "size": 2889,
+      "mode": "100644",
+      "text": true
+    },
+    "imagegen/assets/imagegen.png": {
+      "git_blob_sha1": "94b54541a9affd39a7aa09d0efd5bc6b712b723b",
+      "size": 1711,
+      "mode": "100644",
+      "text": false
+    },
+    "imagegen/references/cli.md": {
+      "git_blob_sha1": "748c83c745b6f010d4afba27224cb947c02e9485",
+      "size": 9655,
+      "mode": "100644",
+      "text": true
+    },
+    "imagegen/references/codex-network.md": {
+      "git_blob_sha1": "5ce1fbc748bdccdd837c35b37b6cc1c95c0aa89b",
+      "size": 1779,
+      "mode": "100644",
+      "text": true
+    },
+    "imagegen/references/image-api.md": {
+      "git_blob_sha1": "64eff30ee6ab19671ff31b83c992ac19e9829430",
+      "size": 6072,
+      "mode": "100644",
+      "text": true
+    },
+    "imagegen/references/prompting.md": {
+      "git_blob_sha1": "5a826563580bc014897fa61629314ae8a6171513",
+      "size": 8282,
+      "mode": "100644",
+      "text": true
+    },
+    "imagegen/references/sample-prompts.md": {
+      "git_blob_sha1": "3e6b46fd02ed7bc85d771a1c35c1c85e9db16ddd",
+      "size": 17617,
+      "mode": "100644",
+      "text": true
+    },
+    "imagegen/scripts/image_gen.py": {
+      "git_blob_sha1": "ca78422d715585f6983a300199ed79e45bdb7ac0",
+      "size": 34667,
+      "mode": "100644",
+      "text": true
+    },
+    "imagegen/scripts/remove_chroma_key.py": {
+      "git_blob_sha1": "f14df3551888464cd9dc7b75c9678c20f084ed97",
+      "size": 13905,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/LICENSE.txt": {
+      "git_blob_sha1": "13e25df86ce06eb6488e6a6bc5c5847f5dedc352",
+      "size": 10776,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/SKILL.md": {
+      "git_blob_sha1": "7c3190ab2cbbe89e47739bd3142d07ca445826bb",
+      "size": 3064,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/agents/openai.yaml": {
+      "git_blob_sha1": "e3f5d7db204de431a7b671e403437dcaaba5bb04",
+      "size": 361,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/assets/openai-small.svg": {
+      "git_blob_sha1": "1d075dc04f617247747ca8e44f8aa9193e0ab3e6",
+      "size": 1091,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/assets/openai.png": {
+      "git_blob_sha1": "e9b9eb80cd90ccdfc7e276b07f4046aa9c9d1887",
+      "size": 1429,
+      "mode": "100644",
+      "text": false
+    },
+    "openai-docs/references/codex-self-knowledge.md": {
+      "git_blob_sha1": "f0195313661d0a12531cbaa8c26fcda03803a5ae",
+      "size": 7417,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/references/latest-model.md": {
+      "git_blob_sha1": "2f7ec86f19c14e4c9b5c74b007f661a15fadd5d4",
+      "size": 1578,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/references/mcp-diagnostics.md": {
+      "git_blob_sha1": "a49d0f2993dc6c08c14bd5c6bee7c710b3f0296c",
+      "size": 2318,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/references/model-migration.md": {
+      "git_blob_sha1": "dfaafff966151e25bebbd6f3058aafab8b2dd148",
+      "size": 6244,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/references/model-selection.md": {
+      "git_blob_sha1": "6ff3dfaecaead748e4ff2fa6f65d6eae314e8264",
+      "size": 1344,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/references/official-docs.md": {
+      "git_blob_sha1": "204e31ed993a2caab225571350af7fa874fbee53",
+      "size": 3337,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/references/prompting-guide.md": {
+      "git_blob_sha1": "b6430d0d49b566c97b0e1fa6d46cea4230844dc3",
+      "size": 10128,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/references/upgrade-guide.md": {
+      "git_blob_sha1": "98b9ed96e3fd61c669a33f18de91570d3e4b9582",
+      "size": 1833,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/references/upgrading-to-gpt-6-astra.md": {
+      "git_blob_sha1": "a61f582e7da80ad8684c81b592912aee7113c837",
+      "size": 19676,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/scripts/fetch-codex-manual.mjs": {
+      "git_blob_sha1": "d491382e76dfe26966350a883fab7a812793a6d8",
+      "size": 15668,
+      "mode": "100644",
+      "text": true
+    },
+    "openai-docs/scripts/resolve-latest-model-info": {
+      "git_blob_sha1": "7d00122a37c81a30a7d91d8d74126398975f6493",
+      "size": 1038,
+      "mode": "100755",
+      "text": true
+    },
+    "openai-docs/scripts/resolve-latest-model-info.cjs": {
+      "git_blob_sha1": "676b64cbe65d7888f6ae94d785c052411e1500b5",
+      "size": 3916,
+      "mode": "100644",
+      "text": true
+    },
+    "review-agent/SKILL.md": {
+      "git_blob_sha1": "c694020c1c5de0e8fee4e933f55e0f6b3d055d8a",
+      "size": 2661,
+      "mode": "100644",
+      "text": true
+    },
+    "review-agent/agents/openai.yaml": {
+      "git_blob_sha1": "ebbb0b041fb2d88c226fdaef198f9c8e53396552",
+      "size": 252,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-creator/SKILL.md": {
+      "git_blob_sha1": "490ccc6c3e0015eb982bb5c108c2df083be2c6c2",
+      "size": 15311,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-creator/agents/openai.yaml": {
+      "git_blob_sha1": "3095c600ce769c862519df036ab5777a5a947fec",
+      "size": 183,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-creator/assets/skill-creator-small.svg": {
+      "git_blob_sha1": "c6e4f67c624a00705a662dbd0230b8c531180f56",
+      "size": 1319,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-creator/assets/skill-creator.png": {
+      "git_blob_sha1": "4f3d6d82fa78fbdce97af3c17f6a25c683aa3290",
+      "size": 1563,
+      "mode": "100644",
+      "text": false
+    },
+    "skill-creator/license.txt": {
+      "git_blob_sha1": "d645695673349e3947e8e5ae42332d0ac3164cd7",
+      "size": 11358,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-creator/references/openai_yaml.md": {
+      "git_blob_sha1": "90f9e8e863dff501c0125e2ead20c1dd6c3028d5",
+      "size": 2356,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-creator/scripts/generate_openai_yaml.py": {
+      "git_blob_sha1": "870eefcea9bd0184806b8eb305526e883d2f7241",
+      "size": 6669,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-creator/scripts/init_skill.py": {
+      "git_blob_sha1": "2ed2fa3125c720fcce60a29f3dd82d04b14d9fa0",
+      "size": 10314,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-creator/scripts/quick_validate.py": {
+      "git_blob_sha1": "e27023ece4bd259ef36560e19995eec7b6a345bf",
+      "size": 4249,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-installer/LICENSE.txt": {
+      "git_blob_sha1": "d645695673349e3947e8e5ae42332d0ac3164cd7",
+      "size": 11358,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-installer/SKILL.md": {
+      "git_blob_sha1": "030135b6e015f3c4b9976d80f4f46dbd8487b016",
+      "size": 3367,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-installer/agents/openai.yaml": {
+      "git_blob_sha1": "88d40cd9468441cfc83ffed52f9d71867392b850",
+      "size": 221,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-installer/assets/skill-installer-small.svg": {
+      "git_blob_sha1": "ccfc034241ae8e6bea7284e188aed142a67c53e9",
+      "size": 923,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-installer/assets/skill-installer.png": {
+      "git_blob_sha1": "2977cd5bb49b3b8bd50d8bf476d7cffbb3f88a46",
+      "size": 1086,
+      "mode": "100644",
+      "text": false
+    },
+    "skill-installer/scripts/github_utils.py": {
+      "git_blob_sha1": "711f597e4cf0c08b897083c1c337e13524a76260",
+      "size": 659,
+      "mode": "100644",
+      "text": true
+    },
+    "skill-installer/scripts/install-skill-from-github.py": {
+      "git_blob_sha1": "2d05f74924037738dbcc60cb677412ddc7e17d36",
+      "size": 11917,
+      "mode": "100755",
+      "text": true
+    },
+    "skill-installer/scripts/list-skills.py": {
+      "git_blob_sha1": "0015571c5a64b4c7f54ee435b7f91b8ec4694a72",
+      "size": 2948,
+      "mode": "100755",
+      "text": true
+    }
+  }
+}

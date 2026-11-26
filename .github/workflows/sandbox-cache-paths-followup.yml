@@ -1,0 +1,277 @@
+name: Narrow sandbox writes and pinned system cache seed
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths: [.github/workflows/sandbox-cache-paths-followup.yml]
+permissions: {}
+concurrency:
+  group: portable-sandbox-cache-paths-followup
+  cancel-in-progress: false
+jobs:
+  targeted:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1
+    runs-on: windows-latest
+    timeout-minutes: 85
+    permissions:
+      contents: write
+      actions: read
+    defaults:
+      run:
+        shell: powershell
+    env:
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      BASE: a96e0c70494de030da297f574e3d048977c8d1f3
+    steps:
+      - name: Preserve exact source bytes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'Git config failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Check branch and scope, frozen original and prior evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or $event.before -cne $env:BASE) { throw 'Unexpected candidate base' }
+          $prior = Invoke-RestMethod -Uri 'https://api.github.com/repos/rileyaaa/Portable/actions/runs/45744922536' -Headers @{Authorization=('Bearer '+$env:GH_TOKEN);Accept='application/vnd.github+json';'User-Agent'='portable-cache-followup'}
+          if ($prior.status -cne 'completed' -or (Test-Path -LiteralPath '.github/workflows/sandbox-ocr-followup.yml')) { throw 'Previous narrow run not finalized' }
+          $expected = @('tests/system_skills_0172_upstream.json','tests/sandbox_cache_paths_followup_45744922536.md','tests/sandbox_cache_path_consumer.py','tests/check_sandbox_cache_paths.py','.github/workflows/sandbox-cache-paths-followup.yml')
+          $changed = @(git diff --name-only $env:BASE HEAD)
+          if ($LASTEXITCODE -or $changed.Count -ne $expected.Count -or @(Compare-Object $expected $changed).Count) { throw 'Unexpected changed paths' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@('refs/heads/dev/stable-tool-refresh',$env:GITHUB_SHA))) {
+            $actual = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -or $actual -cne ($pair[1]+[char]9+$pair[0])) { throw 'Frozen or developer ref changed' }
+          }
+          git diff --exit-code $env:BASE HEAD -- run-codex.ps1 env.ps1 Version_History tool home/skills tests/course_candidate_45741929384.json tests/original_followup_candidate_45741929384.json tests/sandbox_ocr_followup_45744922536.json tests/release_audit_v0.172.0-portable.1-wrapper-corrected.json
+          if ($LASTEXITCODE) { throw 'Protected payload or prior evidence changed' }
+          'CACHE_SCOPE_CONFIRMED=true' | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "PROBE_REPORT=$(Join-Path $env:RUNNER_TEMP 'sandbox-cache-path-probe.json')" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "PROBE_BUILD=$(Join-Path $env:RUNNER_TEMP 'sandbox-cache-path-build.json')" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "SEED_STAGE=$(Join-Path $pwd ('tmp/verified-system-seed-'+$env:GITHUB_RUN_ID))" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "CANDIDATE_REPORT=$(Join-Path $env:RUNNER_TEMP 'system-seed-candidate-verify.json')" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "CANDIDATE_BUILD=$(Join-Path $env:RUNNER_TEMP 'system-seed-candidate-build.json')" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Validate only new Python probes and existing packaging inputs
+        id: policy
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'Missing pinned LFS payload' }
+          & .\tool\python\python.exe -B -c "from pathlib import Path; [compile(p.read_bytes(),str(p),'exec') for p in map(Path, ['tests/sandbox_cache_path_consumer.py','tests/check_sandbox_cache_paths.py'])]"
+          if ($LASTEXITCODE) { throw 'Targeted Python syntax failed' }
+          & .\tool\python\python.exe -B tool/package-release.py --check
+          if ($LASTEXITCODE) { throw 'Customer input validation failed' }
+      - name: Build exact base probe ZIP locally, never upload as corrected candidate
+        id: build
+        if: steps.policy.outcome == 'success'
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $json = & .\tool\python\python.exe -B tool/package-release.py --version v0.172.0-portable.2
+          if ($LASTEXITCODE) { throw 'Base probe ZIP build failed' }
+          $joined = $json -join [Environment]::NewLine
+          $value = $joined | ConvertFrom-Json
+          if ($value.source_commit -cne $env:GITHUB_SHA) { throw 'Wrong probe source' }
+          [IO.File]::WriteAllText($env:PROBE_BUILD,$joined,(New-Object Text.UTF8Encoding($false)))
+          Write-Output ("PROBE_ZIP_SHA256="+$value.archive_sha256+" files="+$value.file_count)
+      - name: Native two-mode write/owner/ACL and one-mode CLI contrast, all 52 pinned system blobs
+        id: probe
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/check_sandbox_cache_paths.py probe $env:PROBE_BUILD $env:PROBE_REPORT $env:SEED_STAGE
+          if ($LASTEXITCODE) { throw 'Native rows contain outstanding failures; preserve raw evidence' }
+      - name: Correct stale system seed only if two independent native byte inventories prove it
+        id: seed
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path -LiteralPath $env:PROBE_REPORT)) { 'staged=false' | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8; exit 0 }
+          $report = Get-Content -LiteralPath $env:PROBE_REPORT -Raw | ConvertFrom-Json
+          if ($report.metadata.completed -ne $true -or $report.metadata.system_stage_verified -ne $true) { 'staged=false' | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8; exit 0 }
+          & .\tool\python\python.exe -B tests/check_sandbox_cache_paths.py apply-seed $env:PROBE_BUILD $env:PROBE_REPORT $env:SEED_STAGE
+          if ($LASTEXITCODE) { throw 'Local seed correction failed; do not push it' }
+          $source=(git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -or $source -ceq $env:GITHUB_SHA -or (git rev-parse HEAD^).Trim() -cne $env:GITHUB_SHA) { throw 'Invalid local candidate parent' }
+          $paths=@(git diff --name-only $env:GITHUB_SHA HEAD)
+          if ($LASTEXITCODE -or -not $paths.Count -or @($paths | Where-Object { -not $_.StartsWith('home/skills/.system/') }).Count) { throw 'Unapproved local candidate change' }
+          "CANDIDATE_SOURCE=$source" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          'staged=true' | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+      - name: Build new customer candidate only after the actual seed source correction
+        id: candidate
+        if: steps.seed.outcome == 'success' && steps.seed.outputs.staged == 'true'
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $json = & .\tool\python\python.exe -B tool/package-release.py --version v0.172.0-portable.2
+          if ($LASTEXITCODE) { throw 'Corrected customer ZIP build failed' }
+          $joined = $json -join [Environment]::NewLine
+          $value = $joined | ConvertFrom-Json
+          if ($value.source_commit -cne $env:CANDIDATE_SOURCE) { throw 'Wrong corrected candidate source' }
+          [IO.File]::WriteAllText($env:CANDIDATE_BUILD,$joined,(New-Object Text.UTF8Encoding($false)))
+          Write-Output ("CORRECTED_CANDIDATE_SHA256="+$value.archive_sha256+" files="+$value.file_count)
+          foreach ($key in @('archive','manifest','checksums')) {
+            "$key=$($value.$key)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+      - name: Exact corrected ZIP relocation and one native startup byte-identity gate only
+        id: verify
+        if: steps.candidate.outcome == 'success'
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:GITHUB_SHA=$env:CANDIDATE_SOURCE
+          & .\tool\python\python.exe -B tests/check_sandbox_cache_paths.py verify-candidate $env:CANDIDATE_BUILD $env:CANDIDATE_REPORT $env:SEED_STAGE
+          if ($LASTEXITCODE) { throw 'Corrected seed candidate not independently verified; do not publish or push seed' }
+          $r=Get-Content -LiteralPath $env:CANDIDATE_REPORT -Raw | ConvertFrom-Json
+          $built=Get-Content -LiteralPath $env:CANDIDATE_BUILD -Raw | ConvertFrom-Json
+          if ($r.metadata.completed -ne $true -or $r.metadata.zip_verified -ne $true -or $r.metadata.source_commit -cne $env:CANDIDATE_SOURCE -or $r.metadata.archive_sha256 -cne $built.archive_sha256) { throw 'Incorrect actual candidate verification evidence' }
+      - name: Upload only corrected pristine customer candidate and exact metadata, not Release
+        id: upload
+        if: steps.verify.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Codex-Portable-0.172.0-system-seed-candidate-${{ github.run_id }}
+          path: |
+            ${{ steps.candidate.outputs.archive }}
+            ${{ steps.candidate.outputs.manifest }}
+            ${{ steps.candidate.outputs.checksums }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - name: Download candidate artifact to independently verify its bytes
+        id: download
+        if: steps.upload.outcome == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: Codex-Portable-0.172.0-system-seed-candidate-${{ github.run_id }}
+          path: tmp/cache-candidate-readback-${{ github.run_id }}
+      - name: Verify downloaded exact three-file artifact and SHA256
+        id: readback
+        if: steps.download.outcome == 'success'
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $built=Get-Content -LiteralPath $env:CANDIDATE_BUILD -Raw | ConvertFrom-Json
+          $read=Join-Path $pwd ('tmp/cache-candidate-readback-'+$env:GITHUB_RUN_ID)
+          if (@(Get-ChildItem -LiteralPath $read -Recurse -Force -File).Count -ne 3) { throw 'Unexpected artifact members' }
+          foreach ($key in @('archive','manifest','checksums')) {
+            $source=$built.$key
+            $target=Join-Path $read (Split-Path -Leaf $source)
+            if (-not (Test-Path -LiteralPath $target -PathType Leaf) -or (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash) { throw 'Candidate download digest differs' }
+          }
+          Write-Output 'CORRECTED_CANDIDATE_ARTIFACT_READBACK=PASS'
+      - name: Preserve separate evidence, keep only independently verified seed, remove temporary trigger
+        if: always() && env.CACHE_SCOPE_CONFIRMED == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          POLICY: ${{ steps.policy.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          PROBE: ${{ steps.probe.outcome }}
+          SEED: ${{ steps.seed.outcome }}
+          CANDIDATE: ${{ steps.candidate.outcome }}
+          VERIFY: ${{ steps.verify.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+          DOWNLOAD: ${{ steps.download.outcome }}
+          READBACK: ${{ steps.readback.outcome }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import base64,json,os,subprocess
+          from pathlib import Path
+          branch="refs/heads/dev/stable-tool-refresh"
+          frozen=os.environ["FROZEN"];start=os.environ["GITHUB_SHA"]
+          assert os.environ["GITHUB_REF"]==branch
+          auth=base64.b64encode(("x-access-token:"+os.environ.pop("GH_TOKEN")).encode()).decode()
+          print("::add-mask::"+auth,flush=True)
+          cfg=["-c","http.https://github.com/.extraheader=AUTHORIZATION: basic "+auth]
+          def git(*args):return subprocess.check_output(["git",*args])
+          def rev(ref="HEAD"):return git("rev-parse",ref).decode().strip()
+          def ref(name):
+              v,n=git(*cfg,"ls-remote","origin",name).decode().strip().split("\t")
+              assert n==name
+              return v
+          def names(*args):return {n.decode("utf-8") for n in git(*args).split(b"\0") if n}
+          assert ref(branch)==start
+          assert ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          def read(p):
+              p=Path(p)
+              return json.loads(p.read_bytes()) if p.exists() else {"metadata":{"completed":False},"rows":[]}
+          probe=read(os.environ["PROBE_REPORT"]);candidate=read(os.environ["CANDIDATE_REPORT"])
+          steps={k:os.environ[k] for k in ("POLICY","BUILD","PROBE","SEED","CANDIDATE","VERIFY","UPLOAD","DOWNLOAD","READBACK")}
+          prefix="home/skills/.system/"
+          local=rev()
+          if local!=start:
+              assert rev("HEAD^")==start
+              changed=names("diff","--name-only","-z",start,"HEAD")
+              assert changed and all(n.startswith(prefix) for n in changed)
+          dirty=names("diff","--name-only","-z")|names("diff","--cached","--name-only","-z")|names("ls-files","--others","--exclude-standard","-z")
+          assert all(n.startswith(prefix) for n in dirty)
+          keep=bool(local!=start and not dirty and steps["VERIFY"]=="success" and candidate["metadata"].get("completed") and candidate["metadata"].get("source_commit")==local and not any(x["status"]=="FAIL" for x in candidate["rows"]))
+          if not keep:
+              # Only disposable runner checkout; never reset remote dev or user files.
+              # Any untracked entries are checked against fixed source inventory.
+              if local!=start:git("reset","--hard",start)
+              if dirty:
+                  git("restore","--source="+start,"--staged","--worktree","--",prefix)
+                  allowed={prefix+n for n in json.loads(Path("tests/system_skills_0172_upstream.json").read_bytes())["files"]}
+                  for n in names("ls-files","--others","--exclude-standard","-z","--",prefix):
+                      assert n in allowed
+                      p=Path(n);assert p.is_file() and not p.is_symlink() and not p.lstat().st_file_attributes&0x400
+                      p.unlink()
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          assert rev()==(local if keep else start)
+          rows=probe["rows"]
+          unresolved=[{"mode":x["mode"],"item":x["item"],"status":x["status"]} for x in rows if x["status"] in ("FAIL","OBSERVED_PATH_FAILURE")]
+          known=[{"mode":x["mode"],"item":x["item"]} for x in rows if x["status"]=="KNOWN_LIMIT"]
+          result={"run_id":os.environ["GITHUB_RUN_ID"],"prior_run":"45744922536","prior_record":"a96e0c70494de030da297f574e3d048977c8d1f3",
+              "probe_source_commit":start,"probe":probe,"workflow_steps":steps,
+              "verified_system_seed_kept":keep,"candidate_source_commit":local if keep else None,
+              "candidate_verification":candidate,
+              "artifact":{"id":os.environ.get("ARTIFACT_ID",""),"url":os.environ.get("ARTIFACT_URL",""),"readback":steps["READBACK"],
+                  "verified_downloadable":bool(keep and steps["READBACK"]=="success"),"retention_days":14},
+              "native_unresolved":unresolved,"known_limits":known,"chinese_ocr":"BLOCKED_PREVIOUS_BOTH_RUNNERS_NO_NEW_AUTHORIZED_ENVIRONMENT",
+              "whole_package_all_pass_claim":False,"course_qualified":False,
+              "original_official_evidence_unchanged":True,
+              "prior_course_evidence":"tests/course_candidate_45741929384.json",
+              "prior_office_and_acl_evidence":"tests/sandbox_ocr_followup_45744922536.json",
+              "limitations":["No prior dual-window/50-question/Office/OCR language reruns.",
+                "SSH ACL metadata and synthetic keygen only; no remote SSH, ACL edits, elevation or sandbox bypass.",
+                "Chinese OCR not re-tested; MSYS2 research is not a verified complete offline fallback.",
+                "No whole package or formal release qualification; candidate source and artifact identity separate from old ZIP."]}
+          target=Path("tests/sandbox_cache_paths_"+os.environ["GITHUB_RUN_ID"]+".json")
+          assert not target.exists()
+          target.write_text(json.dumps(result,indent=2,ensure_ascii=True)+"\n",encoding="utf-8")
+          notes=Path("DEVELOPMENT.md")
+          url="https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]
+          notes.write_bytes(notes.read_bytes()+("\n\n## Narrow Windows sandbox writes and pinned system cache followup\n\n"
+              "Prior 45744922536 evidence preserved; probe source "+start+"; "+url+". Result: "+target.as_posix()+
+              ". Verified system seed retained="+str(keep)+"; corrected candidate source="+str(result["candidate_source_commit"])+
+              "; artifact verified downloadable="+str(result["artifact"]["verified_downloadable"])+
+              "; unresolved="+json.dumps(unresolved,ensure_ascii=True)+
+              ". No sandbox/ACL/dependency changes, repeated dual-window/Office tests, Chinese-language installation, or formal release. Chinese OCR remains unverified.\n").encode("utf-8"))
+          workflow=".github/workflows/sandbox-cache-paths-followup.yml"
+          git("rm","--",workflow);git("add","--",str(target),"DEVELOPMENT.md")
+          assert names("diff","--cached","--name-only","-z")=={workflow,target.as_posix(),"DEVELOPMENT.md"}
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Record narrow sandbox/cache/path evidence and remove temporary trigger")
+          final=rev();assert ref(branch)==start
+          subprocess.run(["git",*cfg,"push","origin","HEAD:"+branch],check=True)
+          assert ref(branch)==final and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          print("CACHE_PATH_FINAL_DEV="+final,flush=True)
+          print("CACHE_PATH_RESULT="+json.dumps({"seed_kept":keep,"candidate":result["candidate_source_commit"],"artifact":result["artifact"],"unresolved":unresolved,"chinese":result["chinese_ocr"]},ensure_ascii=True),flush=True)
+          # Chinese recognition is still a hard unfulfilled gate. Never turn
+          # partial evidence into an all-pass green qualification.
+          raise SystemExit(1)
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Remaining qualification gates unresolved; separate evidence preserved' }
