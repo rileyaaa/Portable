@@ -111,12 +111,25 @@ def index(fixture,files):
     for v in a.META["python_distribution_inventory"]:
         ev=evidence(v["name"],"packages")
         packages.append({**v,"status":classify(ev),"evidence":ev})
+    browser=(fixture/"tool/automation/browser-bridge.js").read_text(encoding="utf-8")
+    course=(fixture/"tool/automation/course/course.js").read_text(encoding="utf-8")
+    allow=re.search(r"const allowedTools = new Set\(\[([\s\S]*?)\]\);",browser)
+    defs=re.search(r"const tools = \{([\s\S]*?)\n\};",course)
+    assert allow and defs
+    browser_names=set(re.findall(r"'(browser_[a-z_]+)'",allow[1]))
+    course_names=set(re.findall(r"(?m)^\s*(course_[a-z_]+):spec\(",defs[1]))
+    assert browser_names and course_names
+    old_mcp={x["name"]:x for x in old["mcp_tools"]}
+    mcp=[{"name":n,"family":"course" if n in course_names else "browser",
+          "declared_current":n in browser_names|course_names,"original_classification":old_mcp.get(n,{}).get("classification"),
+          "status":"UNTESTED","evidence":[],"scope":"source declaration/allowlist only, actual negotiated list and tool calls not tested in this batch"}
+          for n in sorted(browser_names|course_names|set(old_mcp))]
     result={"format":1,"source_commit":START,"archive_sha256":a.META["archive_sha256"],"manifest_sha256":a.META["manifest_sha256"],
       "run_id":os.environ["GITHUB_RUN_ID"],"file_count":len(files),"final_regression":False,
       "scope":"exact candidate only; per-row evidence, no old status promoted; PASS_ACTUAL is scoped, not every option or mode",
       "original_index_sha256":a.META["original_index_sha256"],"environment":environments,"entries":entries,
       "original_entries_absent_from_candidate":sorted(set(old_entries)-set(current_entries)),
-      "python_distributions":packages,"npm_packages":a.META["npm_package_inventory"],
+      "python_distributions":packages,"npm_packages":a.META["npm_package_inventory"],"mcp_tools":mcp,
       "raw_rows":a.ROWS,"limitations":a.META["limitations"],
       "counts":{"env":dict(collections.Counter(x["status"] for x in environments)),
                 "previous_122":dict(collections.Counter(x["status"] for x in environments if x["original_missing_actual"])),

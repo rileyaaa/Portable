@@ -51,8 +51,18 @@ def native_identity():
     for executable in ("python.exe","node.exe","pip.cmd"):
         got=shutil.which(executable);assert got and Path(got).resolve().is_relative_to(ROOT),(executable,got)
     return {"actual_binary":str(PY.relative_to(ROOT)),"mode":expected,"isolated":True}
-case("actual native interpreter and mode policy",native_identity,["tool/python/python.exe","tool/node/node.exe","run-codex.ps1"],
-     ["CODEX_INSTALL_DIR","CODEX_SANDBOX_MODE","CODEX_APPROVAL_POLICY","CODEX_SANDBOX_NETWORK_ACCESS","PATH"])
+case("native interpreter and generated mode policy",native_identity,["tool/python/python.exe","run-codex.ps1"],
+     ["CODEX_SANDBOX_MODE","CODEX_APPROVAL_POLICY","CODEX_SANDBOX_NETWORK_ACCESS"],status="PASS_CONFIG_GATE")
+def path_resolution():
+    assert Path(sys.executable).resolve()==PY and sys.flags.isolated
+    for name,args,expected in (("node.exe",["-p","process.execPath"],NODE),("python.exe",["-I","-B","-c","import sys;print(sys.executable)"],PY)):
+        # Real name-based invocation, not just where/which or --version.
+        got=shutil.which(name)
+        assert got and Path(got).resolve()==expected
+        p=subprocess.run([name,*args],cwd=OUT,env=dict(os.environ),stdin=subprocess.DEVNULL,capture_output=True,timeout=45)
+        assert p.returncode==0 and Path(p.stdout.decode("utf-8").strip()).resolve()==expected,(name,p.returncode)
+    return "actual named Node and Python entrypoints resolve inside this package"
+case("actual PATH-resolved Node/Python invocation",path_resolution,["tool/python/python.exe","tool/node/node.exe"],["PATH"])
 def python_tmp():
     p=Path(tempfile.gettempdir()).resolve()
     assert p.is_relative_to(ROOT)
@@ -77,7 +87,8 @@ def tmp_contrast():
     for removed,key in [((),"TEMP"),(("TEMP",),"TMP")]:
         got=ok(run(NODE,["-e","console.log(require('node:os').tmpdir())"],extra={k:v for k,v in env.items() if k not in removed},remove=removed)).strip()
         assert Path(got).resolve()==paths[key]
-    return {"python_precedence":observed,"node_precedence":["TEMP","TMP"],"all_files_removed":all(not list(p.iterdir()) for p in paths.values())}
+    assert all(not list(p.iterdir()) for p in paths.values())
+    return {"python_precedence":observed,"node_precedence":["TEMP","TMP"],"all_files_removed":True}
 case("actual TMPDIR/TEMP/TMP independent consumer precedence",tmp_contrast,["tool/python/python.exe","tool/node/node.exe"],["TMPDIR","TEMP","TMP"])
 def home_actual():
     want=Path(os.environ["USERPROFILE"]).resolve();assert want.is_relative_to(ROOT)

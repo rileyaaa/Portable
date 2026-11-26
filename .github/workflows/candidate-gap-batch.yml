@@ -1,0 +1,130 @@
+name: Targeted candidate defect and coverage batch
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths: [.github/workflows/candidate-gap-batch.yml]
+permissions: {}
+concurrency:
+  group: portable-candidate-gap-batch
+  cancel-in-progress: false
+jobs:
+  windows:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1 && github.event.before == 'b72c156f7669fb465a180a9813e7128b7276de63'
+    runs-on: windows-2022
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'Git config failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+          lfs: true
+          persist-credentials: false
+      - name: Build exact intermediate customer ZIP and targeted actual native mode matrix
+        id: probe
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference='Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA) { throw 'Unexpected source' }
+          New-Item -ItemType Directory -Path tmp -Force | Out-Null
+          $report=Join-Path $pwd 'tmp/candidate-gap-batch.json'
+          $index=Join-Path $pwd 'tmp/candidate-gap-coverage.json'
+          [IO.File]::WriteAllText($report,(@{metadata=@{source_commit=$env:GITHUB_SHA;completed=$false};rows=@()} | ConvertTo-Json -Compress),(New-Object Text.UTF8Encoding($false)))
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'Pinned LFS inputs unavailable' }
+          & .\tool\python\python.exe -I -B -c "from pathlib import Path; paths=[Path('tests/candidate_gap_consumer.py'),Path('tests/check_candidate_gap_batch.py')]; paths+=list(Path('home/skills/pdf/scripts').glob('*.py')); paths += [Path('home/skills/docx/scripts/accept_changes.py'),Path('home/skills/xlsx/scripts/recalc.py'),Path('home/skills/pptx/scripts/thumbnail.py')]; [compile(p.read_bytes(),str(p),'exec') for p in paths]"
+          if ($LASTEXITCODE) { throw 'Source syntax failed' }
+          & .\tool\python\python.exe -I -B tests/check_candidate_gap_batch.py $report $index
+          if ($LASTEXITCODE) { throw 'Targeted harness did not complete' }
+      - name: Upload evidence only, not a formal release or final candidate
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-gap-evidence
+          path: |
+            tmp/candidate-gap-batch.json
+            tmp/candidate-gap-coverage.json
+          if-no-files-found: error
+          retention-days: 14
+      - if: always() && steps.probe.outcome != 'success'
+        run: throw 'Targeted harness incomplete; inspect retained evidence'
+  record:
+    needs: [windows]
+    if: always() && github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1 && github.event.before == 'b72c156f7669fb465a180a9813e7128b7276de63'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      BASE: b72c156f7669fb465a180a9813e7128b7276de63
+      WINDOWS: ${{ needs.windows.result }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+          lfs: false
+      - name: Read actual evidence
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: candidate-gap-evidence
+          path: tmp/candidate-gap-evidence
+      - name: Record exact candidate results, including FAIL and untested rows; remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/bin/python3 -I -B - <<'PY'
+          import hashlib,json,os,subprocess,collections
+          from pathlib import Path
+          branch="refs/heads/dev/stable-tool-refresh";start=os.environ["GITHUB_SHA"];frozen=os.environ["FROZEN"];run=os.environ["GITHUB_RUN_ID"]
+          def git(*a):return subprocess.check_output(["git",*a])
+          def rev():return git("rev-parse","HEAD").decode().strip()
+          def ref(n):
+              v,k=git("ls-remote","origin",n).decode().strip().split("\t");assert k==n
+              return v
+          workflow=".github/workflows/candidate-gap-batch.yml"
+          assert rev()==ref(branch)==start and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          assert git("rev-parse","HEAD^").decode().strip()==os.environ["BASE"]
+          assert {n.decode() for n in git("diff","--name-only","-z","HEAD^","HEAD").split(b"\0") if n}=={workflow,"tests/candidate_gap_consumer.py","tests/check_candidate_gap_batch.py"}
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          folder=Path("tmp/candidate-gap-evidence")
+          report=folder/"candidate-gap-batch.json";idx=folder/"candidate-gap-coverage.json"
+          data=json.loads(report.read_bytes()) if report.is_file() else {"metadata":{"source_commit":start,"completed":False},"rows":[]}
+          assert data["metadata"]["source_commit"]==start
+          data["metadata"].update(run_id=run,windows_job=os.environ["WINDOWS"],final_regression=False,whole_package_all_pass_claim=False)
+          original=Path("tests/original_release_45739266926_coverage.json").read_bytes()
+          h=hashlib.sha256(original).hexdigest()
+          if "original_index_sha256" in data["metadata"]:assert data["metadata"]["original_index_sha256"]==h
+          targets=[]
+          if idx.is_file():
+              raw=idx.read_bytes();coverage=json.loads(raw)
+              assert coverage["source_commit"]==start and coverage["run_id"]==run and coverage["original_index_sha256"]==h
+              assert coverage["archive_sha256"]==data["metadata"]["archive_sha256"] and coverage["raw_rows"]==data["rows"]
+              assert not coverage["final_regression"] and sum(x["original_missing_actual"] for x in coverage["environment"])==122
+              name=Path("tests/candidate_gap_coverage_"+run+".json");assert not name.exists();name.write_bytes(raw);targets.append(name)
+              data["metadata"]["coverage_index"]={"path":name.as_posix(),"sha256":hashlib.sha256(raw).hexdigest(),"counts":coverage["counts"]}
+          name=Path("tests/candidate_gap_batch_"+run+".json");assert not name.exists()
+          name.write_text(json.dumps(data,ensure_ascii=True,indent=2)+"\n",encoding="utf-8");targets.append(name)
+          counts=dict(collections.Counter(x["status"] for x in data["rows"]))
+          notes=Path("DEVELOPMENT.md")
+          notes.write_bytes(notes.read_bytes()+("\n\n## Intermediate latest-candidate defect audit\n\nRun "+run+"; "+name.as_posix()+
+            ". Windows harness="+data["metadata"]["windows_job"]+"; exact ZIP="+str(data["metadata"].get("archive_sha256","not reached"))+
+            "; row counts="+json.dumps(counts,sort_keys=True)+"; coverage="+str(data["metadata"].get("coverage_index",{}).get("path","not produced"))+
+            ". Harness completion is not all-row success. Preserve FAIL/limits; do not promote frozen original or older candidate evidence. No formal release, permission change, dependency refresh or final regression. OCR payload retained.\n").encode("utf-8"))
+          git("rm","--",workflow);git("add","--",*[x.as_posix() for x in targets],"DEVELOPMENT.md")
+          assert {n.decode() for n in git("diff","--cached","--name-only","-z").split(b"\0") if n}=={workflow,"DEVELOPMENT.md",*[x.as_posix() for x in targets]}
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Record intermediate candidate gap evidence and clear one-time trigger")
+          final=rev();assert ref(branch)==start
+          subprocess.run(["git","push","origin","HEAD:"+branch],check=True)
+          assert ref(branch)==final and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          print("CANDIDATE_GAP_FINAL="+final,flush=True)
+          print("CANDIDATE_GAP_COUNTS="+json.dumps(counts),flush=True)
+          PY
