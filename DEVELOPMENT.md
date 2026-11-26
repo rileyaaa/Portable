@@ -662,3 +662,8 @@ Source 473e37c125dfeb1ff552739fad09e1ae8e97ff5e; https://github.com/rileyaaa/Por
 ## Frozen MSYS2 OCR graph: native XmlLite and independent provenance
 
 Prior exact archive graph 45749259260, current research source 142b0ba2789dd40aa244c3c46789cb25f22f4118; https://github.com/rileyaaa/Portable/actions/runs/45751623105. Actual result: tests/locked_ocr_xmllite_45751623105.json. Native recognition=True; archive signatures 49/49; signed runtime source groups inspected 32/33. No redistribution clearance or integration. Prior seed/f2py downloadable candidate 15085655070 unchanged; no new ZIP. Original-release coverage index retains only original evidence. Existing ACL/SSH limitations unchanged.
+
+
+## Reduced source-built OCR research and original launcher contracts
+
+Source 59bed840154fc50f35b5d4e5bc286bd4fa2c92c9; https://github.com/rileyaaa/Portable/actions/runs/45753551403. Separate actual evidence tests/minimal_ocr_original_contracts_45753551403.json. Model missing-source signature and byte match=True; reduced Windows technical recognition=False; original-targeted row counts={}. Old 41-PE graph not selected; no redistribution/integration or new customer ZIP. Prior verified candidate 15085655070 unchanged. Earlier original/ACL/SSH/course evidence not rerun or reclassified.
