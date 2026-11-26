@@ -1,8 +1,8 @@
 """Targeted native Windows parser, text and existing CLI checks in moved packages.
 
-Real BAT, Codex, shell, bundled Python and normal frozen executables. Synthetic
-loopback model only; no browser/MCP execution, hostile files, elevated child,
-bootloader manipulation, or changes to the embedded interpreter or sandbox.
+Real BAT, Codex, shell and bundled Python. Synthetic
+loopback model only; no browser/MCP execution, hostile files, or changes to
+the embedded interpreter or sandbox.
 """
 import importlib.util
 import json
@@ -127,7 +127,7 @@ elif SUITE=="markdown-it-py":
     from markdown_it import MarkdownIt
     from rich.console import Console
     from rich.markdown import Markdown
-    markdown="# "+label+"\n\nA **bold** [link](https://example.invalid/) and \`code\`.\n\n- item\n"
+    markdown="# "+label+"\n\nA **bold** [link](https://example.invalid/) and \x60code\x60.\n\n- item\n"
     path=out/"\u6587\u6863.md";path.write_text(markdown,encoding="utf-8")
     renderer=MarkdownIt("commonmark",{"html":False})
     rendered=renderer.render(path.read_text(encoding="utf-8"))
