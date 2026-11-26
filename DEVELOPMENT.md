@@ -677,3 +677,8 @@ Source 3350ce038639131de60424d095498332a7758b5c; https://github.com/rileyaaa/Por
 ## Frozen original ZIP contract index supplement
 
 Original ZIP only: run 45754353202, tests/ocr_native_contract_repair_45754353202.json, original_release_contracts.rows (21 PASS_ACTUAL, 1 PASS_CONFIG_GATE, 1 HARNESS_READY). Added separately keyed row references to tests/original_release_45739266926_coverage.json/.md; 14 formerly untested variables now have narrowly scoped original actual guard/precedence or positive request evidence (122 remain without actual evidence); 3 feature config gates remain unverified as actual consumers. Baseline 576 rows and 33 FAIL unchanged. No candidate OCR rows included; no original payload changed.
+
+
+## Course OCR bounded product entry (development, distribution gate closed)
+
+Added strict PNG preflight before either engine; bounded full decoding with the already bundled Pillow, no other formats, empty output distinct from failure, sanitized native diagnostic codes, fixed chi_sim/config digests, explicit local native payload inventory and executable digest. Windows engine remains first; only absent zh-Hans-CN can select a qualified bundled fallback. Native distribution lock false, customer packager refuses any native OCR payload; no unqualified binary or model committed. Tests and native build/link evidence are separate from original ZIP and browser/Office acceptance. No permission or format expansion.

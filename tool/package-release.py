@@ -257,6 +257,13 @@ def build_release(root: Path, version: str | None = None) -> dict:
     # filtering. Exclusion must not hide linked paths, private state or LFS stubs.
     commit, timestamp, source_names = clean_checkout(root)
     names, excluded = customer_files(source_names)
+    # No unreviewed native OCR bytes may enter any customer ZIP. A later
+    # separate distribution qualification must replace this closed gate.
+    if any(n.startswith('tool/automation/course/ocr-native/') for n in names):
+        raise ValueError('Native OCR redistribution is not qualified.')
+    ocr_lock = 'tool/automation/course/ocr-native-lock.json'
+    if ocr_lock in names and json.loads(package_file(root, ocr_lock).read_bytes()).get('distributionQualified') is not False:
+        raise ValueError('Native OCR distribution lock is not closed.')
     manifest = runtime_identity(root, names)
     browser = browser_identity(root, names)
     # A release tag must describe the actual bundled Codex runtime.

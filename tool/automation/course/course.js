@@ -83,8 +83,8 @@ const tools = {
     course_progress:spec('Read exact displayed total, selected count, pending status and site timer separately.',
         {...questionProps,totalSelector:str,timerSelector:str,pendingSelector:str,pendingText:str,expectedTotal:{type:'integer',minimum:1,maximum:300}},
         [...Object.keys(questionProps),'totalSelector','timerSelector','pendingSelector','pendingText','expectedTotal']),
-    course_ocr_check:spec('Preflight local Windows OCR languages.',{language:{type:'string',pattern:'^[A-Za-z0-9-]{2,35}$'}},['language']),
-    course_ocr:spec('Read one visible course image/canvas with local Windows OCR; no raw image retained.',
+    course_ocr_check:spec('Preflight local Windows OCR and qualified bundled Chinese fallback.',{language:{type:'string',pattern:'^[A-Za-z0-9-]{2,35}$'}},['language']),
+    course_ocr:spec('Read one visible course image/canvas with local PNG OCR; Windows OCR preferred, no raw image retained.',
         {selector:str,pageSelector:str,language:{type:'string',pattern:'^[A-Za-z0-9-]{2,35}$'}},['selector','pageSelector','language']),
     course_save_notes:spec('Save reviewed course Markdown under this account notes only; no raw dumps or overwrite.',
         {slug:{type:'string',pattern:'^[a-z0-9][a-z0-9_-]{0,47}$'},markdown:{type:'string',minLength:1,maxLength:65536},excludedText:{type:'array',minItems:0,maxItems:40,items:{type:'string',minLength:1,maxLength:500}},confirmed:boolean},
@@ -260,7 +260,7 @@ async function selectQuestion(page,args,ensurePage) {
     }
     return serialQuestion(target);
 }
-function ocr(state,language,image) {
+function windowsOcr(state,language,image) {
     const script=checkedPath(ROOT,path.join(__dirname,'ocr.ps1'));
     guard('file',script);
     const ps=path.join(process.env.SystemRoot,'System32/WindowsPowerShell/v1.0/powershell.exe');
@@ -271,6 +271,7 @@ function ocr(state,language,image) {
     assert(r.status===0&&!r.error,'Local Windows OCR failed; check OS API and language support.');
     try{return JSON.parse(r.stdout.replace(/^\uFEFF/,''));}catch{fail('Unexpected local OCR output.');}
 }
+const ocr = require('./ocr-local').createOcr(guard,python,windowsOcr);
 function operations(context,state,scope,allowSelection,auth) {
     let bound=null, urlHash=null, bindingId=null, invalid=false, navigationListener=null;
     const isBound=()=>Boolean(bound&&!bound.isClosed()&&!invalid&&matching(bound.url(),scope)&&hash(bound.url())===urlHash);

@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "engine": "tesseract-5.5.4",
+  "modelLanguage": "chi_sim",
+  "distributionQualified": false,
+  "exe": null,
+  "evidence": "tests/ocr_native_contract_repair_45754353202.json (technical only, not distribution approval)"
+}
