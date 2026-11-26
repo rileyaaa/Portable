@@ -657,3 +657,8 @@ Prior 45744922536 evidence preserved; probe source 4426479e1c4a5bf49c4e99c51a4d3
 ## Fixed native system seed and scoped f2py UTF-8; independent OCR experiment
 
 Source 473e37c125dfeb1ff552739fad09e1ae8e97ff5e; https://github.com/rileyaaa/Portable/actions/runs/45749259260. Raw result: tests/fixed_seed_f2py_ocr_45749259260.json. Two prior exact system manifests agree; sentinel-only prior fixture error corrected. Actual candidate targeted native qualification=True; verified downloadable=True; OCR feasibility technical recognition=False. OCR is not integrated or qualified for redistribution. Other known limits retained. No earlier broad suite rerun, permission change or official Release.
+
+
+## Frozen MSYS2 OCR graph: native XmlLite and independent provenance
+
+Prior exact archive graph 45749259260, current research source 142b0ba2789dd40aa244c3c46789cb25f22f4118; https://github.com/rileyaaa/Portable/actions/runs/45751623105. Actual result: tests/locked_ocr_xmllite_45751623105.json. Native recognition=True; archive signatures 49/49; signed runtime source groups inspected 32/33. No redistribution clearance or integration. Prior seed/f2py downloadable candidate 15085655070 unchanged; no new ZIP. Original-release coverage index retains only original evidence. Existing ACL/SSH limitations unchanged.
