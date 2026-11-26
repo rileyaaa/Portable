@@ -210,6 +210,34 @@ def portable_temporary_directory(prefix: str = "office-", *, ignore_cleanup_erro
             shutil.rmtree(child, ignore_errors=ignore_cleanup_errors)
 
 
+def _trusted_windows_environment(env: dict[str, str]) -> Path | None:
+    # System path variables are caller-controlled, not an OS trust source.
+    for name in tuple(env):
+        if name.upper() in {"SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "PATHEXT"}:
+            env.pop(name)
+    if os.name != "nt":
+        return None
+
+    import ctypes
+    from ctypes import wintypes
+
+    query = ctypes.WinDLL("kernel32", use_last_error=True).GetSystemWindowsDirectoryW
+    query.argtypes = [wintypes.LPWSTR, wintypes.UINT]
+    query.restype = wintypes.UINT
+    buffer = ctypes.create_unicode_buffer(32768)
+    size = query(buffer, len(buffer))
+    if not 0 < size < len(buffer):
+        raise RuntimeError("Cannot identify Windows system directory")
+    windows = Path(buffer.value)
+    cmd = windows / "System32/cmd.exe"
+    if (not windows.is_absolute() or not re.fullmatch(r"[A-Za-z]:", windows.drive)
+            or ":" in str(windows)[2:] or not cmd.is_file()):
+        raise RuntimeError("Expected a real local Windows system directory")
+    env.update(SystemRoot=str(windows), WINDIR=str(windows),
+               SystemDrive=windows.drive, ComSpec=str(cmd), PATHEXT=".COM;.EXE;.BAT;.CMD")
+    return windows
+
+
 def portable_subprocess_env() -> dict[str, str]:
     """Build a package-local environment for non-LibreOffice helper subprocesses."""
     root = portable_root()
@@ -266,9 +294,8 @@ def portable_subprocess_env() -> dict[str, str]:
         root / "tool" / "office" / "libreoffice" / "program", root / "tool" / "pdf" / "poppler" / "Library" / "bin",
         root / "tool" / "pdf" / "poppler" / "bin", root / "tool" / "bin", root / "tool" / "python",
     ]
-    system_root = os.environ.get("SystemRoot") or os.environ.get("SYSTEMROOT")
-    if system_root:
-        win = Path(system_root)
+    win = _trusted_windows_environment(env)
+    if win is not None:
         path_parts.extend([win / "System32", win, win / "System32" / "Wbem"])
     env["PATH"] = os.pathsep.join(str(part) for part in path_parts)
     env["GIT_CONFIG_NOSYSTEM"] = "1"

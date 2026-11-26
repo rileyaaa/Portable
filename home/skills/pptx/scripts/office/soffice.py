@@ -172,14 +172,14 @@ def get_soffice_env() -> dict:
     env["TMP"] = str(portable_tmp)
     env["TMPDIR"] = str(portable_tmp)
     # Do not let a direct invocation rediscover arbitrary host executables.
-    system_root = os.environ.get("SystemRoot") or os.environ.get("SYSTEMROOT")
+    from .helpers import _trusted_windows_environment
+    win = _trusted_windows_environment(env)
     path_parts = [
         root / "tool" / "office" / "libreoffice" / "program",
         root / "tool" / "bin",
         root / "tool" / "python",
     ]
-    if system_root:
-        win = Path(system_root)
+    if win is not None:
         path_parts.extend([win / "System32", win, win / "System32" / "Wbem"])
     env["PATH"] = os.pathsep.join(str(part) for part in path_parts)
     env["GIT_CONFIG_NOSYSTEM"] = "1"
