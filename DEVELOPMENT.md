@@ -672,3 +672,8 @@ Source 59bed840154fc50f35b5d4e5bc286bd4fa2c92c9; https://github.com/rileyaaa/Por
 ## Corrected reduced OCR native build and frozen original launcher contracts
 
 Source 3350ce038639131de60424d095498332a7758b5c; https://github.com/rileyaaa/Portable/actions/runs/45754353202. Independent result tests/ocr_native_contract_repair_45754353202.json. Prior model exact source/signature and old 43-member notice mapping retained. Leptonica exact source license=True; reduced native technical recognition=True; original-targeted row counts={"HARNESS_READY": 1, "PASS_ACTUAL": 21, "PASS_CONFIG_GATE": 1}. No redistribution clearance or integration, no new ZIP; prior candidate 15085655070 unchanged. No old matrix or unrelated suite rerun.
+
+
+## Frozen original ZIP contract index supplement
+
+Original ZIP only: run 45754353202, tests/ocr_native_contract_repair_45754353202.json, original_release_contracts.rows (21 PASS_ACTUAL, 1 PASS_CONFIG_GATE, 1 HARNESS_READY). Added separately keyed row references to tests/original_release_45739266926_coverage.json/.md; 14 formerly untested variables now have narrowly scoped original actual guard/precedence or positive request evidence (122 remain without actual evidence); 3 feature config gates remain unverified as actual consumers. Baseline 576 rows and 33 FAIL unchanged. No candidate OCR rows included; no original payload changed.

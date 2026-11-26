@@ -7,7 +7,7 @@
 | 清单 | 已验范围 | 已验范围+限制 | 限制/失败/条件不具备 | 未验 | 合计 |
 |---|---:|---:|---:|---:|---:|
 | entries | 36 | 4 | 38 | 314 | 392 |
-| env | 28 | 7 | 0 | 136 | 171 |
+| env | 42 | 7 | 0 | 122 | 171 |
 | python | 40 | 3 | 1 | 5 | 49 |
 | npm | 0 | 0 | 0 | 149 | 149 |
 | mcp | 7 | 0 | 0 | 13 | 20 |
@@ -33,10 +33,8 @@
 - `APPDATA`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；原 rows 11:PROPAGATION_ONLY, 190:PROPAGATION_ONLY, 371:PROPAGATION_ONLY
 - `APPIUM_HOME`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；原 rows 12:PROPAGATION_ONLY, 191:PROPAGATION_ONLY, 372:PROPAGATION_ONLY
 - `CD`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
-- `CODEX_ACCESS_TOKEN`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_ACCOUNT_JSON_AUTH`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_ALLOW_HOST_SYSTEM_CONFIG`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
-- `CODEX_API_KEY`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_BROWSER_LOGIN_FLOW`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_DISABLE_APPS`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_DISABLE_WEBSOCKET`：synthetic HTTP Responses succeeded; no independent websocket toggle/consumer comparison；原 rows 177:PASS_ACTUAL, 359:PASS_ACTUAL, 537:PASS_ACTUAL
@@ -54,28 +52,23 @@
 - `CODEX_LOGIN_JSON_PROXY_MODE`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_LOGIN_JSON_PROXY_MODE_OVERRIDE`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_LOGIN_JSON_THROTTLE`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
-- `CODEX_MODEL_CATALOG_JSON`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_MODEL_CONTEXT_WINDOW`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
-- `CODEX_MODEL_INSTRUCTIONS_FILE`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_MODEL_MODALITIES`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_OSS_BASE_URL`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_OSS_PORT`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_PORTABLE_ALLOW_CUSTOM_MANUAL_URL`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
-- `CODEX_PORTABLE_ALLOW_HOST_PATH`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_PORTABLE_INTERNAL_LOGIN_MUTEX_TOKEN`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_PORTABLE_MAINTENANCE_LAUNCHER`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_PROVIDER_ID`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_PROVIDER_MODE`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_PROVIDER_NAME`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_PROXY_BRIDGE_TOKEN`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
-- `CODEX_QUERY_PARAMS_TOML`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_REASONING_EFFORT`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_REPARSE_ATTR`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_REPARSE_CURSOR`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_REPARSE_LEAF`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_REPARSE_PARENT`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_REPARSE_TARGET`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
-- `CODEX_SANDBOX_NETWORK_ACCESS`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；原 rows 20:PROPAGATION_ONLY, 161:OBSERVED, 199:PROPAGATION_ONLY, 380:PROPAGATION_ONLY, 521:OBSERVED
 - `CODEX_STARTUP_INTERACTIVE`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_STATUS_LINE_DIR_ITEM`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `CODEX_TUI_FULLSCREEN_TRANSCRIPT`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
@@ -86,8 +79,6 @@
 - `ERRORLEVEL`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `FERNFLOWER_JAR_PATH`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `FRIDA_CACHE_DIR`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；原 rows 22:PROPAGATION_ONLY, 201:PROPAGATION_ONLY, 382:PROPAGATION_ONLY
-- `GH_TOKEN`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
-- `GITHUB_TOKEN`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `GIT_CONFIG_NOSYSTEM`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；原 rows 23:PROPAGATION_ONLY, 202:PROPAGATION_ONLY, 383:PROPAGATION_ONLY
 - `GOCACHE`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `GOMODCACHE`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
@@ -110,14 +101,9 @@
 - `MY_X_TITLE`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `NAME`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `NODE_COMPILE_CACHE`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
-- `NODE_EXTRA_CA_CERTS`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
-- `NODE_OPTIONS`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
-- `NODE_PATH`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `NODE_REDIRECT_WARNINGS`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `NODE_REPL_HISTORY`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；原 rows 31:PROPAGATION_ONLY, 212:PROPAGATION_ONLY, 391:PROPAGATION_ONLY
 - `NODE_V8_COVERAGE`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
-- `OPENAI_API_KEY`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
-- `OPENAI_BASE_URL`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `OPENSSL_CONF`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `PATHEXT`：No demonstrated individual actual consumer; consult raw mode/row evidence and frozen source references.；无直接行
 - `PIP_CONFIG_FILE`：asserted value nul only; actual pip operation did not independently prove config file suppression；原 rows 37:PROPAGATION_ONLY, 62:PASS_ACTUAL, 63:PASS_ACTUAL, 64:PASS_ACTUAL, 219:PROPAGATION_ONLY, 244:PASS_ACTUAL, 245:PASS_ACTUAL, 246:PASS_ACTUAL, 397:PROPAGATION_ONLY, 422:PASS_ACTUAL, 423:PASS_ACTUAL, 424:PASS_ACTUAL
@@ -207,3 +193,27 @@
 ## 复核方式
 
 在冻结 JSON 的 rows[n-1] 查看完整 detail/covers/env/packages；以原审计脚本同名函数核对真实断言，再决定是否需要定向原包验证。当前仅整理，不重跑原包或把后续 dev 移植结果写入本表。
+
+
+## 2026-11-26 独立原包补证：45754353202
+
+[AC 45754353202](https://github.com/rileyaaa/Portable/actions/runs/45754353202) 实际原始 ZIP 哈希及 9076 成员重新核对，中文空格搬迁；仅原包 `original_release_contracts.rows`，不计同一 JSON 中 dev OCR。原 576 行及 33 FAIL 不改；补充 23 行（21 PASS_ACTUAL、1 PASS_CONFIG_GATE、1 HARNESS_READY），不能把两次运行简单相加为独立功能数。以下 14 个原未验变量增加窄范围实际证据，负向拒绝或组合优先级不等于变量可启用。三个 config gate 仍不计实际 consumer。
+
+| 变量 | 新证据行（本次 JSON） | 具体范围 |
+| --- | --- | --- |
+| `CODEX_ACCESS_TOKEN` | 4, 11, 14 | 实际拒绝非法本机覆盖及宿主继承；组合请求仍使用包内合成授权；不是该变量可用。 |
+| `CODEX_API_KEY` | 3, 11, 13 | 实际拒绝非法本机覆盖及宿主继承；组合请求仍使用包内合成授权；不是该变量可用。 |
+| `CODEX_MODEL_CATALOG_JSON` | 9 | 实际拒绝包外输出路径，未创建输出；不证明任意模型目录内容可用。 |
+| `CODEX_MODEL_INSTRUCTIONS_FILE` | 8, 12 | 实际拒绝包外路径且原文件未变；包内指令 marker 出现在实际 Responses 请求。 |
+| `CODEX_PORTABLE_ALLOW_HOST_PATH` | 5 | 实际拒绝本机覆盖；不证明所有宿主 PATH 或写入边界。 |
+| `CODEX_QUERY_PARAMS_TOML` | 10 | 实际 loopback Responses 请求 2/2 匹配配置 query。 |
+| `CODEX_SANDBOX_NETWORK_ACCESS` | 6 | 实际拒绝 env.local.ps1 覆盖策略；没有独立外网隔离或网络开启试验。 |
+| `GH_TOKEN` | 15 | 实际 native child 未继承合成宿主值；不证明 GitHub CLI 登录或连接器。 |
+| `GITHUB_TOKEN` | 16 | 实际 native child 未继承合成宿主值；不证明 GitHub CLI 登录或连接器。 |
+| `NODE_EXTRA_CA_CERTS` | 19 | 实际 native child 未继承合成宿主值；没有独立 TLS 信任链比较。 |
+| `NODE_OPTIONS` | 7, 17, 20 | 实际拒绝本机覆盖及宿主继承，真包内 Node 未执行宿主合成 preload。 |
+| `NODE_PATH` | 18 | 实际 native child 未继承合成宿主值；没有独立模块加载路径比较。 |
+| `OPENAI_API_KEY` | 11 | 实际 loopback Responses 请求 2/2 匹配包内合成 Authorization；不涉及真实账号或 API。 |
+| `OPENAI_BASE_URL` | 11 | 宿主假地址与包内配置冲突的组合试验，实际请求抵达指定 loopback；不证明此变量可单独配置。 |
+
+`CODEX_DISABLE_APPS`、`CODEX_ENABLE_PLUGINS`、`CODEX_ENABLE_PLUGIN_SHARING`：新 row 21 PASS_CONFIG_GATE；实际 child 配置为 false，未使用真实扩展、连接器或授权。原 `CODEX_DISABLE_WEBSOCKET`、ACL/SSH、Office 等限制保持原判。机器索引 `supplemental_raw_rows`、`supplemental_evidence` 使用独立 run_id / row_path；旧 rows 编号不变。原始 JSON 不改。
