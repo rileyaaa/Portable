@@ -1,0 +1,3259 @@
+{
+  "metadata": {
+    "frozen_source": "4fb0b50228057cd0be41fbb191e15e065e64e368",
+    "original_run": "45739266926",
+    "original_zip_sha256": "a406e4487bde19057491b6515f7abcab74faf2e3437366b0b23f9940af5760dc",
+    "source_scope": "Frozen env.ps1 protectedExact/protectedPatterns/supportedCodex and run-codex.ps1 host input cleanup; static categories are not runtime evidence.",
+    "classification_counts": {
+      "保护/包内工具路径或策略": 56,
+      "内部/派生/批处理临时值": 30,
+      "保护/宿主继承清理": 8,
+      "支持但依赖实际条件/模式": 21,
+      "对外支持的配置": 7,
+      "宿主继承清理/条件敏感": 7,
+      "未列入支持/条件引用": 2,
+      "工具条件/历史引用/未证明独立契约": 4,
+      "对外认证设置（敏感）": 1
+    },
+    "planned_native_scope": "One actual original ZIP relocation and one normal synthetic local provider session; targeted rejection cases in same disposable package. No real credentials, real devices, external model or OS policy modification."
+  },
+  "variables": [
+    {
+      "name": "ADB_VENDOR_KEYS",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 3,
+          "mode": "normal",
+          "item": "env:ADB_VENDOR_KEYS",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 181,
+          "mode": "yolo",
+          "item": "env:ADB_VENDOR_KEYS",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 363,
+          "mode": "maintenance",
+          "item": "env:ADB_VENDOR_KEYS",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "AI_MODELS_B64",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/AI_API_Get_Models_Cherry_Rules.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "AI_MODELS_OUTDIR",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/AI_API_Get_Models_Cherry_Rules.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "AI_MODELS_PS1",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/AI_API_Get_Models_Cherry_Rules.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "AI_MODELS_RC",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/AI_API_Get_Models_Cherry_Rules.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "ALLUSERSPROFILE",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 4,
+          "mode": "normal",
+          "item": "env:ALLUSERSPROFILE",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 182,
+          "mode": "yolo",
+          "item": "env:ALLUSERSPROFILE",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 364,
+          "mode": "maintenance",
+          "item": "env:ALLUSERSPROFILE",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "检查隔离.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "ANDROID_HOME",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/check-deps.ps1",
+        "run-codex.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "ANDROID_SDK_HOME",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 5,
+          "mode": "normal",
+          "item": "env:ANDROID_SDK_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 184,
+          "mode": "yolo",
+          "item": "env:ANDROID_SDK_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 365,
+          "mode": "maintenance",
+          "item": "env:ANDROID_SDK_HOME",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "run-codex.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "ANDROID_SDK_ROOT",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "run-codex.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "ANDROID_USER_HOME",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 6,
+          "mode": "normal",
+          "item": "env:ANDROID_USER_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 185,
+          "mode": "yolo",
+          "item": "env:ANDROID_USER_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 366,
+          "mode": "maintenance",
+          "item": "env:ANDROID_USER_HOME",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "run-codex.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "APKTOOL_FRAMEWORK_DIR",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 7,
+          "mode": "normal",
+          "item": "env:APKTOOL_FRAMEWORK_DIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 186,
+          "mode": "yolo",
+          "item": "env:APKTOOL_FRAMEWORK_DIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 367,
+          "mode": "maintenance",
+          "item": "env:APKTOOL_FRAMEWORK_DIR",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/check-deps.ps1",
+        "run-codex.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "APK_LAB_CACHE_DIR",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 8,
+          "mode": "normal",
+          "item": "env:APK_LAB_CACHE_DIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 187,
+          "mode": "yolo",
+          "item": "env:APK_LAB_CACHE_DIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 368,
+          "mode": "maintenance",
+          "item": "env:APK_LAB_CACHE_DIR",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "run-codex.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "APK_LAB_JOBS_DIR",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 9,
+          "mode": "normal",
+          "item": "env:APK_LAB_JOBS_DIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 188,
+          "mode": "yolo",
+          "item": "env:APK_LAB_JOBS_DIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 369,
+          "mode": "maintenance",
+          "item": "env:APK_LAB_JOBS_DIR",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/plugins/android-apk-lab/scripts/apk_lab_mcp.py",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "run-codex.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "APK_LAB_TMP_DIR",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 10,
+          "mode": "normal",
+          "item": "env:APK_LAB_TMP_DIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 189,
+          "mode": "yolo",
+          "item": "env:APK_LAB_TMP_DIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 370,
+          "mode": "maintenance",
+          "item": "env:APK_LAB_TMP_DIR",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "run-codex.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "APPDATA",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 11,
+          "mode": "normal",
+          "item": "env:APPDATA",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 190,
+          "mode": "yolo",
+          "item": "env:APPDATA",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 371,
+          "mode": "maintenance",
+          "item": "env:APPDATA",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/decompile.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/node/nodevars.bat",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "检查隔离.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "APPIUM_HOME",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 12,
+          "mode": "normal",
+          "item": "env:APPIUM_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 191,
+          "mode": "yolo",
+          "item": "env:APPIUM_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 372,
+          "mode": "maintenance",
+          "item": "env:APPIUM_HOME",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/check-deps.ps1",
+        "run-codex.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CD",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/node/nodevars.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_ACCESS_TOKEN",
+      "previous_original_classification": "未验",
+      "category": "保护/宿主继承清理",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/AI account format conversion/app/converter.js",
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": "host fake conflict and protected local rejection"
+    },
+    {
+      "name": "CODEX_ACCOUNT_JSON_AUTH",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_ALLOW_HOST_SYSTEM_CONFIG",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_API_KEY",
+      "previous_original_classification": "未验",
+      "category": "保护/宿主继承清理",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/decompile.ps1",
+        "home/skills/docx/scripts/office/helpers/__init__.py",
+        "home/skills/docx/scripts/office/soffice.py",
+        "home/skills/pptx/scripts/office/helpers/__init__.py",
+        "home/skills/pptx/scripts/office/soffice.py",
+        "home/skills/xlsx/scripts/office/helpers/__init__.py",
+        "home/skills/xlsx/scripts/office/soffice.py",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1"
+      ],
+      "selected_targeted_assertion": "host fake conflict and protected local rejection"
+    },
+    {
+      "name": "CODEX_BROWSER_LOGIN_FLOW",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_DISABLE_APPS",
+      "previous_original_classification": "未验",
+      "category": "对外支持的配置",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": "generated feature gate only; real apps and connector authorization not tested"
+    },
+    {
+      "name": "CODEX_DISABLE_WEBSOCKET",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [
+        {
+          "row": 177,
+          "mode": "normal",
+          "item": "actual BAT/Codex/Host synthetic Responses and extension-off",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 359,
+          "mode": "yolo",
+          "item": "actual BAT/Codex/Host synthetic Responses and extension-off",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 537,
+          "mode": "maintenance",
+          "item": "actual BAT/Codex/Host synthetic Responses and extension-off",
+          "status": "PASS_ACTUAL"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_ENABLE_PLUGINS",
+      "previous_original_classification": "未验",
+      "category": "对外支持的配置",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 13,
+          "mode": "normal",
+          "item": "env:CODEX_ENABLE_PLUGINS",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 192,
+          "mode": "yolo",
+          "item": "env:CODEX_ENABLE_PLUGINS",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 373,
+          "mode": "maintenance",
+          "item": "env:CODEX_ENABLE_PLUGINS",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": "configured true without explicit task opt-in must remain off"
+    },
+    {
+      "name": "CODEX_ENABLE_PLUGIN_SHARING",
+      "previous_original_classification": "未验",
+      "category": "对外支持的配置",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 14,
+          "mode": "normal",
+          "item": "env:CODEX_ENABLE_PLUGIN_SHARING",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 193,
+          "mode": "yolo",
+          "item": "env:CODEX_ENABLE_PLUGIN_SHARING",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 374,
+          "mode": "maintenance",
+          "item": "env:CODEX_ENABLE_PLUGIN_SHARING",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": "configured true without plugin enablement must remain off"
+    },
+    {
+      "name": "CODEX_EXIT_CODE",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_FAST_MODE",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_LOGIN_JSON_ALLOW_DIRECT",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "env.ps1",
+        "login-json.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_LOGIN_JSON_ALLOW_DIRECT_PARALLEL",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "env.ps1",
+        "login-json.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_LOGIN_JSON_CONNECT_TIMEOUT_SEC",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "env.ps1",
+        "login-json.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_LOGIN_JSON_HTTP_BACKEND",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "env.ps1",
+        "login-json.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_LOGIN_JSON_JOB_TIMEOUT_SEC",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "env.ps1",
+        "login-json.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_LOGIN_JSON_MAX_CREDENTIALS",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "env.ps1",
+        "login-json.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_LOGIN_JSON_MAX_FILES",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "env.ps1",
+        "login-json.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_LOGIN_JSON_PROXY_MODE",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "login-json.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_LOGIN_JSON_PROXY_MODE_OVERRIDE",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "login-json.ps1",
+        "检查login_json.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_LOGIN_JSON_THROTTLE",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "env.ps1",
+        "login-json.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_MODEL_CATALOG_JSON",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": "actual out-of-package rejection, not all catalog behavior"
+    },
+    {
+      "name": "CODEX_MODEL_CONTEXT_WINDOW",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_MODEL_INSTRUCTIONS_FILE",
+      "previous_original_classification": "未验",
+      "category": "对外支持的配置",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1",
+        "tool/codex-instruct.py"
+      ],
+      "selected_targeted_assertion": "actual in-package marker and out-of-package rejection"
+    },
+    {
+      "name": "CODEX_MODEL_MODALITIES",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_OSS_BASE_URL",
+      "previous_original_classification": "未验",
+      "category": "宿主继承清理/条件敏感",
+      "scope": "冻结启动器清理宿主输入；不等于所有工具直接运行时清理。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "login-json.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_OSS_PORT",
+      "previous_original_classification": "未验",
+      "category": "宿主继承清理/条件敏感",
+      "scope": "冻结启动器清理宿主输入；不等于所有工具直接运行时清理。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "login-json.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_PORTABLE_ALLOW_CUSTOM_MANUAL_URL",
+      "previous_original_classification": "未验",
+      "category": "未列入支持/条件引用",
+      "scope": "不是 env.local 的通用开放契约；默认拒绝未经审核的 CODEX_*；实际具体消费者未验。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "login-json.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_PORTABLE_ALLOW_HOST_PATH",
+      "previous_original_classification": "未验",
+      "category": "未列入支持/条件引用",
+      "scope": "不是 env.local 的通用开放契约；默认拒绝未经审核的 CODEX_*；实际具体消费者未验。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/check-deps.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/decompile.ps1",
+        "login-json.ps1"
+      ],
+      "selected_targeted_assertion": "unapproved local rejection"
+    },
+    {
+      "name": "CODEX_PORTABLE_INTERNAL_LOGIN_MUTEX_TOKEN",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "login-json.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_PORTABLE_MAINTENANCE_LAUNCHER",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "run-codex.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_PROVIDER_ID",
+      "previous_original_classification": "未验",
+      "category": "对外支持的配置",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_PROVIDER_MODE",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_PROVIDER_NAME",
+      "previous_original_classification": "未验",
+      "category": "对外支持的配置",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_PROXY_BRIDGE_TOKEN",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_QUERY_PARAMS_TOML",
+      "previous_original_classification": "未验",
+      "category": "对外支持的配置",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": "actual loopback query parameter"
+    },
+    {
+      "name": "CODEX_REASONING_EFFORT",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_REPARSE_ATTR",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_REPARSE_CURSOR",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_REPARSE_LEAF",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_REPARSE_PARENT",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_REPARSE_TARGET",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_SANDBOX_NETWORK_ACCESS",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 20,
+          "mode": "normal",
+          "item": "env:CODEX_SANDBOX_NETWORK_ACCESS",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 161,
+          "mode": "normal",
+          "item": "command network loopback",
+          "status": "OBSERVED"
+        },
+        {
+          "row": 199,
+          "mode": "yolo",
+          "item": "env:CODEX_SANDBOX_NETWORK_ACCESS",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 380,
+          "mode": "maintenance",
+          "item": "env:CODEX_SANDBOX_NETWORK_ACCESS",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 521,
+          "mode": "maintenance",
+          "item": "command network loopback",
+          "status": "OBSERVED"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1",
+        "tool/automation/portable-automation.ps1"
+      ],
+      "selected_targeted_assertion": "protected local rejection only; no external network test"
+    },
+    {
+      "name": "CODEX_STARTUP_INTERACTIVE",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_STATUS_LINE_DIR_ITEM",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_TUI_FULLSCREEN_TRANSCRIPT",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "CODEX_WIRE_API",
+      "previous_original_classification": "未验",
+      "category": "支持但依赖实际条件/模式",
+      "scope": "冻结 env.ps1 显式 supportedCodex；仅源码分类，不声称已生效。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "COMSPEC",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "D",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "home/skills/.system/plugin-creator/scripts/update_plugin_cachebuster.py"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "DT",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "home/skills/docx/scripts/comment.py"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "ERRORLEVEL",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/AI_API_Get_Models_Cherry_Rules.bat",
+        "tool/bin/f2py.cmd",
+        "tool/bin/httpx.cmd",
+        "tool/bin/idna.cmd",
+        "tool/bin/markdown-it.cmd",
+        "tool/bin/normalizer.cmd",
+        "tool/bin/numpy-config.cmd",
+        "tool/bin/pip.cmd",
+        "tool/bin/pip3.14.cmd",
+        "tool/bin/pip3.cmd",
+        "tool/bin/pygmentize.cmd",
+        "tool/bin/vba_extract.cmd",
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd",
+        "tool/refresh-python-cli-shims.py",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "FERNFLOWER_JAR_PATH",
+      "previous_original_classification": "未验",
+      "category": "工具条件/历史引用/未证明独立契约",
+      "scope": "保留源码引用，未证消费者，不声称支持任意值。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/decompile.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "FRIDA_CACHE_DIR",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 22,
+          "mode": "normal",
+          "item": "env:FRIDA_CACHE_DIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 201,
+          "mode": "yolo",
+          "item": "env:FRIDA_CACHE_DIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 382,
+          "mode": "maintenance",
+          "item": "env:FRIDA_CACHE_DIR",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/check-deps.ps1",
+        "run-codex.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "GH_TOKEN",
+      "previous_original_classification": "未验",
+      "category": "宿主继承清理/条件敏感",
+      "scope": "冻结启动器清理宿主输入；不等于所有工具直接运行时清理。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "home/skills/.system/skill-installer/scripts/github_utils.py"
+      ],
+      "selected_targeted_assertion": "fake host token absent from actual child"
+    },
+    {
+      "name": "GITHUB_TOKEN",
+      "previous_original_classification": "未验",
+      "category": "宿主继承清理/条件敏感",
+      "scope": "冻结启动器清理宿主输入；不等于所有工具直接运行时清理。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "home/skills/.system/skill-installer/scripts/github_utils.py"
+      ],
+      "selected_targeted_assertion": "fake host token absent from actual child"
+    },
+    {
+      "name": "GIT_CONFIG_NOSYSTEM",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 23,
+          "mode": "normal",
+          "item": "env:GIT_CONFIG_NOSYSTEM",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 202,
+          "mode": "yolo",
+          "item": "env:GIT_CONFIG_NOSYSTEM",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 383,
+          "mode": "maintenance",
+          "item": "env:GIT_CONFIG_NOSYSTEM",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/decompile.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "GOCACHE",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "GOMODCACHE",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "GOPATH",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "GOROOT",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "GOTOOLCHAIN",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "GRADLE_USER_HOME",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 24,
+          "mode": "normal",
+          "item": "env:GRADLE_USER_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 203,
+          "mode": "yolo",
+          "item": "env:GRADLE_USER_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 384,
+          "mode": "maintenance",
+          "item": "env:GRADLE_USER_HOME",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "run-codex.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "HOME",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 25,
+          "mode": "normal",
+          "item": "env:HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 55,
+          "mode": "normal",
+          "item": "effective Python and Node paths",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 204,
+          "mode": "yolo",
+          "item": "env:HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 237,
+          "mode": "yolo",
+          "item": "effective Python and Node paths",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 385,
+          "mode": "maintenance",
+          "item": "env:HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 415,
+          "mode": "maintenance",
+          "item": "effective Python and Node paths",
+          "status": "PASS_ACTUAL"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/decompile.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "检查隔离.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "HOMEDRIVE",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 26,
+          "mode": "normal",
+          "item": "env:HOMEDRIVE",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 205,
+          "mode": "yolo",
+          "item": "env:HOMEDRIVE",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 386,
+          "mode": "maintenance",
+          "item": "env:HOMEDRIVE",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/node/nodevars.bat",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "HOMEPATH",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 27,
+          "mode": "normal",
+          "item": "env:HOMEPATH",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 206,
+          "mode": "yolo",
+          "item": "env:HOMEPATH",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 387,
+          "mode": "maintenance",
+          "item": "env:HOMEPATH",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/node/nodevars.bat",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "HTTPS_PROXY",
+      "previous_original_classification": "未验",
+      "category": "保护/宿主继承清理",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 207,
+          "mode": "yolo",
+          "item": "env:HTTPS_PROXY",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/skills/.system/openai-docs/scripts/fetch-codex-manual.mjs",
+        "login-json.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "JAVA_HOME",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/check-deps.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/decompile.ps1",
+        "run-codex.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "LATEST_MODEL_BASE_URL",
+      "previous_original_classification": "未验",
+      "category": "宿主继承清理/条件敏感",
+      "scope": "冻结启动器清理宿主输入；不等于所有工具直接运行时清理。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "home/skills/.system/openai-docs/scripts/resolve-latest-model-info.cjs"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "LATEST_MODEL_URL",
+      "previous_original_classification": "未验",
+      "category": "宿主继承清理/条件敏感",
+      "scope": "冻结启动器清理宿主输入；不等于所有工具直接运行时清理。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "home/skills/.system/openai-docs/scripts/resolve-latest-model-info.cjs"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "LOCALAPPDATA",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 28,
+          "mode": "normal",
+          "item": "env:LOCALAPPDATA",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 209,
+          "mode": "yolo",
+          "item": "env:LOCALAPPDATA",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 388,
+          "mode": "maintenance",
+          "item": "env:LOCALAPPDATA",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/decompile.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "检查隔离.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "LOGIN_JSON_PROXY_CHOICE",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "检查login_json.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "M",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "home/skills/.system/plugin-creator/scripts/update_plugin_cachebuster.py"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "MAVEN_OPTS",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 29,
+          "mode": "normal",
+          "item": "env:MAVEN_OPTS",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 210,
+          "mode": "yolo",
+          "item": "env:MAVEN_OPTS",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 389,
+          "mode": "maintenance",
+          "item": "env:MAVEN_OPTS",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "run-codex.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "MITMPROXY_HOME",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 30,
+          "mode": "normal",
+          "item": "env:MITMPROXY_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 211,
+          "mode": "yolo",
+          "item": "env:MITMPROXY_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 390,
+          "mode": "maintenance",
+          "item": "env:MITMPROXY_HOME",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/check-deps.ps1",
+        "run-codex.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "MY_X_TITLE",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "env.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "NAME",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "env.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "NODE_COMPILE_CACHE",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "NODE_EXTRA_CA_CERTS",
+      "previous_original_classification": "未验",
+      "category": "保护/宿主继承清理",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd"
+      ],
+      "selected_targeted_assertion": "host fake path stripped in actual child"
+    },
+    {
+      "name": "NODE_OPTIONS",
+      "previous_original_classification": "未验",
+      "category": "保护/宿主继承清理",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd"
+      ],
+      "selected_targeted_assertion": "fake host preload not executed, protected local rejection"
+    },
+    {
+      "name": "NODE_PATH",
+      "previous_original_classification": "未验",
+      "category": "保护/宿主继承清理",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd"
+      ],
+      "selected_targeted_assertion": "host fake path stripped in actual child"
+    },
+    {
+      "name": "NODE_REDIRECT_WARNINGS",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "NODE_REPL_HISTORY",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 31,
+          "mode": "normal",
+          "item": "env:NODE_REPL_HISTORY",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 212,
+          "mode": "yolo",
+          "item": "env:NODE_REPL_HISTORY",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 391,
+          "mode": "maintenance",
+          "item": "env:NODE_REPL_HISTORY",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "NODE_V8_COVERAGE",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "OPENAI_API_KEY",
+      "previous_original_classification": "未验",
+      "category": "对外认证设置（敏感）",
+      "scope": "仅合成 loopback API 认证；真实账户不验证。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-env.ps1",
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-env.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "env.ps1",
+        "home/skills/.system/imagegen/scripts/image_gen.py",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": "actual synthetic local API Authorization at loopback; no real credential"
+    },
+    {
+      "name": "OPENAI_BASE_URL",
+      "previous_original_classification": "未验",
+      "category": "宿主继承清理/条件敏感",
+      "scope": "冻结启动器清理宿主输入；不等于所有工具直接运行时清理。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "run-codex.ps1"
+      ],
+      "selected_targeted_assertion": "host conflict must not select endpoint"
+    },
+    {
+      "name": "OPENSSL_CONF",
+      "previous_original_classification": "未验",
+      "category": "工具条件/历史引用/未证明独立契约",
+      "scope": "保留源码引用，未证消费者，不声称支持任意值。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "PATHEXT",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/node/corepack.cmd",
+        "tool/setup-tools.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "PIP_CONFIG_FILE",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 37,
+          "mode": "normal",
+          "item": "env:PIP_CONFIG_FILE",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 62,
+          "mode": "normal",
+          "item": "tool/bin/pip.cmd real cache and dependency consumer",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 63,
+          "mode": "normal",
+          "item": "tool/bin/pip3.cmd real cache and dependency consumer",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 64,
+          "mode": "normal",
+          "item": "tool/bin/pip3.14.cmd real cache and dependency consumer",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 219,
+          "mode": "yolo",
+          "item": "env:PIP_CONFIG_FILE",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 244,
+          "mode": "yolo",
+          "item": "tool/bin/pip.cmd real cache and dependency consumer",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 245,
+          "mode": "yolo",
+          "item": "tool/bin/pip3.cmd real cache and dependency consumer",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 246,
+          "mode": "yolo",
+          "item": "tool/bin/pip3.14.cmd real cache and dependency consumer",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 397,
+          "mode": "maintenance",
+          "item": "env:PIP_CONFIG_FILE",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 422,
+          "mode": "maintenance",
+          "item": "tool/bin/pip.cmd real cache and dependency consumer",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 423,
+          "mode": "maintenance",
+          "item": "tool/bin/pip3.cmd real cache and dependency consumer",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 424,
+          "mode": "maintenance",
+          "item": "tool/bin/pip3.14.cmd real cache and dependency consumer",
+          "status": "PASS_ACTUAL"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "PNPM_HOME",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 38,
+          "mode": "normal",
+          "item": "env:PNPM_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 220,
+          "mode": "yolo",
+          "item": "env:PNPM_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 398,
+          "mode": "maintenance",
+          "item": "env:PNPM_HOME",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "run-codex.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "PNPM_STORE_DIR",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 39,
+          "mode": "normal",
+          "item": "env:PNPM_STORE_DIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 221,
+          "mode": "yolo",
+          "item": "env:PNPM_STORE_DIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 399,
+          "mode": "maintenance",
+          "item": "env:PNPM_STORE_DIR",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "run-codex.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "POWERSHELL_TELEMETRY_OPTOUT",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 40,
+          "mode": "normal",
+          "item": "env:POWERSHELL_TELEMETRY_OPTOUT",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 222,
+          "mode": "yolo",
+          "item": "env:POWERSHELL_TELEMETRY_OPTOUT",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 400,
+          "mode": "maintenance",
+          "item": "env:POWERSHELL_TELEMETRY_OPTOUT",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "检查隔离.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "PRINT_VERSION",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/node/nodevars.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "PROGRAMDATA",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 41,
+          "mode": "normal",
+          "item": "env:PROGRAMDATA",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 223,
+          "mode": "yolo",
+          "item": "env:PROGRAMDATA",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 401,
+          "mode": "maintenance",
+          "item": "env:PROGRAMDATA",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "检查隔离.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "PSMODULEANALYSISCACHEPATH",
+      "previous_original_classification": "未验",
+      "category": "工具条件/历史引用/未证明独立契约",
+      "scope": "保留源码引用，未证消费者，不声称支持任意值。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "检查隔离.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "PSMODULEPATH",
+      "previous_original_classification": "未验",
+      "category": "工具条件/历史引用/未证明独立契约",
+      "scope": "保留源码引用，未证消费者，不声称支持任意值。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "PYTHONDONTWRITEBYTECODE",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "login-json.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "PYTHONNOUSERSITE",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "tool/setup-tools.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "RANDOM",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/AI_API_Get_Models_Cherry_Rules.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "SSL_CERT_DIR",
+      "previous_original_classification": "未验",
+      "category": "保护/宿主继承清理",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "SSL_CERT_FILE",
+      "previous_original_classification": "未验",
+      "category": "保护/宿主继承清理",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "SYSTEMDRIVE",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "SYSTEMROOT",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/check-deps.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/decompile.ps1",
+        "home/skills/docx/scripts/office/helpers/__init__.py",
+        "home/skills/docx/scripts/office/soffice.py",
+        "home/skills/pptx/scripts/office/helpers/__init__.py",
+        "home/skills/pptx/scripts/office/soffice.py",
+        "home/skills/xlsx/scripts/office/helpers/__init__.py",
+        "home/skills/xlsx/scripts/office/soffice.py",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/bin/f2py.cmd",
+        "tool/bin/httpx.cmd",
+        "tool/bin/idna.cmd",
+        "tool/bin/markdown-it.cmd",
+        "tool/bin/normalizer.cmd",
+        "tool/bin/numpy-config.cmd",
+        "tool/bin/pip.cmd",
+        "tool/bin/pip3.14.cmd",
+        "tool/bin/pip3.cmd",
+        "tool/bin/pygmentize.cmd",
+        "tool/bin/vba_extract.cmd",
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd",
+        "tool/refresh-python-cli-shims.py",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "TMP",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 47,
+          "mode": "normal",
+          "item": "env:TMP",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 55,
+          "mode": "normal",
+          "item": "effective Python and Node paths",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 139,
+          "mode": "normal",
+          "item": "original Office validators and PDF library actual consumer",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 229,
+          "mode": "yolo",
+          "item": "env:TMP",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 237,
+          "mode": "yolo",
+          "item": "effective Python and Node paths",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 321,
+          "mode": "yolo",
+          "item": "original Office validators and PDF library actual consumer",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 407,
+          "mode": "maintenance",
+          "item": "env:TMP",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 415,
+          "mode": "maintenance",
+          "item": "effective Python and Node paths",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 499,
+          "mode": "maintenance",
+          "item": "original Office validators and PDF library actual consumer",
+          "status": "PASS_ACTUAL"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/decompile.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/find-api-calls.ps1",
+        "home/skills/.system/openai-docs/scripts/fetch-codex-manual.mjs",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/portable-process.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "检查隔离.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "TMPDIR",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 48,
+          "mode": "normal",
+          "item": "env:TMPDIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 55,
+          "mode": "normal",
+          "item": "effective Python and Node paths",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 230,
+          "mode": "yolo",
+          "item": "env:TMPDIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 237,
+          "mode": "yolo",
+          "item": "effective Python and Node paths",
+          "status": "PASS_ACTUAL"
+        },
+        {
+          "row": 408,
+          "mode": "maintenance",
+          "item": "env:TMPDIR",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 415,
+          "mode": "maintenance",
+          "item": "effective Python and Node paths",
+          "status": "PASS_ACTUAL"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/decompile.ps1",
+        "home/plugins/android-apk-lab/skills/android-reverse-engineering/scripts/find-api-calls.ps1",
+        "home/skills/.system/openai-docs/scripts/fetch-codex-manual.mjs",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "检查隔离.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "UV_CACHE_DIR",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "UV_PYTHON_INSTALL_DIR",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "UV_TOOL_BIN_DIR",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "UV_TOOL_DIR",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "WINDIR",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "XDG_CACHE_HOME",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 50,
+          "mode": "normal",
+          "item": "env:XDG_CACHE_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 232,
+          "mode": "yolo",
+          "item": "env:XDG_CACHE_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 410,
+          "mode": "maintenance",
+          "item": "env:XDG_CACHE_HOME",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "检查隔离.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "XDG_CONFIG_HOME",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 51,
+          "mode": "normal",
+          "item": "env:XDG_CONFIG_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 233,
+          "mode": "yolo",
+          "item": "env:XDG_CONFIG_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 411,
+          "mode": "maintenance",
+          "item": "env:XDG_CONFIG_HOME",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "检查隔离.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "XDG_DATA_HOME",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 52,
+          "mode": "normal",
+          "item": "env:XDG_DATA_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 234,
+          "mode": "yolo",
+          "item": "env:XDG_DATA_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 412,
+          "mode": "maintenance",
+          "item": "env:XDG_DATA_HOME",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "检查隔离.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "XDG_STATE_HOME",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 53,
+          "mode": "normal",
+          "item": "env:XDG_STATE_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 235,
+          "mode": "yolo",
+          "item": "env:XDG_STATE_HOME",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 413,
+          "mode": "maintenance",
+          "item": "env:XDG_STATE_HOME",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "home/plugins/android-apk-lab/scripts/start_apk_lab_mcp.ps1",
+        "login-json.ps1",
+        "run-codex.ps1",
+        "tool/setup-tools.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "检查隔离.ps1",
+        "清理缓存.bat",
+        "清理缓存.ps1"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "Y",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "home/skills/.system/plugin-creator/scripts/update_plugin_cachebuster.py"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "YARN_CACHE_FOLDER",
+      "previous_original_classification": "未验",
+      "category": "保护/包内工具路径或策略",
+      "scope": "冻结 protectedExact/protectedPatterns；拒绝本机配置覆盖与真实消费者生效是不同证据。",
+      "propagation_only": true,
+      "original_evidence": [
+        {
+          "row": 54,
+          "mode": "normal",
+          "item": "env:YARN_CACHE_FOLDER",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 236,
+          "mode": "yolo",
+          "item": "env:YARN_CACHE_FOLDER",
+          "status": "PROPAGATION_ONLY"
+        },
+        {
+          "row": 414,
+          "mode": "maintenance",
+          "item": "env:YARN_CACHE_FOLDER",
+          "status": "PROPAGATION_ONLY"
+        }
+      ],
+      "source_references": [
+        "Version_History/YOLO mode专用包-run-codex.ps1",
+        "Version_History/常用模式专用包-run-codex.ps1",
+        "run-codex.ps1",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "_CODEX_BOOTSTRAP_CODE1",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/bin/f2py.cmd",
+        "tool/bin/httpx.cmd",
+        "tool/bin/idna.cmd",
+        "tool/bin/markdown-it.cmd",
+        "tool/bin/normalizer.cmd",
+        "tool/bin/numpy-config.cmd",
+        "tool/bin/pip.cmd",
+        "tool/bin/pip3.14.cmd",
+        "tool/bin/pip3.cmd",
+        "tool/bin/pygmentize.cmd",
+        "tool/bin/vba_extract.cmd",
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd",
+        "tool/refresh-python-cli-shims.py",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "_CODEX_BOOTSTRAP_CODE2",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/bin/f2py.cmd",
+        "tool/bin/httpx.cmd",
+        "tool/bin/idna.cmd",
+        "tool/bin/markdown-it.cmd",
+        "tool/bin/normalizer.cmd",
+        "tool/bin/numpy-config.cmd",
+        "tool/bin/pip.cmd",
+        "tool/bin/pip3.14.cmd",
+        "tool/bin/pip3.cmd",
+        "tool/bin/pygmentize.cmd",
+        "tool/bin/vba_extract.cmd",
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd",
+        "tool/refresh-python-cli-shims.py",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "_CODEX_BOOTSTRAP_ENTRYDIR",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/bin/f2py.cmd",
+        "tool/bin/httpx.cmd",
+        "tool/bin/idna.cmd",
+        "tool/bin/markdown-it.cmd",
+        "tool/bin/normalizer.cmd",
+        "tool/bin/numpy-config.cmd",
+        "tool/bin/pip.cmd",
+        "tool/bin/pip3.14.cmd",
+        "tool/bin/pip3.cmd",
+        "tool/bin/pygmentize.cmd",
+        "tool/bin/vba_extract.cmd",
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd",
+        "tool/refresh-python-cli-shims.py",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    },
+    {
+      "name": "_CODEX_BOOTSTRAP_ROOT",
+      "previous_original_classification": "未验",
+      "category": "内部/派生/批处理临时值",
+      "scope": "不是独立用户开关；不通过传递或名字确认功能。",
+      "propagation_only": false,
+      "original_evidence": [],
+      "source_references": [
+        "tool/bin/f2py.cmd",
+        "tool/bin/httpx.cmd",
+        "tool/bin/idna.cmd",
+        "tool/bin/markdown-it.cmd",
+        "tool/bin/normalizer.cmd",
+        "tool/bin/numpy-config.cmd",
+        "tool/bin/pip.cmd",
+        "tool/bin/pip3.14.cmd",
+        "tool/bin/pip3.cmd",
+        "tool/bin/pygmentize.cmd",
+        "tool/bin/vba_extract.cmd",
+        "tool/node/npm.cmd",
+        "tool/node/npx.cmd",
+        "tool/refresh-python-cli-shims.py",
+        "启动Codex-维护模式.bat",
+        "启动Codex.bat",
+        "检查login_json.bat",
+        "检查隔离.bat",
+        "清理缓存.bat"
+      ],
+      "selected_targeted_assertion": null
+    }
+  ]
+}
