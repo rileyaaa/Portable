@@ -53,16 +53,69 @@ def native_identity():
     return {"actual_binary":str(PY.relative_to(ROOT)),"mode":expected,"isolated":True}
 case("native interpreter and generated mode policy",native_identity,["tool/python/python.exe","run-codex.ps1"],
      ["CODEX_SANDBOX_MODE","CODEX_APPROVAL_POLICY","CODEX_SANDBOX_NETWORK_ACCESS"],status="PASS_CONFIG_GATE")
-def path_resolution():
-    assert Path(sys.executable).resolve()==PY and sys.flags.isolated
-    for name,args,expected in (("node.exe",["-p","process.execPath"],NODE),("python.exe",["-I","-B","-c","import sys;print(sys.executable)"],PY)):
-        # Real name-based invocation, not just where/which or --version.
-        got=shutil.which(name)
-        assert got and Path(got).resolve()==expected
-        p=subprocess.run([name,*args],cwd=OUT,env=dict(os.environ),stdin=subprocess.DEVNULL,capture_output=True,timeout=45)
-        assert p.returncode==0 and Path(p.stdout.decode("utf-8").strip()).resolve()==expected,(name,p.returncode)
-    return "actual named Node and Python entrypoints resolve inside this package"
-case("actual PATH-resolved Node/Python invocation",path_resolution,["tool/python/python.exe","tool/node/node.exe"],["PATH"])
+PATH_PY_CODE="""import json,pathlib,sys
+identity=json.dumps(sys.executable,ensure_ascii=True)
+with pathlib.Path(sys.argv[1]).open('x',encoding='ascii') as f:
+    f.write(identity)
+try:
+    print(identity,flush=True)
+except Exception:
+    print('PORTABLE_PATH_REPORT_ERROR',file=sys.stderr,flush=True)
+    raise
+"""
+PATH_NODE_CODE="""const fs=require('node:fs');
+const identity=JSON.stringify(process.execPath);
+fs.writeFileSync(process.argv[1],identity,{flag:'wx',encoding:'utf8'});
+try { fs.writeSync(1,identity+'\\n'); }
+catch (e) { fs.writeSync(2,'PORTABLE_PATH_REPORT_ERROR\\n'); throw e; }
+"""
+def path_resolution(name,expected,args,proof):
+    detail={"expected":str(expected),"resolved":None,"execution_verified":False,
+            "stage":"PROBE_CONTEXT_INVALID"}
+    try:
+        assert Path(sys.executable).resolve()==PY and sys.flags.isolated
+        detail["stage"]="PATH_RESOLUTION_FAILED"
+        search=os.environ.get("PATH")
+        got=shutil.which(name,path=search) if search else None
+        detail["resolved"]=got
+        if not got or Path(got).absolute()!=expected or Path(got).resolve()!=expected:
+            detail["reason"]="name did not resolve to expected package binary"
+            return "FAIL",detail
+        if not any(Path(part.strip('"')).absolute()==expected.parent
+                   for part in search.split(os.pathsep) if part):
+            detail["reason"]="expected directory absent from explicit PATH"
+            return "FAIL",detail
+        # Execute only the verified result of name lookup. Do not let Windows
+        # search again (the parent application's directory can precede PATH).
+        # This proves PATH lookup + actual bundled binary, not OS search order.
+        detail["stage"]="EXECUTION_FAILED"
+        assert not proof.exists() and not proof.is_symlink()
+        rc,out,err=run(Path(got),[*args,proof.name])
+        detail.update(exit=rc,stdout=out[-1200:],stderr=err[-1600:])
+        if not proof.is_file() or proof.is_symlink() or proof.stat().st_nlink!=1:
+            return "FAIL",detail
+        actual=json.loads(proof.read_text(encoding="utf-8"))
+        detail["actual_binary"]=actual
+        detail["execution_verified"]=Path(actual).absolute()==expected and Path(actual).resolve()==expected
+        if not detail["execution_verified"]:
+            return "FAIL",detail
+        # Only a verified identity plus an explicit output-stage failure can
+        # classify a nonzero process exit as reporting-only.
+        if rc!=0 and "PORTABLE_PATH_REPORT_ERROR" not in err.splitlines():
+            return "FAIL",detail
+        detail["stage"]="REPORTING_FAILED"
+        if rc!=0 or json.loads(out)!=actual:
+            return "FAIL",detail
+        detail["stage"]="COMPLETE"
+        return "PASS_ACTUAL",detail
+    except Exception:
+        detail["error"]=traceback.format_exc()[-1600:]
+        return "FAIL",detail
+for name,expected,args in (("node.exe",NODE,["-e",PATH_NODE_CODE]),
+                           ("python.exe",PY,["-I","-B","-c",PATH_PY_CODE])):
+    status,detail=path_resolution(name,expected,args,OUT/("path-"+name+".json"))
+    row("actual PATH-resolved "+name+" invocation",status,detail,
+        [expected.relative_to(ROOT).as_posix()],["PATH"])
 def python_tmp():
     p=Path(tempfile.gettempdir()).resolve()
     assert p.is_relative_to(ROOT)
@@ -74,22 +127,63 @@ def python_tmp():
     return {"actual_default_directory":p.relative_to(ROOT).as_posix(),"create_read_delete":True}
 # Default path behavior is observed but not credited to every variable.
 case("Python actual default temp file lifecycle",python_tmp,["tool/python/python.exe"])
-def tmp_contrast():
-    paths={k:OUT/("actual-"+k.lower()) for k in ("TMPDIR","TEMP","TMP")}
+PY_TMP_CODE="""import json,pathlib,sys,tempfile
+expected=pathlib.Path(sys.argv[1]).resolve()
+# Check actual environment precedence and selected owned directory first.
+assert pathlib.Path(tempfile._candidate_tempdir_list()[0]).resolve()==expected
+check=expected/'preflight'
+with check.open('xb') as handle:
+    handle.write(b'x')
+check.unlink()
+d=pathlib.Path(tempfile.gettempdir()).resolve()
+assert d==expected,(d,expected)
+with tempfile.NamedTemporaryFile() as f:
+    p=pathlib.Path(f.name)
+    assert p.parent.resolve()==d and p.is_file()
+    assert f.write(b'owned')==5
+    f.flush();f.seek(0);assert f.read()==b'owned'
+assert not p.exists()
+print(json.dumps({'directory':str(d),'file':str(p)},ensure_ascii=True),flush=True)
+"""
+NODE_TMP_CODE="""const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const d=path.resolve(os.tmpdir()),expected=path.resolve(process.argv[1]);
+if(d!==expected)throw Error('Unexpected temp directory');
+const sub=fs.mkdtempSync(path.join(d,'portable-probe-')),p=path.join(sub,'owned');
+try {
+    fs.writeFileSync(p,'owned',{flag:'wx'});
+    if(fs.readFileSync(p,'utf8')!=='owned')throw Error('Temp readback failed');
+} finally {
+    if(fs.existsSync(p))fs.unlinkSync(p);
+    fs.rmdirSync(sub);
+}
+if(fs.existsSync(sub))throw Error('Temp cleanup failed');
+console.log(JSON.stringify({directory:d,file:p}));
+"""
+def tmp_contrast(engine,key,removed):
+    parent=OUT/("actual-"+engine+"-"+key.lower());parent.mkdir()
+    paths={k:parent/k.lower() for k in ("TMPDIR","TEMP","TMP")}
     for p in paths.values():p.mkdir()
-    env={k:str(v) for k,v in paths.items()}
-    code="import tempfile,pathlib; d=pathlib.Path(tempfile.gettempdir()); f=tempfile.NamedTemporaryFile(); p=pathlib.Path(f.name); assert p.parent==d; f.write(b'x');f.flush();f.close();assert not p.exists();print(str(d))"
-    observed=[]
-    for removed,key in [((),"TMPDIR"),(("TMPDIR",),"TEMP"),(("TMPDIR","TEMP"),"TMP")]:
-        got=ok(run(PY,["-I","-B","-c",code],extra={k:v for k,v in env.items() if k not in removed},remove=removed)).strip()
-        assert Path(got).resolve()==paths[key]
-        observed.append(key)
-    for removed,key in [((),"TEMP"),(("TEMP",),"TMP")]:
-        got=ok(run(NODE,["-e","console.log(require('node:os').tmpdir())"],extra={k:v for k,v in env.items() if k not in removed},remove=removed)).strip()
-        assert Path(got).resolve()==paths[key]
+    env={k:str(v) for k,v in paths.items() if k not in removed}
+    expected=paths[key]
+    if engine=="python":
+        r=run(PY,["-I","-B","-c",PY_TMP_CODE,expected],extra=env,remove=removed)
+    else:
+        r=run(NODE,["-e",NODE_TMP_CODE,expected],extra=env,remove=removed)
+    data=json.loads(ok(r))
+    actual=Path(data["directory"]).resolve();file=Path(data["file"])
+    assert actual==expected and file.is_relative_to(expected) and not file.exists(),data
     assert all(not list(p.iterdir()) for p in paths.values())
-    return {"python_precedence":observed,"node_precedence":["TEMP","TMP"],"all_files_removed":True}
-case("actual TMPDIR/TEMP/TMP independent consumer precedence",tmp_contrast,["tool/python/python.exe","tool/node/node.exe"],["TMPDIR","TEMP","TMP"])
+    for p in paths.values():p.rmdir()
+    parent.rmdir()
+    return {"consumer":engine,"selected_variable":key,"removed":removed,
+            "directory":actual.relative_to(ROOT).as_posix(),"create_read_delete":True}
+for engine,key,removed in (("python","TMPDIR",()),("python","TEMP",("TMPDIR",)),
+                           ("python","TMP",("TMPDIR","TEMP")),("node","TEMP",()),
+                           ("node","TMP",("TEMP",))):
+    binary=PY if engine=="python" else NODE
+    case("actual "+engine+" "+key+" independent temp lifecycle",
+         lambda e=engine,k=key,r=removed:tmp_contrast(e,k,r),
+         [binary.relative_to(ROOT).as_posix()],[key])
 def home_actual():
     want=Path(os.environ["USERPROFILE"]).resolve();assert want.is_relative_to(ROOT)
     assert Path(os.path.expanduser("~")).resolve()==want
