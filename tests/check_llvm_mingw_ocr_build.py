@@ -99,6 +99,28 @@ def supplement_notices():
             "libcxx":"792c10839ae4a65e96479055e0493a9ee5379849","libcxxabi":"d902c06646c4421a491e021f383b0328c5bdc6df","libunwind":"1a50034df91361e1ada2fd28589061bdd1a3d044"}}
     row("fixed LLVM credits and MinGW full runtime source notice readback", "PASS_ACTUAL",len(out))
 
+def patch_leptonica_mingw_static(src):
+    # Upstream 1.87.0 src/CMakeLists.txt unconditionally forces the shared
+    # DLL suffix on MINGW even when add_library chose a STATIC_LIBRARY.
+    # Correct the naming predicate only; no C/C++ source or codec changes.
+    f=src/"src/CMakeLists.txt";m.ordinary(f)
+    raw=f.read_bytes()
+    assert b.git_blob(raw)=="9cd693a24c58ce0d3555e01d870af8f86e57c209","unexpected exact signed Leptonica source preimage"
+    old=b'if(MINGW)\n  set_target_properties(\n    leptonica PROPERTIES SUFFIX\n                         "-${PROJECT_VERSION}${CMAKE_SHARED_LIBRARY_SUFFIX}")\nendif(MINGW)'
+    new=b'# Portable build: the DLL suffix applies only to a shared target.\nif(MINGW AND BUILD_SHARED_LIBS)\n  set_target_properties(\n    leptonica PROPERTIES SUFFIX\n                         "-${PROJECT_VERSION}${CMAKE_SHARED_LIBRARY_SUFFIX}")\nendif()'
+    assert raw.count(old)==1
+    modified=raw.replace(old,new)
+    f.write_bytes(modified)
+    evidence={"component":"lept","path":"src/CMakeLists.txt","upstream_version":"1.87.0",
+        "upstream_git_blob":"9cd693a24c58ce0d3555e01d870af8f86e57c209",
+        "original_sha256":hashlib.sha256(raw).hexdigest(),"modified_sha256":hashlib.sha256(modified).hexdigest(),
+        "description":"Change the MINGW DLL naming predicate to MINGW AND BUILD_SHARED_LIBS; no source code/codec changes.",
+        "before":old.decode("ascii"),"after":new.decode("ascii"),"source_notice":"Retain upstream license and describe this build-only change."}
+    m.OUT["sources"]["lept"]["applied_packager_patches"]=[evidence]
+    m.OUT["source_patches"]=[evidence]
+    row("exact Leptonica upstream source preimage and static archive naming fix","PASS_ACTUAL",
+        {k:v for k,v in evidence.items() if k not in ("before","after")})
+
 def build(base,tc,srcs):
     vs,cmake=b.tools()
     m.OUT["build_orchestrator"]=m.OUT.pop("toolchain")
@@ -142,7 +164,7 @@ def build(base,tc,srcs):
     old=PREVIOUS["product"]["build_recipe"]
     common+= [x for x in old["common"] if x.startswith("-DCMAKE_DISABLE_FIND_PACKAGE_")]
     opts={k:[x for x in v if not x.startswith("-DWIN32_MT_BUILD=")] for k,v in old["components"].items()}
-    m.OUT["build_recipe"]={"common":common,"components":opts,"source_patches":[],"config":"Release","parallel":2}
+    m.OUT["build_recipe"]={"common":common,"components":opts,"source_patches":m.OUT.get("source_patches",[]),"config":"Release","parallel":2}
     dep=[]
     for key in ("zlib","png","lept","tess"):
         dest=builds/key;dest.mkdir()
@@ -177,7 +199,8 @@ def build(base,tc,srcs):
             if f.exists():f.unlink()
         b.run([cmake,"--build",dest,"--config","Release","--parallel","2"],dest,env,"build",timeout=1800)
         b.run([cmake,"--install",dest,"--config","Release"],dest,env,"install",timeout=180)
-        assert not list(prefix.rglob("*.dll")),("unexpected installed DLL",key)
+        unexpected_dlls=[x.relative_to(prefix).as_posix() for x in prefix.rglob("*.dll")]
+        assert not unexpected_dlls,("unexpected installed DLL",key,unexpected_dlls)
         if key=="zlib":
             libs=list((prefix/"lib").glob("*.a"));assert len(libs)==1,libs
             dep=[f"-DZLIB_ROOT:PATH={prefix.as_posix()}","-DZLIB_USE_STATIC_LIBS=ON",f"-DZLIB_LIBRARY_RELEASE:FILEPATH={libs[0].as_posix()}",f"-DZLIB_INCLUDE_DIR:PATH={(prefix/'include').as_posix()}"]
@@ -193,6 +216,11 @@ def build(base,tc,srcs):
                 {"canonical":"libpng16.a","alias":"libpng.a","sha256":m.digest(libs["libpng16.a"]),"upstream_cmake":"v1.6.59 create_symlink copies target on Windows"})
             dep += [f"-DPNG_LIBRARY_RELEASE:FILEPATH={libs['libpng16.a'].as_posix()}",f"-DPNG_PNG_INCLUDE_DIR:PATH={(prefix/'include').as_posix()}"]
         elif key=="lept":
+            lib=prefix/"lib/libleptonica.a";m.ordinary(lib)
+            with lib.open("rb") as f:assert f.read(8)==b"!<arch>\n"
+            export=(prefix/"lib/cmake/leptonica/LeptonicaTargets.cmake").read_text(encoding="utf-8")
+            assert re.search(r"add_library\(leptonica STATIC IMPORTED\)",export), "Leptonica installed export not static"
+            row("actual installed Leptonica static archive and CMake STATIC IMPORTED target","PASS_ACTUAL",m.digest(lib))
             cfg=(dest/"src/config_auto.h").read_text(encoding="utf-8")
             assert re.search(r"(?m)^#define HAVE_LIBPNG(?:\s+1)?\s*$",cfg) and re.search(r"(?m)^#define HAVE_LIBZ(?:\s+1)?\s*$",cfg)
             assert not re.search(r"(?m)^#define HAVE_LIB(?:JPEG|TIFF|GIF|WEBP|JP2K)\s+1",cfg)
@@ -332,6 +360,7 @@ def main():
         tc=toolchain(base)
         supplement_notices()
         srcs={k:b.source(base,k,*v) for k,v in b.SOURCES.items()}
+        patch_leptonica_mingw_static(srcs["lept"])
         exe,tools,env=build(base,tc,srcs)
         b.pe_check(exe)
         try:link_evidence(base,tc,tools,env)
