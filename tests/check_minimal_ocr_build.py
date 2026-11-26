@@ -180,7 +180,7 @@ def cache(path):
     return result
 
 
-def build(base,srcs,vs,cmake):
+def build(base,srcs,vs,cmake,capture_link=False):
     env=build_env(base)
     prefix=base/"prefix";prefix.mkdir()
     builds=base/"build";builds.mkdir()
@@ -215,7 +215,10 @@ def build(base,srcs,vs,cmake):
     for key in ("zlib","png","lept","tess"):
         dest=builds/key;dest.mkdir()
         extras=opts[key]+dep
-        if key=="tess":extras=extras+[f"-DLeptonica_DIR={prefix/'lib/cmake/leptonica'}"]
+        if key=="tess":
+            extras=extras+[f"-DLeptonica_DIR={prefix/'lib/cmake/leptonica'}"]
+            if capture_link:
+                extras += [f'-DCMAKE_EXE_LINKER_FLAGS=/MAP:"{dest / "tesseract-product.map"}" /VERBOSE:LIB']
         run([cmake,"-S",srcs[key],"-B",dest,*common,*extras],dest,env,"configure",timeout=240)
         c=cache(dest)
         assert c["CMAKE_GENERATOR"]=="Visual Studio 17 2022" and c["CMAKE_GENERATOR_PLATFORM"]=="x64"

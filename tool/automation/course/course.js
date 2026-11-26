@@ -271,7 +271,17 @@ function windowsOcr(state,language,image) {
     assert(r.status===0&&!r.error,'Local Windows OCR failed; check OS API and language support.');
     try{return JSON.parse(r.stdout.replace(/^\uFEFF/,''));}catch{fail('Unexpected local OCR output.');}
 }
-const ocr = require('./ocr-local').createOcr(guard,python,windowsOcr);
+const localOcr = require('./ocr-local').createOcr(guard,python,windowsOcr);
+function ocr(state,language,image) {
+    try{return localOcr(state,language,image);}
+    catch(e){
+        if(e instanceof CourseError)throw e;
+        // Only fixed diagnostic codes can cross the MCP boundary.
+        if(/^PNG_(?:LIMIT|FORMAT|CORRUPT|PATH|PATH_OR_DECODER|VALIDATION_FAILED)$|^OCR_(?:PATH|OS|PAYLOAD_LOCK|PAYLOAD_INTEGRITY|PAYLOAD_INVENTORY|PAYLOAD_PATH|UNQUALIFIED_PAYLOAD|OUTPUT_INVALID|OUTPUT_LIMIT|NATIVE_FAILED|NATIVE_DIAGNOSTIC|WINDOWS_OUTPUT|WINDOWS_ENGINE_CHANGED)$/.test(e.message))
+            fail('Local OCR refused: '+e.message);
+        fail('Local OCR failed; inspect the authorized PNG and local engine.');
+    }
+}
 function operations(context,state,scope,allowSelection,auth) {
     let bound=null, urlHash=null, bindingId=null, invalid=false, navigationListener=null;
     const isBound=()=>Boolean(bound&&!bound.isClosed()&&!invalid&&matching(bound.url(),scope)&&hash(bound.url())===urlHash);
@@ -511,5 +521,5 @@ async function main() {
     else if(action==='client'&&args.length===1)await client(state,task,account,args[0]);
     else fail('Explicit owner/client selection required.');
 }
-module.exports={scopeFor,matching,choiceFingerprint,validateCall,operations,owner,rpc,loadDescriptor,client,tools};
+module.exports={scopeFor,matching,choiceFingerprint,validateCall,operations,owner,rpc,loadDescriptor,client,tools,ocr,windowsOcr,guard,python};
 if(require.main===module)main().catch(()=>{process.stderr.write('Course assistant refused or failed; inspect authorization, paths, owner state and Windows support.\n');process.exitCode=1;});
