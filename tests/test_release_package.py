@@ -173,6 +173,48 @@ class ReleasePackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Release tag must match bundled Codex version"):
             release.build_release(self.root, "freeform-build")
 
+    def test_cli_version_check_matches_build_without_creating_output(self):
+        script = self.root / "tool/package-release.py"
+        script.write_bytes(Path(release.__file__).read_bytes())
+        self.commit()
+        cwd = self.root / "\u4e2d\u6587 work"
+        cwd.mkdir()
+
+        def cli(*args):
+            return subprocess.run([sys.executable, "-B", str(script), *args],
+                                  cwd=cwd, capture_output=True, timeout=30)
+
+        for args in ((), ("--version", "v0.163.0-portable.2")):
+            with self.subTest(check=args):
+                result = cli("--check", *args)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout)["codex_version"], "0.163.0")
+                self.assertFalse((self.root / "tmp").exists())
+        for version in ("v0.169.0-portable.1", "freeform-build", "v0.163.0-portable.0", ""):
+            # Check first; on the old source only the last empty-label build
+            # creates an archive, so it cannot contaminate later error cases.
+            for mode in (("--check",), ()):
+                with self.subTest(version=version, mode=mode):
+                    result = cli(*mode, "--version", version)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertEqual(result.stdout, b"")
+                    self.assertIn(b"Release tag must match bundled Codex version", result.stderr)
+                    self.assertFalse((self.root / "tmp").exists())
+        # Omitted labels still default to .1; an explicit valid .2 stays .2.
+        for args, revision in (((), 1), (("--version", "v0.163.0-portable.2"), 2)):
+            with self.subTest(build=args):
+                result = cli(*args)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                output = json.loads(result.stdout.decode("ascii"))
+                archive = Path(output["archive"])
+                self.assertEqual(archive.name, f"Codex-Portable-v0.163.0-portable.{revision}-windows-x64.zip")
+                self.assertEqual(archive.parent.parent, self.root / "tmp")
+                self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), output["archive_sha256"])
+                metadata = json.loads(Path(output["manifest"]).read_bytes())
+                self.assertEqual(metadata["release_version"], f"v0.163.0-portable.{revision}")
+                release.verify_zip(archive, metadata["files"])
+        self.assertEqual(list(cwd.iterdir()), [])
+
     def test_dirty_checkout_and_lfs_pointer_are_refused(self):
         self.write("README.md", b"uncommitted update\n")
         with self.assertRaisesRegex(ValueError, "Commit tracked changes"):

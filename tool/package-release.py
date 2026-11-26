@@ -329,6 +329,18 @@ def ocr_distribution_identity(root: Path, names: list[str]) -> dict | None:
     return {"engine": lock["engine"], "exe": lock["exe"], "notice_manifest": lock["noticeManifest"]}
 
 
+def validate_release_tag(codex_version: str, version: str | None) -> str:
+    # Only omission selects the existing default; an explicit empty tag is invalid.
+    if version is None:
+        version = "v" + codex_version + "-portable.1"
+    label = re.fullmatch(
+        r"v(?P<codex>(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2})"
+        r"-portable\.(?P<revision>[1-9][0-9]*)", version)
+    if label is None or label.group("codex") != codex_version:
+        raise ValueError("Release tag must match bundled Codex version and vX.Y.Z-portable.N format.")
+    return version
+
+
 def build_release(root: Path, version: str | None = None) -> dict:
     # Validate every tracked input, including excluded development files, before
     # filtering. Exclusion must not hide linked paths, private state or LFS stubs.
@@ -337,13 +349,7 @@ def build_release(root: Path, version: str | None = None) -> dict:
     ocr_identity = ocr_distribution_identity(root, names)
     manifest = runtime_identity(root, names)
     browser = browser_identity(root, names)
-    # A release tag must describe the actual bundled Codex runtime.
-    version = version or "v" + manifest["version"] + "-portable.1"
-    label = re.fullmatch(
-        r"v(?P<codex>(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2})"
-        r"-portable\.(?P<revision>[1-9][0-9]*)", version)
-    if label is None or label.group("codex") != manifest["version"]:
-        raise ValueError("Release tag must match bundled Codex version and vX.Y.Z-portable.N format.")
+    version = validate_release_tag(manifest["version"], version)
     scratch = root / "tmp"
     try:
         ordinary(scratch, directory=True)
@@ -425,6 +431,7 @@ def main() -> None:
         ocr_distribution_identity(root, names)
         manifest = runtime_identity(root, names)
         browser = browser_identity(root, names)
+        validate_release_tag(manifest["version"], args.version)
         print(json.dumps({"source_commit": commit, "codex_version": manifest["version"],
                           "browser_version": browser["browserVersion"],
                           "file_count": len(names), "source_file_count": len(source_names),
