@@ -712,3 +712,8 @@ Run 45764469526; tests/llvm_full_ocr_45764469526.json. Windows=failure; full bui
 ## Full reduced LLVM-MinGW OCR evidence
 
 Run 45764713894; tests/llvm_full_ocr_45764713894.json. Windows=success; full build=True; actual link evidence=True; private product=True. No distribution clearance or customer ZIP. Prior MSVC product/map retained; original ZIP, Office and dual-window not rerun. Prior candidate unchanged.
+
+
+## Qualified course OCR customer candidate
+
+Run 45768950297; tests/qualified_course_ocr_45768950297.json. Windows=success; source notice=True; distribution qualified=True; actual whole-customer acceptance=True; delivered=True; artifact=15093123477. Old private technical test, original ZIP, Office, dual-window not rerun. Main and official release unchanged.
