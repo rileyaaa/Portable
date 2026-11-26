@@ -185,6 +185,19 @@ def native(mode,fixture,files,minimal=False):
         for line in lines[before:]:
             x=json.loads(line);assert x["mode"]=="host-inspect";row(mode+"-host-metadata",x["item"],x["status"],x["detail"])
         row(mode,"host read-only metadata diagnostic","PASS_ACTUAL" if r.returncode==0 and len(lines)>before else "FAIL",{"returncode":r.returncode,"stderr":r.stderr.decode("utf-8","backslashreplace")[-500:]})
+        # The host created these exact synthetic files after ZIP extraction.
+        # Validate and remove ONLY those six before independent shipped/custom
+        # skill membership checks. Never exempt an entire subtree or a
+        # filename if it was part of the customer ZIP.
+        for directory in dirs:
+            sentinel=directory/"sandbox-followup-existing.txt"
+            if sentinel.is_relative_to(fixture):
+                assert sentinel.relative_to(fixture).as_posix() not in files
+            course.ancestors(sentinel.parent);course.plain(sentinel)
+            assert sentinel.read_bytes()==SENTINEL
+            sentinel.unlink()
+            assert not sentinel.exists()
+        row(mode,"owned synthetic sentinels removed before payload membership audit","PASS_ACTUAL",len(dirs))
     row(mode,"actual native launcher/Host completed","PASS_ACTUAL","not equivalent to all consumer assertions")
     source=verify_source_system(fixture/"home/skills/.system")
     diff=system_diff(fixture,files)
