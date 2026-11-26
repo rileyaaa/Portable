@@ -147,7 +147,8 @@ def build(base,tc,srcs):
     # the verified toolchain; no compiler SDK or host package registries.
     sysroot=tc/"x86_64-w64-mingw32"
     common=["-G","Ninja",f"-DCMAKE_MAKE_PROGRAM:FILEPATH={ninja.as_posix()}",
-        "-DCMAKE_SYSTEM_NAME=Windows","-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+        # Same native Windows x64 host/target. Do not set CMAKE_SYSTEM_NAME:
+        # doing so forces CMake cross mode and prevents real try_run probes.
         f"-DCMAKE_C_COMPILER:FILEPATH={tools['cc'].as_posix()}",f"-DCMAKE_CXX_COMPILER:FILEPATH={tools['cxx'].as_posix()}",
         f"-DCMAKE_AR:FILEPATH={tools['ar'].as_posix()}",f"-DCMAKE_RANLIB:FILEPATH={tools['ranlib'].as_posix()}",
         f"-DCMAKE_RC_COMPILER:FILEPATH={tools['rc'].as_posix()}",f"-DCMAKE_LINKER:FILEPATH={tools['linker'].as_posix()}",
@@ -177,6 +178,12 @@ def build(base,tc,srcs):
         b.run([cmake,"-S",srcs[key].as_posix(),"-B",dest.as_posix(),*common,*extras],dest,env,"configure",timeout=300)
         cache=b.cache(dest)
         assert cache["CMAKE_GENERATOR"]=="Ninja" and cache["CMAKE_BUILD_TYPE"]=="Release"
+        system_files=list((dest/"CMakeFiles").glob("*/CMakeSystem.cmake"));assert len(system_files)==1
+        system=system_files[0].read_text(encoding="utf-8")
+        assert re.search(r'set\(CMAKE_CROSSCOMPILING "FALSE"\)',system),("unexpected cross-compiling mode",key)
+        assert re.search(r'set\(CMAKE_SYSTEM_NAME "Windows"\)',system),("unexpected target system",key)
+        assert re.search(r'set\(CMAKE_SYSTEM_PROCESSOR "(?:AMD64|amd64|x86_64)"\)',system),("unexpected target architecture",key)
+        row("actual native Windows x64 CMake system "+key,"PASS_ACTUAL",m.digest(system_files[0]))
         for lang,k in (("C","cc"),("CXX","cxx")):
             if "CMAKE_"+lang+"_COMPILER" in cache:
                 assert Path(cache["CMAKE_"+lang+"_COMPILER"]).resolve()==tools[k].resolve()
