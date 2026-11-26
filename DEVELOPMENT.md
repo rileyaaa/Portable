@@ -687,3 +687,8 @@ Added strict PNG preflight before either engine; bounded full decoding with the 
 ## Course PNG OCR product and LLVM-MinGW preflight evidence
 
 Source ca7ac2d183a036794d1acfa6c965c2c6d4e4e907; https://github.com/rileyaaa/Portable/actions/runs/45761867152. Result tests/course_ocr_product_45761867152.json. Product job=success; product contract=True; static link evidence=True; LLVM job=failure; LLVM static probe=False. No distribution clearance or customer ZIP; private technical ZIP not uploaded. Previous candidate 15085655070 unchanged. No original audit, dual-window or Office repeat.
+
+
+## Full reduced LLVM-MinGW OCR evidence
+
+Run 45763840678; tests/llvm_full_ocr_45763840678.json. Windows=failure; full build=False; actual link evidence=False; private product=False. No distribution clearance or customer ZIP. Prior MSVC product/map retained; original ZIP, Office and dual-window not rerun. Prior candidate unchanged.
