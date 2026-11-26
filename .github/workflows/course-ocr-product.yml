@@ -1,0 +1,193 @@
+name: Course PNG OCR product and independent LLVM runtime probe
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths: [.github/workflows/course-ocr-product.yml]
+permissions: {}
+concurrency:
+  group: portable-course-ocr-product
+  cancel-in-progress: false
+jobs:
+  product:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1 && github.event.before == 'c131825feca5ff707d1b73fb0c815b89926ac7c9'
+    runs-on: windows-2022
+    timeout-minutes: 75
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'Git config failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          lfs: false
+          persist-credentials: true
+      - name: Run actual packaged Node and Python preflight and product contract
+        id: probe
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference='Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA) { throw 'Unexpected source' }
+          New-Item -ItemType Directory -Path tmp -Force | Out-Null
+          $report=Join-Path $pwd 'tmp/course-ocr-product.json'
+          [IO.File]::WriteAllText($report,(@{source_commit=$env:GITHUB_SHA;completed=$false;distribution_qualified=$false;product_contract_passed=$false;rows=@()} | ConvertTo-Json -Compress),(New-Object Text.UTF8Encoding($false)))
+          git lfs pull --include="tool/node/node.exe" --exclude=""
+          if ($LASTEXITCODE) { throw 'Pinned Node LFS unavailable' }
+          $scratch=Join-Path $pwd 'tmp/course-ocr-build-env'
+          New-Item -ItemType Directory -Path $scratch -Force | Out-Null
+          foreach ($key in @('HOME','USERPROFILE','APPDATA','LOCALAPPDATA','TEMP','TMP','TMPDIR')) {
+            [Environment]::SetEnvironmentVariable($key,$scratch,'Process')
+          }
+          $env:PSModuleAnalysisCachePath=Join-Path $scratch 'ps-module-cache'
+          $env:PATH=Join-Path $env:SystemRoot 'System32'
+          & .\tool\node\node.exe --check tool/automation/course/ocr-local.js
+          if ($LASTEXITCODE) { throw 'Product syntax failed' }
+          & .\tool\node\node.exe tests/test_course_ocr.js
+          if ($LASTEXITCODE) { throw 'OCR unit contract failed' }
+          & .\tool\python\python.exe -I -B -c "from pathlib import Path; [compile(Path(p).read_bytes(),p,'exec') for p in ('tool/automation/course/png_guard.py','tests/check_course_ocr_product.py','tests/check_minimal_ocr_build.py')]"
+          if ($LASTEXITCODE) { throw 'Probe syntax failure' }
+          & .\tool\python\python.exe -I -B tests/check_course_ocr_product.py $report
+          if ($LASTEXITCODE) { throw 'Product or static-link technical gate incomplete' }
+      - name: Evidence only (no binary/model/private ZIP)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: course-ocr-product-evidence
+          path: |
+            tmp/course-ocr-product.json
+            tmp/course-ocr-link-map.txt
+          if-no-files-found: error
+          retention-days: 14
+      - if: always() && steps.probe.outcome != 'success'
+        run: throw 'Product acceptance incomplete'
+  llvm:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1 && github.event.before == 'c131825feca5ff707d1b73fb0c815b89926ac7c9'
+    runs-on: windows-2022
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'Git config failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Fixed official LLVM-MinGW archive/source notice and real static-runtime probe
+        id: probe
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference='Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA) { throw 'Unexpected source' }
+          New-Item -ItemType Directory -Path tmp -Force | Out-Null
+          $report=Join-Path $pwd 'tmp/llvm-mingw-ocr-toolchain.json'
+          [IO.File]::WriteAllText($report,(@{source_commit=$env:GITHUB_SHA;completed=$false;distribution_qualified=$false;probe_passed=$false;rows=@()} | ConvertTo-Json -Compress),(New-Object Text.UTF8Encoding($false)))
+          $scratch=Join-Path $pwd 'tmp/llvm-probe-env'
+          New-Item -ItemType Directory -Path $scratch -Force | Out-Null
+          foreach ($key in @('HOME','USERPROFILE','APPDATA','LOCALAPPDATA','TEMP','TMP','TMPDIR')) {
+            [Environment]::SetEnvironmentVariable($key,$scratch,'Process')
+          }
+          $env:PATH=Join-Path $env:SystemRoot 'System32'
+          & .\tool\python\python.exe -I -B tests/check_llvm_mingw_ocr_toolchain.py $report
+          if ($LASTEXITCODE) { throw 'LLVM-MinGW alternative preflight incomplete' }
+      - name: Evidence only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: llvm-mingw-ocr-evidence
+          path: |
+            tmp/llvm-mingw-ocr-toolchain.json
+            tmp/llvm-mingw-static-probe-map.txt
+          if-no-files-found: error
+          retention-days: 14
+      - if: always() && steps.probe.outcome != 'success'
+        run: throw 'LLVM-MinGW preflight incomplete'
+  record:
+    needs: [product, llvm]
+    if: always() && github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1 && github.event.before == 'c131825feca5ff707d1b73fb0c815b89926ac7c9'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+      actions: read
+    env:
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      BASE: c131825feca5ff707d1b73fb0c815b89926ac7c9
+      PRODUCT: ${{ needs.product.result }}
+      LLVM: ${{ needs.llvm.result }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+          lfs: false
+      - name: Download product evidence
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: course-ocr-product-evidence
+          path: tmp/course-ocr-product-evidence
+      - name: Download alternative toolchain evidence
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: llvm-mingw-ocr-evidence
+          path: tmp/llvm-mingw-ocr-evidence
+      - name: Record actual results and remove only this one-time workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/bin/python3 -I -B - <<'PY'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          branch="refs/heads/dev/stable-tool-refresh";start=os.environ["GITHUB_SHA"];frozen=os.environ["FROZEN"];run=os.environ["GITHUB_RUN_ID"]
+          def git(*a):return subprocess.check_output(["git",*a])
+          def rev():return git("rev-parse","HEAD").decode().strip()
+          def ref(n):
+              v,k=git("ls-remote","origin",n).decode().strip().split("\t");assert k==n
+              return v
+          workflow=".github/workflows/course-ocr-product.yml"
+          assert rev()==ref(branch)==start and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          assert git("rev-parse","HEAD^").decode().strip()==os.environ["BASE"]
+          assert {n.decode() for n in git("diff","--name-only","-z","HEAD^","HEAD").split(b"\0") if n}=={workflow,"tests/check_llvm_mingw_ocr_toolchain.py"}
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          def read(directory,file,mapname,field):
+              p=Path(directory)/file
+              if not p.is_file():return {"completed":False,"report_missing":True,"rows":[]}
+              data=json.loads(p.read_bytes());assert data["source_commit"]==start and not data.get("distribution_qualified",False)
+              mapfile=Path(directory)/mapname
+              if mapfile.is_file():
+                  digest=hashlib.sha256(mapfile.read_bytes()).hexdigest()
+                  expected=data.get(field,{}).get("map_sha256")
+                  data["map_artifact_readback"]={"sha256":digest,"matches_report":digest==expected,"size":mapfile.stat().st_size}
+              return data
+          product=read("tmp/course-ocr-product-evidence","course-ocr-product.json","course-ocr-link-map.txt","actual_link")
+          llvm=read("tmp/llvm-mingw-ocr-evidence","llvm-mingw-ocr-toolchain.json","llvm-mingw-static-probe-map.txt","actual_probe_link")
+          target=Path("tests/course_ocr_product_"+run+".json")
+          assert not target.exists()
+          result={"source_commit":start,"run_id":run,"product_job":os.environ["PRODUCT"],"llvm_job":os.environ["LLVM"],
+             "product":product,"llvm":llvm,"distribution_qualified":False,"customer_candidate_built":False,
+             "prior_candidate_id":"15085655070","prior_candidate_unchanged":True,"original_index_unchanged":True}
+          target.write_text(json.dumps(result,ensure_ascii=True,indent=2)+"\n",encoding="utf-8")
+          notes=Path("DEVELOPMENT.md")
+          notes.write_bytes(notes.read_bytes()+("\n\n## Course PNG OCR product and LLVM-MinGW preflight evidence\n\nSource "+start+
+              "; https://github.com/rileyaaa/Portable/actions/runs/"+run+". Result "+target.as_posix()+
+              ". Product job="+result["product_job"]+"; product contract="+str(product.get("product_contract_passed",False))+
+              "; static link evidence="+str(product.get("link_evidence_complete",False))+
+              "; LLVM job="+result["llvm_job"]+"; LLVM static probe="+str(llvm.get("probe_passed",False))+
+              ". No distribution clearance or customer ZIP; private technical ZIP not uploaded. Previous candidate 15085655070 unchanged. No original audit, dual-window or Office repeat.\n").encode("utf-8"))
+          git("rm","--",workflow);git("add","--",str(target),"DEVELOPMENT.md")
+          assert {n.decode() for n in git("diff","--cached","--name-only","-z").split(b"\0") if n}=={workflow,target.as_posix(),"DEVELOPMENT.md"}
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Record course OCR product and alternative toolchain evidence; remove one-time trigger")
+          final=rev();assert ref(branch)==start
+          subprocess.run(["git","push","origin","HEAD:"+branch],check=True)
+          assert ref(branch)==final and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          print("OCR_PRODUCT_FINAL="+final,flush=True)
+          print("OCR_PRODUCT_RESULT="+json.dumps({"product":product.get("product_contract_passed",False),"link":product.get("link_evidence_complete",False),"llvm":llvm.get("probe_passed",False),"distribution":False}),flush=True)
+          PY
