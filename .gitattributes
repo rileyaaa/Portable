@@ -14,3 +14,7 @@ codex-command-runner.exe filter=lfs diff=lfs merge=lfs -text
 codex-windows-sandbox-setup.exe filter=lfs diff=lfs merge=lfs -text
 codex-path/rg.exe filter=lfs diff=lfs merge=lfs -text
 tool/node/node.exe filter=lfs diff=lfs merge=lfs -text
+
+# Exact qualified course OCR payload and lock bytes.
+tool/automation/course/ocr-native/** -text
+tool/automation/course/ocr-native-lock.json -text

@@ -213,4 +213,4 @@ Go、uv 系列和可再生 Python 字节码仍不包含在默认包中。已恢�
 
 ## 开发候选：课件与练习助手
 
-`course-assistant` 是独立任务技能，仅在用户明确提出指定课件、练习或规则允许的 AI 辅助测验时选择。使用现有固定 Chromium、Playwright/MCP 和 Windows 本机 OCR（依赖系统语言），不自动启用扩展、登录、开始或交卷。本人另开专用前台 owner，每个账号独立 work 目录；通用 `browser-debug` 不变。详细命令、授权与未支持范围见 [课件技能](home/skills/course-assistant/SKILL.md)。该功能仅为 dev 候选，尚未成为正式发行版；实际 Windows/候选 ZIP 验收以独立记录为准。
+`course-assistant` 是独立任务技能，仅在用户明确提出指定课件、练习或规则允许的 AI 辅助测验时选择。使用现有固定 Chromium、Playwright/MCP 和 Windows 本机 OCR（依赖系统语言，仅 zh-Hans-CN 缺失时使用经审核的包内 chi_sim PNG 备援），不自动启用扩展、登录、开始或交卷。本人另开专用前台 owner，每个账号独立 work 目录；通用 `browser-debug` 不变。详细命令、授权与未支持范围见 [课件技能](home/skills/course-assistant/SKILL.md)。该功能仅为 dev 候选，尚未成为正式发行版；实际 Windows/候选 ZIP 验收以独立记录为准。

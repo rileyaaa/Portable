@@ -1,0 +1,3011 @@
+{
+  "format": 1,
+  "scope": "Object names mapped to exact fixed upstream tree blobs; import library names separately classified; no claim that every candidate archive member linked",
+  "prior_run": 45764713894,
+  "prior_evidence_blob": "b12ca853d7132423f2fc61948951d07daeb9385a",
+  "prior_exe": {
+    "name": "tesseract.exe",
+    "sha256": "0e58f1ddef86ff11d8d5985d8bd87e39ee9377cb67df0e49d0ce5521c7dcc3a2",
+    "size": 6401024,
+    "imports_and_delay_imports": [
+      "api-ms-win-crt-convert-l1-1-0.dll",
+      "api-ms-win-crt-environment-l1-1-0.dll",
+      "api-ms-win-crt-filesystem-l1-1-0.dll",
+      "api-ms-win-crt-heap-l1-1-0.dll",
+      "api-ms-win-crt-locale-l1-1-0.dll",
+      "api-ms-win-crt-math-l1-1-0.dll",
+      "api-ms-win-crt-multibyte-l1-1-0.dll",
+      "api-ms-win-crt-private-l1-1-0.dll",
+      "api-ms-win-crt-runtime-l1-1-0.dll",
+      "api-ms-win-crt-stdio-l1-1-0.dll",
+      "api-ms-win-crt-string-l1-1-0.dll",
+      "api-ms-win-crt-time-l1-1-0.dll",
+      "api-ms-win-crt-utility-l1-1-0.dll",
+      "kernel32.dll"
+    ],
+    "non_os_imports": []
+  },
+  "refs": {
+    "mingw": {
+      "repo": "mingw-w64/mingw-w64",
+      "ref": "41eb042358a52011b35350392130dcdc94a8ead8"
+    },
+    "llvm": {
+      "repo": "llvm/llvm-project",
+      "ref": "5b10d2d74929eae78912771222c9855af97496f4"
+    },
+    "tess": {
+      "repo": "tesseract-ocr/tesseract",
+      "ref": "5.5.4"
+    },
+    "lept": {
+      "repo": "DanBloomberg/leptonica",
+      "ref": "1.87.0"
+    },
+    "png": {
+      "repo": "pnggroup/libpng",
+      "ref": "v1.6.59"
+    },
+    "zlib": {
+      "repo": "madler/zlib",
+      "ref": "v1.4"
+    }
+  },
+  "tree_ids": {
+    "mingw_crt": "846acbef7b8f4bed85f6fd2d361a8fc38ceeff29",
+    "libcxx": "792c10839ae4a65e96479055e0493a9ee5379849",
+    "libcxxabi": "d902c06646c4421a491e021f383b0328c5bdc6df",
+    "libunwind": "1a50034df91361e1ada2fd28589061bdd1a3d044",
+    "compiler_rt": "14d3b43691dfcdffcf11833a33ab0a18dfb66996",
+    "tess_src": "280fc79e10d1dc2129860ae87d7da14818910c6d",
+    "lept_src": "d70d9f88eb09231b5ae0cd4d085157ade465d65f",
+    "png": "cd952f49f95bb27154ae77dbb103032d95f6e580",
+    "zlib": "99623ef7097352da7993ba614161fd6a311e046e"
+  },
+  "sources": [
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "simddetect.cpp.obj",
+      "family": "tess",
+      "path": "src/arch/simddetect.cpp",
+      "git_blob": "132ef8e45328df94f4edb5a8f338dd2e44e42bf7"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "baseapi.cpp.obj",
+      "family": "tess",
+      "path": "src/api/baseapi.cpp",
+      "git_blob": "1331db5d0f16d7bdb5fa1165085a8ab87e525c9b"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "tprintf.cpp.obj",
+      "family": "tess",
+      "path": "src/ccutil/tprintf.cpp",
+      "git_blob": "e5814e0f2d9c81d01c2f7299cbcf19e71caba58d"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "pdfrenderer.cpp.obj",
+      "family": "tess",
+      "path": "src/api/pdfrenderer.cpp",
+      "git_blob": "47f3518515c70d5413bc04bac8291e9a86924fe5"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "renderer.cpp.obj",
+      "family": "tess",
+      "path": "src/api/renderer.cpp",
+      "git_blob": "8d4f1adc1bc717752188a66d54238b6f18e50f29"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "altorenderer.cpp.obj",
+      "family": "tess",
+      "path": "src/api/altorenderer.cpp",
+      "git_blob": "7225ddbabd2bf9df9cdfeb06aa7e040d7601e931"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "hocrrenderer.cpp.obj",
+      "family": "tess",
+      "path": "src/api/hocrrenderer.cpp",
+      "git_blob": "5f319ecac1a555dd4b71a13f4dfaf71867ef44a8"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "pagerenderer.cpp.obj",
+      "family": "tess",
+      "path": "src/api/pagerenderer.cpp",
+      "git_blob": "6108045a1a0cc05a419566bdcf0d799a34721d5e"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "lstmboxrenderer.cpp.obj",
+      "family": "tess",
+      "path": "src/api/lstmboxrenderer.cpp",
+      "git_blob": "1514eeeda3829b2e724e92f3edeb1bd5429aa8ed"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "wordstrboxrenderer.cpp.obj",
+      "family": "tess",
+      "path": "src/api/wordstrboxrenderer.cpp",
+      "git_blob": "e4ffcedba804b24404f6584f64c1d6603981bb6d"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "dict.cpp.obj",
+      "family": "tess",
+      "path": "src/dict/dict.cpp",
+      "git_blob": "411768203c49116b23634f79224d5fc3bae41554"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "pageiterator.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/pageiterator.cpp",
+      "git_blob": "0fb5b6583e36f28467c9531505eadccf696f26f3"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "dotproductavx512.cpp.obj",
+      "family": "tess",
+      "path": "src/arch/dotproductavx512.cpp",
+      "git_blob": "e1795f6b2e213ae76877a6f5ab842cac0daee8ed"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "dotproductavx.cpp.obj",
+      "family": "tess",
+      "path": "src/arch/dotproductavx.cpp",
+      "git_blob": "98e829959ade2f6259c12572739ecb342c602149"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "dotproductsse.cpp.obj",
+      "family": "tess",
+      "path": "src/arch/dotproductsse.cpp",
+      "git_blob": "b1b62f1d3c1328f462040c4d6796265559155c9f"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "dotproduct.cpp.obj",
+      "family": "tess",
+      "path": "src/arch/dotproduct.cpp",
+      "git_blob": "bb9fa987913bda903a4323195b6d2774e956879b"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "dotproductfma.cpp.obj",
+      "family": "tess",
+      "path": "src/arch/dotproductfma.cpp",
+      "git_blob": "01a788948a6e41a6291e2ae1414d2271f9fdebb7"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "params.cpp.obj",
+      "family": "tess",
+      "path": "src/ccutil/params.cpp",
+      "git_blob": "3be34f4e770becdbecd67cd01c8133539ca393a6"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "intsimdmatrix.cpp.obj",
+      "family": "tess",
+      "path": "src/arch/intsimdmatrix.cpp",
+      "git_blob": "9929e8cc32c5dcf89b8f7b219cbc100d5bfa9889"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "intsimdmatrixsse.cpp.obj",
+      "family": "tess",
+      "path": "src/arch/intsimdmatrixsse.cpp",
+      "git_blob": "98fecc88f939ba3b80d92f367613765d08496d13"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "intsimdmatrixavx2.cpp.obj",
+      "family": "tess",
+      "path": "src/arch/intsimdmatrixavx2.cpp",
+      "git_blob": "081490851c9675354074c4e9b5d7b0eff9c92ce7"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "tesseractclass.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/tesseractclass.cpp",
+      "git_blob": "ce896a843e7542aa2ed70e3855422631037fbca5"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "tessdatamanager.cpp.obj",
+      "family": "tess",
+      "path": "src/ccutil/tessdatamanager.cpp",
+      "git_blob": "35b1d91f7aeea4877a8e6722d315d013f689bb5c"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "tessedit.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/tessedit.cpp",
+      "git_blob": "3463806b156e0cc555c7b89d992344e03c8064ca"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "thresholder.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/thresholder.cpp",
+      "git_blob": "8d92c352eee6d4b9f074e12f9c8be31039880958"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "errcode.cpp.obj",
+      "family": "tess",
+      "path": "src/ccutil/errcode.cpp",
+      "git_blob": "a67aba56de4483db022bc3775d70cb7d85edba29"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "image.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/image.cpp",
+      "git_blob": "c89d9ac9cfd8ef2ba291e93d2eadb5bca6ddba2b"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "ltrresultiterator.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/ltrresultiterator.cpp",
+      "git_blob": "a4d3529c6f0cde50d93ecd6e80300c1996b06895"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "resultiterator.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/resultiterator.cpp",
+      "git_blob": "d179666b79b688bc721b3ff936e18c4442a3e448"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "pageres.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/pageres.cpp",
+      "git_blob": "afe7552aa6fbc42e8c27bdaae7776e3d288bc14b"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "pagesegmain.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/pagesegmain.cpp",
+      "git_blob": "bcd62a4848c04b9b2782287740c1804c4e85d397"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "paragraphs.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/paragraphs.cpp",
+      "git_blob": "e04c2336ad6ad637e8c16526d604e8bb11930c72"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "linerec.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/linerec.cpp",
+      "git_blob": "8153413ff9376ef3ced3839370be4fa73f470d2e"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "applybox.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/applybox.cpp",
+      "git_blob": "8c5918401df7ae8905c6c891a2af7e95a064da0b"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "control.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/control.cpp",
+      "git_blob": "bd50ead566f1f144ccbd45b2202e7331ad8fae4f"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "ratngs.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/ratngs.cpp",
+      "git_blob": "e28cfed833acb7d3a2c4352097cafd1f23eb7317"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "output.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/output.cpp",
+      "git_blob": "a530c15e40577f3ce1dc13a6f28c017f7d5bc95d"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "unichar.cpp.obj",
+      "family": "tess",
+      "path": "src/ccutil/unichar.cpp",
+      "git_blob": "f7a98dbc8b7592a56a1fd999c8ca662df9f096b2"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "unicharset.cpp.obj",
+      "family": "tess",
+      "path": "src/ccutil/unicharset.cpp",
+      "git_blob": "d0f21312d5379de0be65f1b2438b8c442b9d915c"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "quspline.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/quspline.cpp",
+      "git_blob": "6b341f560dc4f9158cfdbe9b9a3f71d6d5ec46f1"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "mutableiterator.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/mutableiterator.cpp",
+      "git_blob": "9b4d003ad1c39cccd071c486a3e230e86b0f4fb2"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "dawg_cache.cpp.obj",
+      "family": "tess",
+      "path": "src/dict/dawg_cache.cpp",
+      "git_blob": "a8671ad35dda68b17ce0bee2ed310fa9e46e6a2a"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "trie.cpp.obj",
+      "family": "tess",
+      "path": "src/dict/trie.cpp",
+      "git_blob": "703ccd1441e6617f278c4896e6f1196160056f75"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "dawg.cpp.obj",
+      "family": "tess",
+      "path": "src/dict/dawg.cpp",
+      "git_blob": "060b565d5f249cbcf9903719884a78f75e65c453"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "context.cpp.obj",
+      "family": "tess",
+      "path": "src/dict/context.cpp",
+      "git_blob": "d3f07fe04f8880379429df03aec2bc9c24199004"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "stepblob.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/stepblob.cpp",
+      "git_blob": "1386b96f877848ceefdb76582d21c0caae3f1cc9"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "ocrblock.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/ocrblock.cpp",
+      "git_blob": "7281e0c97e41246a0c8228ccaa2bc9d665d1d48f"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "ocrrow.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/ocrrow.cpp",
+      "git_blob": "e65f3ebef0de3e0f02dd385fa0358c485d00bc10"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "werd.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/werd.cpp",
+      "git_blob": "287c82f29faacab13ad5900dc09234fbb011fe96"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "rect.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/rect.cpp",
+      "git_blob": "e7bee86384b86aaef427c156334e71fc5764f685"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "polyblk.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/polyblk.cpp",
+      "git_blob": "993e10b683a7090da832f22b59b51370b4a5333f"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "pdblock.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/pdblock.cpp",
+      "git_blob": "88b7a208957ef81a0c936f7519bb2c5147547c2d"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "serialis.cpp.obj",
+      "family": "tess",
+      "path": "src/ccutil/serialis.cpp",
+      "git_blob": "b8914c0bcc14701a616ed12ee3c3f59219fecad3"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "wordrec.cpp.obj",
+      "family": "tess",
+      "path": "src/wordrec/wordrec.cpp",
+      "git_blob": "d40cb1aed30b6c1f54bc514ea346ce77e44a2ce2"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "devanagari_processing.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/devanagari_processing.cpp",
+      "git_blob": "5405f6a09a2aff103d3c440563d97f0c417620ac"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "textord.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/textord.cpp",
+      "git_blob": "c78d32678e92a40d4863ccbfeaafb6dc1cd946c3"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "lstmrecognizer.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/lstmrecognizer.cpp",
+      "git_blob": "172036aef3cb3d6d4e7ccd60a9c21b150f6a8228"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "classify.cpp.obj",
+      "family": "tess",
+      "path": "src/classify/classify.cpp",
+      "git_blob": "c11a0912d29ff8789b33d233ecd0ab4d3304f541"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "edgblob.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/edgblob.cpp",
+      "git_blob": "e9a327e0cf9f0573beee832bc8f108f102c52db4"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "ccutil.cpp.obj",
+      "family": "tess",
+      "path": "src/ccutil/ccutil.cpp",
+      "git_blob": "930aa2636e832c87bd77501dd085c167e3eb0dac"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "tface.cpp.obj",
+      "family": "tess",
+      "path": "src/wordrec/tface.cpp",
+      "git_blob": "146f0b01ff947fa63a5e69a80a1a49f3aa45b886"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "otsuthr.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/otsuthr.cpp",
+      "git_blob": "39867f1c50d3a3b6e050f01d33c53f178af79ea2"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "blamer.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/blamer.cpp",
+      "git_blob": "7c3dec3b457a827b9b73d9c7cc494864b3791cff"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "normalis.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/normalis.cpp",
+      "git_blob": "2994ff8861dfa263ec447d07682bf1746f29cfa5"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "boxword.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/boxword.cpp",
+      "git_blob": "7627a21cdeca9346016e79c67df865671056d94e"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "blobs.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/blobs.cpp",
+      "git_blob": "69a2822833ed59a82c2af6c4c776c1d03fbcadc5"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "rejctmap.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/rejctmap.cpp",
+      "git_blob": "e95c069412d5b53713f36bd3121e55c22cf17be0"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "seam.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/seam.cpp",
+      "git_blob": "4f299d789f64649690c25c871bef0c39cf8fa5af"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "matrix.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/matrix.cpp",
+      "git_blob": "51b69739d35b4c8c911cf9066db887465a765269"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "blread.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/blread.cpp",
+      "git_blob": "fd851ca42ce12402fda2bc6df2499478cf0213b4"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "blobbox.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/blobbox.cpp",
+      "git_blob": "d40ee074b061e289ca5e0a399c1c0aa0862ce586"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "colfind.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/colfind.cpp",
+      "git_blob": "f7f9253d024815aabdaa8a520dcad6ad9495897b"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "linefind.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/linefind.cpp",
+      "git_blob": "eb6515a027ada2924ab49650c57628ed6fe52200"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "imagefind.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/imagefind.cpp",
+      "git_blob": "07684d1623b0183871a9e9f56c43bb599192c17c"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "tordmain.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/tordmain.cpp",
+      "git_blob": "e59528da3b7b5c97562ed13337e59813d91b5a9b"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "alignedblob.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/alignedblob.cpp",
+      "git_blob": "781f641841ba874004e7acf7c8f2503fec14bb9b"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "ocrpara.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/ocrpara.cpp",
+      "git_blob": "dda72db12e92910bc51e3f6778c5aeb8b1181b8a"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "statistc.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/statistc.cpp",
+      "git_blob": "5df60be1fa46b229f71ad5c98558cf20864ec13c"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "imagedata.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/imagedata.cpp",
+      "git_blob": "ad82041cc769a8440f1134704a09b94ddbb26428"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "boxread.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/boxread.cpp",
+      "git_blob": "8b8703d7afff14c1013ab500afad2c20a1b94867"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "stopper.cpp.obj",
+      "family": "tess",
+      "path": "src/dict/stopper.cpp",
+      "git_blob": "590d6cc7c09fcfdf6e92fa108f60bc9c200dd664"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "werdit.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/werdit.cpp",
+      "git_blob": "15ac42c94b2ed425de886c60e15c023c143342f1"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "tessvars.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/tessvars.cpp",
+      "git_blob": "8986b50f4dcaed93bdf86fb6fbb3eaa8ec57d96b"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "reject.cpp.obj",
+      "family": "tess",
+      "path": "src/ccmain/reject.cpp",
+      "git_blob": "f9c8c771f1da6a82dbb2693bea01569964bde546"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "unicharmap.cpp.obj",
+      "family": "tess",
+      "path": "src/ccutil/unicharmap.cpp",
+      "git_blob": "f37a018f0d54e098ab9501ea21bf3cb74d442dc0"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "quadlsq.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/quadlsq.cpp",
+      "git_blob": "9b31d367278d3bdc3046580e6dac7fc837b8c479"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "coutln.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/coutln.cpp",
+      "git_blob": "60dfb4683032e838f28a7f5095ca790037ca29a0"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "points.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/points.cpp",
+      "git_blob": "1e0375e74020642287ec6fc2305dcf52466c041e"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "makerow.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/makerow.cpp",
+      "git_blob": "692c646eac9479e1875c154a245d36b68c86cb6f"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "baselinedetect.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/baselinedetect.cpp",
+      "git_blob": "62dbaec81c83d2194f5309f54416777206c6ed89"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "wordseg.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/wordseg.cpp",
+      "git_blob": "000175d5ee9ea6f5883f05b0e47f7c108abb4596"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "unicharcompress.cpp.obj",
+      "family": "tess",
+      "path": "src/ccutil/unicharcompress.cpp",
+      "git_blob": "b3dd440f265bdb3f9ad3664d93e2a51132de4e92"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "recodebeam.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/recodebeam.cpp",
+      "git_blob": "affce775713e89017c2247a220ffec729db9aa4f"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "network.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/network.cpp",
+      "git_blob": "7a3b7973b91b7dd6b19a75b4b77115306b6dcc15"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "input.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/input.cpp",
+      "git_blob": "33c05cbcc5ea1820111c75c3eceef1da2ea1c336"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "networkio.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/networkio.cpp",
+      "git_blob": "7a31034bf9e4e522af55185d1ec8c1a03194ec8c"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "scanedg.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/scanedg.cpp",
+      "git_blob": "095f80da7c52e9c25f5d0d6a086f59965f16b188"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "linlsq.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/linlsq.cpp",
+      "git_blob": "92012a4eca63d20a2b77de3a84966b9bd379a746"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "split.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/split.cpp",
+      "git_blob": "891a40839578392bc172f05fc6fbe3595989e745"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "scanutils.cpp.obj",
+      "family": "tess",
+      "path": "src/ccutil/scanutils.cpp",
+      "git_blob": "c3acd13821873bf896ea3ab73da08a5e1dfd8402"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "tabfind.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/tabfind.cpp",
+      "git_blob": "03c063b80c5c5c48399c0a0cc0cf7c883645b5cf"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "colpartitiongrid.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/colpartitiongrid.cpp",
+      "git_blob": "48cbf72cbbffc65954dae463b5bb9b44aad18c7c"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "textlineprojection.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/textlineprojection.cpp",
+      "git_blob": "a10a9a9a99bb205bcb94a1b363ca6db1bd94f94f"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "colpartition.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/colpartition.cpp",
+      "git_blob": "509ff096ff905a9d184a759e145c827616b6cbd1"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "bbgrid.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/bbgrid.cpp",
+      "git_blob": "9189cb855d80cdee0301c99c871eb95d0fb8722b"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "strokewidth.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/strokewidth.cpp",
+      "git_blob": "a54ae956645d0ccc7bdc15fbb9700a491651fee9"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "ccnontextdetect.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/ccnontextdetect.cpp",
+      "git_blob": "a19f5e8c74df5ab962599d8ac1a3bf3261962959"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "tablefind.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/tablefind.cpp",
+      "git_blob": "8490b680d065c6d3918a5012d55a23ddde0495a0"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "colpartitionset.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/colpartitionset.cpp",
+      "git_blob": "508e72b314a09584f4a8d8e833d5a0d3a2d65a98"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "workingpartset.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/workingpartset.cpp",
+      "git_blob": "45c4abac574302722a00ca3a9811cd91ef2d3644"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "tabvector.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/tabvector.cpp",
+      "git_blob": "604afa6ab94f7d4e15834b734ee73079080ef163"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "blobgrid.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/blobgrid.cpp",
+      "git_blob": "5cbfd104af59e35e2bf397911b78d2294bd6e825"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "mod128.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/mod128.cpp",
+      "git_blob": "27280cd716910b5c6c1edf9f0831ce87bffa469c"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "detlinefit.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/detlinefit.cpp",
+      "git_blob": "fbbc9c474dfb9ac310953c57c03a6ecf3b9a2e67"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "blkocc.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/blkocc.cpp",
+      "git_blob": "60283e744fe12c8d69fe0fcdaee7386e30958f8c"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "oldbasel.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/oldbasel.cpp",
+      "git_blob": "f9612a60cd0e2d15c253f7841312b1298d454a9d"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "sortflts.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/sortflts.cpp",
+      "git_blob": "edf9c34c13af8bf05a632784953a4c9c74c4505f"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "underlin.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/underlin.cpp",
+      "git_blob": "37dc431b327593d5a4d80e0dcfee4ff87f1de82b"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "cjkpitch.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/cjkpitch.cpp",
+      "git_blob": "abc579b2786e6e2839f6397a0e15e9e3d711bf88"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "topitch.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/topitch.cpp",
+      "git_blob": "d041ad8174d3b9d2c265f296918413755ba01b66"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "tospace.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/tospace.cpp",
+      "git_blob": "8c5a5b6a6391ef5e64d779981fa0320681ba2880"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "fpchop.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/fpchop.cpp",
+      "git_blob": "e6e6782e3055e352f2eddd86fe7cd981ee85ea2d"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "tovars.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/tovars.cpp",
+      "git_blob": "7b5ad2f0ced61fa9e5039c1c231ee8e3c5431487"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "fullyconnected.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/fullyconnected.cpp",
+      "git_blob": "d999f57529722886785f8d171f4e5c2ac4c414c3"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "parallel.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/parallel.cpp",
+      "git_blob": "e310339bc14c719cb530b779ff8368598dabd148"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "lstm.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/lstm.cpp",
+      "git_blob": "bfffa5deab8b3a4cf5cc8a8aa8a1e3cd908e01b2"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "reversed.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/reversed.cpp",
+      "git_blob": "e85d3e62cbcbf3313523b98e92118cc3748f5c3f"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "reconfig.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/reconfig.cpp",
+      "git_blob": "348ad60afca27952ea06bd6476e1307c4efe72f1"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "maxpool.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/maxpool.cpp",
+      "git_blob": "72f09d97b84bee41b2256193eddf57829a4f1b5a"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "convolve.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/convolve.cpp",
+      "git_blob": "66c126d0a1a466da2cf404fc8e87d189c530db2a"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "series.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/series.cpp",
+      "git_blob": "25b0d2743fa1660977490331dc9b52f7ffea667c"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "stridemap.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/stridemap.cpp",
+      "git_blob": "4693b698a7640f292ed359aeeee364050b3efaae"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "edgloop.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/edgloop.cpp",
+      "git_blob": "bbee5618bcd428ea353616640ae328797647d229"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "dppoint.cpp.obj",
+      "family": "tess",
+      "path": "src/ccstruct/dppoint.cpp",
+      "git_blob": "30e174d082a629a0f930e53b6f8058cef2f599f6"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "tablerecog.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/tablerecog.cpp",
+      "git_blob": "0d94a61f86958384bdad912b567d94873536957a"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "pithsync.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/pithsync.cpp",
+      "git_blob": "cb92de8ced8513636dffcb03dc5cfa62556ff96e"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "pitsync1.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/pitsync1.cpp",
+      "git_blob": "7999558e65d6ea88e5ffaef7435bd8e57816df07"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "gap_map.cpp.obj",
+      "family": "tess",
+      "path": "src/textord/gap_map.cpp",
+      "git_blob": "4c20d117812b4dfbf35200288026dfe8a5e0082b"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "weightmatrix.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/weightmatrix.cpp",
+      "git_blob": "fe701d05d884982f83af6ec1d391385b9087e1d7"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "functions.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/functions.cpp",
+      "git_blob": "4640d10499d5a67e40f036214105cb9efc72c113"
+    },
+    {
+      "archive": "built-source/build/tess/libtesseract55.a",
+      "member": "plumbing.cpp.obj",
+      "family": "tess",
+      "path": "src/lstm/plumbing.cpp",
+      "git_blob": "908a7513815eeb39cba0d17f044511bc5454e858"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "libversions.c.obj",
+      "family": "lept",
+      "path": "src/libversions.c",
+      "git_blob": "bb232edb86d0b704bdbe740639f7bb1f4c36046c"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "utils1.c.obj",
+      "family": "lept",
+      "path": "src/utils1.c",
+      "git_blob": "b8dedd558a7bd3a35784322e4e08c183ba1118ab"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "utils2.c.obj",
+      "family": "lept",
+      "path": "src/utils2.c",
+      "git_blob": "e05abc3ac8348c3655bcd459d6c292a509084753"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pix1.c.obj",
+      "family": "lept",
+      "path": "src/pix1.c",
+      "git_blob": "e21f457302ea1439053cbd0f09e7a208f1888b85"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "readfile.c.obj",
+      "family": "lept",
+      "path": "src/readfile.c",
+      "git_blob": "a9d3d2958ed5c30e7791ef565f11835cbcc81273"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pixconv.c.obj",
+      "family": "lept",
+      "path": "src/pixconv.c",
+      "git_blob": "e1c74847b86f8d8a2976407011d0fcddbdec5f9e"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "boxbasic.c.obj",
+      "family": "lept",
+      "path": "src/boxbasic.c",
+      "git_blob": "aaffbb16cc9bebf2b6732b78d1f73b3a46420a1f"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pixabasic.c.obj",
+      "family": "lept",
+      "path": "src/pixabasic.c",
+      "git_blob": "f6dc07914d6905c58111ab31fe0755187cd046da"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "writefile.c.obj",
+      "family": "lept",
+      "path": "src/writefile.c",
+      "git_blob": "e13e1b506e1f306cb638f75d88e025cfccf76efe"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "tiffiostub.c.obj",
+      "family": "lept",
+      "path": "src/tiffiostub.c",
+      "git_blob": "df93602431844bb30654d9cd35eefec21cfdfcf5"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "zlibmem.c.obj",
+      "family": "lept",
+      "path": "src/zlibmem.c",
+      "git_blob": "92336a294913d31f920a4a643ac319768d6ddfe5"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pdfio2.c.obj",
+      "family": "lept",
+      "path": "src/pdfio2.c",
+      "git_blob": "4c768496be7482acf21082d59f2c2e6e8e8458f5"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "ptabasic.c.obj",
+      "family": "lept",
+      "path": "src/ptabasic.c",
+      "git_blob": "c4ea159f1735273cf7eb92811fe2b605eac6de30"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "ptafunc1.c.obj",
+      "family": "lept",
+      "path": "src/ptafunc1.c",
+      "git_blob": "99a354d7c5b061c56393f0adc5a697190db03270"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "ptafunc2.c.obj",
+      "family": "lept",
+      "path": "src/ptafunc2.c",
+      "git_blob": "e5bed23e106e7685843714738ca853a8a466791d"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "numabasic.c.obj",
+      "family": "lept",
+      "path": "src/numabasic.c",
+      "git_blob": "5138f987b383f9c133ae39b74b045a3cd15b14f3"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pix5.c.obj",
+      "family": "lept",
+      "path": "src/pix5.c",
+      "git_blob": "b661ceae2186369ff81aefcff75b039fbc6529df"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "rop.c.obj",
+      "family": "lept",
+      "path": "src/rop.c",
+      "git_blob": "27a6606e4e33c7054108548898ccd0c578f5a735"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "morph.c.obj",
+      "family": "lept",
+      "path": "src/morph.c",
+      "git_blob": "15357a46d7e84ccb049ee681a960389a03c5351b"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pix3.c.obj",
+      "family": "lept",
+      "path": "src/pix3.c",
+      "git_blob": "4de16d3fc3dab18877735b2653c29c308b71391b"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "dnabasic.c.obj",
+      "family": "lept",
+      "path": "src/dnabasic.c",
+      "git_blob": "47b305779665abc176572f6db3e58f933016ca1f"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "bbuffer.c.obj",
+      "family": "lept",
+      "path": "src/bbuffer.c",
+      "git_blob": "bacd805b05afdc760b2e4f5a160e298b106f0205"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "sarray1.c.obj",
+      "family": "lept",
+      "path": "src/sarray1.c",
+      "git_blob": "5436c063ca2bbf655afe245592ad02cbe3225ded"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "numafunc2.c.obj",
+      "family": "lept",
+      "path": "src/numafunc2.c",
+      "git_blob": "3fe09f37d0f284e9cdbfb858037f2e0abedc1b49"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "bytearray.c.obj",
+      "family": "lept",
+      "path": "src/bytearray.c",
+      "git_blob": "9e0de54e896c300e00e744f603b9b27cb2e8af97"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pix2.c.obj",
+      "family": "lept",
+      "path": "src/pix2.c",
+      "git_blob": "487cebf7ea1d321fead1b17b23e94c193348d101"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "colormap.c.obj",
+      "family": "lept",
+      "path": "src/colormap.c",
+      "git_blob": "9533fe6883497be8d1540b298e15e09a856e9952"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "encoding.c.obj",
+      "family": "lept",
+      "path": "src/encoding.c",
+      "git_blob": "f11aab29e73ad1ee1e66232e31c4f784d23cc15b"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "gifiostub.c.obj",
+      "family": "lept",
+      "path": "src/gifiostub.c",
+      "git_blob": "9af01d72b32cfcb9042677602cf34a2d08e9f447"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "jp2kiostub.c.obj",
+      "family": "lept",
+      "path": "src/jp2kiostub.c",
+      "git_blob": "925976e645fb2e1937cf4b6a0894c6824c64137b"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "jpegiostub.c.obj",
+      "family": "lept",
+      "path": "src/jpegiostub.c",
+      "git_blob": "fe15f9a2a31739185e21e253a9267b1f23cd70fb"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "webpiostub.c.obj",
+      "family": "lept",
+      "path": "src/webpiostub.c",
+      "git_blob": "15ef2230a2a61d45b8b25aea0ddb334f26d375ae"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "bmpio.c.obj",
+      "family": "lept",
+      "path": "src/bmpio.c",
+      "git_blob": "43935f0578c352806ffd346c201192da291b819c"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pngio.c.obj",
+      "family": "lept",
+      "path": "src/pngio.c",
+      "git_blob": "f643d2595b604129710aeb9d85cdfc0bd0c751a1"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pnmio.c.obj",
+      "family": "lept",
+      "path": "src/pnmio.c",
+      "git_blob": "cb3a49cfd332d0554594f3793fbb9ad69e0a995e"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "spixio.c.obj",
+      "family": "lept",
+      "path": "src/spixio.c",
+      "git_blob": "3f996426b73949ec6cff7c779084857fcc7c35cb"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "jp2kheader.c.obj",
+      "family": "lept",
+      "path": "src/jp2kheader.c",
+      "git_blob": "57bc2b2f0df9a8568294164a95b0b0c841955a35"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "compare.c.obj",
+      "family": "lept",
+      "path": "src/compare.c",
+      "git_blob": "d0c26231ba901b1d6ed9f18e826930ebddc66c51"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "bmf.c.obj",
+      "family": "lept",
+      "path": "src/bmf.c",
+      "git_blob": "a53c2ce38c6fccc82d88a4ce34f3a38b36850282"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pdfio1.c.obj",
+      "family": "lept",
+      "path": "src/pdfio1.c",
+      "git_blob": "998ca1719ef206c177ef6d3a50637d644e0fd54c"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "binarize.c.obj",
+      "family": "lept",
+      "path": "src/binarize.c",
+      "git_blob": "a62bd0afacdb1b2013487ef68b5769d3731f692e"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "grayquant.c.obj",
+      "family": "lept",
+      "path": "src/grayquant.c",
+      "git_blob": "f742fa611b6592d3c93e20dd2ef86b90b3f7fd9d"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "colorcontent.c.obj",
+      "family": "lept",
+      "path": "src/colorcontent.c",
+      "git_blob": "0a01ffa96c02f6654257da7514382cb9a91a5dca"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "colorspace.c.obj",
+      "family": "lept",
+      "path": "src/colorspace.c",
+      "git_blob": "a815da5f0d87d6a1c9a6a3a84fedfba039699a61"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pix4.c.obj",
+      "family": "lept",
+      "path": "src/pix4.c",
+      "git_blob": "a0cef6dd40eea37e35e41b1a58519afed8922885"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "numafunc1.c.obj",
+      "family": "lept",
+      "path": "src/numafunc1.c",
+      "git_blob": "c6d2ba1758aa4c611b2f75f4029723ee75f4cfe5"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "colorquant1.c.obj",
+      "family": "lept",
+      "path": "src/colorquant1.c",
+      "git_blob": "9b501045d48a9bc17bd18a5aae152cfded8a5319"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "adaptmap.c.obj",
+      "family": "lept",
+      "path": "src/adaptmap.c",
+      "git_blob": "8d6cf6b7757f6c9994f394537bfc88de03dfdbf9"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "scale1.c.obj",
+      "family": "lept",
+      "path": "src/scale1.c",
+      "git_blob": "3fdc2a82c942dce54aeb5c3f4d00d9516997dd8e"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "blend.c.obj",
+      "family": "lept",
+      "path": "src/blend.c",
+      "git_blob": "a8dce4164784635b3b4dc3ba5a5bbf45240e1ebb"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "scale2.c.obj",
+      "family": "lept",
+      "path": "src/scale2.c",
+      "git_blob": "cc839ca4cfd0cfa411b1dba65683447cd4e1da53"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "boxfunc4.c.obj",
+      "family": "lept",
+      "path": "src/boxfunc4.c",
+      "git_blob": "5f79e0af1a7d49f594eefd9a06002493f9f165b0"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "boxfunc1.c.obj",
+      "family": "lept",
+      "path": "src/boxfunc1.c",
+      "git_blob": "fe2d2a01c174b8eef04f2fb7988f07f748a6d251"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "stringcode.c.obj",
+      "family": "lept",
+      "path": "src/stringcode.c",
+      "git_blob": "20dbabe15db910cde80a068229a4573c0f706253"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pixcomp.c.obj",
+      "family": "lept",
+      "path": "src/pixcomp.c",
+      "git_blob": "5ec4ba64444a924ae298fc5ad6e58bad108c9d4e"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "seedfill.c.obj",
+      "family": "lept",
+      "path": "src/seedfill.c",
+      "git_blob": "158d76f78da1df337fa602c32a7f41e8c0b6698b"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "conncomp.c.obj",
+      "family": "lept",
+      "path": "src/conncomp.c",
+      "git_blob": "7d84f1b52c220be6a9a14788bd5783de613fe766"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "textops.c.obj",
+      "family": "lept",
+      "path": "src/textops.c",
+      "git_blob": "1ed8089bfb569ac461e3415c18c67e0211744188"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "rotateorth.c.obj",
+      "family": "lept",
+      "path": "src/rotateorth.c",
+      "git_blob": "81ee5fbe1413f7569dd2096eb0819927980eaf10"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "psio2.c.obj",
+      "family": "lept",
+      "path": "src/psio2.c",
+      "git_blob": "65af8000b18ddd565d7dfb94ab0eead8d273410f"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "graphics.c.obj",
+      "family": "lept",
+      "path": "src/graphics.c",
+      "git_blob": "b953d30cfbe89aa95c9499f502d9522a876c5ef2"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "ptra.c.obj",
+      "family": "lept",
+      "path": "src/ptra.c",
+      "git_blob": "071f90b05e3bf3e9c0ed6b68198357248af8a7df"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "dnafunc1.c.obj",
+      "family": "lept",
+      "path": "src/dnafunc1.c",
+      "git_blob": "4edcca269bdb08f4410c0d47b33d39b84b6a436f"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "affine.c.obj",
+      "family": "lept",
+      "path": "src/affine.c",
+      "git_blob": "be1dc7f215020e85bb440c51ef27c9481c934981"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "gplot.c.obj",
+      "family": "lept",
+      "path": "src/gplot.c",
+      "git_blob": "d72db9ba3587cf56298b4c2fae92a781af430a71"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "morphseq.c.obj",
+      "family": "lept",
+      "path": "src/morphseq.c",
+      "git_blob": "39280255a6d03890920a5aa564582e3eb3907bba"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "map.c.obj",
+      "family": "lept",
+      "path": "src/map.c",
+      "git_blob": "0a2b2c5cdd0d179dd490cf791a3042d5ed57f83e"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "hashmap.c.obj",
+      "family": "lept",
+      "path": "src/hashmap.c",
+      "git_blob": "e52ffcdf39893b31237d4a10a3db2e22faaafde6"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pixafunc2.c.obj",
+      "family": "lept",
+      "path": "src/pixafunc2.c",
+      "git_blob": "ccd38ba2e0c3dd3957f9bcde77b5b151a7af8377"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "paintcmap.c.obj",
+      "family": "lept",
+      "path": "src/paintcmap.c",
+      "git_blob": "1c4f671c2878d1ed2752647f59fa184b0e76a480"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pixafunc1.c.obj",
+      "family": "lept",
+      "path": "src/pixafunc1.c",
+      "git_blob": "f4ed59acbe329c2d00dc66a249eb299fb95e0690"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "boxfunc3.c.obj",
+      "family": "lept",
+      "path": "src/boxfunc3.c",
+      "git_blob": "b6b6b7583a07dc3c53b8d11b34b162cdef58c164"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "roplow.c.obj",
+      "family": "lept",
+      "path": "src/roplow.c",
+      "git_blob": "768724410678ad7fb03ea92e4d83761c9e022e2c"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "sel1.c.obj",
+      "family": "lept",
+      "path": "src/sel1.c",
+      "git_blob": "bddf1f741c6699b8d0320956e3fbeee5588a9a91"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pixarith.c.obj",
+      "family": "lept",
+      "path": "src/pixarith.c",
+      "git_blob": "b59bd65dc328c3f22fafa2cda52a7ce8a9db297d"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "sarray2.c.obj",
+      "family": "lept",
+      "path": "src/sarray2.c",
+      "git_blob": "30161ba9555417120336960aaf795df304ce11d3"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "enhance.c.obj",
+      "family": "lept",
+      "path": "src/enhance.c",
+      "git_blob": "de17b63bfa92e66d6c8123111d3c1ee33084a8eb"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "coloring.c.obj",
+      "family": "lept",
+      "path": "src/coloring.c",
+      "git_blob": "f461c98eca28f4fc4d5f642ab06d58e126011ed3"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pixacc.c.obj",
+      "family": "lept",
+      "path": "src/pixacc.c",
+      "git_blob": "7ab1236454bb9d11d1d90f5ff40258e850d0b34f"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "colormorph.c.obj",
+      "family": "lept",
+      "path": "src/colormorph.c",
+      "git_blob": "84c1ffa2af74f13f22d5536dfdde551c9bb92cd1"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "graymorph.c.obj",
+      "family": "lept",
+      "path": "src/graymorph.c",
+      "git_blob": "0a42e7057956f448570970b004448720b6e1c0c6"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pageseg.c.obj",
+      "family": "lept",
+      "path": "src/pageseg.c",
+      "git_blob": "520522bef1ce9412fd9b2b0a0849e6bbb91a64dc"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "arrayaccess.c.obj",
+      "family": "lept",
+      "path": "src/arrayaccess.c",
+      "git_blob": "1dd337da9b9b65ebb8efc6fbfea7aa6dd80b89ba"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "binreduce.c.obj",
+      "family": "lept",
+      "path": "src/binreduce.c",
+      "git_blob": "02b9e8301e701689e28f6f56e88fe1ab624af262"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "morphapp.c.obj",
+      "family": "lept",
+      "path": "src/morphapp.c",
+      "git_blob": "9d5f5d711e503a5e9484e9eb7618703dbf5c5cd9"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "fpix1.c.obj",
+      "family": "lept",
+      "path": "src/fpix1.c",
+      "git_blob": "e0616fa1821528734b96d769b94a41911577d8ab"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "correlscore.c.obj",
+      "family": "lept",
+      "path": "src/correlscore.c",
+      "git_blob": "839b7e96921d71ce789f9be83381869304b764f0"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "fpix2.c.obj",
+      "family": "lept",
+      "path": "src/fpix2.c",
+      "git_blob": "5f73c2a749a1ce3c072eab8e6d4df8aa92bff4f2"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "boxfunc2.c.obj",
+      "family": "lept",
+      "path": "src/boxfunc2.c",
+      "git_blob": "866c23ff4f1d8a3e5a35193fa922462ede8ebfbf"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "pixtiling.c.obj",
+      "family": "lept",
+      "path": "src/pixtiling.c",
+      "git_blob": "82a3098100aa0e5448275593139aa92b9c37fc18"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "convolve.c.obj",
+      "family": "lept",
+      "path": "src/convolve.c",
+      "git_blob": "5175df8a29d50dc893116b4417309e11c476794e"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "kernel.c.obj",
+      "family": "lept",
+      "path": "src/kernel.c",
+      "git_blob": "edb56fb315b1a111d1af4a7659b2ad9439784e00"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "edge.c.obj",
+      "family": "lept",
+      "path": "src/edge.c",
+      "git_blob": "9b36d0ae151c28db0ce8ce3009294f2e0e905aa1"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "colorseg.c.obj",
+      "family": "lept",
+      "path": "src/colorseg.c",
+      "git_blob": "62e1d474f2b169bbacf7f450ccb9c9b359b11271"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "heap.c.obj",
+      "family": "lept",
+      "path": "src/heap.c",
+      "git_blob": "5c5823e1d085962d886229f6140674e7f800aa8e"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "binexpand.c.obj",
+      "family": "lept",
+      "path": "src/binexpand.c",
+      "git_blob": "bee5825f114048c117d62faf631c6a383336c747"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "queue.c.obj",
+      "family": "lept",
+      "path": "src/queue.c",
+      "git_blob": "5af07140d6c5a97ce83f1f414ae40ffb8b30e55f"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "stack.c.obj",
+      "family": "lept",
+      "path": "src/stack.c",
+      "git_blob": "7f84f075856aa903fcf10e83410c7476c2de8b41"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "runlength.c.obj",
+      "family": "lept",
+      "path": "src/runlength.c",
+      "git_blob": "9d8ed7533c74705d3ce782ea7c95d9c3b6009ae9"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "shear.c.obj",
+      "family": "lept",
+      "path": "src/shear.c",
+      "git_blob": "b696b92865b35b0de739ba0d2c53860174284e5f"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "morphdwa.c.obj",
+      "family": "lept",
+      "path": "src/morphdwa.c",
+      "git_blob": "e8e7ce34a587e954a20faa7ccae231f04340f133"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "rbtree.c.obj",
+      "family": "lept",
+      "path": "src/rbtree.c",
+      "git_blob": "22b21334536c2e83d851ac27c08fb025d7ba0ecf"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "rotate.c.obj",
+      "family": "lept",
+      "path": "src/rotate.c",
+      "git_blob": "2a7034965eb4e975eb8a94bf8e1f2610d69cba05"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "ccbord.c.obj",
+      "family": "lept",
+      "path": "src/ccbord.c",
+      "git_blob": "66e70f34800cf3f8b8a6f314193dd17b4433b842"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "skew.c.obj",
+      "family": "lept",
+      "path": "src/skew.c",
+      "git_blob": "0acb67178210de2d2ad346f54d871068daa22c90"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "projective.c.obj",
+      "family": "lept",
+      "path": "src/projective.c",
+      "git_blob": "5418dacacfe5cda814d6d6f8c0068ee1398bbb8c"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "rotateshear.c.obj",
+      "family": "lept",
+      "path": "src/rotateshear.c",
+      "git_blob": "7667bacb2bfd6964fcf38e2ae2d8fe8bf586df6d"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "sel2.c.obj",
+      "family": "lept",
+      "path": "src/sel2.c",
+      "git_blob": "9821366b7ab69827541260b988f0b7b4869d345b"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "fmorphgen.1.c.obj",
+      "family": "lept",
+      "path": "src/fmorphgen.1.c",
+      "git_blob": "7b85beda5c687843ed4e588130979a15cdf72586"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "dwacomb.2.c.obj",
+      "family": "lept",
+      "path": "src/dwacomb.2.c",
+      "git_blob": "2737a632d133bc8b4a4d0ac8db7a9231124d4e47"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "rotateam.c.obj",
+      "family": "lept",
+      "path": "src/rotateam.c",
+      "git_blob": "d021be94bd119d5b3908d9da8b6e4a16c4b4e7e0"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "fmorphgenlow.1.c.obj",
+      "family": "lept",
+      "path": "src/fmorphgenlow.1.c",
+      "git_blob": "dd43da2e33e948217b8f9d102fffbdeae949a399"
+    },
+    {
+      "archive": "built-source/prefix/lib/libleptonica.a",
+      "member": "dwacomblow.2.c.obj",
+      "family": "lept",
+      "path": "src/dwacomblow.2.c",
+      "git_blob": "e47684ff18c118539290b592073ba718bae1447f"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libkernel32.a",
+      "member": "KERNEL32.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "kernel32.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "string.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/string.cpp",
+      "git_blob": "b55f9ff5c9a43982132957353c8a2148470a139d",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "locale.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/locale.cpp",
+      "git_blob": "b0a69ab74f94c5523bd7a4441b100a5e80d7cbf8",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "ios.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/ios.cpp",
+      "git_blob": "db6ca50f7f6ca0b5a94ee8235e9f1776ba1efb8d",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "stdexcept.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/stdexcept.cpp",
+      "git_blob": "31f60d5a5ac5b6258873b381a90161e7d77ce95b",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "stdlib_stdexcept.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/stdlib_stdexcept.cpp",
+      "git_blob": "92f7a6e076c0f0a467208feb95f0f25a3fd4d3a1",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "stdlib_exception.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/stdlib_exception.cpp",
+      "git_blob": "b1fc21f412aa941b35394f8224d703650b8fcd8f",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "ios.instantiations.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/ios.instantiations.cpp",
+      "git_blob": "a50d3b745944a4ac1e563471a83455d895a5b9b2",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "iostream.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/iostream.cpp",
+      "git_blob": "03939823614560b07079c34c1b455e47aa6fce47",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "exception.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/exception.cpp",
+      "git_blob": "9932141006591338626cba60ba10a70d42de33e5",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "cxa_handlers.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/cxa_handlers.cpp",
+      "git_blob": "0abdc740486b8a04e7c1f4da911a3eba05138bab",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "private_typeinfo.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/private_typeinfo.cpp",
+      "git_blob": "ba3da519238b7afd28965cab4ea63ab7ad1b4cfa",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "stdlib_new_delete.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/stdlib_new_delete.cpp",
+      "git_blob": "164a26335eb38276feaa0c3bac9e612f26cc806e",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "cxa_exception.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/cxa_exception.cpp",
+      "git_blob": "f56ecc248eefb7f1e11518cf54fd4c0229b965dd",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "cxa_guard.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/cxa_guard.cpp",
+      "git_blob": "514fa962e3daa8364beced766a3bde5117f4be37",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "cxa_personality.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/cxa_personality.cpp",
+      "git_blob": "c5050e46c0e85c30190b4dc54c8e49987b11daac",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "directory_iterator.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/filesystem/directory_iterator.cpp",
+      "git_blob": "5d682aee2b8394399b3ba2399f2fbd5e7d1534e9",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "memory.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/memory.cpp",
+      "git_blob": "94a90cd3b9f0f5096be509c15ab380e52b49e794",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "path.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/filesystem/path.cpp",
+      "git_blob": "faa7b4f1fbab7ba70e104b8d7277a7973685320a",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "chrono.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/chrono.cpp",
+      "git_blob": "af5fe7c01fb8b7fa619ea92e96a3232d5f68f4c2",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "stdlib_typeinfo.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/stdlib_typeinfo.cpp",
+      "git_blob": "6e5499628d130d186a8ed36c45d1d506221b203f",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "mutex.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/mutex.cpp",
+      "git_blob": "303001a3b96237a34680040863b592de8282eb82",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "cxa_virtual.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/cxa_virtual.cpp",
+      "git_blob": "1d3f4c63cf2dea4efe5cecb1f5fb97b12e3aa0c4",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "functional.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/functional.cpp",
+      "git_blob": "737b6e0931ad66e17e0b68b7587a17c7ab739a86",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "regex.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/regex.cpp",
+      "git_blob": "9d7d1699ae266d1a1fbc126dd6922bb39f949bab",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "call_once.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/call_once.cpp",
+      "git_blob": "015b874cffa44ca3bd1ba9c467e8f0af61a1d300",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "new_helpers.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/new_helpers.cpp",
+      "git_blob": "2119d82b3e00f94063d8010a51037996fbcf35f5",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "locale_win32.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/support/win32/locale_win32.cpp",
+      "git_blob": "c5117564438a5c70aad6cb4f4cefaea665e1e3c8",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "system_error.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/system_error.cpp",
+      "git_blob": "cf3d2c2926861c69c2d58739f2fc9b00ac5e3deb",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "error_category.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/error_category.cpp",
+      "git_blob": "941ca659b9d097e32fa0a8162d17f24a62d23c2b",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "cxa_exception_storage.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/cxa_exception_storage.cpp",
+      "git_blob": "05da6a48e313cf619e21964d463f8ba1068185d9",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "abort_message.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/abort_message.cpp",
+      "git_blob": "d51d9d87d35e021005023fca158085502b7805cb",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "cxa_default_handlers.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/cxa_default_handlers.cpp",
+      "git_blob": "5daf78b34ee542c98360c1e4ff98366240c13d93",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "fallback_malloc.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/fallback_malloc.cpp",
+      "git_blob": "81195c9a4dc1743ddc609e0d9bce4be3a75dd730",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "thread_win32.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/support/win32/thread_win32.cpp",
+      "git_blob": "606104e32b45328796c03b95f572ac177775c190",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "operations.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/filesystem/operations.cpp",
+      "git_blob": "cd55b797e96a2ecb92f5067932125109fcc082e1",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "filesystem_error.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/filesystem/filesystem_error.cpp",
+      "git_blob": "43752aa7ac3bd88d46ac03566f8f2008ea056c4b",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "algorithm.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/algorithm.cpp",
+      "git_blob": "bbfbb3885f1c376cd20595ef01a02481e49050f3",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "condition_variable.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/condition_variable.cpp",
+      "git_blob": "8248719ee859d58f292d2646dc3d33ac2b9b6554",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "support.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/support/win32/support.cpp",
+      "git_blob": "7ac508301b526ca970e0c0168f0ad9951fd32a91",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "cxa_demangle.cpp.obj",
+      "family": "llvm",
+      "path": "libcxxabi/src/cxa_demangle.cpp",
+      "git_blob": "4756d8343630b96355cecc2929cdc42788380a0e",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "hash.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/hash.cpp",
+      "git_blob": "dd6b603d2d6d4c9030421c41b4850d8000a4207e",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "thread.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/thread.cpp",
+      "git_blob": "d2aff1ee0c3fef2f2fe16a61ad6749d3f1968359",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libc++.a",
+      "member": "future.cpp.obj",
+      "family": "llvm",
+      "path": "libcxx/src/future.cpp",
+      "git_blob": "284b68828c7fd56eefc437ffb8c7a2d06987a600",
+      "note": "libc++ archive embeds libc++abi according to exact build-libcxx.sh static ABI option"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-xthdloc.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/xthdloc.c",
+      "git_blob": "973ff45b16e494acf60cd8e26870460a754e9ac7"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-gccmain.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/gccmain.c",
+      "git_blob": "7edf8360c91c182f8ec6e5a695c262332ee6c3ba"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-mingw_helpers.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/mingw_helpers.c",
+      "git_blob": "84413cdb7c9fed8e923e3620334e0f29ccf145f2"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-natstart.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/natstart.c",
+      "git_blob": "5008790e1eefed244e387f654bf4efbe5f3b2250"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-cinitexe.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/cinitexe.c",
+      "git_blob": "9e6931c4fc4b5dbd41d5338a9be793b170596802"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-xncommod.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/xncommod.c",
+      "git_blob": "b2ec312f09f4f03755c048a20b29ad7454b823a8"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-wildcard.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/wildcard.c",
+      "git_blob": "b53cc18ec0c05a14962269e453b1d18b2ae1084d"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-xtxtmode.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/xtxtmode.c",
+      "git_blob": "dcbbe11846a5d0c9cea993f7adcc87bd6a5fe958"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-merr.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/merr.c",
+      "git_blob": "9f8c2b40a1830300ab086a68b46561529d74edf6"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-_newmode.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/_newmode.c",
+      "git_blob": "2bb5d94a279942260b3091ae7278ac6e000351c5"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-pseudo-reloc.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/pseudo-reloc.c",
+      "git_blob": "dd2a28e8c2a82fbd0d00731c38e666c09738d1f3"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-dllargv.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/dllargv.c",
+      "git_blob": "d6be1bc7c2cf76471df995bdf7509590cd4d8f4d"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-pseudo-reloc-list.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/pseudo-reloc-list.c",
+      "git_blob": "5b903c21d211138864d6b484c5b5d8c0c5df6cf3"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingw32.a",
+      "member": "lib64_libmingw32_a-tlssup.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/tlssup.c",
+      "git_blob": "6273a1c527116aa889d3958bf10de7306a20d2a2"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libunwind.a",
+      "member": "Unwind-seh.cpp.obj",
+      "family": "llvm",
+      "path": "libunwind/src/Unwind-seh.cpp",
+      "git_blob": "0b1930b44d1c648b89099b6f2f796b4233f1c877"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libunwind.a",
+      "member": "UnwindLevel1.c.obj",
+      "family": "llvm",
+      "path": "libunwind/src/UnwindLevel1.c",
+      "git_blob": "834fdae6a76d3e28bde5ece20c45f367a47b1f12"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libunwind.a",
+      "member": "libunwind.cpp.obj",
+      "family": "llvm",
+      "path": "libunwind/src/libunwind.cpp",
+      "git_blob": "0b9d56ec805bca92f0ed4b93be549c8cf982e809"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libunwind.a",
+      "member": "UnwindRegistersSave.S.obj",
+      "family": "llvm",
+      "path": "libunwind/src/UnwindRegistersSave.S",
+      "git_blob": "f44f6a1331968cf75de46a3cf64a0cc5c8f485b2"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-mingw_cfguard_support.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/cfguard/mingw_cfguard_support.c",
+      "git_blob": "5c736e162339dc590723f402380c4264601aefe3"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-__mingw_setusermatherr.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/misc/__mingw_setusermatherr.c",
+      "git_blob": "cb063b29959d66d961cf13e98460d11d74a16037"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-CRT_fp10.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/CRT_fp10.c",
+      "git_blob": "bfa9517ef4c71436043da2138c8aaccb243ac3fa"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-strtof.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/strtof.c",
+      "git_blob": "e3f6d0c5ffce285e4c99128ba2f70d0b0f21f048",
+      "note": "Makefile.am src_libmingwex includes gdtoa/strtof.c; stdio/strtof.c belongs to a different source list"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-strtodnrp.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/strtodnrp.c",
+      "git_blob": "523e36e4760fe0386a784ebd5eff810d7ab02ffd"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-strtopx.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/strtopx.c",
+      "git_blob": "b80a79476afe25ea4b0eef107ba2b0b953bfec80"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-wcstold.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/misc/wcstold.c",
+      "git_blob": "12714ba19a8faf54afd9f8d00a2d249484679c6e"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-mingw_snprintf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/mingw_snprintf.c",
+      "git_blob": "0c0d76220b9e88d7a75c5b44049f7fe35ac6143f"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-mingw_swprintf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/mingw_swprintf.c",
+      "git_blob": "179c27970e6b4956806a3e3220448e52b61c8496"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-mingw_sscanf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/mingw_sscanf.c",
+      "git_blob": "e1a8e8bfe3713207519a892b331540534dab1722"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-mingw_fprintf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/mingw_fprintf.c",
+      "git_blob": "438941f7e3f473462007cffc12d967c88bf315e9"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-guard_dispatch.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/cfguard/guard_dispatch.S",
+      "git_blob": "26fc8ef70c024ab756b1fb1b03eed646a63a03ab"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-mingw_vsnprintf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/mingw_vsnprintf.c",
+      "git_blob": "94cd372153e1391a29861bfd2c1c15d315e3be0d"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-strtodg.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/strtodg.c",
+      "git_blob": "9259371e31426797c79408bdd5f0fe23d1dfadbd"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-g__fmt.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/g__fmt.c",
+      "git_blob": "762589d183416a6e4c76528508082026836d0099"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-mingw_wcstold.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/misc/mingw_wcstold.c",
+      "git_blob": "407e1696cab5ef14fbafdc196115611b08b3840f"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-mingw_vswprintf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/mingw_vswprintf.c",
+      "git_blob": "6d70b2cfa1e5333b80f70f901e6675e892dccc41"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-btowc.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/misc/btowc.c",
+      "git_blob": "d69b6bd03bfdae36960a9c1e83d96c82b08f6d99"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-wctob.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/misc/wctob.c",
+      "git_blob": "4a3c2408c982ec90590b4b5c0baf9823709ef4b8"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-mingw_vsscanf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/mingw_vsscanf.c",
+      "git_blob": "9bff45841005ae3edc3c290c3fafa524dbe1fa75"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-mingw_vfprintf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/mingw_vfprintf.c",
+      "git_blob": "01ad01b5790b453973bbdf996540cfb9a1110d62"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-mingw_pformat.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/mingw_pformat.c",
+      "git_blob": "2bbe5203b52fe37cd977c6c11bc11c7924dab2ae"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-misc.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/misc.c",
+      "git_blob": "960543a606eeda45b24a4886e6149963fe6bae79"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-gethex.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/gethex.c",
+      "git_blob": "b555dd716e410ef7068d454912defe6104bd1c4e"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-smisc.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/smisc.c",
+      "git_blob": "1d09b44ea1e50a2d3326d7c109df2780880c106c"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-gmisc.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/gmisc.c",
+      "git_blob": "157e872319f033f3fcc838c26a93b7fc8b9c9826"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-sum.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/sum.c",
+      "git_blob": "8823541ea69ba1243f2589e42ad22e2ae37b6762"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-hexnan.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/hexnan.c",
+      "git_blob": "00b073eb3ef26bbec9e0f41da6d4a8e2a3eae785"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-dmisc.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/dmisc.c",
+      "git_blob": "c61e9fa8a52159f500db0e1497594b503dbcc5cd"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-mingw_wpformat.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/mingw_wpformat.c",
+      "git_blob": "2c7cd1eade31fb5e95bed6bb905a91f5e211616c"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-mingw_sformat.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/mingw_sformat.c",
+      "git_blob": "0b1a59792b410e5d924b873e62eeede1898de690"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-gdtoa.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/gdtoa.c",
+      "git_blob": "1cfe1953e4c16b19dfd7a0446da5d20ec67f3de4"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-hd_init.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/gdtoa/hd_init.c",
+      "git_blob": "acbb6d84fc4bad295911e4c0e9f3e662597284bf"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmingwex.a",
+      "member": "lib64_libmingwex_a-loadcfg.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/loadcfg.S",
+      "git_blob": "5aba73462de3018c7d35ec93d5afcc6eda8276ff"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "api-ms-win-crt-runtime-l1-1-0.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "api-ms-win-crt-runtime-l1-1-0.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "api-ms-win-crt-stdio-l1-1-0.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "api-ms-win-crt-stdio-l1-1-0.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-ucrt__getmainargs.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/misc/ucrt__getmainargs.c",
+      "git_blob": "72fef92cc36e674db13500d74dee10a27a060631"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-__p___initenv.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/misc/__p___initenv.c",
+      "git_blob": "e3f880b38408689890dff6091f2fe1ef831f8c46"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-ucrt_amsg_exit.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/misc/ucrt_amsg_exit.c",
+      "git_blob": "0aad4f6c368a7f284568ffb1e96c8e48f011e56a"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "api-ms-win-crt-locale-l1-1-0.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "api-ms-win-crt-locale-l1-1-0.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "api-ms-win-crt-convert-l1-1-0.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "api-ms-win-crt-convert-l1-1-0.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-ucrt_fprintf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/ucrt_fprintf.c",
+      "git_blob": "0b06b14e9653a4dca58436e30cc2ad2feb9a5f2b"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "api-ms-win-crt-environment-l1-1-0.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "api-ms-win-crt-environment-l1-1-0.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "api-ms-win-crt-heap-l1-1-0.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "api-ms-win-crt-heap-l1-1-0.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "api-ms-win-crt-private-l1-1-0.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "api-ms-win-crt-private-l1-1-0.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "api-ms-win-crt-string-l1-1-0.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "api-ms-win-crt-string-l1-1-0.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-ucrt_printf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/ucrt_printf.c",
+      "git_blob": "02d2f706bf043aa126c4ddbd03194cc5bfae44a4"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-ucrt_vfprintf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/ucrt_vfprintf.c",
+      "git_blob": "6ac1bb8c115a5cbf82d3d1a364fc3460eeb47380"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-ucrt_snprintf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/ucrt_snprintf.c",
+      "git_blob": "19b83292594f904ea07188c64f420e127b89734b"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "api-ms-win-crt-math-l1-1-0.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "api-ms-win-crt-math-l1-1-0.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "api-ms-win-crt-time-l1-1-0.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "api-ms-win-crt-time-l1-1-0.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-ucrt_vsnprintf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/ucrt_vsnprintf.c",
+      "git_blob": "5ccf5fafe5a37c14a563eedfea916661ea895dc2"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "api-ms-win-crt-utility-l1-1-0.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "api-ms-win-crt-utility-l1-1-0.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-ucrt_sprintf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/ucrt_sprintf.c",
+      "git_blob": "5da61d1e4ded0fac3eb2962676e6dc6ce6c4829e"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "api-ms-win-crt-filesystem-l1-1-0.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "api-ms-win-crt-filesystem-l1-1-0.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-ucrt_sscanf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/ucrt_sscanf.c",
+      "git_blob": "752ecdc4bd9679be3eaa3a51b07da2abc0a62fea"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "api-ms-win-crt-multibyte-l1-1-0.dll",
+      "family": "mingw-import",
+      "note": "MinGW-generated COFF import records for Windows OS API-set/DLL; not redistribution of Windows DLL bytes",
+      "import_dll": "api-ms-win-crt-multibyte-l1-1-0.dll"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-__initenv.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/misc/__initenv.c",
+      "git_blob": "30b11f284226c16e8e5320e4b3d164cc4a3c425d"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-ucrt___local_stdio_printf_options.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/ucrt___local_stdio_printf_options.c",
+      "git_blob": "ee98ac1ac827877eaa8e5de8a675bdc9dcced18c"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-ucrt_fscanf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/ucrt_fscanf.c",
+      "git_blob": "32149fcdff7da8208cb5bc26242a88f19c022473"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-ucrt___local_stdio_scanf_options.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/ucrt___local_stdio_scanf_options.c",
+      "git_blob": "e10a83192b90f9417c496bcd0121e201aab9dc2a"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/libmsvcrt.a",
+      "member": "lib64_libucrt_extra_a-ucrt_ms_fwprintf.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/stdio/ucrt_ms_fwprintf.c",
+      "git_blob": "b79073322da0abf34693f31c603bcf32c63d7222"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "png.c.obj",
+      "family": "png",
+      "path": "png.c",
+      "git_blob": "68cfc42e8961ebe3334fc1a416d44758afba8c67"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "pngerror.c.obj",
+      "family": "png",
+      "path": "pngerror.c",
+      "git_blob": "72dc20ea874d232d373021b7d4af06de311b47f4"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "pngmem.c.obj",
+      "family": "png",
+      "path": "pngmem.c",
+      "git_blob": "b7adff82f520716008f9c185df02497d027089e9"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "pngwutil.c.obj",
+      "family": "png",
+      "path": "pngwutil.c",
+      "git_blob": "e16c387c209f889bc4889d8e20858e79b05f9772"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "pngread.c.obj",
+      "family": "png",
+      "path": "pngread.c",
+      "git_blob": "0033089ad839d7e8c692a9fc5cd500d805225149"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "pngwrite.c.obj",
+      "family": "png",
+      "path": "pngwrite.c",
+      "git_blob": "2c95eb66ca74963dc84b377f0728f2e28605079d"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "pngget.c.obj",
+      "family": "png",
+      "path": "pngget.c",
+      "git_blob": "9c7e8a12df6ad31b58c833000b61a655e2108b9d"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "pngset.c.obj",
+      "family": "png",
+      "path": "pngset.c",
+      "git_blob": "f86af0f0177c2d7de441dec89068f8daeecccf85"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "pngrio.c.obj",
+      "family": "png",
+      "path": "pngrio.c",
+      "git_blob": "b4a216161be0abee2d61739143a346de52085021"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "pngwio.c.obj",
+      "family": "png",
+      "path": "pngwio.c",
+      "git_blob": "96a3187ff0139172f7274e2db630f4f47314fce6"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "pngrutil.c.obj",
+      "family": "png",
+      "path": "pngrutil.c",
+      "git_blob": "482f0ae8dfd4793e7a4f266b609bc5c8b9e9334a"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "pngrtran.c.obj",
+      "family": "png",
+      "path": "pngrtran.c",
+      "git_blob": "28e6127c37085435f9bf0a7e560b0e4efd558774"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "pngtrans.c.obj",
+      "family": "png",
+      "path": "pngtrans.c",
+      "git_blob": "32a5fd3c0f4b094389c8d6e374430da39165de47"
+    },
+    {
+      "archive": "built-source/prefix/lib/libpng16.a",
+      "member": "pngwtran.c.obj",
+      "family": "png",
+      "path": "pngwtran.c",
+      "git_blob": "a20847023fbe15431a36421d08907fc7939c1089"
+    },
+    {
+      "archive": "llvm-toolchain/lib/clang/23/lib/windows/libclang_rt.builtins-x86_64.a",
+      "member": "chkstk.S.obj",
+      "family": "llvm",
+      "path": "compiler-rt/lib/builtins/x86_64/chkstk.S",
+      "git_blob": "ad7953a116ac7e782777daf6c419eb18417fb330"
+    },
+    {
+      "archive": "llvm-toolchain/lib/clang/23/lib/windows/libclang_rt.builtins-x86_64.a",
+      "member": "divti3.c.obj",
+      "family": "llvm",
+      "path": "compiler-rt/lib/builtins/divti3.c",
+      "git_blob": "80f2130b590e290ac4abbd3243e726fc9a001295"
+    },
+    {
+      "archive": "llvm-toolchain/lib/clang/23/lib/windows/libclang_rt.builtins-x86_64.a",
+      "member": "udivmodti4.c.obj",
+      "family": "llvm",
+      "path": "compiler-rt/lib/builtins/udivmodti4.c",
+      "git_blob": "6ce213fd5f2a44def30e7a8fa7329e6617a96e58"
+    },
+    {
+      "archive": "built-source/prefix/lib/libzs.a",
+      "member": "deflate.c.obj",
+      "family": "zlib",
+      "path": "deflate.c",
+      "git_blob": "1e585aa621cf48583605d6f2d939bcdaf99b9f9e"
+    },
+    {
+      "archive": "built-source/prefix/lib/libzs.a",
+      "member": "inflate.c.obj",
+      "family": "zlib",
+      "path": "inflate.c",
+      "git_blob": "1aed584538bf59a74533e3bf2ca0576a75371f17"
+    },
+    {
+      "archive": "built-source/prefix/lib/libzs.a",
+      "member": "crc32.c.obj",
+      "family": "zlib",
+      "path": "crc32.c",
+      "git_blob": "32b1d0457886a674329769cb70f5597fd43422dc"
+    },
+    {
+      "archive": "built-source/prefix/lib/libzs.a",
+      "member": "zutil.c.obj",
+      "family": "zlib",
+      "path": "zutil.c",
+      "git_blob": "6c01021dfe433c266fbc4ba7578c4df9d49ece01"
+    },
+    {
+      "archive": "built-source/prefix/lib/libzs.a",
+      "member": "adler32.c.obj",
+      "family": "zlib",
+      "path": "adler32.c",
+      "git_blob": "04b81d29bad1691878648d7ae1680726abd905e4"
+    },
+    {
+      "archive": "built-source/prefix/lib/libzs.a",
+      "member": "trees.c.obj",
+      "family": "zlib",
+      "path": "trees.c",
+      "git_blob": "ae906655b898d30aff9956473f48bfdbeedde262"
+    },
+    {
+      "archive": "built-source/prefix/lib/libzs.a",
+      "member": "inffast.c.obj",
+      "family": "zlib",
+      "path": "inffast.c",
+      "git_blob": "d1657f3f30348aedf10add2838004a7ea0344c39"
+    },
+    {
+      "archive": "built-source/prefix/lib/libzs.a",
+      "member": "inftrees.c.obj",
+      "family": "zlib",
+      "path": "inftrees.c",
+      "git_blob": "0fb8570b0ae3620d83a493a90201f5d4113fbc1c"
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/crt2.o",
+      "member": "crt2.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/crtexe.c",
+      "git_blob": "831ba2cd54dad4368c8047dded9a4031c6e6b044",
+      "note": "Makefile.am lib64/crt2.o copies lib64/crt1.o built from crt/crtexe.c",
+      "direct": true
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/crtbegin.o",
+      "member": "crtbegin.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/crtbegin.c",
+      "git_blob": "39c0d85610f70f746f91adc9af67ccf2480b937b",
+      "direct": true
+    },
+    {
+      "archive": "built-source/build/tess/CMakeFiles/tesseract.dir/src/tesseract.cpp.obj",
+      "member": "tesseract.cpp.obj",
+      "family": "tess",
+      "path": "src/tesseract.cpp",
+      "git_blob": "719f59e199948ed314cbc7e3a8e75bdc26a5de48",
+      "direct": true
+    },
+    {
+      "archive": "llvm-toolchain/x86_64-w64-mingw32/lib/crtend.o",
+      "member": "crtend.o",
+      "family": "mingw",
+      "path": "mingw-w64-crt/crt/crtend.c",
+      "git_blob": "39c0d85610f70f746f91adc9af67ccf2480b937b",
+      "direct": true
+    }
+  ],
+  "missing": [],
+  "archives_without_member_reads": [
+    "llvm-toolchain/x86_64-w64-mingw32/lib/libadvapi32.a",
+    "llvm-toolchain/x86_64-w64-mingw32/lib/libcomdlg32.a",
+    "llvm-toolchain/x86_64-w64-mingw32/lib/libgdi32.a",
+    "llvm-toolchain/x86_64-w64-mingw32/lib/libmoldname.a",
+    "llvm-toolchain/x86_64-w64-mingw32/lib/libole32.a",
+    "llvm-toolchain/x86_64-w64-mingw32/lib/liboleaut32.a",
+    "llvm-toolchain/x86_64-w64-mingw32/lib/libshell32.a",
+    "llvm-toolchain/x86_64-w64-mingw32/lib/libuser32.a",
+    "llvm-toolchain/x86_64-w64-mingw32/lib/libuuid.a",
+    "llvm-toolchain/x86_64-w64-mingw32/lib/libwinspool.a",
+    "llvm-toolchain/x86_64-w64-mingw32/lib/libws2_32.a"
+  ],
+  "additional_documents": [
+    {
+      "family": "mingw",
+      "path": "DISCLAIMER.PD",
+      "git_blob": "91fb0d6dc9d1f65394cbec575a857e635868ed74"
+    },
+    {
+      "family": "png",
+      "path": "LICENSES/MIT.txt",
+      "git_blob": "9cf106272ac3b56b0c4c80218e8fc10a664ca5f4"
+    },
+    {
+      "family": "png",
+      "path": "LICENSES/MIT-0.txt",
+      "git_blob": "30c629513b36dd916fdb64fadf182f407aa3caec"
+    }
+  ],
+  "embedded": [
+    {
+      "family": "tess",
+      "path": "src/api/pdf_ttf.h",
+      "git_blob": "c08ae67f55e242a1693382cb9e3d5fec163b9e28",
+      "note": "GlyphLessFont generated header explicitly Apache-2.0"
+    },
+    {
+      "family": "lept",
+      "path": "src/bmfdata.h",
+      "git_blob": "30e2b5adc139280911da17ba2e8c17e295bf577f",
+      "note": "Leptonica bitmap font data with explicit BSD-style header"
+    }
+  ],
+  "distribution_qualified": false
+}

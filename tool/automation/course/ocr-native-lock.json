@@ -2,7 +2,14 @@
   "format": 1,
   "engine": "tesseract-5.5.4",
   "modelLanguage": "chi_sim",
-  "distributionQualified": false,
-  "exe": null,
-  "evidence": "tests/ocr_native_contract_repair_45754353202.json (technical only, not distribution approval)"
+  "distributionQualified": true,
+  "exe": {
+    "size": 6401024,
+    "sha256": "d64786a7c0793c0720c4a4fcdef49d5522df9f3a4e0e7dfe8f28a9dcad49008a"
+  },
+  "noticeManifest": {
+    "size": 6376,
+    "sha256": "2b36c3458487a8a5a33ece6d5d8916b9755ef8e4b28f65ac281e9d92e3da8f84"
+  },
+  "evidence": "tool/licenses/course-ocr/manifest.json"
 }
