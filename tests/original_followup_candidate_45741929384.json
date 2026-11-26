@@ -1,0 +1,302 @@
+{
+  "metadata": {
+    "original_run": "45739266926",
+    "source_commit": "5b8d3dae6d2d6f8966ce39eb48c32072c2b4c04b",
+    "candidate_only": true,
+    "completed": true
+  },
+  "rows": [
+    {
+      "mode": "normal",
+      "item": "exact candidate ZIP and moved tree integrity",
+      "status": "PASS_ACTUAL",
+      "detail": "9147 members"
+    },
+    {
+      "mode": "normal",
+      "item": "mode policy configuration",
+      "status": "PASS_ACTUAL",
+      "detail": "generated native policy, not actual writes"
+    },
+    {
+      "mode": "normal",
+      "item": "actual mode protected/outside writes",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "normal",
+      "item": "fixed rg PATH order plus independent rg actual content",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "normal",
+      "item": "f2py relative-name signature generation",
+      "status": "PASS_ACTUAL",
+      "detail": "relative names in relocated package; upstream absolute space-splitting limitation retained"
+    },
+    {
+      "mode": "normal",
+      "item": "docx merge_runs real file",
+      "status": "FAIL",
+      "detail": "Traceback (most recent call last):\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 38, in case\n    try:row(item,\"PASS_ACTUAL\",fn() or \"actual consumer assertions\")\n                               ~~^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 110, in merge\n    p=OUT/\"merged.docx\";py(\"home/skills/docx/scripts/merge_runs.py\",word,\"-o\",p)\n                        ~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 58, in py\n    return run(\"tool/python/python.exe\",\"-B\",ROOT/rel,*args)[1]\n           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 53, in run\n    if expect is not None:assert child.returncode==expect,(rel,child.returncode,out[-2000:],err[-2000:])\n                                 ^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ('tool/python/python.exe', 1, '', \"Error: [WinError 5] Access is denied: 'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\\\\\normal\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\tmp\\\\\\\\office\\\\\\\\tmppy4b_3mb'\\r\\n\")\n"
+    },
+    {
+      "mode": "normal",
+      "item": "docx comment real file",
+      "status": "FAIL",
+      "detail": "Traceback (most recent call last):\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 38, in case\n    try:row(item,\"PASS_ACTUAL\",fn() or \"actual consumer assertions\")\n                               ~~^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 117, in comment\n    p=OUT/\"commented.docx\";py(\"home/skills/docx/scripts/comment.py\",word,\"synthetic comment\",\"-o\",p)\n                           ~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 58, in py\n    return run(\"tool/python/python.exe\",\"-B\",ROOT/rel,*args)[1]\n           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 53, in run\n    if expect is not None:assert child.returncode==expect,(rel,child.returncode,out[-2000:],err[-2000:])\n                                 ^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ('tool/python/python.exe', 1, '', 'ble \u4e2d\u6587 \u7a7a\u683c\\\\home\\\\skills\\\\docx\\\\scripts\\\\office\\\\helpers\\\\__init__.py\", line 419, in safe_extract\\r\\n    out = target.open(\"xb\")\\r\\n  File \"pathlib\\\\__init__.py\", line 771, in open\\r\\nPermissionError: [Errno 13] Permission denied: \\'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\\\\\normal\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\tmp\\\\\\\\office\\\\\\\\tmpbzy6rjce\\\\\\\\[Content_Types].xml\\'\\r\\n\\r\\nDuring handling of the above exception, another exception occurred:\\r\\n\\r\\nTraceback (most recent call last):\\r\\n  File \"<frozen os>\", line 377, in walk\\r\\nPermissionError: [WinError 5] Access is denied: \\'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\\\\\normal\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\tmp\\\\\\\\office\\\\\\\\tmpbzy6rjce\\'\\r\\n\\r\\nDuring handling of the above exception, another exception occurred:\\r\\n\\r\\nTraceback (most recent call last):\\r\\n  File \"D:\\\\a\\\\Portable\\\\Portable\\\\tmp\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\normal\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\home\\\\skills\\\\docx\\\\scripts\\\\comment.py\", line 396, in <module>\\r\\n    main()\\r\\n    ~~~~^^\\r\\n  File \"D:\\\\a\\\\Portable\\\\Portable\\\\tmp\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\normal\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\home\\\\skills\\\\docx\\\\scripts\\\\comment.py\", line 370, in main\\r\\n    with tempfile.TemporaryDirectory(dir=portable_temp_dir()) as tmp:\\r\\n         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\\r\\n  File \"tempfile.py\", line 1051, in __exit__\\r\\n  File \"tempfile.py\", line 1055, in cleanup\\r\\n  File \"tempfile.py\", line 1035, in _rmtree\\r\\n  File \"shutil.py\", line 859, in rmtree\\r\\n  File \"shutil.py\", line 689, in _rmtree_unsafe\\r\\n  File \"<frozen os>\", line 413, in walk\\r\\n  File \"shutil.py\", line 687, in onerror\\r\\n  File \"tempfile.py\", line 999, in onexc\\r\\n  File \"tempfile.py\", line 314, in _resetperms_at\\r\\n  File \"tempfile.py\", line 287, in _resetperms\\r\\n  File \"tempfile.py\", line 273, in _dont_follow_symlinks\\r\\nPermissionError: [WinError 5] Access is denied: \\'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\\\\\normal\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\tmp\\\\\\\\office\\\\\\\\tmpbzy6rjce\\'\\r\\n')\n"
+    },
+    {
+      "mode": "normal",
+      "item": "pptx add_slide real file",
+      "status": "FAIL",
+      "detail": "Traceback (most recent call last):\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 38, in case\n    try:row(item,\"PASS_ACTUAL\",fn() or \"actual consumer assertions\")\n                               ~~^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 124, in slide\n    p=OUT/\"added.pptx\";py(\"home/skills/pptx/scripts/add_slide.py\",deck,\"slide1.xml\",\"-o\",p)\n                       ~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 58, in py\n    return run(\"tool/python/python.exe\",\"-B\",ROOT/rel,*args)[1]\n           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 53, in run\n    if expect is not None:assert child.returncode==expect,(rel,child.returncode,out[-2000:],err[-2000:])\n                                 ^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ('tool/python/python.exe', 1, '', \"Error: [WinError 5] Access is denied: 'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\\\\\normal\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\tmp\\\\\\\\office\\\\\\\\tmpoa48_9fz'\\r\\n\")\n"
+    },
+    {
+      "mode": "normal",
+      "item": "pptx clean actual unpacked tree",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "normal",
+      "item": "SSH keygen and readback actual mode",
+      "status": "FAIL",
+      "detail": "Traceback (most recent call last):\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 38, in case\n    try:row(item,\"PASS_ACTUAL\",fn() or \"actual consumer assertions\")\n                               ~~^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 142, in ssh\n    py(\"tool/portable-ssh.py\",\"keygen\",\"--name\",name,\"--unencrypted\")\n    ~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 58, in py\n    return run(\"tool/python/python.exe\",\"-B\",ROOT/rel,*args)[1]\n           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 53, in run\n    if expect is not None:assert child.returncode==expect,(rel,child.returncode,out[-2000:],err[-2000:])\n                                 ^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ('tool/python/python.exe', 2, '', \"Portable SSH: [WinError 5] Access is denied: 'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\\\\\normal\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\work\\\\\\\\ssh\\\\\\\\keys'\\r\\n\")\n"
+    },
+    {
+      "mode": "normal",
+      "item": "Android sqlite3 relative path actual database",
+      "status": "PASS_ACTUAL",
+      "detail": "relative name in Chinese-space cwd; old Unicode absolute argument failure remains"
+    },
+    {
+      "mode": "normal",
+      "item": "Android etc1tool relative path actual encode/decode",
+      "status": "PASS_ACTUAL",
+      "detail": "relative names; lossy ETC pixel tolerance; no host fallback"
+    },
+    {
+      "mode": "normal",
+      "item": "instruction installer Unicode redirected dry-run",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "normal",
+      "item": "original browser-debug native read-only check",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "normal",
+      "item": "native BAT/Codex/Host targeted consumer finished",
+      "status": "PASS_ACTUAL",
+      "detail": "not equivalent to every consumer passing"
+    },
+    {
+      "mode": "maintenance",
+      "item": "exact candidate ZIP and moved tree integrity",
+      "status": "PASS_ACTUAL",
+      "detail": "9147 members"
+    },
+    {
+      "mode": "maintenance",
+      "item": "mode policy configuration",
+      "status": "PASS_ACTUAL",
+      "detail": "generated native policy, not actual writes"
+    },
+    {
+      "mode": "maintenance",
+      "item": "actual mode protected/outside writes",
+      "status": "FAIL",
+      "detail": "Traceback (most recent call last):\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 75, in protected\n    try:p.write_bytes(b\"targeted test write\")\n        ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"pathlib\\__init__.py\", line 796, in write_bytes\n  File \"pathlib\\__init__.py\", line 771, in open\nPermissionError: [Errno 13] Permission denied: 'D:\\\\a\\\\Portable\\\\Portable\\\\tmp\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\maintenance\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\protected-audit.txt'\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 38, in case\n    try:row(item,\"PASS_ACTUAL\",fn() or \"actual consumer assertions\")\n                               ~~^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 76, in protected\n    except PermissionError:assert not allowed,\"actual expected write denied: \"+p.name\n                                  ^^^^^^^^^^^\nAssertionError: actual expected write denied: protected-audit.txt\n"
+    },
+    {
+      "mode": "maintenance",
+      "item": "fixed rg PATH order plus independent rg actual content",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "maintenance",
+      "item": "f2py relative-name signature generation",
+      "status": "PASS_ACTUAL",
+      "detail": "relative names in relocated package; upstream absolute space-splitting limitation retained"
+    },
+    {
+      "mode": "maintenance",
+      "item": "docx merge_runs real file",
+      "status": "FAIL",
+      "detail": "Traceback (most recent call last):\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 38, in case\n    try:row(item,\"PASS_ACTUAL\",fn() or \"actual consumer assertions\")\n                               ~~^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 110, in merge\n    p=OUT/\"merged.docx\";py(\"home/skills/docx/scripts/merge_runs.py\",word,\"-o\",p)\n                        ~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 58, in py\n    return run(\"tool/python/python.exe\",\"-B\",ROOT/rel,*args)[1]\n           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 53, in run\n    if expect is not None:assert child.returncode==expect,(rel,child.returncode,out[-2000:],err[-2000:])\n                                 ^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ('tool/python/python.exe', 1, '', \"Error: [WinError 5] Access is denied: 'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\\\\\maintenance\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\tmp\\\\\\\\office\\\\\\\\tmpr5n3h65b'\\r\\n\")\n"
+    },
+    {
+      "mode": "maintenance",
+      "item": "docx comment real file",
+      "status": "FAIL",
+      "detail": "Traceback (most recent call last):\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 38, in case\n    try:row(item,\"PASS_ACTUAL\",fn() or \"actual consumer assertions\")\n                               ~~^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 117, in comment\n    p=OUT/\"commented.docx\";py(\"home/skills/docx/scripts/comment.py\",word,\"synthetic comment\",\"-o\",p)\n                           ~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 58, in py\n    return run(\"tool/python/python.exe\",\"-B\",ROOT/rel,*args)[1]\n           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 53, in run\n    if expect is not None:assert child.returncode==expect,(rel,child.returncode,out[-2000:],err[-2000:])\n                                 ^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ('tool/python/python.exe', 1, '', 'x\\\\scripts\\\\office\\\\helpers\\\\__init__.py\", line 419, in safe_extract\\r\\n    out = target.open(\"xb\")\\r\\n  File \"pathlib\\\\__init__.py\", line 771, in open\\r\\nPermissionError: [Errno 13] Permission denied: \\'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\\\\\maintenance\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\tmp\\\\\\\\office\\\\\\\\tmpsnm7uwh4\\\\\\\\[Content_Types].xml\\'\\r\\n\\r\\nDuring handling of the above exception, another exception occurred:\\r\\n\\r\\nTraceback (most recent call last):\\r\\n  File \"<frozen os>\", line 377, in walk\\r\\nPermissionError: [WinError 5] Access is denied: \\'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\\\\\maintenance\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\tmp\\\\\\\\office\\\\\\\\tmpsnm7uwh4\\'\\r\\n\\r\\nDuring handling of the above exception, another exception occurred:\\r\\n\\r\\nTraceback (most recent call last):\\r\\n  File \"D:\\\\a\\\\Portable\\\\Portable\\\\tmp\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\maintenance\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\home\\\\skills\\\\docx\\\\scripts\\\\comment.py\", line 396, in <module>\\r\\n    main()\\r\\n    ~~~~^^\\r\\n  File \"D:\\\\a\\\\Portable\\\\Portable\\\\tmp\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\maintenance\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\home\\\\skills\\\\docx\\\\scripts\\\\comment.py\", line 370, in main\\r\\n    with tempfile.TemporaryDirectory(dir=portable_temp_dir()) as tmp:\\r\\n         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\\r\\n  File \"tempfile.py\", line 1051, in __exit__\\r\\n  File \"tempfile.py\", line 1055, in cleanup\\r\\n  File \"tempfile.py\", line 1035, in _rmtree\\r\\n  File \"shutil.py\", line 859, in rmtree\\r\\n  File \"shutil.py\", line 689, in _rmtree_unsafe\\r\\n  File \"<frozen os>\", line 413, in walk\\r\\n  File \"shutil.py\", line 687, in onerror\\r\\n  File \"tempfile.py\", line 999, in onexc\\r\\n  File \"tempfile.py\", line 314, in _resetperms_at\\r\\n  File \"tempfile.py\", line 287, in _resetperms\\r\\n  File \"tempfile.py\", line 273, in _dont_follow_symlinks\\r\\nPermissionError: [WinError 5] Access is denied: \\'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\\\\\maintenance\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\tmp\\\\\\\\office\\\\\\\\tmpsnm7uwh4\\'\\r\\n')\n"
+    },
+    {
+      "mode": "maintenance",
+      "item": "pptx add_slide real file",
+      "status": "FAIL",
+      "detail": "Traceback (most recent call last):\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 38, in case\n    try:row(item,\"PASS_ACTUAL\",fn() or \"actual consumer assertions\")\n                               ~~^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 124, in slide\n    p=OUT/\"added.pptx\";py(\"home/skills/pptx/scripts/add_slide.py\",deck,\"slide1.xml\",\"-o\",p)\n                       ~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 58, in py\n    return run(\"tool/python/python.exe\",\"-B\",ROOT/rel,*args)[1]\n           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 53, in run\n    if expect is not None:assert child.returncode==expect,(rel,child.returncode,out[-2000:],err[-2000:])\n                                 ^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ('tool/python/python.exe', 1, '', \"Error: [WinError 5] Access is denied: 'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\\\\\maintenance\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\tmp\\\\\\\\office\\\\\\\\tmpppunk1ew'\\r\\n\")\n"
+    },
+    {
+      "mode": "maintenance",
+      "item": "pptx clean actual unpacked tree",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "maintenance",
+      "item": "SSH keygen and readback actual mode",
+      "status": "FAIL",
+      "detail": "Traceback (most recent call last):\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 38, in case\n    try:row(item,\"PASS_ACTUAL\",fn() or \"actual consumer assertions\")\n                               ~~^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 142, in ssh\n    py(\"tool/portable-ssh.py\",\"keygen\",\"--name\",name,\"--unencrypted\")\n    ~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 58, in py\n    return run(\"tool/python/python.exe\",\"-B\",ROOT/rel,*args)[1]\n           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 53, in run\n    if expect is not None:assert child.returncode==expect,(rel,child.returncode,out[-2000:],err[-2000:])\n                                 ^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ('tool/python/python.exe', 2, '', \"Portable SSH: [WinError 5] Access is denied: 'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\original-followup-9697d35a5acc417cabce53e2aabeb0f0\\\\\\\\maintenance\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\work\\\\\\\\ssh\\\\\\\\keys'\\r\\n\")\n"
+    },
+    {
+      "mode": "maintenance",
+      "item": "Android sqlite3 relative path actual database",
+      "status": "PASS_ACTUAL",
+      "detail": "relative name in Chinese-space cwd; old Unicode absolute argument failure remains"
+    },
+    {
+      "mode": "maintenance",
+      "item": "Android etc1tool relative path actual encode/decode",
+      "status": "PASS_ACTUAL",
+      "detail": "relative names; lossy ETC pixel tolerance; no host fallback"
+    },
+    {
+      "mode": "maintenance",
+      "item": "instruction installer Unicode redirected dry-run",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "maintenance",
+      "item": "original browser-debug native read-only check",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "maintenance",
+      "item": "native BAT/Codex/Host targeted consumer finished",
+      "status": "PASS_ACTUAL",
+      "detail": "not equivalent to every consumer passing"
+    },
+    {
+      "mode": "yolo",
+      "item": "exact candidate ZIP and moved tree integrity",
+      "status": "PASS_ACTUAL",
+      "detail": "9147 members"
+    },
+    {
+      "mode": "yolo",
+      "item": "mode policy configuration",
+      "status": "PASS_ACTUAL",
+      "detail": "generated native policy, not actual writes"
+    },
+    {
+      "mode": "yolo",
+      "item": "actual mode protected/outside writes",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "yolo",
+      "item": "fixed rg PATH order plus independent rg actual content",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "yolo",
+      "item": "f2py relative-name signature generation",
+      "status": "PASS_ACTUAL",
+      "detail": "relative names in relocated package; upstream absolute space-splitting limitation retained"
+    },
+    {
+      "mode": "yolo",
+      "item": "docx merge_runs real file",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "yolo",
+      "item": "docx comment real file",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "yolo",
+      "item": "pptx add_slide real file",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "yolo",
+      "item": "pptx clean actual unpacked tree",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "yolo",
+      "item": "SSH keygen and readback actual mode",
+      "status": "PASS_ACTUAL",
+      "detail": "only disposable key; no ACL relaxation or remote connection"
+    },
+    {
+      "mode": "yolo",
+      "item": "Android sqlite3 relative path actual database",
+      "status": "PASS_ACTUAL",
+      "detail": "relative name in Chinese-space cwd; old Unicode absolute argument failure remains"
+    },
+    {
+      "mode": "yolo",
+      "item": "Android etc1tool relative path actual encode/decode",
+      "status": "PASS_ACTUAL",
+      "detail": "relative names; lossy ETC pixel tolerance; no host fallback"
+    },
+    {
+      "mode": "yolo",
+      "item": "instruction installer Unicode redirected dry-run",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "yolo",
+      "item": "original browser-debug native read-only check",
+      "status": "PASS_ACTUAL",
+      "detail": "actual consumer assertions"
+    },
+    {
+      "mode": "yolo",
+      "item": "HTTPX CLI",
+      "status": "KNOWN_LIMIT",
+      "detail": "fixed optional CLI dependencies absent; no install"
+    },
+    {
+      "mode": "yolo",
+      "item": "native BAT/Codex/Host targeted consumer finished",
+      "status": "PASS_ACTUAL",
+      "detail": "not equivalent to every consumer passing"
+    },
+    {
+      "mode": "utilities",
+      "item": "exact candidate ZIP and moved tree integrity",
+      "status": "PASS_ACTUAL",
+      "detail": "9147 members"
+    },
+    {
+      "mode": "utilities",
+      "item": "actual cache preview and cleanup with existing work fixture",
+      "status": "PASS_ACTUAL",
+      "detail": ""
+    }
+  ],
+  "run_id": "45741929384",
+  "source_commit": "5b8d3dae6d2d6f8966ce39eb48c32072c2b4c04b",
+  "workflow_step": "failure",
+  "original_frozen_evidence": "tests/release_audit_v0.172.0-portable.1-wrapper-corrected.json"
+}
