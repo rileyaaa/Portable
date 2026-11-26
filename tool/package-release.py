@@ -252,18 +252,89 @@ def verify_zip(archive: Path, files: dict) -> None:
             # Reading through EOF also checks zipfile's CRC validation.
 
 
+def ocr_distribution_identity(root: Path, names: list[str]) -> dict | None:
+    """The native course OCR payload requires its exact committed notice closure."""
+    lockname = "tool/automation/course/ocr-native-lock.json"
+    prefix = "tool/automation/course/ocr-native/"
+    notices = "tool/licenses/course-ocr/"
+    native = {n for n in names if n.startswith(prefix)}
+    bundled_notices = {n for n in names if n.startswith(notices)}
+    if lockname not in names:
+        if native or bundled_notices:
+            raise ValueError("Native OCR lock missing.")
+        return None
+    lock_path = package_file(root, lockname)
+    if lock_path.stat().st_size > 4096:
+        raise ValueError("Native OCR lock size.")
+    lock = json.loads(lock_path.read_bytes())
+    if (lock.get("format"), lock.get("engine"), lock.get("modelLanguage")) != (1, "tesseract-5.5.4", "chi_sim"):
+        raise ValueError("Native OCR lock identity.")
+    if lock.get("distributionQualified") is False:
+        if native or bundled_notices or lock.get("exe") is not None:
+            raise ValueError("Native OCR redistribution is not qualified.")
+        return None
+    def identity(name, want, maximum=32 * CHUNK):
+        path = package_file(root, name)
+        if (not isinstance(want, dict) or type(want.get("size")) is not int
+                or not 0 < want["size"] <= maximum
+                or not re.fullmatch(r"[0-9a-f]{64}", want.get("sha256", ""))
+                or path.stat().st_size != want["size"]):
+            raise ValueError("Native OCR identity: " + name)
+        with path.open("rb") as f:
+            if digest_stream(f) != want["sha256"]:
+                raise ValueError("Native OCR digest: " + name)
+    model = {"size": 2469156, "sha256": "a5fcb6f0db1e1d6d8522f39db4e848f05984669172e584e8d76b6b3141e1f730"}
+    config = {"size": 22, "sha256": "59d079bb75d8b3d7c839a3564580cb559e362c93a9d70f234e421c0c3e767e04"}
+    manifest_name = notices + "manifest.json"
+    if (lock.get("distributionQualified") is not True
+            or lock.get("evidence") != manifest_name
+            or native != {prefix+"bin/tesseract.exe", prefix+"tessdata/chi_sim.traineddata", prefix+"tessdata/configs/tsv"}
+            or manifest_name not in bundled_notices):
+        raise ValueError("Native OCR qualified inventory.")
+    identity(prefix+"bin/tesseract.exe", lock.get("exe"))
+    identity(prefix+"tessdata/chi_sim.traineddata", model)
+    identity(prefix+"tessdata/configs/tsv", config)
+    identity(manifest_name, lock.get("noticeManifest"), 2 * CHUNK)
+    proof = json.loads(package_file(root, manifest_name).read_bytes())
+    required = {"source-map.json", "source-notices.txt", "source-proof.json", "README.txt",
+                "upstream/zlib/LICENSE", "upstream/png/LICENSE", "upstream/png/LICENSES/MIT.txt",
+                "upstream/png/LICENSES/MIT-0.txt", "upstream/lept/leptonica-license.txt",
+                "upstream/tess/LICENSE", "upstream/model/LICENSE", "upstream/llvm/libcxx/LICENSE.TXT",
+                "upstream/llvm/libcxxabi/LICENSE.TXT", "upstream/llvm/libunwind/LICENSE.TXT",
+                "upstream/llvm/compiler-rt/LICENSE.TXT", "upstream/llvm/libcxx/CREDITS.TXT",
+                "upstream/llvm/libcxxabi/CREDITS.TXT", "upstream/llvm/compiler-rt/CREDITS.TXT",
+                "upstream/mingw/COPYING", "upstream/mingw/DISCLAIMER.PD", "upstream/mingw/AUTHORS",
+                "upstream/mingw/COPYING.MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt"}
+    docs = proof.get("noticeFiles", {})
+    if (proof.get("format") != 1 or proof.get("distributionQualified") is not True
+            or proof.get("reviewedSourceRun") != 45764713894 or proof.get("linkedNameCount") != 407
+            or proof.get("sourceMapGitBlob") != "45c0fe7dc7265a0a2b7d78dbd2aba1b4c592e573"
+            or proof.get("unresolved") != [] or proof.get("runtime") != lock["exe"]
+            or proof.get("model") != model or proof.get("config") != config
+            or not isinstance(docs, dict) or not required <= set(docs)
+            or bundled_notices != {manifest_name} | {notices+n for n in docs}):
+        raise ValueError("Native OCR notice qualification is incomplete.")
+    for name, expected in docs.items():
+        identity(notices+name, expected, 16 * CHUNK)
+    raw = package_file(root, notices+"source-map.json").read_bytes()
+    blob = hashlib.sha1(b"blob "+str(len(raw)).encode("ascii")+b"\0"+raw, usedforsecurity=False).hexdigest()
+    if blob != proof["sourceMapGitBlob"]:
+        raise ValueError("Native OCR reviewed object map changed.")
+    source_proof = json.loads(package_file(root, notices+"source-proof.json").read_bytes())
+    if (source_proof.get("source_map_git_blob") != blob or source_proof.get("linked_names") != 407
+            or source_proof.get("unresolved") != [] or source_proof.get("exe") != lock["exe"]
+            or source_proof.get("source_notice_review_passed") is not True
+            or source_proof.get("actual_link_matches_review") is not True):
+        raise ValueError("Native OCR source/link proof mismatch.")
+    return {"engine": lock["engine"], "exe": lock["exe"], "notice_manifest": lock["noticeManifest"]}
+
+
 def build_release(root: Path, version: str | None = None) -> dict:
     # Validate every tracked input, including excluded development files, before
     # filtering. Exclusion must not hide linked paths, private state or LFS stubs.
     commit, timestamp, source_names = clean_checkout(root)
     names, excluded = customer_files(source_names)
-    # No unreviewed native OCR bytes may enter any customer ZIP. A later
-    # separate distribution qualification must replace this closed gate.
-    if any(n.startswith('tool/automation/course/ocr-native/') for n in names):
-        raise ValueError('Native OCR redistribution is not qualified.')
-    ocr_lock = 'tool/automation/course/ocr-native-lock.json'
-    if ocr_lock in names and json.loads(package_file(root, ocr_lock).read_bytes()).get('distributionQualified') is not False:
-        raise ValueError('Native OCR distribution lock is not closed.')
+    ocr_identity = ocr_distribution_identity(root, names)
     manifest = runtime_identity(root, names)
     browser = browser_identity(root, names)
     # A release tag must describe the actual bundled Codex runtime.
@@ -321,6 +392,7 @@ def build_release(root: Path, version: str | None = None) -> dict:
             "target": manifest["target"], "archive": archive.name, "file_count": len(files),
             "uncompressed_bytes": sum(record["size"] for record in files.values()),
             "files": files,
+            "course_ocr": ocr_identity,
         }
         metadata_path = output / "release-manifest.json"
         metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -350,6 +422,7 @@ def main() -> None:
     if args.check:
         commit, _, source_names = clean_checkout(root)
         names, excluded = customer_files(source_names)
+        ocr_distribution_identity(root, names)
         manifest = runtime_identity(root, names)
         browser = browser_identity(root, names)
         print(json.dumps({"source_commit": commit, "codex_version": manifest["version"],
