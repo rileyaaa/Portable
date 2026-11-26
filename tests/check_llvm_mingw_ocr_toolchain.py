@@ -86,7 +86,7 @@ def probe(base,tc):
     src.write_text('#include <iostream>\n#include <string>\n#include <stdexcept>\n#include <thread>\n#include <chrono>\nint main(){std::string s;std::thread t([&]{try{throw std::runtime_error("PORTABLE_LLVM_STATIC");}catch(const std::exception& e){s=e.what();}});t.join();std::cout<<s;return s=="PORTABLE_LLVM_STATIC"?0:1;}\n',encoding="ascii")
     version=subprocess.check_output([str(compiler),"--version"],env=env,cwd=scratch,timeout=30,text=True)
     exe=scratch/"probe.exe";mp=scratch/"probe.map"
-    cmd=[str(compiler),"-O2","-static",str(src),"-o",str(exe),"-Wl,-Map,"+str(mp),"-Wl,--trace"]
+    cmd=[str(compiler),"-O2","-static",str(src),"-o",str(exe),"-Wl,-Map,"+str(mp),"-Wl,--verbose"]
     p=subprocess.run(cmd,env=env,cwd=scratch,capture_output=True,timeout=180)
     m.OUT["compiler"]={"version":version,"sha256":m.digest(compiler),"argv":cmd[1:],"returncode":p.returncode,
         "link_trace":(p.stdout+p.stderr).decode("utf-8",errors="replace")[-20000:]};save()
