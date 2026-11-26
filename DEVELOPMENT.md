@@ -667,3 +667,8 @@ Prior exact archive graph 45749259260, current research source 142b0ba2789dd40aa
 ## Reduced source-built OCR research and original launcher contracts
 
 Source 59bed840154fc50f35b5d4e5bc286bd4fa2c92c9; https://github.com/rileyaaa/Portable/actions/runs/45753551403. Separate actual evidence tests/minimal_ocr_original_contracts_45753551403.json. Model missing-source signature and byte match=True; reduced Windows technical recognition=False; original-targeted row counts={}. Old 41-PE graph not selected; no redistribution/integration or new customer ZIP. Prior verified candidate 15085655070 unchanged. Earlier original/ACL/SSH/course evidence not rerun or reclassified.
+
+
+## Corrected reduced OCR native build and frozen original launcher contracts
+
+Source 3350ce038639131de60424d095498332a7758b5c; https://github.com/rileyaaa/Portable/actions/runs/45754353202. Independent result tests/ocr_native_contract_repair_45754353202.json. Prior model exact source/signature and old 43-member notice mapping retained. Leptonica exact source license=True; reduced native technical recognition=True; original-targeted row counts={"HARNESS_READY": 1, "PASS_ACTUAL": 21, "PASS_CONFIG_GATE": 1}. No redistribution clearance or integration, no new ZIP; prior candidate 15085655070 unchanged. No old matrix or unrelated suite rerun.

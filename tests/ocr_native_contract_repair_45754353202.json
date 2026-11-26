@@ -1,0 +1,1395 @@
+{
+  "source_commit": "3350ce038639131de60424d095498332a7758b5c",
+  "run_id": "45754353202",
+  "prior_run": "45753551403",
+  "prior_record": "49d17f457ff2112f1475e2481031c9e4b12107bb",
+  "prior_candidate_id": "15085655070",
+  "prior_candidate_unchanged": true,
+  "prior_source_review": "tests/minimal_ocr_original_contracts_45753551403.json",
+  "prior_model_source_signature_and_bytes_verified": true,
+  "prior_old_runtime_files_mapped": 43,
+  "old_runtime_selected_for_distribution": false,
+  "leptonica_exact_source_license_verified": true,
+  "reduced_windows_build": {
+    "source_commit": "3350ce038639131de60424d095498332a7758b5c",
+    "prior_run": "45751623105",
+    "prior_candidate": "15085655070",
+    "scope": "source-built reduced Windows x64 research only",
+    "rows": [
+      {
+        "item": "Leptonica exact signed nested source root/src/prog license and official Git blob",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "sha256": "87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806",
+          "git_blob_sha1": "73d44c601c0746534128804c3fb0b93772897f82",
+          "files": [
+            "leptonica-license.txt",
+            "prog/leptonica-license.txt",
+            "src/leptonica-license.txt"
+          ]
+        }
+      },
+      {
+        "item": "four exact signed-source recipe and actual upstream source/license inventories",
+        "status": "PASS_ACTUAL",
+        "detail": [
+          "zlib",
+          "png",
+          "lept",
+          "tess"
+        ]
+      },
+      {
+        "item": "fixed upstream build-option preflight",
+        "status": "PASS_ACTUAL",
+        "detail": [
+          "zlib",
+          "png",
+          "lept",
+          "tess"
+        ]
+      },
+      {
+        "item": "Leptonica actual generated PNG/zlib-only codec config",
+        "status": "PASS_ACTUAL",
+        "detail": "1b7dc3b54991bc055c1c54c8716587f5d3ecf14cc0d56aef8e5dadaf213114e2"
+      },
+      {
+        "item": "Tesseract actual generated reduced feature config",
+        "status": "PASS_ACTUAL",
+        "detail": "e943186efe578824962e453ffb4ecda0aa5ee43d2a7173c9d470a78ff31132db"
+      },
+      {
+        "item": "single native x64 executable; only verified existing Windows OS imports",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "name": "tesseract.exe",
+          "sha256": "9caabada811f23f76f8b9c50606096a4c4c09ce279126a0fe58753c754c6fa77",
+          "size": 4590080,
+          "imports_and_delay_imports": [
+            "kernel32.dll"
+          ],
+          "non_os_imports": []
+        }
+      },
+      {
+        "item": "actual isolated runtime Chinese-space relocation and exact member readback",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "bin/tesseract.exe": "9caabada811f23f76f8b9c50606096a4c4c09ce279126a0fe58753c754c6fa77",
+          "tessdata/chi_sim.traineddata": "a5fcb6f0db1e1d6d8522f39db4e848f05984669172e584e8d76b6b3141e1f730",
+          "tessdata/configs/tsv": "59d079bb75d8b3d7c839a3564580cb559e362c93a9d70f234e421c0c3e767e04"
+        }
+      },
+      {
+        "item": "local synthetic Chinese numeric page, no installed font or language dependency",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "fixture_font": "Noto Sans CJK SC Regular",
+          "page": "1/1",
+          "size": [
+            1200,
+            850
+          ],
+          "image_sha256": "9b1412a6962e552de059c4110ae14989d2088467741db79369498d27f5bb3574"
+        }
+      },
+      {
+        "item": "reduced native local OCR full-page",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "returncode": 0,
+          "actual_executable_seen": true,
+          "module_samples": 3,
+          "os_modules": [
+            "apphelp.dll",
+            "kernel32.dll",
+            "kernelbase.dll",
+            "ntdll.dll"
+          ],
+          "unexpected_modules": [],
+          "owned_socket_max": 0,
+          "stderr": "Error in pixReadMemTiff: function not present\nError in pixReadMem: tiff: no pix returned\nError in pixaGenerateFontFromString: pix not made\nError in bmfCreate: font pixa not made\n"
+        }
+      },
+      {
+        "item": "actual Chinese text, numeric table, source coordinates and reviewed redaction",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "exact_cells": 9,
+          "source_page": "1/1",
+          "markdown_sha256": "15488449663c2d6240db9c5615e7a8c755619c2b8b8ab34863eb20407ba74fc9",
+          "full_page_cells": 9,
+          "raw_image_sha256": "9b1412a6962e552de059c4110ae14989d2088467741db79369498d27f5bb3574"
+        }
+      },
+      {
+        "item": "reduced build technical acceptance, not redistribution/integration",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "one_exe": true,
+          "third_party_dlls": 0,
+          "model_bytes": 2469156
+        }
+      }
+    ],
+    "sources": {
+      "zlib": {
+        "group": "mingw-w64-zlib",
+        "version": "1.4-2",
+        "signed_archive": {
+          "sha256": "28415621a0f6c16bc20b0ce50cd1ae3632dd9f27bdc5776ab3ec18e8d2f00dcd",
+          "size": 1324155
+        },
+        "source_url": "https://repo.msys2.org/mingw/sources/mingw-w64-zlib-1.4-2.src.tar.zst",
+        "prior_signature": {
+          "verified": true,
+          "returncode": 0,
+          "signing_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+          "primary_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+          "status_flags": [
+            "GOODSIG",
+            "KEY_CONSIDERED",
+            "NEWSIG",
+            "SIG_ID",
+            "TRUST_UNDEFINED",
+            "VALIDSIG"
+          ],
+          "signature_sha256": "d22a7234fbc828a2ce84519213380addd81a7444d1690e95b72bb319ea301585"
+        },
+        "recipe_sha256": "0b3e1662608719a4a2f32134de74d361e39a2609d610a3cf0ed89b04104f61d4",
+        "nested_member": "mingw-w64-zlib/zlib-1.4.tar.xz",
+        "nested_sha256": "4f11c512053d7bab8d9e9b89bde3575add3e4c50a383b42ef6cb837035fc5a7c",
+        "source_file_count": 263,
+        "license_notice_documents": [
+          {
+            "path": "LICENSE",
+            "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+            "text": "Copyright notice:\n\n (C) 1995-2026 Jean-loup Gailly and Mark Adler\n\n  This software is provided 'as-is', without any express or implied\n  warranty.  In no event will the authors be held liable for any damages\n  arising from the use of this software.\n\n  Permission is granted to anyone to use this software for any purpose,\n  including commercial applications, and to alter it and redistribute it\n  freely, subject to the following restrictions:\n\n  1. The origin of this software must not be misrepresented; you must not\n     claim that you wrote the original software. If you use this software\n     in a product, an acknowledgment in the product documentation would be\n     appreciated but is not required.\n  2. Altered source versions must be plainly marked as such, and must not be\n     misrepresented as being the original software.\n  3. This notice may not be removed or altered from any source distribution.\n\n  Jean-loup Gailly        Mark Adler\n  jloup@gzip.org          madler@alumni.caltech.edu\n"
+          },
+          {
+            "path": "contrib/dotzlib/LICENSE_1_0.txt",
+            "sha256": "36266a8fd073568394cb81cdb2b124f7fdae2c64c1a7ed09db34b4d22efa2951",
+            "text": "Boost Software License - Version 1.0 - August 17th, 2003\r\n\r\nPermission is hereby granted, free of charge, to any person or organization\r\nobtaining a copy of the software and accompanying documentation covered by\r\nthis license (the \"Software\") to use, reproduce, display, distribute,\r\nexecute, and transmit the Software, and to prepare derivative works of the\r\nSoftware, and to permit third-parties to whom the Software is furnished to\r\ndo so, all subject to the following:\r\n\r\nThe copyright notices in the Software and this entire statement, including\r\nthe above license grant, this restriction and the following disclaimer,\r\nmust be included in all copies of the Software, in whole or in part, and\r\nall derivative works of the Software, unless such copies or derivative\r\nworks are solely in the form of machine-executable object code generated by\r\na source language processor.\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\r\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\r\nFITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT\r\nSHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE\r\nFOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,\r\nARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\r\nDEALINGS IN THE SOFTWARE."
+          },
+          {
+            "path": "contrib/minizip/LICENSE.Info-Zip",
+            "sha256": "fc686023047ce5ce3a18a9b8a777156f0e475929d3de06bac279f3c025d2b2ca",
+            "text": "This is version 2009-Jan-02 of the Info-ZIP license. The definitive version of\nthis document should be available at ftp://ftp.info-\nzip.org/pub/infozip/license.html indefinitely and a copy at http://www.info-\nzip.org/pub/infozip/license.html.\n\nCopyright (c) 1990-2009 Info-ZIP. All rights reserved.\n\nFor the purposes of this copyright and license, \"Info-ZIP\" is defined as the\nfollowing set of individuals:\n\n    Mark Adler, John Bush, Karl Davis, Harald Denker, Jean-Michel Dubois, Jean-\n    loup Gailly, Hunter Goatley, Ed Gordon, Ian Gorman, Chris Herborth, Dirk\n    Haase, Greg Hartwig, Robert Heath, Jonathan Hudson, Paul Kienitz, David\n    Kirschbaum, Johnny Lee, Onno van der Linden, Igor Mandrichenko, Steve P.\n    Miller, Sergio Monesi, Keith Owens, George Petrov, Greg Roelofs, Kai Uwe\n    Rommel, Steve Salisbury, Dave Smith, Steven M. Schweda, Christian Spieler,\n    Cosmin Truta, Antoine Verheijen, Paul von Behren, Rich Wales, Mike White.\n\nThis software is provided \"as is,\" without warranty of any kind, express or\nimplied. In no event shall Info-ZIP or its contributors be held liable for any\ndirect, indirect, incidental, special or consequential damages arising out of\nthe use of or inability to use this software.\n\nPermission is granted to anyone to use this software for any purpose, including\ncommercial applications, and to alter it and redistribute it freely, subject to\nthe above disclaimer and the following restrictions:\n\n    Redistributions of source code (in whole or in part) must retain the above\n    copyright notice, definition, disclaimer, and this list of conditions.\n\n    Redistributions in binary form (compiled executables and libraries) must\n    reproduce the above copyright notice, definition, disclaimer, and this list\n    of conditions in documentation and/or other materials provided with the\n    distribution. Additional documentation is not needed for executables where a\n    command line license option provides these and a note regarding this option\n    is in the executable's startup banner. The sole exception to this condition\n    is redistribution of a standard UnZipSFX binary (including SFXWiz) as part\n    of a self-extracting archive; that is permitted without inclusion of this\n    license, as long as the normal SFX banner has not been removed from the\n    binary or disabled.\n\n    Altered versions--including, but not limited to, ports to new operating\n    systems, existing ports with new graphical interfaces, versions with\n    modified or added functionality, and dynamic, shared, or static library\n    versions not from Info-ZIP--must be plainly marked as such and must not be\n    misrepresented as being the original source or, if binaries, compiled from\n    the original source. Such altered versions also must not be misrepresented\n    as being Info-ZIP releases--including, but not limited to, labeling of the\n    altered versions with the names \"Info-ZIP\" (or any variation thereof,\n    including, but not limited to, different capitalizations), \"Pocket UnZip,\"\n    \"WiZ\" or \"MacZip\" without the explicit permission of Info-ZIP. Such altered\n    versions are further prohibited from misrepresentative use of the Zip-Bugs\n    or Info-ZIP e-mail addresses or the Info-ZIP URL(s), such as to imply Info-\n    ZIP will provide support for the altered versions.\n\n    Info-ZIP retains the right to use the names \"Info-ZIP,\" \"Zip,\" \"UnZip,\"\n    \"UnZipSFX,\" \"WiZ,\" \"Pocket UnZip,\" \"Pocket Zip,\" and \"MacZip\" for its own\n    source and binary releases.\n"
+          }
+        ],
+        "primary_license": {
+          "path": "LICENSE",
+          "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+          "git_blob_sha1": "b7a69d058e616651eae27b3f90c0b7fd36c099b2"
+        },
+        "cmake_sha256": "bc00d33aafa4fde0deb142df8419ddcf0e6f6daf0fe70eb99dab0bea94685b4b",
+        "cmake_git_blob_sha1": "2ccbab95d09783366dfa95872d453f596b919b0b",
+        "applied_packager_patches": []
+      },
+      "png": {
+        "group": "mingw-w64-libpng",
+        "version": "1.6.59-2",
+        "signed_archive": {
+          "sha256": "7f7c029d119427fe7b36be8a79228f831062bedadee1f49c9e0919fe6d7a459a",
+          "size": 1611367
+        },
+        "source_url": "https://repo.msys2.org/mingw/sources/mingw-w64-libpng-1.6.59-2.src.tar.zst",
+        "prior_signature": {
+          "verified": true,
+          "returncode": 0,
+          "signing_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+          "primary_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+          "status_flags": [
+            "GOODSIG",
+            "KEY_CONSIDERED",
+            "NEWSIG",
+            "SIG_ID",
+            "TRUST_UNDEFINED",
+            "VALIDSIG"
+          ],
+          "signature_sha256": "785b0a5516d5bbc4a382dfb9b860793785169beafa490a2c354278a9648436f2"
+        },
+        "recipe_sha256": "2c0415f59ed2f7b8e9430e253fa54965a041d88e73e1062c051b87d3add4b89d",
+        "nested_member": "mingw-w64-libpng/v1.6.59.tar.gz",
+        "nested_sha256": "2540302a1844ad2b2b501977abecfa850f265f97b78f065a712ab4074a89f5b5",
+        "source_file_count": 614,
+        "license_notice_documents": [
+          {
+            "path": "AUTHORS",
+            "sha256": "b55efa9a0bb709187cfb609860e926535b462a28bbf61b4294bc2e724747cb8e",
+            "text": "PNG REFERENCE LIBRARY AUTHORS\n=============================\n\nThis is the list of PNG Reference Library (\"libpng\") Contributing\nAuthors, for copyright and licensing purposes.\n\n * Adam Richter\n * Alexander Smorkalov\n * Andreas Dilger\n * Anthony Hurtado\n * Chris Blume\n * Cosmin Truta\n * Dave Martindale\n * Eric S. Raymond\n * Gilles Vollant\n * Glenn Randers-Pehrson\n * Greg Roelofs\n * Guy Eric Schalnat\n * Halil Oktay\n * James Yu\n * John Bowler\n * Joshua Inscoe\n * Kevin Bracey\n * Lucas Chollet\n * Magnus Holmgren\n * Mandar Sahastrabuddhe\n * Manfred Schlaegl\n * Mans Rullgard\n * Matt Sarett\n * Mike Klein\n * Mohammad Seet\n * Pascal Massimino\n * Paul Schmidt\n * Petr Simecek\n * Philippe Antoine\n * Qiang Zhou\n * Sam Bushell\n * Samuel Williams\n * Simon-Pierre Cadieux\n * Taegu Ha (\ud558\ud0dc\uad6c)\n * Tim Wegner\n * Tobias Stoeckmann\n * Tom Lane\n * Tom Tanner\n * Vadim Barkov\n * Willem van Schaik\n * Yuelin Wang (\u738b\u8dc3\u6797)\n * Yuki Sekiguchi\n * Zhijie Liang\n * Apple Inc.\n    - Zixu Wang (\u738b\u5b50\u65ed)\n * Arm Holdings\n    - Richard Townsend\n * Google LLC\n    - Dan Field\n    - Drago\u0219 Tiselice\n    - Leon Scroggins III\n    - Matt Sarett\n    - Mike Klein\n    - Sami Boukortt\n    - Wan-Teh Chang\n * Loongson Technology Corporation Ltd.\n    - GuXiWei (\u987e\u5e0c\u4f1f)\n    - JinBo (\u91d1\u6ce2)\n    - ZhangLixia (\u5f20\u5229\u971e)\n * Samsung Group\n    - Filip Wasil\n * SpacemiT Hangzhou Technology, Co.\n    - Liang Junzhao (\u6881\u4fca\u948a)\n\nThe build projects, the build scripts, the test scripts, and other\nfiles in the \"projects\", \"scripts\" and \"tests\" directories, have\nother copyright owners, but are released under the libpng license.\n\nSome files in the \"ci\" and \"contrib\" directories, as well as some\nof the tools-generated files that are distributed with libpng, have\nother copyright owners, and are released under other open source\nlicenses.\n"
+          },
+          {
+            "path": "LICENSE",
+            "sha256": "bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526",
+            "text": "COPYRIGHT NOTICE, DISCLAIMER, and LICENSE\n=========================================\n\nPNG Reference Library License version 2\n---------------------------------------\n\n * Copyright (c) 1995-2026 The PNG Reference Library Authors.\n * Copyright (c) 2018-2026 Cosmin Truta.\n * Copyright (c) 2000-2002, 2004, 2006-2018 Glenn Randers-Pehrson.\n * Copyright (c) 1996-1997 Andreas Dilger.\n * Copyright (c) 1995-1996 Guy Eric Schalnat, Group 42, Inc.\n\nThe software is supplied \"as is\", without warranty of any kind,\nexpress or implied, including, without limitation, the warranties\nof merchantability, fitness for a particular purpose, title, and\nnon-infringement.  In no event shall the Copyright owners, or\nanyone distributing the software, be liable for any damages or\nother liability, whether in contract, tort or otherwise, arising\nfrom, out of, or in connection with the software, or the use or\nother dealings in the software, even if advised of the possibility\nof such damage.\n\nPermission is hereby granted to use, copy, modify, and distribute\nthis software, or portions hereof, for any purpose, without fee,\nsubject to the following restrictions:\n\n 1. The origin of this software must not be misrepresented; you\n    must not claim that you wrote the original software.  If you\n    use this software in a product, an acknowledgment in the product\n    documentation would be appreciated, but is not required.\n\n 2. Altered source versions must be plainly marked as such, and must\n    not be misrepresented as being the original software.\n\n 3. This Copyright notice may not be removed or altered from any\n    source or altered source distribution.\n\n\nPNG Reference Library License version 1 (for libpng 0.5 through 1.6.35)\n-----------------------------------------------------------------------\n\nlibpng versions 1.0.7, July 1, 2000, through 1.6.35, July 15, 2018 are\nCopyright (c) 2000-2002, 2004, 2006-2018 Glenn Randers-Pehrson, are\nderived from libpng-1.0.6, and are distributed according to the same\ndisclaimer and license as libpng-1.0.6 with the following individuals\nadded to the list of Contributing Authors:\n\n    Simon-Pierre Cadieux\n    Eric S. Raymond\n    Mans Rullgard\n    Cosmin Truta\n    Gilles Vollant\n    James Yu\n    Mandar Sahastrabuddhe\n    Google Inc.\n    Vadim Barkov\n\nand with the following additions to the disclaimer:\n\n    There is no warranty against interference with your enjoyment of\n    the library or against infringement.  There is no warranty that our\n    efforts or the library will fulfill any of your particular purposes\n    or needs.  This library is provided with all faults, and the entire\n    risk of satisfactory quality, performance, accuracy, and effort is\n    with the user.\n\nSome files in the \"contrib\" directory and some configure-generated\nfiles that are distributed with libpng have other copyright owners, and\nare released under other open source licenses.\n\nlibpng versions 0.97, January 1998, through 1.0.6, March 20, 2000, are\nCopyright (c) 1998-2000 Glenn Randers-Pehrson, are derived from\nlibpng-0.96, and are distributed according to the same disclaimer and\nlicense as libpng-0.96, with the following individuals added to the\nlist of Contributing Authors:\n\n    Tom Lane\n    Glenn Randers-Pehrson\n    Willem van Schaik\n\nlibpng versions 0.89, June 1996, through 0.96, May 1997, are\nCopyright (c) 1996-1997 Andreas Dilger, are derived from libpng-0.88,\nand are distributed according to the same disclaimer and license as\nlibpng-0.88, with the following individuals added to the list of\nContributing Authors:\n\n    John Bowler\n    Kevin Bracey\n    Sam Bushell\n    Magnus Holmgren\n    Greg Roelofs\n    Tom Tanner\n\nSome files in the \"scripts\" directory have other copyright owners,\nbut are released under this license.\n\nlibpng versions 0.5, May 1995, through 0.88, January 1996, are\nCopyright (c) 1995-1996 Guy Eric Schalnat, Group 42, Inc.\n\nFor the purposes of this copyright and license, \"Contributing Authors\"\nis defined as the following set of individuals:\n\n    Andreas Dilger\n    Dave Martindale\n    Guy Eric Schalnat\n    Paul Schmidt\n    Tim Wegner\n\nThe PNG Reference Library is supplied \"AS IS\".  The Contributing\nAuthors and Group 42, Inc. disclaim all warranties, expressed or\nimplied, including, without limitation, the warranties of\nmerchantability and of fitness for any purpose.  The Contributing\nAuthors and Group 42, Inc. assume no liability for direct, indirect,\nincidental, special, exemplary, or consequential damages, which may\nresult from the use of the PNG Reference Library, even if advised of\nthe possibility of such damage.\n\nPermission is hereby granted to use, copy, modify, and distribute this\nsource code, or portions hereof, for any purpose, without fee, subject\nto the following restrictions:\n\n 1. The origin of this source code must not be misrepresented.\n\n 2. Altered versions must be plainly marked as such and must not\n    be misrepresented as being the original source.\n\n 3. This Copyright notice may not be removed or altered from any\n    source or altered source distribution.\n\nThe Contributing Authors and Group 42, Inc. specifically permit,\nwithout fee, and encourage the use of this source code as a component\nto supporting the PNG file format in commercial products.  If you use\nthis source code in a product, acknowledgment is not required but would\nbe appreciated.\n"
+          },
+          {
+            "path": "scripts/cmake/AUTHORS.md",
+            "sha256": "041eb1a61714e564f39735695377093c4e8eace8f7b460be2d4ce8876e4a6466",
+            "text": "CMake Files, Lists and Scripts for the PNG Reference Library\n============================================================\n\nAuthor List\n-----------\n\n * Alex Gaynor\n * Alexey Petruchik\n * Andreas Franek\n * Andrew Hundt\n * B. Scott Michel\n * Benjamin Buch\n * Bernd Kuhls\n * Brad King\n * Cameron Cawley\n * Carlo Bramini\n * Christian Ehrlicher\n * Christopher Sean Morrison\n * Claudio Bley\n * Clifford Yapp\n * Clinton Ingram\n * Cosmin Truta\n * Dan Rosser\n * David Callu\n * Eric Riff\n * Erik Scholz\n * Gianfranco Costamagna\n * Gleb Mazovetskiy\n * Glenn Randers-Pehrson\n * Gunther Nikl\n * Jeremy Maitin-Shepard\n * John Bowler\n * Jon Creighton\n * Joost Nieuwenhuijse\n * Kakeyama Yaito (\u639b\u5c71\u591c\u7cf8)\n * Kyle Bentley\n * Luis Caro Campos\n * Martin Storsj\u00f6\n * Owen Rudge\n * Philip Lowman\n * Roger Leigh\n * Roger Lowman\n * Sam Serrels\n * Simon Hausmann\n * Steve Robinson\n * Timothy Lyanguzov\n * Tyler Kropp\n * Vadim Barkov\n * Vicky Pfau\n"
+          },
+          {
+            "path": "contrib/gregbook/COPYING",
+            "sha256": "d6cb0e9e560f51085556949a84af12b79a00f10ab8b66c752537faf7cd665572",
+            "text": "                    GNU GENERAL PUBLIC LICENSE\n                       Version 2, June 1991\n\n Copyright (C) 1989, 1991 Free Software Foundation, Inc.\n     59 Temple Place, Suite 330, Boston, MA  02111-1307  USA\n Everyone is permitted to copy and distribute verbatim copies\n of this license document, but changing it is not allowed.\n\n                            Preamble\n\n  The licenses for most software are designed to take away your\nfreedom to share and change it.  By contrast, the GNU General Public\nLicense is intended to guarantee your freedom to share and change free\nsoftware--to make sure the software is free for all its users.  This\nGeneral Public License applies to most of the Free Software\nFoundation's software and to any other program whose authors commit to\nusing it.  (Some other Free Software Foundation software is covered by\nthe GNU Library General Public License instead.)  You can apply it to\nyour programs, too.\n\n  When we speak of free software, we are referring to freedom, not\nprice.  Our General Public Licenses are designed to make sure that you\nhave the freedom to distribute copies of free software (and charge for\nthis service if you wish), that you receive source code or can get it\nif you want it, that you can change the software or use pieces of it\nin new free programs; and that you know you can do these things.\n\n  To protect your rights, we need to make restrictions that forbid\nanyone to deny you these rights or to ask you to surrender the rights.\nThese restrictions translate to certain responsibilities for you if you\ndistribute copies of the software, or if you modify it.\n\n  For example, if you distribute copies of such a program, whether\ngratis or for a fee, you must give the recipients all the rights that\nyou have.  You must make sure that they, too, receive or can get the\nsource code.  And you must show them these terms so they know their\nrights.\n\n  We protect your rights with two steps: (1) copyright the software, and\n(2) offer you this license which gives you legal permission to copy,\ndistribute and/or modify the software.\n\n  Also, for each author's protection and ours, we want to make certain\nthat everyone understands that there is no warranty for this free\nsoftware.  If the software is modified by someone else and passed on, we\nwant its recipients to know that what they have is not the original, so\nthat any problems introduced by others will not reflect on the original\nauthors' reputations.\n\n  Finally, any free program is threatened constantly by software\npatents.  We wish to avoid the danger that redistributors of a free\nprogram will individually obtain patent licenses, in effect making the\nprogram proprietary.  To prevent this, we have made it clear that any\npatent must be licensed for everyone's free use or not licensed at all.\n\n  The precise terms and conditions for copying, distribution and\nmodification follow.\n\f\n                    GNU GENERAL PUBLIC LICENSE\n   TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION\n\n  0. This License applies to any program or other work which contains\na notice placed by the copyright holder saying it may be distributed\nunder the terms of this General Public License.  The \"Program\", below,\nrefers to any such program or work, and a \"work based on the Program\"\nmeans either the Program or any derivative work under copyright law:\nthat is to say, a work containing the Program or a portion of it,\neither verbatim or with modifications and/or translated into another\nlanguage.  (Hereinafter, translation is included without limitation in\nthe term \"modification\".)  Each licensee is addressed as \"you\".\n\nActivities other than copying, distribution and modification are not\ncovered by this License; they are outside its scope.  The act of\nrunning the Program is not restricted, and the output from the Program\nis covered only if its contents constitute a work based on the\nProgram (independent of having been made by running the Program).\nWhether that is true depends on what the Program does.\n\n  1. You may copy and distribute verbatim copies of the Program's\nsource code as you receive it, in any medium, provided that you\nconspicuously and appropriately publish on each copy an appropriate\ncopyright notice and disclaimer of warranty; keep intact all the\nnotices that refer to this License and to the absence of any warranty;\nand give any other recipients of the Program a copy of this License\nalong with the Program.\n\nYou may charge a fee for the physical act of transferring a copy, and\nyou may at your option offer warranty protection in exchange for a fee.\n\n  2. You may modify your copy or copies of the Program or any portion\nof it, thus forming a work based on the Program, and copy and\ndistribute such modifications or work under the terms of Section 1\nabove, provided that you also meet all of these conditions:\n\n    a) You must cause the modified files to carry prominent notices\n    stating that you changed the files and the date of any change.\n\n    b) You must cause any work that you distribute or publish, that in\n    whole or in part contains or is derived from the Program or any\n    part thereof, to be licensed as a whole at no charge to all third\n    parties under the terms of this License.\n\n    c) If the modified program normally reads commands interactively\n    when run, you must cause it, when started running for such\n    interactive use in the most ordinary way, to print or display an\n    announcement including an appropriate copyright notice and a\n    notice that there is no warranty (or else, saying that you provide\n    a warranty) and that users may redistribute the program under\n    these conditions, and telling the user how to view a copy of this\n    License.  (Exception: if the Program itself is interactive but\n    does not normally print such an announcement, your work based on\n    the Program is not required to print an announcement.)\n\f\nThese requirements apply to the modified work as a whole.  If\nidentifiable sections of that work are not derived from the Program,\nand can be reasonably considered independent and separate works in\nthemselves, then this License, and its terms, do not apply to those\nsections when you distribute them as separate works.  But when you\ndistribute the same sections as part of a whole which is a work based\non the Program, the distribution of the whole must be on the terms of\nthis License, whose permissions for other licensees extend to the\nentire whole, and thus to each and every part regardless of who wrote it.\n\nThus, it is not the intent of this section to claim rights or contest\nyour rights to work written entirely by you; rather, the intent is to\nexercise the right to control the distribution of derivative or\ncollective works based on the Program.\n\nIn addition, mere aggregation of another work not based on the Program\nwith the Program (or with a work based on the Program) on a volume of\na storage or distribution medium does not bring the other work under\nthe scope of this License.\n\n  3. You may copy and distribute the Program (or a work based on it,\nunder Section 2) in object code or executable form under the terms of\nSections 1 and 2 above provided that you also do one of the following:\n\n    a) Accompany it with the complete corresponding machine-readable\n    source code, which must be distributed under the terms of Sections\n    1 and 2 above on a medium customarily used for software interchange; or,\n\n    b) Accompany it with a written offer, valid for at least three\n    years, to give any third party, for a charge no more than your\n    cost of physically performing source distribution, a complete\n    machine-readable copy of the corresponding source code, to be\n    distributed under the terms of Sections 1 and 2 above on a medium\n    customarily used for software interchange; or,\n\n    c) Accompany it with the information you received as to the offer\n    to distribute corresponding source code.  (This alternative is\n    allowed only for noncommercial distribution and only if you\n    received the program in object code or executable form with such\n    an offer, in accord with Subsection b above.)\n\nThe source code for a work means the preferred form of the work for\nmaking modifications to it.  For an executable work, complete source\ncode means all the source code for all modules it contains, plus any\nassociated interface definition files, plus the scripts used to\ncontrol compilation and installation of the executable.  However, as a\nspecial exception, the source code distributed need not include\nanything that is normally distributed (in either source or binary\nform) with the major components (compiler, kernel, and so on) of the\noperating system on which the executable runs, unless that component\nitself accompanies the executable.\n\nIf distribution of executable or object code is made by offering\naccess to copy from a designated place, then offering equivalent\naccess to copy the source code from the same place counts as\ndistribution of the source code, even though third parties are not\ncompelled to copy the source along with the object code.\n\f\n  4. You may not copy, modify, sublicense, or distribute the Program\nexcept as expressly provided under this License.  Any attempt\notherwise to copy, modify, sublicense or distribute the Program is\nvoid, and will automatically terminate your rights under this License.\nHowever, parties who have received copies, or rights, from you under\nthis License will not have their licenses terminated so long as such\nparties remain in full compliance.\n\n  5. You are not required to accept this License, since you have not\nsigned it.  However, nothing else grants you permission to modify or\ndistribute the Program or its derivative works.  These actions are\nprohibited by law if you do not accept this License.  Therefore, by\nmodifying or distributing the Program (or any work based on the\nProgram), you indicate your acceptance of this License to do so, and\nall its terms and conditions for copying, distributing or modifying\nthe Program or works based on it.\n\n  6. Each time you redistribute the Program (or any work based on the\nProgram), the recipient automatically receives a license from the\noriginal licensor to copy, distribute or modify the Program subject to\nthese terms and conditions.  You may not impose any further\nrestrictions on the recipients' exercise of the rights granted herein.\nYou are not responsible for enforcing compliance by third parties to\nthis License.\n\n  7. If, as a consequence of a court judgment or allegation of patent\ninfringement or for any other reason (not limited to patent issues),\nconditions are imposed on you (whether by court order, agreement or\notherwise) that contradict the conditions of this License, they do not\nexcuse you from the conditions of this License.  If you cannot\ndistribute so as to satisfy simultaneously your obligations under this\nLicense and any other pertinent obligations, then as a consequence you\nmay not distribute the Program at all.  For example, if a patent\nlicense would not permit royalty-free redistribution of the Program by\nall those who receive copies directly or indirectly through you, then\nthe only way you could satisfy both it and this License would be to\nrefrain entirely from distribution of the Program.\n\nIf any portion of this section is held invalid or unenforceable under\nany particular circumstance, the balance of the section is intended to\napply and the section as a whole is intended to apply in other\ncircumstances.\n\nIt is not the purpose of this section to induce you to infringe any\npatents or other property right claims or to contest validity of any\nsuch claims; this section has the sole purpose of protecting the\nintegrity of the free software distribution system, which is\nimplemented by public license practices.  Many people have made\ngenerous contributions to the wide range of software distributed\nthrough that system in reliance on consistent application of that\nsystem; it is up to the author/donor to decide if he or she is willing\nto distribute software through any other system and a licensee cannot\nimpose that choice.\n\nThis section is intended to make thoroughly clear what is believed to\nbe a consequence of the rest of this License.\n\f\n  8. If the distribution and/or use of the Program is restricted in\ncertain countries either by patents or by copyrighted interfaces, the\noriginal copyright holder who places the Program under this License\nmay add an explicit geographical distribution limitation excluding\nthose countries, so that distribution is permitted only in or among\ncountries not thus excluded.  In such case, this License incorporates\nthe limitation as if written in the body of this License.\n\n  9. The Free Software Foundation may publish revised and/or new versions\nof the General Public License from time to time.  Such new versions will\nbe similar in spirit to the present version, but may differ in detail to\naddress new problems or concerns.\n\nEach version is given a distinguishing version number.  If the Program\nspecifies a version number of this License which applies to it and \"any\nlater version\", you have the option of following the terms and conditions\neither of that version or of any later version published by the Free\nSoftware Foundation.  If the Program does not specify a version number of\nthis License, you may choose any version ever published by the Free Software\nFoundation.\n\n  10. If you wish to incorporate parts of the Program into other free\nprograms whose distribution conditions are different, write to the author\nto ask for permission.  For software which is copyrighted by the Free\nSoftware Foundation, write to the Free Software Foundation; we sometimes\nmake exceptions for this.  Our decision will be guided by the two goals\nof preserving the free status of all derivatives of our free software and\nof promoting the sharing and reuse of software generally.\n\n                            NO WARRANTY\n\n  11. BECAUSE THE PROGRAM IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY\nFOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW.  EXCEPT WHEN\nOTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES\nPROVIDE THE PROGRAM \"AS IS\" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED\nOR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF\nMERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  THE ENTIRE RISK AS\nTO THE QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU.  SHOULD THE\nPROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY SERVICING,\nREPAIR OR CORRECTION.\n\n  12. IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING\nWILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR\nREDISTRIBUTE THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES,\nINCLUDING ANY GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING\nOUT OF THE USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED\nTO LOSS OF DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY\nYOU OR THIRD PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER\nPROGRAMS), EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE\nPOSSIBILITY OF SUCH DAMAGES.\n\n                     END OF TERMS AND CONDITIONS\n\f\n            How to Apply These Terms to Your New Programs\n\n  If you develop a new program, and you want it to be of the greatest\npossible use to the public, the best way to achieve this is to make it\nfree software which everyone can redistribute and change under these terms.\n\n  To do so, attach the following notices to the program.  It is safest\nto attach them to the start of each source file to most effectively\nconvey the exclusion of warranty; and each file should have at least\nthe \"copyright\" line and a pointer to where the full notice is found.\n\n    <one line to give the program's name and a brief idea of what it does.>\n    Copyright (C) <year>  <name of author>\n\n    This program is free software; you can redistribute it and/or modify\n    it under the terms of the GNU General Public License as published by\n    the Free Software Foundation; either version 2 of the License, or\n    (at your option) any later version.\n\n    This program is distributed in the hope that it will be useful,\n    but WITHOUT ANY WARRANTY; without even the implied warranty of\n    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n    GNU General Public License for more details.\n\n    You should have received a copy of the GNU General Public License\n    along with this program; if not, write to the Free Software\n    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA\n\n\nAlso add information on how to contact you by electronic and paper mail.\n\nIf the program is interactive, make it output a short notice like this\nwhen it starts in an interactive mode:\n\n    Gnomovision version 69, Copyright (C) year  name of author\n    Gnomovision comes with ABSOLUTELY NO WARRANTY; for details type `show w'.\n    This is free software, and you are welcome to redistribute it\n    under certain conditions; type `show c' for details.\n\nThe hypothetical commands `show w' and `show c' should show the appropriate\nparts of the General Public License.  Of course, the commands you use may\nbe called something other than `show w' and `show c'; they could even be\nmouse-clicks or menu items--whatever suits your program.\n\nYou should also get your employer (if you work as a programmer) or your\nschool, if any, to sign a \"copyright disclaimer\" for the program, if\nnecessary.  Here is a sample; alter the names:\n\n  Yoyodyne, Inc., hereby disclaims all copyright interest in the program\n  `Gnomovision' (which makes passes at compilers) written by James Hacker.\n\n  <signature of Ty Coon>, 1 April 1989\n  Ty Coon, President of Vice\n\nThis General Public License does not permit incorporating your program into\nproprietary programs.  If your program is a subroutine library, you may\nconsider it more useful to permit linking proprietary applications with the\nlibrary.  If this is what you want to do, use the GNU Library General\nPublic License instead of this License.\n"
+          },
+          {
+            "path": "contrib/gregbook/LICENSE",
+            "sha256": "b6a03c1803eb58ffb1f1278d5c7d4096c4c116e66dce8a7553e8c77d163c3438",
+            "text": "  ---------------------------------------------------------------------------\n\n      Copyright (c) 1998-2008 Greg Roelofs.  All rights reserved.\n\n      This software is provided \"as is,\" without warranty of any kind,\n      express or implied.  In no event shall the author or contributors\n      be held liable for any damages arising in any way from the use of\n      this software.\n\n      The contents of this file are DUAL-LICENSED.  You may modify and/or\n      redistribute this software according to the terms of one of the\n      following two licenses (at your option):\n\n\n      LICENSE 1 (\"BSD-like with advertising clause\"):\n\n      Permission is granted to anyone to use this software for any purpose,\n      including commercial applications, and to alter it and redistribute\n      it freely, subject to the following restrictions:\n\n      1. Redistributions of source code must retain the above copyright\n         notice, disclaimer, and this list of conditions.\n      2. Redistributions in binary form must reproduce the above copyright\n         notice, disclaimer, and this list of conditions in the documenta-\n         tion and/or other materials provided with the distribution.\n      3. All advertising materials mentioning features or use of this\n         software must display the following acknowledgment:\n\n            This product includes software developed by Greg Roelofs\n            and contributors for the book, \"PNG: The Definitive Guide,\"\n            published by O'Reilly and Associates.\n\n\n      LICENSE 2 (GNU GPL v2 or later):\n\n      This program is free software; you can redistribute it and/or modify\n      it under the terms of the GNU General Public License as published by\n      the Free Software Foundation; either version 2 of the License, or\n      (at your option) any later version.\n\n      This program is distributed in the hope that it will be useful,\n      but WITHOUT ANY WARRANTY; without even the implied warranty of\n      MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n      GNU General Public License for more details.\n\n      You should have received a copy of the GNU General Public License\n      along with this program; if not, write to the Free Software Foundation,\n      Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA\n\n  ---------------------------------------------------------------------------\n"
+          },
+          {
+            "path": "contrib/pngexif/LICENSE_MIT.txt",
+            "sha256": "508a77d2e7b51d98adeed32648ad124b7b30241a8e70b2e72c99f92d8e5874d1",
+            "text": "MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n"
+          },
+          {
+            "path": "contrib/pngminus/LICENSE.txt",
+            "sha256": "1806f1f10d393e9e377b3a8d1b968452b54f1a90378f14eeef45426946ace330",
+            "text": "pnm2png / png2pnm --- conversion from PBM/PGM/PPM-file to PNG-file\n\ncopyright (C) 1999-2019 by Willem van Schaik <willem at schaik dot com>\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nThe software is provided \"as is\", without warranty of any kind, express or\nimplied, including but not limited to the warranties of merchantability,\nfitness for a particular purpose and noninfringement. In no event shall the\nauthors or copyright holders be liable for any claim, damages or other\nliability, whether in an action of contract, tort or otherwise, arising from,\nout of or in connection with the software or the use or other dealings in the\nsoftware.\n"
+          }
+        ],
+        "primary_license": {
+          "path": "LICENSE",
+          "sha256": "bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526",
+          "git_blob_sha1": "1b765ae9f96abea77d3d9a88c543e3b5f4725813"
+        },
+        "cmake_sha256": "ae7086a56ee9fbead9fe0ac7ffe7ea9fef92f6ee2ef53f320099143082aa9826",
+        "cmake_git_blob_sha1": "6a1a9405d3c4e16dc131cdf7e19b70af62f9dc72",
+        "applied_packager_patches": []
+      },
+      "lept": {
+        "group": "mingw-w64-leptonica",
+        "version": "1.87.0-2",
+        "signed_archive": {
+          "sha256": "875615bd46b0a922d91a2fb15ebc049d90f4ecdc6ba4e7a9dc2c2fb07301d85f",
+          "size": 13712921
+        },
+        "source_url": "https://repo.msys2.org/mingw/sources/mingw-w64-leptonica-1.87.0-2.src.tar.zst",
+        "prior_signature": {
+          "verified": true,
+          "returncode": 0,
+          "signing_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+          "primary_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+          "status_flags": [
+            "GOODSIG",
+            "KEY_CONSIDERED",
+            "NEWSIG",
+            "SIG_ID",
+            "TRUST_UNDEFINED",
+            "VALIDSIG"
+          ],
+          "signature_sha256": "c39cad444dba95e8d3ff3e3bbb76e5ccc6a3d576524b6840144d8ddcbfb722d5"
+        },
+        "recipe_sha256": "bf2d819a13c731c4aca389ffb9c4a259860e742db78f54cc6c359c9b115b82f3",
+        "nested_member": "mingw-w64-leptonica/leptonica-1.87.0.tar.gz",
+        "nested_sha256": "fa2b40c5caea96d1bb93a97486262aed8731b69ce25a84a6bf5d25323e33f631",
+        "source_file_count": 988,
+        "license_notice_documents": [
+          {
+            "path": "leptonica-license.txt",
+            "sha256": "87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806",
+            "text": "/*====================================================================*\n -  Copyright (C) 2001-2020 Leptonica.  All rights reserved.\n -\n -  Redistribution and use in source and binary forms, with or without\n -  modification, are permitted provided that the following conditions\n -  are met:\n -  1. Redistributions of source code must retain the above copyright\n -     notice, this list of conditions and the following disclaimer.\n -  2. Redistributions in binary form must reproduce the above\n -     copyright notice, this list of conditions and the following\n -     disclaimer in the documentation and/or other materials\n -     provided with the distribution.\n -\n -  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n -  ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\n -  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\n -  A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL ANY\n -  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\n -  EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\n -  PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\n -  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY\n -  OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\n -  NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\n -  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n *====================================================================*/\n\n"
+          },
+          {
+            "path": "prog/leptonica-license.txt",
+            "sha256": "87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806",
+            "text": "/*====================================================================*\n -  Copyright (C) 2001-2020 Leptonica.  All rights reserved.\n -\n -  Redistribution and use in source and binary forms, with or without\n -  modification, are permitted provided that the following conditions\n -  are met:\n -  1. Redistributions of source code must retain the above copyright\n -     notice, this list of conditions and the following disclaimer.\n -  2. Redistributions in binary form must reproduce the above\n -     copyright notice, this list of conditions and the following\n -     disclaimer in the documentation and/or other materials\n -     provided with the distribution.\n -\n -  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n -  ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\n -  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\n -  A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL ANY\n -  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\n -  EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\n -  PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\n -  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY\n -  OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\n -  NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\n -  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n *====================================================================*/\n\n"
+          },
+          {
+            "path": "src/leptonica-license.txt",
+            "sha256": "87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806",
+            "text": "/*====================================================================*\n -  Copyright (C) 2001-2020 Leptonica.  All rights reserved.\n -\n -  Redistribution and use in source and binary forms, with or without\n -  modification, are permitted provided that the following conditions\n -  are met:\n -  1. Redistributions of source code must retain the above copyright\n -     notice, this list of conditions and the following disclaimer.\n -  2. Redistributions in binary form must reproduce the above\n -     copyright notice, this list of conditions and the following\n -     disclaimer in the documentation and/or other materials\n -     provided with the distribution.\n -\n -  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n -  ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\n -  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\n -  A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL ANY\n -  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\n -  EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\n -  PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\n -  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY\n -  OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\n -  NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\n -  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n *====================================================================*/\n\n"
+          }
+        ],
+        "primary_license": {
+          "path": "leptonica-license.txt",
+          "sha256": "87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806",
+          "git_blob_sha1": "73d44c601c0746534128804c3fb0b93772897f82"
+        },
+        "cmake_sha256": "c6214579a11432b763db6369d5d275fe4787dd7686f129ee164eb152a900b960",
+        "cmake_git_blob_sha1": "42a774670345431035348e8d132c617998b96e50",
+        "applied_packager_patches": []
+      },
+      "tess": {
+        "group": "mingw-w64-tesseract-ocr",
+        "version": "5.5.4-1",
+        "signed_archive": {
+          "sha256": "32a3c578ebc90bbaca7ada3ae149f084e9515692eac2a5c1fd3356d411e54b43",
+          "size": 5787116
+        },
+        "source_url": "https://repo.msys2.org/mingw/sources/mingw-w64-tesseract-ocr-5.5.4-1.src.tar.zst",
+        "prior_signature": {
+          "verified": true,
+          "returncode": 0,
+          "signing_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+          "primary_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+          "status_flags": [
+            "GOODSIG",
+            "KEY_CONSIDERED",
+            "NEWSIG",
+            "SIG_ID",
+            "TRUST_UNDEFINED",
+            "VALIDSIG"
+          ],
+          "signature_sha256": "002878a92a00b0539b5d4c46d678ed4c04ec31702032a3db6afb2ab34b1075a5"
+        },
+        "recipe_sha256": "575db5c4e21c5b1ab0857dd3a3022284f94046ce4bcc944a30e4418be96bcd77",
+        "nested_member": "mingw-w64-tesseract-ocr/tesseract-ocr-5.5.4.tar.gz",
+        "nested_sha256": "a8dbf8b8c8ee427ff6ad1d99116502feaf59440af1adb893caf60a6576826cf4",
+        "source_file_count": 748,
+        "license_notice_documents": [
+          {
+            "path": "AUTHORS",
+            "sha256": "b3b7a07a14c060efe17574b2946a01ecaa0a5873a8f606239cc28c6d31300109",
+            "text": "Ray Smith (lead developer) <theraysmith@gmail.com>\nAhmad Abdulkader\nRika Antonova\nNicholas Beato\nJeff Breidenbach\nSamuel Charron\nPhil Cheatle\nSimon Crouch\nDavid Eger\nSheelagh Huddleston\nDan Johnson\nRajesh Katikam\nThomas Kielbus\nDar-Shyang Lee\nZongyi (Joe) Liu\nRobert Moss\nChris Newton\nMichael Reimer\nMarius Renn\nRaquel Romano\nChristy Russon\nShobhit Saxena\nMark Seaman\nFaisal Shafait\nHiroshi Takenaka\nRanjith Unnikrishnan\nJoern Wanke\nPing Ping Xiu\nAndrew Ziem\nOscar Zuniga\n\nCommunity Contributors:\nStefan Weil (lead developer & maintainer)\nZdenko Podobny (maintainer)\nJim Regan (past maintainer)\nJames R Barlow\nStefan Brechtken\nThomas Breuel\nAmit Dovev\nMartin Ettl\nShree Devi Kumar\nNoah Metzger\nTom Morris\nTobias M\u00fcller\nEgor Pugin\nRobert Sachunsky\nRaf Schietekat\nSundar M. Vaidya\nRobin Watts\nNick White\nAlexander Zaitsev\n"
+          },
+          {
+            "path": "LICENSE",
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+            "text": "\n                                 Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License. You may add Your own attribution\n          notices within Derivative Works that You distribute, alongside\n          or as an addendum to the NOTICE text from the Work, provided\n          that such additional attribution notices cannot be construed\n          as modifying the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or\n      for any such Derivative Works as a whole, provided Your use,\n      reproduction, and distribution of the Work otherwise complies with\n      the conditions stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   APPENDIX: How to apply the Apache License to your work.\n\n      To apply the Apache License to your work, attach the following\n      boilerplate notice, with the fields enclosed by brackets \"[]\"\n      replaced with your own identifying information. (Don't include\n      the brackets!)  The text should be enclosed in the appropriate\n      comment syntax for the file format. We also recommend that a\n      file or class name and description of purpose be included on the\n      same \"printed page\" as the copyright notice for easier\n      identification within third-party archives.\n\n   Copyright [yyyy] [name of copyright owner]\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.\n"
+          }
+        ],
+        "primary_license": {
+          "path": "LICENSE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "git_blob_sha1": "d645695673349e3947e8e5ae42332d0ac3164cd7"
+        },
+        "cmake_sha256": "6365a1dbbb3a95ace96937575785ced9f0a0fb7dce0c0c6d266befdb27d7a6d5",
+        "cmake_git_blob_sha1": "bdd19c7d23495a4fe0fff8cd12b5d9ecaf03af5d",
+        "applied_packager_patches": []
+      }
+    },
+    "builds": [
+      {
+        "step": "configure",
+        "returncode": 0,
+        "log_sha256": "a07b78457a0ef7326528992266a6f70fd78c6f46d96b1faa72ffe3341d7c4c2b",
+        "log_bytes": 1835
+      },
+      {
+        "component": "zlib",
+        "cache_dependency_selections": {
+          "ZLIB_BUILD_ADA": "OFF",
+          "ZLIB_BUILD_BLAST": "OFF",
+          "ZLIB_BUILD_IOSTREAM3": "OFF",
+          "ZLIB_BUILD_MINIZIP": "OFF",
+          "ZLIB_BUILD_PUFF": "OFF",
+          "ZLIB_BUILD_SHARED": "OFF",
+          "ZLIB_BUILD_STATIC": "ON",
+          "ZLIB_BUILD_TESTING": "OFF",
+          "ZLIB_BUILD_TESTZLIB": "OFF",
+          "ZLIB_BUILD_ZLIB1_DLL": "OFF",
+          "ZLIB_CONF_WRITTEN": "TRUE",
+          "ZLIB_DEF_WRITTEN": "TRUE",
+          "ZLIB_INSTALL": "ON",
+          "ZLIB_MAP_WRITTEN": "TRUE",
+          "ZLIB_PREFIX": "",
+          "ZLIB_WITH_CRC32VX": "OFF",
+          "ZLIB_WITH_GVMAT64": "OFF",
+          "ZLIB_WITH_INFBACK9": "OFF",
+          "zlib_BINARY_DIR": "D:/a/Portable/Portable/tmp/ocr-min-8c3af6c2/build/zlib",
+          "zlib_IS_TOP_LEVEL": "ON",
+          "zlib_SOURCE_DIR": "D:/a/Portable/Portable/tmp/ocr-min-8c3af6c2/zlib-src/zlib-1.4",
+          "ZLIB_CONF_WRITTEN-ADVANCED": "1",
+          "ZLIB_DEF_WRITTEN-ADVANCED": "1",
+          "ZLIB_MAP_WRITTEN-ADVANCED": "1",
+          "ZLIB_PREFIX-ADVANCED": "1"
+        },
+        "actual_release_runtime_library": {
+          "zlibstatic": [
+            "MultiThreaded"
+          ]
+        },
+        "cache_sha256": "87d7216f4f14c4836994edab5caf5bf92f7da1339f6bf883c22e9919762bd509",
+        "sdk_version": null
+      },
+      {
+        "step": "build",
+        "returncode": 0,
+        "log_sha256": "065dcdfd49db9fb2628774f9940d549be586007cb172fea90a479ac2c38c71da",
+        "log_bytes": 594
+      },
+      {
+        "step": "install",
+        "returncode": 0,
+        "log_sha256": "40e3429d5a6f1f1f975f3a2dde6b44affa796142b2c448f99d19cbe73d3eedee",
+        "log_bytes": 1517
+      },
+      {
+        "step": "configure",
+        "returncode": 0,
+        "log_sha256": "f3a792b668f5f9da4436bee28a02e5cfc16d77a469fc858739fd09a4836952ef",
+        "log_bytes": 1775
+      },
+      {
+        "component": "png",
+        "cache_dependency_selections": {
+          "PNG_BUILD_ZLIB": "OFF",
+          "PNG_DEBUG_POSTFIX": "d",
+          "PNG_EXECUTABLES": "ON",
+          "PNG_FRAMEWORK": "OFF",
+          "PNG_HARDWARE_OPTIMIZATIONS": "OFF",
+          "PNG_LIBCONF_HEADER": "",
+          "PNG_PREFIX": "",
+          "PNG_SHARED": "OFF",
+          "PNG_STATIC": "ON",
+          "PNG_TESTS": "OFF",
+          "PNG_TOOLS": "OFF",
+          "ZLIB_INCLUDE_DIR": "D:/a/Portable/Portable/tmp/ocr-min-8c3af6c2/prefix/include",
+          "ZLIB_LIBRARY_DEBUG": "ZLIB_LIBRARY_DEBUG-NOTFOUND",
+          "ZLIB_LIBRARY_RELEASE": "D:/a/Portable/Portable/tmp/ocr-min-8c3af6c2/prefix/lib/libzs.lib",
+          "ZLIB_ROOT": "D:\\a\\Portable\\Portable\\tmp\\ocr-min-8c3af6c2\\prefix",
+          "ZLIB_USE_STATIC_LIBS": "ON",
+          "ZLIB_INCLUDE_DIR-ADVANCED": "1",
+          "ZLIB_LIBRARY_DEBUG-ADVANCED": "1",
+          "ZLIB_LIBRARY_RELEASE-ADVANCED": "1"
+        },
+        "actual_release_runtime_library": {
+          "png_static": [
+            "MultiThreaded"
+          ]
+        },
+        "cache_sha256": "b17a11829e54b6b8850dcd93fd312e4624d907ee97fca3d2e6616d4fc946f028",
+        "sdk_version": null
+      },
+      {
+        "step": "build",
+        "returncode": 0,
+        "log_sha256": "d2f95df8febb21fef3dd08678a963b9473abecc8e6c72b12b213ee5eccab3714",
+        "log_bytes": 722
+      },
+      {
+        "step": "install",
+        "returncode": 0,
+        "log_sha256": "089fe850e987dfa1fa6c56a38c7e2e7fcbf0900e6cdabc4305f6f867205629e0",
+        "log_bytes": 1571
+      },
+      {
+        "step": "configure",
+        "returncode": 0,
+        "log_sha256": "a42b500590aa2be99643b50bc42d820633344588c23b53286e5cfdd70dd5f192",
+        "log_bytes": 3880
+      },
+      {
+        "component": "lept",
+        "cache_dependency_selections": {
+          "PNG_LIBRARY_DEBUG": "PNG_LIBRARY_DEBUG-NOTFOUND",
+          "PNG_LIBRARY_RELEASE": "D:/a/Portable/Portable/tmp/ocr-min-8c3af6c2/prefix/lib/libpng16_static.lib",
+          "PNG_PNG_INCLUDE_DIR": "D:/a/Portable/Portable/tmp/ocr-min-8c3af6c2/prefix/include",
+          "ZLIB_INCLUDE_DIR": "D:/a/Portable/Portable/tmp/ocr-min-8c3af6c2/prefix/include",
+          "ZLIB_LIBRARY_DEBUG": "ZLIB_LIBRARY_DEBUG-NOTFOUND",
+          "ZLIB_LIBRARY_RELEASE": "D:/a/Portable/Portable/tmp/ocr-min-8c3af6c2/prefix/lib/libzs.lib",
+          "ZLIB_ROOT": "D:\\a\\Portable\\Portable\\tmp\\ocr-min-8c3af6c2\\prefix",
+          "ZLIB_USE_STATIC_LIBS": "ON",
+          "leptonica_BINARY_DIR": "D:/a/Portable/Portable/tmp/ocr-min-8c3af6c2/build/lept",
+          "leptonica_INSTALL_CMAKE_DIR": "lib/cmake/leptonica",
+          "leptonica_IS_TOP_LEVEL": "ON",
+          "leptonica_LIB_DEPENDS": "general;D:/a/Portable/Portable/tmp/ocr-min-8c3af6c2/prefix/lib/libpng16_static.lib;general;D:/a/Portable/Portable/tmp/ocr-min-8c3af6c2/prefix/lib/libzs.lib;general;D:/a/Portable/Portable/tmp/ocr-min-8c3af6c2/prefix/lib/libzs.lib;general;user32.lib;general;gdi32.lib;",
+          "leptonica_SOURCE_DIR": "D:/a/Portable/Portable/tmp/ocr-min-8c3af6c2/lept-src/leptonica-1.87.0",
+          "PNG_LIBRARY_DEBUG-ADVANCED": "1",
+          "PNG_LIBRARY_RELEASE-ADVANCED": "1",
+          "PNG_PNG_INCLUDE_DIR-ADVANCED": "1",
+          "ZLIB_INCLUDE_DIR-ADVANCED": "1",
+          "ZLIB_LIBRARY_DEBUG-ADVANCED": "1",
+          "ZLIB_LIBRARY_RELEASE-ADVANCED": "1"
+        },
+        "actual_release_runtime_library": {
+          "leptonica": [
+            "MultiThreaded"
+          ]
+        },
+        "cache_sha256": "f83f23cdf59a9bc7147dac959cb9ef8f302123747fbde65349bfc87ed6c75616",
+        "sdk_version": null
+      },
+      {
+        "step": "build",
+        "returncode": 0,
+        "log_sha256": "01dd6a296e7b95f3b7295fe0fe9f8758ece2b0f9a381f372465520a54b6feca7",
+        "log_bytes": 2941
+      },
+      {
+        "step": "install",
+        "returncode": 0,
+        "log_sha256": "72d5adfa9b8aa70ce156f6ff7c8d4bb936791b386c04d622e025cf2064ba83ed",
+        "log_bytes": 4029
+      },
+      {
+        "step": "configure",
+        "returncode": 0,
+        "log_sha256": "41ba7f3ca3391d2fd34495ae0f3de090bd42ef6ac2029c36acdacc4caf89ed79",
+        "log_bytes": 4127
+      },
+      {
+        "component": "tess",
+        "cache_dependency_selections": {
+          "Leptonica_DIR": "D:\\a\\Portable\\Portable\\tmp\\ocr-min-8c3af6c2\\prefix\\lib\\cmake\\leptonica",
+          "OPENMP_BUILD": "OFF",
+          "PNG_LIBRARY_RELEASE": "D:\\a\\Portable\\Portable\\tmp\\ocr-min-8c3af6c2\\prefix\\lib\\libpng16_static.lib",
+          "PNG_PNG_INCLUDE_DIR": "D:\\a\\Portable\\Portable\\tmp\\ocr-min-8c3af6c2\\prefix\\include",
+          "ZLIB_INCLUDE_DIR": "D:\\a\\Portable\\Portable\\tmp\\ocr-min-8c3af6c2\\prefix\\include",
+          "ZLIB_LIBRARY_RELEASE": "D:\\a\\Portable\\Portable\\tmp\\ocr-min-8c3af6c2\\prefix\\lib\\libzs.lib",
+          "ZLIB_ROOT": "D:\\a\\Portable\\Portable\\tmp\\ocr-min-8c3af6c2\\prefix",
+          "ZLIB_USE_STATIC_LIBS": "ON"
+        },
+        "actual_release_runtime_library": {
+          "libtesseract": [
+            "MultiThreaded"
+          ],
+          "tesseract": [
+            "MultiThreaded"
+          ]
+        },
+        "cache_sha256": "47db270c63f82727770cf950264e11fef3be80bc782eb8f97ab969d092adaaaf",
+        "sdk_version": null
+      },
+      {
+        "step": "build",
+        "returncode": 0,
+        "log_sha256": "9065f3c951030a61a1e8943aae61ca1e1baf055730affc53fda40299d984710e",
+        "log_bytes": 3427
+      },
+      {
+        "step": "install",
+        "returncode": 0,
+        "log_sha256": "89c818c2fdfbb1714b261885d86fc68db266348fc49fd5456af864a112a59df3",
+        "log_bytes": 5255
+      }
+    ],
+    "completed": true,
+    "technical_recognition_passed": true,
+    "distribution_qualified": false,
+    "integrated": false,
+    "limitations": [
+      "Same fixed upstream source files from prior verified official signed source archives; no MSYS2 packaging patches executed.",
+      "CI toolchain is preinstalled authorized build infrastructure, not a customer runtime or distribution grant.",
+      "Static CRT reduces runtime DLLs but exact VS license applicability, security servicing and rebuild obligations still need approval.",
+      "No bit-for-bit reproducible toolchain claim; exact source recipe, compiler versions and actual executable digest recorded.",
+      "No runtime downloads, language install, package global install, customer binary upload, or real data.",
+      "Local-process module/socket sampling is not a physical network air gap or exhaustive host-write tracing."
+    ],
+    "toolchain": {
+      "vs_instance_version": "17.14.37906.3",
+      "vs_product": "Microsoft.VisualStudio.Product.Enterprise",
+      "msvc_tools_version": "14.44.35207",
+      "cmake_version": "cmake version 3.31.6-msvc6",
+      "build_tools_sha256": {
+        "cmake.exe": "b540efece9172930877dff0c9fedda7a69b0dd82446e0e8bba13372aac6c8ac8",
+        "MSBuild.exe": "7da5f86d7dfa627c4071edc9563fda7ace7ec0aaadd8b2aaccb92d2a823535c0",
+        "cl.exe": "e87e78b3ef6580b75aebda843f8a22e874612d9f766344046551399f898eb226",
+        "link.exe": "49a5df25c3182a22684375b1d62a025016deffccea247894fe5ca2c85610c6a6"
+      },
+      "redist_terms": "https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files",
+      "static_crt_requested": true,
+      "runner_image": "win22",
+      "runner_image_version": "20261116.370.1"
+    },
+    "build_recipe": {
+      "common": [
+        "-G",
+        "Visual Studio 17 2022",
+        "-A",
+        "x64",
+        "-DCMAKE_GENERATOR_INSTANCE=C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise",
+        "-DCMAKE_INSTALL_PREFIX=D:\\a\\Portable\\Portable\\tmp\\ocr-min-8c3af6c2\\prefix",
+        "-DCMAKE_PREFIX_PATH=D:\\a\\Portable\\Portable\\tmp\\ocr-min-8c3af6c2\\prefix",
+        "-DCMAKE_INSTALL_LIBDIR=lib",
+        "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
+        "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW",
+        "-DBUILD_SHARED_LIBS=OFF",
+        "-DCMAKE_VS_GLOBALS=VcpkgEnabled=false;VcpkgEnableManifest=false",
+        "-DCMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH=FALSE",
+        "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=FALSE",
+        "-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=FALSE",
+        "-DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=TRUE",
+        "-DCMAKE_FIND_PACKAGE_NO_SYSTEM_PACKAGE_REGISTRY=TRUE",
+        "-DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=TRUE",
+        "-DCMAKE_DISABLE_FIND_PACKAGE_SW=TRUE",
+        "-DCMAKE_DISABLE_FIND_PACKAGE_Git=TRUE",
+        "-DCMAKE_DISABLE_FIND_PACKAGE_CURL=TRUE",
+        "-DCMAKE_DISABLE_FIND_PACKAGE_LibArchive=TRUE",
+        "-DCMAKE_DISABLE_FIND_PACKAGE_TIFF=TRUE",
+        "-DCMAKE_DISABLE_FIND_PACKAGE_JPEG=TRUE",
+        "-DCMAKE_DISABLE_FIND_PACKAGE_GIF=TRUE",
+        "-DCMAKE_DISABLE_FIND_PACKAGE_OpenJPEG=TRUE",
+        "-DCMAKE_DISABLE_FIND_PACKAGE_WebP=TRUE",
+        "-DCMAKE_DISABLE_FIND_PACKAGE_OpenMP=TRUE",
+        "-DCMAKE_DISABLE_FIND_PACKAGE_ICU=TRUE",
+        "-DCMAKE_DISABLE_FIND_PACKAGE_GTest=TRUE"
+      ],
+      "components": {
+        "zlib": [
+          "-DZLIB_BUILD_TESTING=OFF",
+          "-DZLIB_BUILD_SHARED=OFF",
+          "-DZLIB_BUILD_STATIC=ON",
+          "-DZLIB_INSTALL=ON"
+        ],
+        "png": [
+          "-DPNG_SHARED=OFF",
+          "-DPNG_STATIC=ON",
+          "-DPNG_TESTS=OFF",
+          "-DPNG_TOOLS=OFF",
+          "-DPNG_HARDWARE_OPTIMIZATIONS=OFF"
+        ],
+        "lept": [
+          "-DSW_BUILD=OFF",
+          "-DSTRICT_CONF=ON",
+          "-DBUILD_PROG=OFF",
+          "-DENABLE_ZLIB=ON",
+          "-DENABLE_PNG=ON",
+          "-DENABLE_GIF=OFF",
+          "-DENABLE_JPEG=OFF",
+          "-DENABLE_TIFF=OFF",
+          "-DENABLE_WEBP=OFF",
+          "-DENABLE_OPENJPEG=OFF"
+        ],
+        "tess": [
+          "-DWIN32_MT_BUILD=ON",
+          "-DDISABLE_CURL=ON",
+          "-DDISABLE_ARCHIVE=ON",
+          "-DDISABLE_TIFF=ON",
+          "-DOPENMP_BUILD=OFF",
+          "-DBUILD_TRAINING_TOOLS=OFF",
+          "-DBUILD_TESTS=OFF",
+          "-DGRAPHICS_DISABLED=ON",
+          "-DDISABLED_LEGACY_ENGINE=ON",
+          "-DENABLE_NATIVE=OFF",
+          "-DUSE_SYSTEM_ICU=OFF",
+          "-DENABLE_CCACHE=OFF",
+          "-DENABLE_PRECOMPILED_HEADERS=OFF",
+          "-DENABLE_LTO=OFF",
+          "-DINSTALL_CONFIGS=ON"
+        ]
+      },
+      "configuration": "Release",
+      "parallel": 2,
+      "source_patches": []
+    },
+    "runtime_pe": {
+      "name": "tesseract.exe",
+      "sha256": "9caabada811f23f76f8b9c50606096a4c4c09ce279126a0fe58753c754c6fa77",
+      "size": 4590080,
+      "imports_and_delay_imports": [
+        "kernel32.dll"
+      ],
+      "non_os_imports": []
+    },
+    "model": {
+      "path": "tessdata/chi_sim.traineddata",
+      "size": 2469156,
+      "sha256": "a5fcb6f0db1e1d6d8522f39db4e848f05984669172e584e8d76b6b3141e1f730",
+      "signed_source": {
+        "sha256": "cc8c69d2b25b2909093dc4697ba50c4feed4f17088c3f5b0999c869c1e9ff0b4",
+        "size": 351069719
+      },
+      "source_signature": {
+        "verified": true,
+        "returncode": 0,
+        "signing_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+        "primary_fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
+        "status_flags": [
+          "GOODSIG",
+          "KEY_CONSIDERED",
+          "NEWSIG",
+          "SIG_ID",
+          "TRUST_UNDEFINED",
+          "VALIDSIG"
+        ],
+        "signature_sha256": "5eb3ee57b641c7543f50fcb5e1103615003ad0b208278a933d543da3c34b6018"
+      },
+      "source_license": {
+        "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+        "size": 11358,
+        "origins": [
+          {
+            "archive_url": "https://repo.msys2.org/mingw/sources/mingw-w64-tesseract-data-4.1.0-3.src.tar.zst",
+            "nested_member": "mingw-w64-tesseract-data/tesseract-data-4.1.0.tar.gz",
+            "nested_sha256": "d0e3bb6f3b4e75748680524a1d116f2bfb145618f8ceed55b279d15098a530f9",
+            "source_member": "tessdata_fast-4.1.0/LICENSE"
+          },
+          {
+            "archive_url": "https://repo.msys2.org/mingw/sources/mingw-w64-tesseract-ocr-5.5.4-1.src.tar.zst",
+            "nested_member": "mingw-w64-tesseract-ocr/tesseract-ocr-5.5.4.tar.gz",
+            "nested_sha256": "a8dbf8b8c8ee427ff6ad1d99116502feaf59440af1adb893caf60a6576826cf4",
+            "source_member": "tesseract-5.5.4/LICENSE"
+          },
+          {
+            "archive_url": "https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-tesseract-ocr-5.5.4-1-any.pkg.tar.zst",
+            "archive_sha256": "a38f3f00d23ff9e05f2e6df87a65ec7f10b6735b131548e87aa15016a79538b2",
+            "package_member": "ucrt64/share/licenses/tesseract-ocr/LICENSE"
+          }
+        ],
+        "text": "\n                                 Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License. You may add Your own attribution\n          notices within Derivative Works that You distribute, alongside\n          or as an addendum to the NOTICE text from the Work, provided\n          that such additional attribution notices cannot be construed\n          as modifying the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or\n      for any such Derivative Works as a whole, provided Your use,\n      reproduction, and distribution of the Work otherwise complies with\n      the conditions stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   APPENDIX: How to apply the Apache License to your work.\n\n      To apply the Apache License to your work, attach the following\n      boilerplate notice, with the fields enclosed by brackets \"[]\"\n      replaced with your own identifying information. (Don't include\n      the brackets!)  The text should be enclosed in the appropriate\n      comment syntax for the file format. We also recommend that a\n      file or class name and description of purpose be included on the\n      same \"printed page\" as the copyright notice for easier\n      identification within third-party archives.\n\n   Copyright [yyyy] [name of copyright owner]\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.\n"
+      },
+      "source_recipe_sha256": "45364f433c95a9ed49a3cf26dc9137d2040a36a4e75e4e9a58ef8f3200442234"
+    },
+    "tsv_config": {
+      "sha256": "59d079bb75d8b3d7c839a3564580cb559e362c93a9d70f234e421c0c3e767e04",
+      "size": 22
+    },
+    "synthetic_recognition": {
+      "title": {
+        "expected": "\u4e2d\u6587\u8bfe\u4ef6",
+        "actual": "\u4e2d\u6587\u8bfe\u4ef6",
+        "matched": true,
+        "method": "full-page",
+        "word_boxes": [
+          {
+            "text": "\u4e2d",
+            "x": 85,
+            "y": 65,
+            "w": 38,
+            "h": 46
+          },
+          {
+            "text": "\u6587",
+            "x": 151,
+            "y": 65,
+            "w": 23,
+            "h": 45
+          },
+          {
+            "text": "\u8bfe\u4ef6",
+            "x": 198,
+            "y": 66,
+            "w": 72,
+            "h": 45
+          }
+        ],
+        "source_page": "1/1",
+        "source_region": [
+          70,
+          45,
+          580,
+          140
+        ]
+      },
+      "rowlabel": {
+        "expected": "\u6570\u91cf",
+        "actual": "\u6570\u91cf",
+        "matched": true,
+        "method": "full-page",
+        "word_boxes": [
+          {
+            "text": "\u6570\u91cf",
+            "x": 82,
+            "y": 215,
+            "w": 92,
+            "h": 45
+          }
+        ],
+        "source_page": "1/1",
+        "source_region": [
+          70,
+          195,
+          580,
+          290
+        ]
+      },
+      "countlabel": {
+        "expected": "\u91d1\u989d",
+        "actual": "\u91d1\u989d",
+        "matched": true,
+        "method": "full-page",
+        "word_boxes": [
+          {
+            "text": "\u91d1\u989d",
+            "x": 652,
+            "y": 215,
+            "w": 92,
+            "h": 45
+          }
+        ],
+        "source_page": "1/1",
+        "source_region": [
+          640,
+          195,
+          1150,
+          290
+        ]
+      },
+      "1208": {
+        "expected": "1208",
+        "actual": "1208",
+        "matched": true,
+        "method": "full-page",
+        "word_boxes": [
+          {
+            "text": "1208",
+            "x": 84,
+            "y": 360,
+            "w": 100,
+            "h": 37
+          }
+        ],
+        "source_page": "1/1",
+        "source_region": [
+          70,
+          335,
+          580,
+          430
+        ]
+      },
+      "0.05": {
+        "expected": "0.05",
+        "actual": "0.05",
+        "matched": true,
+        "method": "full-page",
+        "word_boxes": [
+          {
+            "text": "0.05",
+            "x": 652,
+            "y": 360,
+            "w": 89,
+            "h": 37
+          }
+        ],
+        "source_page": "1/1",
+        "source_region": [
+          640,
+          335,
+          1150,
+          430
+        ]
+      },
+      "70301": {
+        "expected": "70301",
+        "actual": "70301",
+        "matched": true,
+        "method": "full-page",
+        "word_boxes": [
+          {
+            "text": "70301",
+            "x": 82,
+            "y": 500,
+            "w": 129,
+            "h": 37
+          }
+        ],
+        "source_page": "1/1",
+        "source_region": [
+          70,
+          475,
+          580,
+          570
+        ]
+      },
+      "9007": {
+        "expected": "9007",
+        "actual": "9007",
+        "matched": true,
+        "method": "full-page",
+        "word_boxes": [
+          {
+            "text": "9007",
+            "x": 652,
+            "y": 500,
+            "w": 102,
+            "h": 37
+          }
+        ],
+        "source_page": "1/1",
+        "source_region": [
+          640,
+          475,
+          1150,
+          570
+        ]
+      },
+      "watermark": {
+        "expected": "\u6c34\u5370",
+        "actual": "\u6c34\u5370",
+        "matched": true,
+        "method": "full-page",
+        "word_boxes": [
+          {
+            "text": "\u6c34",
+            "x": 82,
+            "y": 705,
+            "w": 64,
+            "h": 46
+          },
+          {
+            "text": "\u5370",
+            "x": 153,
+            "y": 709,
+            "w": 19,
+            "h": 42
+          }
+        ],
+        "source_page": "1/1",
+        "source_region": [
+          70,
+          685,
+          580,
+          780
+        ]
+      },
+      "personal": {
+        "expected": "\u7f16\u53f7314159",
+        "actual": "\u7f16\u53f7314159",
+        "matched": true,
+        "method": "full-page",
+        "word_boxes": [
+          {
+            "text": "\u7f16\u53f7",
+            "x": 652,
+            "y": 705,
+            "w": 118,
+            "h": 45
+          },
+          {
+            "text": "314159",
+            "x": 777,
+            "y": 710,
+            "w": 126,
+            "h": 37
+          }
+        ],
+        "source_page": "1/1",
+        "source_region": [
+          640,
+          685,
+          1150,
+          780
+        ]
+      }
+    },
+    "scratch_removed": true
+  },
+  "original_release_contracts": {
+    "metadata": {
+      "tag": "v0.172.0-portable.1",
+      "source_commit": "4fb0b50228057cd0be41fbb191e15e065e64e368",
+      "source": "exact original published ZIP",
+      "original_run": "45739266926",
+      "new_harness_commit": "3350ce038639131de60424d095498332a7758b5c",
+      "completed": true,
+      "archive_sha256": "a406e4487bde19057491b6515f7abcab74faf2e3437366b0b23f9940af5760dc",
+      "scope": "selected actual launcher contracts; original release evidence only",
+      "static_contract_index": "tests/original_release_136_env_contracts.json",
+      "limits": [
+        "Synthetic API loopback only; no genuine login or credentials.",
+        "No actual official Apps/connector auth, plugin activation, WebSocket, or system-policy opt-in.",
+        "Protected override rejection does not establish external network isolation.",
+        "Native child absence/normalized values are inheritance boundary evidence only; not proof of each variable's independent tool consumption.",
+        "No writes to original attachment, source payload, registry or host policy; owned extracted fixture only."
+      ],
+      "archive_name_diagnostic": {
+        "manifest_count": 9076,
+        "zip_entry_count": 9076,
+        "zip_unique_name_count": 9076,
+        "raw_intersection_count": 0,
+        "raw_manifest_only_count": 9076,
+        "raw_zip_only_count": 9076,
+        "raw_manifest_only_sample": [
+          ".agents/.gitkeep",
+          ".codex/.gitkeep",
+          "DEVELOPMENT.md",
+          "README.md",
+          "Version_History/AI account format conversion/README.md",
+          "Version_History/AI account format conversion/app/app.js",
+          "Version_History/AI account format conversion/app/converter.js",
+          "Version_History/AI account format conversion/app/style.css",
+          "Version_History/AI account format conversion/index.html",
+          "Version_History/AI_API_Get_Models_Cherry_Rules.bat",
+          "Version_History/YOLO mode\u4e13\u7528\u5305-env.ps1",
+          "Version_History/YOLO mode\u4e13\u7528\u5305-run-codex.ps1"
+        ],
+        "raw_zip_only_sample": [
+          "Codex/.agents/.gitkeep",
+          "Codex/.codex/.gitkeep",
+          "Codex/DEVELOPMENT.md",
+          "Codex/README.md",
+          "Codex/Version_History/AI account format conversion/README.md",
+          "Codex/Version_History/AI account format conversion/app/app.js",
+          "Codex/Version_History/AI account format conversion/app/converter.js",
+          "Codex/Version_History/AI account format conversion/app/style.css",
+          "Codex/Version_History/AI account format conversion/index.html",
+          "Codex/Version_History/AI_API_Get_Models_Cherry_Rules.bat",
+          "Codex/Version_History/YOLO mode\u4e13\u7528\u5305-env.ps1",
+          "Codex/Version_History/YOLO mode\u4e13\u7528\u5305-run-codex.ps1"
+        ],
+        "expected_prefix": "Codex/",
+        "prefix_match_count": 9076,
+        "expected_missing": [],
+        "unexpected_zip_names": [],
+        "duplicates": [],
+        "explicit_directory_entries": [],
+        "producer_order_matches": true
+      },
+      "scratch_removed": true
+    },
+    "rows": [
+      {
+        "mode": "harness",
+        "item": "owned scratch and report preflight",
+        "status": "HARNESS_READY",
+        "detail": "owned parent created, ordinary ancestors, write/read/delete passed",
+        "covers": [],
+        "env": [],
+        "packages": []
+      },
+      {
+        "mode": "integrity",
+        "item": "exact original ZIP and all 9076 members, real Chinese-space move",
+        "status": "PASS_ACTUAL",
+        "detail": "9076",
+        "covers": [],
+        "env": [],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "protected/unapproved local override rejected CODEX_API_KEY",
+        "status": "PASS_ACTUAL",
+        "detail": "launcher early rejection; no synthetic model request; rc=1",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "CODEX_API_KEY"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "protected/unapproved local override rejected CODEX_ACCESS_TOKEN",
+        "status": "PASS_ACTUAL",
+        "detail": "launcher early rejection; no synthetic model request; rc=1",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "CODEX_ACCESS_TOKEN"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "protected/unapproved local override rejected CODEX_PORTABLE_ALLOW_HOST_PATH",
+        "status": "PASS_ACTUAL",
+        "detail": "launcher early rejection; no synthetic model request; rc=1",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "CODEX_PORTABLE_ALLOW_HOST_PATH"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "protected/unapproved local override rejected CODEX_SANDBOX_NETWORK_ACCESS",
+        "status": "PASS_ACTUAL",
+        "detail": "launcher early rejection; no synthetic model request; rc=1",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "CODEX_SANDBOX_NETWORK_ACCESS"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "protected/unapproved local override rejected NODE_OPTIONS",
+        "status": "PASS_ACTUAL",
+        "detail": "launcher early rejection; no synthetic model request; rc=1",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "NODE_OPTIONS"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "package-boundary rejection CODEX_MODEL_INSTRUCTIONS_FILE",
+        "status": "PASS_ACTUAL",
+        "detail": "actual launcher stopped; owned outside input unchanged/no output; rc=1",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "CODEX_MODEL_INSTRUCTIONS_FILE"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "package-boundary rejection CODEX_MODEL_CATALOG_JSON",
+        "status": "PASS_ACTUAL",
+        "detail": "actual launcher stopped; owned outside input unchanged/no output; rc=1",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "CODEX_MODEL_CATALOG_JSON"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "actual configured query on local Responses",
+        "status": "PASS_ACTUAL",
+        "detail": "2/2 matching local requests",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "CODEX_QUERY_PARAMS_TOML"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "actual local synthetic Authorization despite host auth/base conflicts",
+        "status": "PASS_ACTUAL",
+        "detail": "2/2 matching expected synthetic auth and configured loopback; no values stored",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "OPENAI_API_KEY",
+          "CODEX_API_KEY",
+          "CODEX_ACCESS_TOKEN",
+          "OPENAI_BASE_URL"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "actual package-local model instruction marker in Responses",
+        "status": "PASS_ACTUAL",
+        "detail": "marker in actual request",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "CODEX_MODEL_INSTRUCTIONS_FILE"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "actual native child inherited-host rejection CODEX_API_KEY",
+        "status": "PASS_ACTUAL",
+        "detail": "negative inheritance boundary only; not independent tool activation",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "CODEX_API_KEY"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "actual native child inherited-host rejection CODEX_ACCESS_TOKEN",
+        "status": "PASS_ACTUAL",
+        "detail": "negative inheritance boundary only; not independent tool activation",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "CODEX_ACCESS_TOKEN"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "actual native child inherited-host rejection GH_TOKEN",
+        "status": "PASS_ACTUAL",
+        "detail": "negative inheritance boundary only; not independent tool activation",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "GH_TOKEN"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "actual native child inherited-host rejection GITHUB_TOKEN",
+        "status": "PASS_ACTUAL",
+        "detail": "negative inheritance boundary only; not independent tool activation",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "GITHUB_TOKEN"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "actual native child inherited-host rejection NODE_OPTIONS",
+        "status": "PASS_ACTUAL",
+        "detail": "negative inheritance boundary only; not independent tool activation",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "NODE_OPTIONS"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "actual native child inherited-host rejection NODE_PATH",
+        "status": "PASS_ACTUAL",
+        "detail": "negative inheritance boundary only; not independent tool activation",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "NODE_PATH"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "actual native child inherited-host rejection NODE_EXTRA_CA_CERTS",
+        "status": "PASS_ACTUAL",
+        "detail": "negative inheritance boundary only; not independent tool activation",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "NODE_EXTRA_CA_CERTS"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "actual bundled Node child and host preload marker absent",
+        "status": "PASS_ACTUAL",
+        "detail": "explicit bundled Node process=True; synthetic preload marker exists=False; rc=0",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe",
+          "tool/node/node.exe"
+        ],
+        "env": [
+          "NODE_OPTIONS"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "feature config gate without explicit extension opt-in",
+        "status": "PASS_CONFIG_GATE",
+        "detail": "actual launched child read apps/plugins/plugin_sharing=false; real plugin execution and official connector authorization NOT tested",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [
+          "CODEX_DISABLE_APPS",
+          "CODEX_ENABLE_PLUGINS",
+          "CODEX_ENABLE_PLUGIN_SHARING"
+        ],
+        "packages": []
+      },
+      {
+        "mode": "normal",
+        "item": "actual original native session completion",
+        "status": "PASS_ACTUAL",
+        "detail": "local synthetic Responses session; rc=0; model_errors=0",
+        "covers": [
+          "\u542f\u52a8Codex.bat",
+          "env.ps1",
+          "run-codex.ps1",
+          "codex.exe"
+        ],
+        "env": [],
+        "packages": []
+      },
+      {
+        "mode": "integrity",
+        "item": "original launcher/binary members unchanged after targeted cases",
+        "status": "PASS_ACTUAL",
+        "detail": "no developer payload copied",
+        "covers": [],
+        "env": [],
+        "packages": []
+      }
+    ]
+  },
+  "reduced_native_recognition": true,
+  "original_targeted_counts": {
+    "HARNESS_READY": 1,
+    "PASS_ACTUAL": 21,
+    "PASS_CONFIG_GATE": 1
+  },
+  "workflow_steps": {
+    "WINDOWS_BUILD": "success",
+    "ORIGINAL_CONTRACTS": "success",
+    "BUILD_RESULT": "success",
+    "ORIGINAL_RESULT": "success"
+  },
+  "distribution_qualified": false,
+  "ocr_integrated": false,
+  "new_candidate_built": false,
+  "whole_package_all_pass_claim": false
+}
