@@ -1,0 +1,22 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {scopeFor,matching,choiceFingerprint,validateCall,tools}=require('../tool/automation/course/course');
+const scope=scopeFor('https://example.invalid','/course/one');
+assert(matching('https://example.invalid/course/one?synthetic=a',scope));
+assert(!matching('https://example.invalid/course/two',scope));
+assert(!matching('https://other.invalid/course/one',scope));
+assert.throws(()=>scopeFor('https://user:pass@example.invalid','/course/one'));
+assert.throws(()=>scopeFor('https://example.invalid','/course/../one'));
+assert.throws(()=>scopeFor('https://example.invalid','/course/one?secret=a'));
+assert.notEqual(choiceFingerprint('same','radio',['a','b']),choiceFingerprint('same','radio',['b','a']));
+assert.notEqual(choiceFingerprint('A','radio',['a','b']),choiceFingerprint('B','radio',['a','b']));
+assert.throws(()=>validateCall('course_close',{confirmed:false}));
+assert.throws(()=>validateCall('course_select',{confirmed:true}));
+assert.throws(()=>validateCall('browser_evaluate',{}));
+assert.throws(()=>validateCall('course_scroll',{pixels:1201}));
+assert.throws(()=>validateCall('course_save_notes',{slug:'../escape',markdown:'# note',excludedText:[],confirmed:true}));
+assert(!Object.keys(tools).some(x=>/submit|navigate|evaluate|run_code/.test(x)));
+console.log('COURSE_POLICY_UNIT=PASS');
+
+assert.throws(()=>validateCall('course_ocr',{selector:'#image',language:'en-US'}));
+assert.throws(()=>validateCall('course_progress',{questionSelector:'.q',stemSelector:'.s',expectedTotal:301}));

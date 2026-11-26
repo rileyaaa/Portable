@@ -209,3 +209,8 @@ Go、uv 系列和可再生 Python 字节码仍不包含在默认包中。已恢�
 已在源码中加入 `tool/portable-ssh.py` 与 `home/skills/portable-ssh`，目标是通过包内 Python / Paramiko 操作用户明确授权的远端主机。私钥、固定主机指纹及本地传输文件集中在包内 `work/ssh/`（Git 和客户 ZIP 均排除），默认拒绝读取宿主 `~/.ssh`、SSH Agent，且不会自动信任远端主机。连接、执行命令和传输操作须指定目标并明确授权。完整使用方法见 [SSH 技能说明](home/skills/portable-ssh/SKILL.md)。
 
 **开发分支的 Windows Python 运行树已经跟踪 Paramiko 5.1.0 及其固定依赖，输入清单和哈希锁均已包含该组。** 真实 SSH/SFTP、用户目标及本次完整兼容性验收仍需单独核对；不因此宣称正式发行包已通过 SSH 验收。
+
+
+## 开发候选：课件与练习助手
+
+`course-assistant` 是独立任务技能，仅在用户明确提出指定课件、练习或规则允许的 AI 辅助测验时选择。使用现有固定 Chromium、Playwright/MCP 和 Windows 本机 OCR（依赖系统语言），不自动启用扩展、登录、开始或交卷。本人另开专用前台 owner，每个账号独立 work 目录；通用 `browser-debug` 不变。详细命令、授权与未支持范围见 [课件技能](home/skills/course-assistant/SKILL.md)。该功能仅为 dev 候选，尚未成为正式发行版；实际 Windows/候选 ZIP 验收以独立记录为准。
