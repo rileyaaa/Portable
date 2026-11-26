@@ -692,3 +692,8 @@ Source ca7ac2d183a036794d1acfa6c965c2c6d4e4e907; https://github.com/rileyaaa/Por
 ## Full reduced LLVM-MinGW OCR evidence
 
 Run 45763840678; tests/llvm_full_ocr_45763840678.json. Windows=failure; full build=False; actual link evidence=False; private product=False. No distribution clearance or customer ZIP. Prior MSVC product/map retained; original ZIP, Office and dual-window not rerun. Prior candidate unchanged.
+
+
+## Full reduced LLVM-MinGW OCR evidence
+
+Run 45764051983; tests/llvm_full_ocr_45764051983.json. Windows=failure; full build=False; actual link evidence=False; private product=False. No distribution clearance or customer ZIP. Prior MSVC product/map retained; original ZIP, Office and dual-window not rerun. Prior candidate unchanged.
