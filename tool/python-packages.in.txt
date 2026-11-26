@@ -29,7 +29,7 @@ packaging==26.4
 # Pin the existing transitive runtime closure too; no incidental resolver upgrades.
 anyio==4.16.0
 certifi==2026.11.20
-charset-normalizer==3.4.7
+charset-normalizer==3.5.3
 et_xmlfile==2.0.0
 h11==0.16.0
 httpcore==1.0.9

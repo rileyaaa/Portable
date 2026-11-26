@@ -1,5 +1,5 @@
 # Codex Portable wheel lock v1
-# requirements-sha256: a43f313c7e96801f952f5e65f3d20600933d9c2d8eceee95b91d7e8adc7482c2
+# requirements-sha256: 4923b830da14fa3807abf25c93ac23ea2442b7f8df6475674da1590f6f8efa55
 # Exact selected wheel hashes; install with --require-hashes --only-binary=:all:.
 altgraph==0.17.5 --hash=sha256:f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597
 anyio==4.16.0 --hash=sha256:c66ae634e0b8228396b801741beb3294326d4b6102f7bba4041c0dfb58c29026
@@ -7,7 +7,7 @@ bcrypt==5.0.0 --hash=sha256:64ee8434b0da054d830fa8e89e1c8bf30061d539044a39524ff7
 beautifulsoup4==4.15.0 --hash=sha256:d6f88de62e1d4e38ecb1077eb9724cd0eff29d2a08ca16a401e9b9e93f117cf9
 certifi==2026.11.20 --hash=sha256:7422df25243767b9877031a2248cb14d09ddac9beee846f4cef3d5c9191d488f
 cffi==2.1.1 --hash=sha256:3222ba5d678f80a030e6afbcc33dc1ae5cb45facabb61cee2c7016b8432fde48
-charset-normalizer==3.4.7 --hash=sha256:92a0a01ead5e668468e952e4238cccd7c537364eb7d851ab144ab6627dbbe12f
+charset-normalizer==3.5.3 --hash=sha256:b66a0e045cf859d7418f26a554509b65f21ebb6d90a95152460781939e8264f4
 cryptography==50.0.2 --hash=sha256:7afa5a6602a9f29af1f3a2965f831bae7c9d5d597b7cbb716d41ab3b7d89879c
 defusedxml==0.7.1 --hash=sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61
 et-xmlfile==2.0.0 --hash=sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa
