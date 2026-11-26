@@ -142,8 +142,9 @@ def _setup_libreoffice_macro(profile_path: Path) -> bool:
             check=False,
             env=get_soffice_env(),
         )
-        if result.returncode != 0 or not macro_dir.is_dir():
+        if result.returncode != 0:
             return False
+        macro_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         macro_file.write_text(ACCEPT_CHANGES_MACRO, encoding="utf-8")
