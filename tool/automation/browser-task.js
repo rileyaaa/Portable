@@ -49,14 +49,21 @@ async function main() {
   const context = await chromium.launchPersistentContext(browser.userDataDir, {
     ...browser.launchOptions, ...browser.contextOptions,
   });
+  const result = await runTaskAndClose(context, task, workspace);
+  process.stdout.write(result + '\n');
+}
+
+// Serialize while the task context is still available, but do not report
+// success until the existing close operation has completed.
+async function runTaskAndClose(context, task, workspace) {
   try {
     const page = context.pages()[0] || await context.newPage();
     const value = await task({page, context, workspace});
-    process.stdout.write(formatTaskResult(value) + '\n');
+    return formatTaskResult(value);
   } finally { await context.close(); }
 }
 
-module.exports = {formatTaskResult};
+module.exports = {formatTaskResult, runTaskAndClose};
 if (require.main === module) main().catch(error => {
   process.stderr.write(`Portable browser task: ${error.message}\n`);
   process.exitCode = 1;
