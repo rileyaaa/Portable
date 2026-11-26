@@ -131,9 +131,31 @@ def extract(owned,manifest):
     initial=owned/"initial-original";initial.mkdir()
     with zipfile.ZipFile(owned/ZIP) as z:
         infos=z.infolist()
-        assert len(infos)==len(files) and set(i.filename for i in infos)==set(files)
+        # Frozen producer tool/package-release.py: verify_zip() and build_release()
+        # write exactly Codex/<manifest relative name>, never explicit directories.
+        # This is a single literal prefix, not a generic path normalization.
+        expected=["Codex/"+n for n in files]
+        names=[i.filename for i in infos]
+        raw=set(names);want=set(expected);manifest_names=set(files)
+        duplicates=sorted(n for n,c in Counter(names).items() if c!=1)
+        missing=sorted(want-raw);extra=sorted(raw-want)
+        directories=[i.filename for i in infos if i.is_dir()]
+        # Record actual archive differences before rejecting any mismatch.
+        diagnostic=dict(manifest_count=len(files),zip_entry_count=len(infos),
+            zip_unique_name_count=len(raw),raw_intersection_count=len(raw&manifest_names),
+            raw_manifest_only_count=len(manifest_names-raw),raw_zip_only_count=len(raw-manifest_names),
+            raw_manifest_only_sample=sorted(manifest_names-raw)[:12],
+            raw_zip_only_sample=sorted(raw-manifest_names)[:12],
+            expected_prefix="Codex/",prefix_match_count=sum(n.startswith("Codex/") for n in names),
+            expected_missing=missing,unexpected_zip_names=extra,duplicates=duplicates,
+            explicit_directory_entries=directories,producer_order_matches=names==expected)
+        META["archive_name_diagnostic"]=diagnostic;save()
+        print("ORIGINAL_ZIP_NAME_DIAGNOSTIC="+json.dumps(diagnostic,ensure_ascii=True),flush=True)
+        assert len(infos)==len(files) and not duplicates and not missing and not extra and not directories, "Archive differs from exact frozen Codex/ member contract"
+        assert names==expected,"Archive ordering differs from frozen producer/manifest"
         for info in infos:
-            rel=safe_path(info.filename);record=files[rel]
+            assert info.orig_filename==info.filename and info.filename.startswith("Codex/")
+            rel=safe_path(info.filename[len("Codex/"):]);record=files[rel]
             assert not info.is_dir() and not info.flag_bits&1
             assert stat.S_IFMT(info.external_attr>>16) in (0,stat.S_IFREG),rel
             assert info.file_size==record["size"] and re.fullmatch("[0-9a-f]{64}",record["sha256"])
