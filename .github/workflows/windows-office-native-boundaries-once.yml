@@ -1,0 +1,279 @@
+name: Office and local native Windows boundaries (one reviewed candidate)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/windows-office-native-boundaries-once.yml
+permissions:
+  contents: read
+concurrency:
+  group: portable-office-native-boundaries-d9e737e0
+  cancel-in-progress: false
+jobs:
+  probe:
+    if: >-
+      github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event.before == 'd9e737e0384dc07a3b6203fd21bc11fe87ba32cd' && github.run_attempt == 1 && !github.event.forced && !github.event.deleted && github.event.head_commit.message == 'ci: verify Office and native tool boundaries'
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: 'false'
+      GIT_TERMINAL_PROMPT: '0'
+      GCM_INTERACTIVE: never
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Checkout exact candidate, defer LFS payloads
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        env:
+          GIT_LFS_SKIP_SMUDGE: '1'
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+          lfs: false
+      - name: Independent Office and native tool controls
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = 'd9e737e0384dc07a3b6203fd21bc11fe87ba32cd'
+          $workflow = '.github/workflows/windows-office-native-boundaries-once.yml'
+          $source = $PWD.Path
+          $git = (Get-Command git.exe -CommandType Application | Select-Object -First 1).Source
+          $common = 'FAIL'; $office = 'NOT_RUN'; $native = 'NOT_RUN'; $temp = 'NOT_RUN'
+          $nodeInitial = 'NOT_RUN'; $nodePayload = 'NOT_RUN'
+          $commonPhase = 'identity'; $officePhase = 'NOT_RUN'; $nativePhase = 'NOT_RUN'
+          $script:checkRel = ''; $commonFile = ''; $officeFile = ''; $nativeFile = ''
+          $owned = $null; $script:retainOwned = $false; $cleanup = 'NOT_RUN'; $post = 'NOT_RUN'
+          function Git-Read([string[]]$argv) {
+            $old = $ErrorActionPreference
+            try {
+              $ErrorActionPreference = 'Continue'
+              $lines = @(& $git @argv 2>&1)
+              $rc = $LASTEXITCODE
+            } finally { $ErrorActionPreference = $old }
+            if ($rc -ne 0) { throw 'Git command failed' }
+            return ($lines -join "`n")
+          }
+          function Assert-Plain([string]$path, [bool]$directory) {
+            $full = [IO.Path]::GetFullPath($path)
+            $chain = New-Object System.Collections.Stack
+            for ($p = $full; $p; $p = [IO.Path]::GetDirectoryName($p)) { $chain.Push($p) }
+            while ($chain.Count) {
+              $p = $chain.Pop()
+              $item = Get-Item -LiteralPath $p -Force
+              if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+                  ($item.PSObject.Properties['LinkType'] -and $item.LinkType) -or
+                  (-not $item.PSIsContainer -and ([string]$item.Mode).Contains('l')) -or
+                  ([bool]$item.PSIsContainer -ne ($p -ne $full -or $directory))) { throw 'Unsafe fixture or input path' }
+            }
+          }
+          function Assert-Index([string]$rel, [string]$blob) {
+            $script:checkRel = $rel
+            if ($blob -cnotmatch '^[0-9a-f]{40}$' -or
+                (Git-Read @('rev-parse',("HEAD:" + $rel))) -cne $blob -or
+                (Git-Read @('cat-file','-t',$blob)) -cne 'blob' -or
+                (Git-Read @('ls-files','--stage','--',$rel)) -cne "100644 $blob 0`t$rel") { throw 'Git object/index mismatch' }
+            Assert-Plain (Join-Path $source $rel) $false
+          }
+          function Assert-Attrs([string]$rel, [string]$text, [string]$filter) {
+            $keys = @('text','eol','crlf','filter','working-tree-encoding','ident','--',$rel)
+            $wanted = @("${rel}: text: $text", "${rel}: eol: unspecified", "${rel}: crlf: unspecified", "${rel}: filter: $filter",
+                        "${rel}: working-tree-encoding: unspecified", "${rel}: ident: unspecified") -join "`n"
+            if ((Git-Read (@('check-attr') + $keys)) -cne $wanted -or
+                (Git-Read (@('check-attr','--cached') + $keys)) -cne $wanted) { throw 'Unexpected checkout attributes' }
+          }
+          function Assert-Raw([string]$rel, [string]$blob) {
+            if ((Git-Read @('hash-object','--no-filters','--',$rel)) -cne $blob) { throw 'Raw checkout blob mismatch' }
+          }
+          function Assert-Text([string]$rel, [string]$blob) {
+            Assert-Index $rel $blob
+            Assert-Attrs $rel 'unspecified' 'unspecified'
+            Assert-Raw $rel $blob
+            if ((Git-Read @('hash-object',('--path=' + $rel),'--',$rel)) -cne $blob) { throw 'Filtered checkout blob mismatch' }
+          }
+          function Assert-ParentText([string]$rel) {
+            Assert-Text $rel (Git-Read @('rev-parse',("${base}:" + $rel)))
+          }
+          function Copy-Checked([string]$rel, [string]$targetRoot) {
+            $from = Join-Path $source $rel; $to = Join-Path $targetRoot $rel
+            Assert-Plain $from $false
+            $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($to))
+            Assert-Plain ([IO.Path]::GetDirectoryName($to)) $true
+            [IO.File]::Copy($from,$to,$false)
+            Assert-Plain $to $false
+            if ((Get-FileHash -LiteralPath $from -Algorithm SHA256).Hash -cne
+                (Get-FileHash -LiteralPath $to -Algorithm SHA256).Hash) { throw 'Fixture copy mismatch' }
+          }
+          function Invoke-Clean([string]$exe, [string]$arguments, [string]$cwd, [string]$state, [int]$timeoutMs) {
+            $null = [IO.Directory]::CreateDirectory($state)
+            Assert-Plain $state $true
+            $start = New-Object Diagnostics.ProcessStartInfo
+            $start.FileName = $exe; $start.Arguments = $arguments; $start.WorkingDirectory = $cwd
+            $start.UseShellExecute = $false; $start.CreateNoWindow = $true
+            $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true; $start.RedirectStandardInput = $true
+            $start.EnvironmentVariables.Clear()
+            $start.EnvironmentVariables['SystemRoot'] = $windows
+            $start.EnvironmentVariables['WINDIR'] = $windows
+            $start.EnvironmentVariables['SystemDrive'] = [IO.Path]::GetPathRoot($windows).TrimEnd('\')
+            $start.EnvironmentVariables['ComSpec'] = Join-Path $windows 'System32\cmd.exe'
+            $start.EnvironmentVariables['PATHEXT'] = '.COM;.EXE;.BAT;.CMD'
+            $start.EnvironmentVariables['PATH'] = (Join-Path $windows 'System32') + ';' + $windows + ';' + $PSHOME
+            $start.EnvironmentVariables['PSModulePath'] = Join-Path $PSHOME 'Modules'
+            $drive = [IO.Path]::GetPathRoot($state).TrimEnd('\')
+            $start.EnvironmentVariables['HOMEDRIVE'] = $drive
+            $start.EnvironmentVariables['HOMEPATH'] = $state.Substring($drive.Length)
+            $start.EnvironmentVariables['PSModuleAnalysisCachePath'] = Join-Path $state 'module-analysis'
+            $start.EnvironmentVariables['POWERSHELL_TELEMETRY_OPTOUT'] = '1'
+            foreach ($key in @('HOME','USERPROFILE','APPDATA','LOCALAPPDATA','TEMP','TMP','TMPDIR','PROGRAMDATA','ALLUSERSPROFILE','PUBLIC')) {
+              $start.EnvironmentVariables[$key] = $state
+            }
+            $process = [Diagnostics.Process]::Start($start)
+            try {
+              $process.StandardInput.Close()
+              $outTask = $process.StandardOutput.ReadToEndAsync(); $errTask = $process.StandardError.ReadToEndAsync()
+              if (-not $process.WaitForExit($timeoutMs)) {
+                $script:retainOwned = $true; $process.Kill(); throw 'Owned test process timed out'
+              }
+              if (-not $outTask.Wait(5000) -or -not $errTask.Wait(5000)) {
+                $script:retainOwned = $true; throw 'Test output did not close'
+              }
+              return [pscustomobject]@{ Code=$process.ExitCode; Out=$outTask.Result; Err=$errTask.Result }
+            } finally {
+              if (-not $process.HasExited) { $script:retainOwned = $true; $process.Kill() }
+              $process.Dispose()
+            }
+          }
+          function Remove-Owned([string]$root) {
+            Assert-Plain $root $true
+            $pending = New-Object System.Collections.Stack
+            $pending.Push($root)
+            while ($pending.Count) {
+              foreach ($item in @(Get-ChildItem -LiteralPath ($pending.Pop()) -Force)) {
+                Assert-Plain $item.FullName ([bool]$item.PSIsContainer)
+                if ($item.PSIsContainer) { $pending.Push($item.FullName) }
+              }
+            }
+            Remove-Item -LiteralPath $root -Recurse -Force
+          }
+          try {
+            if ((Git-Read @('rev-parse','HEAD')) -cne $env:GITHUB_SHA -or
+                (Git-Read @('rev-list','--parents','-n','1','HEAD')) -cne "$env:GITHUB_SHA $base" -or
+                (Git-Read @('log','-1','--format=%B','HEAD')).Trim() -cne 'ci: verify Office and native tool boundaries' -or
+                (Git-Read @('diff','--name-status','--no-renames','HEAD^','HEAD')) -cne "A`t$workflow") { throw 'Unexpected candidate' }
+            $null = Git-Read @('diff','--quiet','HEAD','--')
+            $commonPhase = 'checkout_rules'
+            if ((Git-Read @('config','--get','core.autocrlf')) -cne 'false') { throw 'Wrong effective EOL policy' }
+            Assert-Plain $source $true
+            Assert-Text $workflow (Git-Read @('rev-parse',("HEAD:" + $workflow)))
+            Assert-Text '.gitattributes' 'f6e24317bd3cbf5157715b7d304ecbef3361a0a9'
+            $commonPhase = 'python_runtime'; $script:checkRel = 'tool/python'
+            $runtime = [ordered]@{}
+            $pattern = '(?i)^(?:[A-Za-z0-9_.-]+\.(?:dll|pyd)|python\.exe|python314\.zip|python314\._pth)$'
+            foreach ($line in ((Git-Read @('ls-tree',("${base}:tool/python"))) -split "`n")) {
+              if ($line -cmatch '^100644 blob ([0-9a-f]{40})\t([A-Za-z0-9_.-]+)$') {
+                $oid = $Matches[1]; $name = $Matches[2]
+                if ($name -match $pattern) { $runtime['tool/python/' + $name] = $oid }
+              }
+            }
+            Assert-Plain (Join-Path $source 'tool/python') $true
+            $present = @(Get-ChildItem -LiteralPath (Join-Path $source 'tool/python') -File -Force | Where-Object { $_.Name -match $pattern } | ForEach-Object { 'tool/python/' + $_.Name })
+            if ($runtime.Count -ne 34 -or @(Compare-Object @($runtime.Keys) $present -CaseSensitive).Count) { throw 'Unexpected embedded runtime file set' }
+            foreach ($rel in $runtime.Keys) {
+              Assert-Index $rel $runtime[$rel]; Assert-Attrs $rel 'unset' 'unspecified'; Assert-Raw $rel $runtime[$rel]
+            }
+            $commonPhase = 'fixture_parent'; $script:checkRel = ''
+            if (-not [Environment]::Is64BitProcess -or $PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Windows PowerShell 5.1 x64 required' }
+            $windows = [IO.Path]::GetFullPath([Environment]::GetFolderPath('Windows')).TrimEnd('\')
+            if ($windows -notmatch '^[A-Za-z]:\\' -or $windows.Substring(2).Contains(':') -or -not [IO.File]::Exists((Join-Path $windows 'System32\cmd.exe'))) { throw 'Invalid OS directory' }
+            $ps = Join-Path $windows 'System32\WindowsPowerShell\v1.0\powershell.exe'
+            if (-not [IO.File]::Exists($ps)) { throw 'Windows PowerShell missing' }
+            $tmp = Join-Path $source 'tmp'
+            if (-not (Test-Path -LiteralPath $tmp)) { $null = New-Item -ItemType Directory -Path $tmp }
+            Assert-Plain $tmp $true
+            $owned = Join-Path $tmp ('office-native-review-' + [Guid]::NewGuid().ToString('N'))
+            $null = New-Item -ItemType Directory -Path $owned
+            Assert-Plain $owned $true
+            $common = 'PASS'; $commonPhase = 'PASS'
+
+            try {
+              $officePhase = 'office_source_identity'
+              $officeFiles = @('tests/test_office_system_paths.py')
+              Assert-Text $officeFiles[0] '208385e78d2d9cd918d5dd5d8de3158adabc8d2c'
+              foreach ($skill in @('docx','pptx','xlsx')) {
+                $rel = "home/skills/$skill/scripts/office/helpers/__init__.py"
+                Assert-Text $rel '2702196779e099148ddd0940e554e6317e2b2deb'; $officeFiles += $rel
+                $rel = "home/skills/$skill/scripts/office/soffice.py"
+                Assert-Text $rel '61e5409c1a64e20f18e8f764f6e435040c720a64'; $officeFiles += $rel
+              }
+              $officePhase = 'office_fixture'; $script:checkRel = ''
+              $officeRoot = Join-Path $owned 'office'
+              $null = New-Item -ItemType Directory -Path $officeRoot
+              foreach ($rel in @($runtime.Keys) + $officeFiles) { Copy-Checked $rel $officeRoot }
+              $null = [IO.Directory]::CreateDirectory((Join-Path $officeRoot 'tool/python/Lib/site-packages'))
+              $officePhase = 'office_test'; $office = 'NOT_PROVEN'
+              $result = Invoke-Clean (Join-Path $officeRoot 'tool/python/python.exe') '-I -B tests/test_office_system_paths.py' $officeRoot (Join-Path $owned 'office-state') 180000
+              if ($result.Code -ne 0 -or $result.Err -notmatch '(?m)^Ran 4 tests in [0-9.]+s\r?$' -or $result.Err -notmatch '(?m)^OK\r?$') { throw 'Office test failed' }
+              $office = 'PASS_WIN32_HELPER'; $officePhase = 'PASS'
+            } catch { if ($office -eq 'NOT_PROVEN') { $office = 'FAIL' }; $officeFile = $script:checkRel }
+
+            try {
+              $nativePhase = 'native_source_identity'; $script:checkRel = ''
+              Assert-Text 'tests/local_native_tool_consumer.py' '4b3dadce83f2b076864eeae4bb5ec28f25ae4e7b'
+              Assert-Text 'tests/test_local_native_tool_paths.ps1' 'f19a6b253638cf47b730b859f3e1fb6cf8c0e652'
+              foreach ($rel in @('run-codex.ps1','tool/portable-process.ps1','tool/automation/portable-automation.ps1','tests/test_temp_consumer_encoding.py')) { Assert-ParentText $rel }
+              $null = Git-Read @('diff','--quiet','HEAD','--')
+              $nativePhase = 'node_lfs_identity'; $nodeInitial = 'FAIL'
+              $node = 'tool/node/node.exe'; $pointer = 'df27c0c4d7081c19da3e4cc9c41ac8a0e9d4dfdf'
+              Assert-Index $node $pointer; Assert-Attrs $node 'unset' 'lfs'; Assert-Raw $node $pointer
+              $nodeHash = 'f5109dc868ec38703ad8f305e0aceece717cb60d4889873f434017af4e96cccb'
+              $nodeSize = 100089160
+              $expectedPointer = @('version https://git-lfs.github.com/spec/v1',("oid sha256:" + $nodeHash),"size $nodeSize") -join "`n"
+              if ((Git-Read @('cat-file','-p',$pointer)) -cne $expectedPointer) { throw 'Unexpected LFS pointer' }
+              $nodeInitial = 'PASS'
+              $nativePhase = 'node_lfs_source'
+              if ((Git-Read @('remote','get-url','origin')) -cnotin @('https://github.com/rileyaaa/Portable','https://github.com/rileyaaa/Portable.git')) { throw 'Unexpected LFS source' }
+              $nativePhase = 'node_lfs_fetch'
+              # Public source only: do not invoke credential helpers or prompt.
+              $null = Git-Read @('-c','credential.helper=','-c','credential.interactive=false','-c','lfs.fetchrecentalways=false','-c','lfs.url=https://github.com/rileyaaa/Portable.git/info/lfs','lfs','fetch','--include=tool/node/node.exe','--exclude=','origin',$env:GITHUB_SHA)
+              $nativePhase = 'node_lfs_checkout'
+              $null = Git-Read @('lfs','checkout',$node)
+              $nativePhase = 'node_lfs_payload'; $nodePayload = 'FAIL'
+              Assert-Index $node $pointer; Assert-Attrs $node 'unset' 'lfs'
+              if ((Get-Item -LiteralPath $node).Length -ne $nodeSize -or (Get-FileHash -LiteralPath $node -Algorithm SHA256).Hash.ToLowerInvariant() -cne $nodeHash) { throw 'Node LFS payload mismatch' }
+              $nodePayload = 'PASS'
+              $null = Git-Read @('diff','--quiet','HEAD','--')
+              $nativePhase = 'native_test'; $script:checkRel = ''; $native = 'NOT_PROVEN'; $temp = 'NOT_PROVEN'
+              $result = Invoke-Clean $ps '-NoProfile -NonInteractive -File tests/test_local_native_tool_paths.ps1' $source (Join-Path $owned 'native-state') 360000
+              $lines = @($result.Out -split '\r?\n')
+              if ($lines -ccontains 'TEMP_PRECEDENCE=PASS') { $temp = 'PASS_NATIVE_PYTHON_WITH_TEST_GUARD' }
+              if ($result.Code -ne 0 -or $temp -ne 'PASS_NATIVE_PYTHON_WITH_TEST_GUARD' -or $lines -cnotcontains 'LOCAL_NATIVE_TOOL_BOUNDARY=PASS') { throw 'Native test failed' }
+              $native = 'PASS_LOCAL_NATIVE'; $nativePhase = 'PASS'
+            } catch { if ($native -eq 'NOT_PROVEN') { $native = 'FAIL' }; $nativeFile = $script:checkRel }
+            try { $null = Git-Read @('diff','--quiet','HEAD','--'); $post = 'PASS' } catch { $post = 'FAIL' }
+          } catch { $commonFile = $script:checkRel }
+          finally {
+            if ($owned -and (Test-Path -LiteralPath $owned)) {
+              if ($script:retainOwned) { $cleanup = 'DEFERRED_TO_EPHEMERAL_RUNNER' }
+              else {
+                try { Remove-Owned $owned; $cleanup = 'PASS' } catch { $cleanup = 'FAIL' }
+              }
+            }
+            $report = @('## Windows directed validation',("BASE=" + $base),"COMMON=$common PHASE=$commonPhase FILE=$commonFile",
+                        "OFFICE=$office PHASE=$officePhase FILE=$officeFile", "TEMP=$temp", "NATIVE=$native PHASE=$nativePhase FILE=$nativeFile",
+                        "NODE_INITIAL_POINTER=$nodeInitial", "NODE_LFS_PAYLOAD=$nodePayload", "TRACKED_SOURCE_POSTCHECK=$post", "OWNED_CLEANUP=$cleanup",
+                        'Office: actual Win32 API and helper contract; mocked Office launch, not rendering.',
+                        'Native: synthetic PermissionError, not actual restricted-token ACL.',
+                        'BAT/Codex/Host, offline P3, LibreOffice rendering, full ZIP: NOT_RUN')
+            $report | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+            $report | Write-Output
+          }
+          if ($common -ne 'PASS' -or $office -ne 'PASS_WIN32_HELPER' -or $native -ne 'PASS_LOCAL_NATIVE' -or $cleanup -ne 'PASS' -or $post -ne 'PASS') { exit 1 }
+      - name: Report checkout failure
+        if: ${{ always() && steps.checkout.outcome != 'success' }}
+        run: |
+          $report = @('## Windows directed validation','FAILED_PHASE=checkout','COMMON=FAIL','OFFICE=NOT_RUN','TEMP=NOT_RUN','NATIVE=NOT_RUN','NODE_INITIAL_POINTER=NOT_RUN','NODE_LFS_PAYLOAD=NOT_RUN')
+          $report | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+          $report | Write-Output
