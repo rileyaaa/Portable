@@ -1,0 +1,39 @@
+{
+  "metadata": {
+    "tag": "v0.172.0-portable.1",
+    "source_commit": "4fb0b50228057cd0be41fbb191e15e065e64e368",
+    "run_id": "45734438059",
+    "source": "original GitHub release assets; no reconstruction",
+    "assets": {
+      "Codex-Portable-v0.172.0-portable.1-windows-x64.zip": [
+        567888467,
+        "a406e4487bde19057491b6515f7abcab74faf2e3437366b0b23f9940af5760dc"
+      ],
+      "release-manifest.json": [
+        1732194,
+        "1c50016f81b22cb9dd6df52b41dd1686a99d90ef63da12a0ee0c71f25a829fd8"
+      ],
+      "SHA256SUMS": [
+        207,
+        "2ea5fea72dbb968ef82498e8d2316899ad81e492753d72c84902bb6d33f4e381"
+      ]
+    },
+    "completed": false,
+    "manifest_file_count": 9076,
+    "status_counts": {
+      "FAIL": 1
+    },
+    "workflow_audit_step_outcome": "failure"
+  },
+  "rows": [
+    {
+      "mode": "orchestrator",
+      "item": "whole-package harness stopped",
+      "status": "FAIL",
+      "detail": "Traceback (most recent call last):\n  File \"D:\\a\\Portable\\Portable\\tests\\audit_release_zip.py\", line 500, in main\n    ROOT=extract(owned,manifest)\n         ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tests\\audit_release_zip.py\", line 134, in extract\n    assert len(infos)==len(files) and set(i.filename for i in infos)==set(files)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+      "covers": [],
+      "env": [],
+      "packages": []
+    }
+  ]
+}

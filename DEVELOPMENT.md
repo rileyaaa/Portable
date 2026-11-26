@@ -627,3 +627,8 @@ Pillow: 13.0.0 delivered f136fb7ba28a1cafeca73a438142d3e031ec708c; official whee
 PyInstaller: 6.22.3 and required hooks-contrib 2026.10 delivered d5205bb9cb14d9ef2294e0778b426912591b26b0; exact official wheels, AMD64 bootloaders, RECORD, source/license and build object manifest verified; real moved normal-mode onedir and YOLO onefile builds and executable readback passed. Only ordinary generated apps, not every hook/GUI/elevated path.
 
 No other dependency refresh. Known ADB/PSModulePath, host OS trust store, real accounts/devices/SSH, optional Office rendering and calculation remain outside the completed scope. https://github.com/rileyaaa/Portable/actions/runs/45690490980
+
+
+## Original published v0.172.0-portable.1 customer ZIP audit
+
+Separate from the dev stable-wheel results. Original release asset SHA-256 a406e4487bde19057491b6515f7abcab74faf2e3437366b0b23f9940af5760dc; source commit 4fb0b50228057cd0be41fbb191e15e065e64e368. Actual row evidence and per-entry, distribution, npm and variable inventories: tests/release_audit_v0.172.0-portable.1.json. Run https://github.com/rileyaaa/Portable/actions/runs/45734438059. Harness completed=False; exact statuses {"FAIL": 1}. This is not a claim that every tool, environment variable, optional dependency or real device/account path passed. Distinguish actual consumer failures, harness failures, integrity-only, propagation-only, unexercised and not-applicable cases. No customer payload changed, no release created, original attachments untouched. The one-time workflow is removed; developer-only harness and evidence retained.
