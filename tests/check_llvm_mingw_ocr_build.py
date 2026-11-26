@@ -69,6 +69,36 @@ def toolchain(base):
     archive.unlink();save()
     return tc
 
+def supplement_notices():
+    # Source-tree inventories at the exact compiler-reported LLVM commit
+    # contained only LICENSE and the following credits in the four runtime
+    # subtrees. MinGW's full runtime notice is explicitly intended for
+    # statically linked output; retain every notice, including its caveats.
+    rows=[
+      ("llvm/llvm-project","llvmorg-23.1.6","compiler-rt/CREDITS.TXT","6964eba020b8aa7a08629b249e3b9aea3ce3e448"),
+      ("llvm/llvm-project","llvmorg-23.1.6","libcxx/CREDITS.TXT","6ed18072de9a56d97d8446b2b7be9d3178d9334d"),
+      ("llvm/llvm-project","llvmorg-23.1.6","libcxxabi/CREDITS.TXT","fbb6cbf38baf60a05dcca9025e50f3a25c961b73"),
+      ("mingw-w64/mingw-w64","41eb042358a52011b35350392130dcdc94a8ead8","AUTHORS","4b40f2beb3cac255a09ff12616c22aa89aa9d80f"),
+      ("mingw-w64/mingw-w64","41eb042358a52011b35350392130dcdc94a8ead8","COPYING.MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt","776d5f1034240f6dae0ce59d592f9c6f4ad29e7d"),
+      ("mingw-w64/mingw-w64","41eb042358a52011b35350392130dcdc94a8ead8","COPYING.MinGW-w64/COPYING.MinGW-w64.txt","decbf46bde9d87a0c2250fe33ece1b7e0724ee6e"),
+      ("mingw-w64/mingw-w64","41eb042358a52011b35350392130dcdc94a8ead8","mingw-w64-libraries/winpthreads/COPYING","3507701238b798b1ddbf4d5ffe16f285f4458963")]
+    out=[]
+    for repo,ref,path,blob in rows:
+        url="https://raw.githubusercontent.com/"+repo+"/"+ref+"/"+path
+        raw=a.fetch(url,1024*1024)
+        assert b.git_blob(raw)==blob,(path,"source Git blob mismatch")
+        out.append({"url":url,"git_blob_sha1":blob,"sha256":hashlib.sha256(raw).hexdigest(),"text":raw.decode("utf-8")})
+    m.OUT["supplemental_notice_documents"]=out
+    by_name={Path(n["url"]).name:n["sha256"] for n in out}
+    for name in ("COPYING.MinGW-w64-runtime.txt","COPYING.MinGW-w64.txt"):
+        embedded=[n["sha256"] for n in m.OUT["archive_notices"] if "/x86_64-w64-mingw32/share/" in n["path"] and n["path"].endswith("/"+name)]
+        assert embedded==[by_name[name]],("embedded runtime notice differs from fixed source",name)
+    m.OUT["llvm_source_tag"]={"tag_object":"c5edffe4a336b626aa4803127a5724b677d37a3a",
+        "commit":"5b10d2d74929eae78912771222c9855af97496f4","tag_signature_verified_by_github":True,
+        "runtime_subtrees":{"compiler-rt":"14d3b43691dfcdffcf11833a33ab0a18dfb66996",
+            "libcxx":"792c10839ae4a65e96479055e0493a9ee5379849","libcxxabi":"d902c06646c4421a491e021f383b0328c5bdc6df","libunwind":"1a50034df91361e1ada2fd28589061bdd1a3d044"}}
+    row("fixed LLVM credits and MinGW full runtime source notice readback", "PASS_ACTUAL",len(out))
+
 def build(base,tc,srcs):
     vs,cmake=b.tools()
     m.OUT["build_orchestrator"]=m.OUT.pop("toolchain")
@@ -94,15 +124,15 @@ def build(base,tc,srcs):
     # find dependency packages/libraries/includes in the private prefix or
     # the verified toolchain; no compiler SDK or host package registries.
     sysroot=tc/"x86_64-w64-mingw32"
-    common=["-G","Ninja",f"-DCMAKE_MAKE_PROGRAM={ninja}",
+    common=["-G","Ninja",f"-DCMAKE_MAKE_PROGRAM:FILEPATH={ninja.as_posix()}",
         "-DCMAKE_SYSTEM_NAME=Windows","-DCMAKE_SYSTEM_PROCESSOR=x86_64",
-        f"-DCMAKE_C_COMPILER={tools['cc']}",f"-DCMAKE_CXX_COMPILER={tools['cxx']}",
-        f"-DCMAKE_AR={tools['ar']}",f"-DCMAKE_RANLIB={tools['ranlib']}",
-        f"-DCMAKE_RC_COMPILER={tools['rc']}",f"-DCMAKE_LINKER={tools['linker']}",
-        f"-DCMAKE_FIND_ROOT_PATH={prefix};{sysroot}",
+        f"-DCMAKE_C_COMPILER:FILEPATH={tools['cc'].as_posix()}",f"-DCMAKE_CXX_COMPILER:FILEPATH={tools['cxx'].as_posix()}",
+        f"-DCMAKE_AR:FILEPATH={tools['ar'].as_posix()}",f"-DCMAKE_RANLIB:FILEPATH={tools['ranlib'].as_posix()}",
+        f"-DCMAKE_RC_COMPILER:FILEPATH={tools['rc'].as_posix()}",f"-DCMAKE_LINKER:FILEPATH={tools['linker'].as_posix()}",
+        f"-DCMAKE_FIND_ROOT_PATH={prefix.as_posix()};{sysroot.as_posix()}",
         "-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY","-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY",
         "-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY","-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER",
-        f"-DCMAKE_INSTALL_PREFIX={prefix}",f"-DCMAKE_PREFIX_PATH={prefix}",
+        f"-DCMAKE_INSTALL_PREFIX:PATH={prefix.as_posix()}",f"-DCMAKE_PREFIX_PATH={prefix.as_posix()}",
         "-DCMAKE_BUILD_TYPE=Release","-DCMAKE_INSTALL_LIBDIR=lib",
         "-DCMAKE_C_FLAGS_RELEASE=-O2 -DNDEBUG","-DCMAKE_CXX_FLAGS_RELEASE=-O2 -DNDEBUG",
         "-DCMAKE_EXE_LINKER_FLAGS=-static","-DBUILD_SHARED_LIBS=OFF",
@@ -119,9 +149,10 @@ def build(base,tc,srcs):
         extras=opts[key]+dep
         mp=dest/"tesseract-llvm.map";rp=dest/"tesseract-link-repro.tar"
         if key=="tess":
-            extras += [f"-DLeptonica_DIR={prefix/'lib/cmake/leptonica'}",
-                f"-DCMAKE_EXE_LINKER_FLAGS=-static -Wl,-Map,{mp.as_posix()} -Wl,--verbose -Wl,--reproduce,{rp.as_posix()}"]
-        b.run([cmake,"-S",srcs[key],"-B",dest,*common,*extras],dest,env,"configure",timeout=300)
+            extras += [f"-DLeptonica_DIR:PATH={(prefix/'lib/cmake/leptonica').as_posix()}",
+                f"-DCMAKE_EXE_LINKER_FLAGS=-static -Wl,-Map={mp.as_posix()} -Wl,--verbose -Wl,--reproduce={rp.as_posix()}"]
+        assert all("\\" not in x for x in common+extras), "CMake cache paths must use forward slash"
+        b.run([cmake,"-S",srcs[key].as_posix(),"-B",dest.as_posix(),*common,*extras],dest,env,"configure",timeout=300)
         cache=b.cache(dest)
         assert cache["CMAKE_GENERATOR"]=="Ninja" and cache["CMAKE_BUILD_TYPE"]=="Release"
         for lang,k in (("C","cc"),("CXX","cxx")):
@@ -149,10 +180,10 @@ def build(base,tc,srcs):
         assert not list(prefix.rglob("*.dll")),("unexpected installed DLL",key)
         if key=="zlib":
             libs=list((prefix/"lib").glob("*.a"));assert len(libs)==1,libs
-            dep=[f"-DZLIB_ROOT={prefix}","-DZLIB_USE_STATIC_LIBS=ON",f"-DZLIB_LIBRARY_RELEASE={libs[0]}",f"-DZLIB_INCLUDE_DIR={prefix/'include'}"]
+            dep=[f"-DZLIB_ROOT:PATH={prefix.as_posix()}","-DZLIB_USE_STATIC_LIBS=ON",f"-DZLIB_LIBRARY_RELEASE:FILEPATH={libs[0].as_posix()}",f"-DZLIB_INCLUDE_DIR:PATH={(prefix/'include').as_posix()}"]
         elif key=="png":
             libs=[f for f in (prefix/"lib").glob("*.a") if "png" in f.name.lower()];assert len(libs)==1,libs
-            dep += [f"-DPNG_LIBRARY_RELEASE={libs[0]}",f"-DPNG_PNG_INCLUDE_DIR={prefix/'include'}"]
+            dep += [f"-DPNG_LIBRARY_RELEASE:FILEPATH={libs[0].as_posix()}",f"-DPNG_PNG_INCLUDE_DIR:PATH={(prefix/'include').as_posix()}"]
         elif key=="lept":
             cfg=(dest/"src/config_auto.h").read_text(encoding="utf-8")
             assert re.search(r"(?m)^#define HAVE_LIBPNG(?:\s+1)?\s*$",cfg) and re.search(r"(?m)^#define HAVE_LIBZ(?:\s+1)?\s*$",cfg)
@@ -291,6 +322,7 @@ def main():
         parent=ROOT/"tmp";parent.mkdir(exist_ok=True);m.ancestors(parent);save()
         base=parent/("llvm-full-"+uuid.uuid4().hex[:8]);base.mkdir()
         tc=toolchain(base)
+        supplement_notices()
         srcs={k:b.source(base,k,*v) for k,v in b.SOURCES.items()}
         exe,tools,env=build(base,tc,srcs)
         b.pe_check(exe)
