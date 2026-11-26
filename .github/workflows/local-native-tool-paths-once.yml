@@ -1,0 +1,87 @@
+name: Local native tool paths (one reviewed candidate)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/local-native-tool-paths-once.yml
+permissions:
+  contents: read
+concurrency:
+  group: portable-local-native-tool-paths-be6b3cd
+  cancel-in-progress: false
+jobs:
+  probe:
+    if: >-
+      github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event.before == 'be6b3cd1456701dfebcf8a8d3d2295a48835547c' && github.run_attempt == 1 && !github.event.forced && !github.event.deleted && github.event.head_commit.message == 'ci: audit portable Windows native tool boundaries'
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Checkout reviewed source and test additions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+          lfs: true
+      - name: Verify fixed parent and exact test-only additions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((& git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or
+              (& git rev-parse 'HEAD^').Trim() -cne 'be6b3cd1456701dfebcf8a8d3d2295a48835547c') { throw 'Wrong candidate' }
+          $expected = @("A`t.github/workflows/local-native-tool-paths-once.yml", "A`ttests/local_native_tool_consumer.py", "A`ttests/test_local_native_tool_paths.ps1")
+          $parents = ((& git rev-list --parents -n 1 HEAD).Trim() -split ' ')
+          if ($LASTEXITCODE -ne 0 -or $parents.Count -ne 2 -or $parents[1] -cne 'be6b3cd1456701dfebcf8a8d3d2295a48835547c') { throw 'Unexpected parent count' }
+          if (((& git log -1 --format=%B HEAD) -join "`n").Trim() -cne 'ci: audit portable Windows native tool boundaries' -or $LASTEXITCODE -ne 0) { throw 'Unexpected commit message' }
+          $changed = @(& git diff --name-status --no-renames HEAD^ HEAD)
+          if ($LASTEXITCODE -ne 0 -or $changed.Count -ne $expected.Count -or @(Compare-Object $expected $changed -CaseSensitive).Count -ne 0) { throw 'Unexpected candidate changes' }
+          & git diff --quiet HEAD --
+          if ($LASTEXITCODE -ne 0) { throw 'Dirty source' }
+          # Check the actual checkout, using Git's text/EOL filters for source
+          # files only. Binary payload identity is checked separately below.
+          foreach ($rel in @('.github/workflows/local-native-tool-paths-once.yml','tests/local_native_tool_consumer.py','tests/test_local_native_tool_paths.ps1','run-codex.ps1','tool/portable-process.ps1','tool/automation/portable-automation.ps1','tests/test_temp_consumer_encoding.py')) {
+            $blob = (& git rev-parse ('HEAD:' + $rel)).Trim()
+            if ($LASTEXITCODE -ne 0) { throw 'Missing committed source blob' }
+            $actual = (& git hash-object ('--path=' + $rel) -- $rel).Trim()
+            if ($LASTEXITCODE -ne 0 -or $actual -cne $blob) { throw 'Checkout source blob mismatch' }
+          }
+          if ((& git rev-parse 'HEAD:tests/local_native_tool_consumer.py').Trim() -cne '4b3dadce83f2b076864eeae4bb5ec28f25ae4e7b' -or
+              (& git rev-parse 'HEAD:tests/test_local_native_tool_paths.ps1').Trim() -cne 'f19a6b253638cf47b730b859f3e1fb6cf8c0e652') { throw 'Reviewed test blob mismatch' }
+          # Verify exact Node LFS identity; other embedded Python runtime bytes
+          # are tracked directly (-text) and checked against their Git blobs.
+          $pointer = @(& git show 'HEAD:tool/node/node.exe')
+          if ($LASTEXITCODE -ne 0 -or $pointer.Count -ne 3 -or $pointer[0] -cne 'version https://git-lfs.github.com/spec/v1' -or
+              $pointer[1] -notmatch '^oid sha256:([a-f0-9]{64})$') { throw 'Invalid Node pointer' }
+          $hash = $Matches[1]
+          if ($pointer[2] -notmatch '^size ([0-9]+)$') { throw 'Invalid Node size' }
+          $size = [long]$Matches[1]
+          if ((Get-Item -LiteralPath 'tool/node/node.exe').Length -ne $size -or
+              (Get-FileHash -LiteralPath 'tool/node/node.exe' -Algorithm SHA256).Hash.ToLowerInvariant() -cne $hash) { throw 'Node payload mismatch' }
+          foreach ($f in @(Get-ChildItem -LiteralPath 'tool/python' -File)) {
+            if ($f.Extension -in @('.dll','.pyd') -or $f.Name -in @('python.exe','python314.zip','python314._pth')) {
+              $rel = 'tool/python/' + $f.Name
+              $blob = (& git rev-parse ('HEAD:' + $rel)).Trim()
+              $actual = (& git hash-object --no-filters -- $rel).Trim()
+              if ($LASTEXITCODE -ne 0 -or $actual -cne $blob) { throw 'Embedded runtime blob mismatch' }
+            }
+          }
+      - name: Run local-only native controls, bounded summary
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ps = Join-Path ([Environment]::GetFolderPath('Windows')) 'System32/WindowsPowerShell/v1.0/powershell.exe'
+          # Capture even expected native stderr without printing raw paths.
+          $ErrorActionPreference = 'Continue'
+          $nativeOutput = @(& $ps -NoProfile -NonInteractive -File tests/test_local_native_tool_paths.ps1 2>&1)
+          $nativeRC = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
+          $tempStatus = if ($nativeOutput -ccontains 'TEMP_PRECEDENCE=PASS') {'PASS_NATIVE_PYTHON_WITH_TEST_GUARD'} else {'NOT_PROVEN'}
+          $nativeStatus = if ($nativeRC -eq 0 -and $nativeOutput -ccontains 'LOCAL_NATIVE_TOOL_BOUNDARY=PASS') {'PASS_LOCAL_NATIVE'} else {'FAIL'}
+          @('## Local Windows tool boundary',
+            'Source payload: be6b3cd1456701dfebcf8a8d3d2295a48835547c',
+            ('TEMP precedence/lifecycle/encoding: ' + $tempStatus),
+            ('Launcher PATH function + supervised Python/Node/work/TEMP: ' + $nativeStatus),
+            'PermissionError control is synthetic, not a restricted token or ACL reproduction.',
+            'BAT/Codex/Host, P3 offline, full ZIP: NOT_RUN') | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+          if ($tempStatus -ne 'PASS_NATIVE_PYTHON_WITH_TEST_GUARD' -or $nativeStatus -ne 'PASS_LOCAL_NATIVE') { exit 1 }
