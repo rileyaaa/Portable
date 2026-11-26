@@ -1,0 +1,220 @@
+name: Qualified course OCR customer candidate
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths: [.github/workflows/qualified-course-ocr.yml]
+permissions: {}
+concurrency:
+  group: portable-qualified-course-ocr
+  cancel-in-progress: false
+jobs:
+  windows:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1 && github.event.before == '24ad1d155d329044c178bae5d8460bcb34469b52'
+    runs-on: windows-2022
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      actions: read
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'Git config failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+          lfs: true
+          persist-credentials: true
+      - name: Audit fixed source notices, rebuild only the customer payload, package and validate
+        id: candidate
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference='Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA) { throw 'Unexpected source' }
+          $frozen='4fb0b50228057cd0be41fbb191e15e065e64e368'
+          foreach ($ref in @('refs/heads/main','refs/tags/v0.172.0-portable.1')) {
+            $line=(git ls-remote origin $ref)
+            if ($LASTEXITCODE -or ($line -split "\s+")[0] -cne $frozen) { throw 'Frozen source changed' }
+          }
+          New-Item -ItemType Directory -Path tmp -Force | Out-Null
+          $report=Join-Path $pwd 'tmp/qualified-course-ocr.json'
+          $info=Join-Path $pwd 'tmp/qualified-course-ocr-build.json'
+          [IO.File]::WriteAllText($report,(@{source_commit=$env:GITHUB_SHA;completed=$false;distribution_qualified=$false;customer_candidate_accepted=$false;rows=@()} | ConvertTo-Json -Compress),(New-Object Text.UTF8Encoding($false)))
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'Pinned customer LFS input unavailable' }
+          & .\tool\python\python.exe -I -B -c "from pathlib import Path; [compile(Path(p).read_bytes(),p,'exec') for p in ['tests/qualify_llvm_ocr_candidate.py','tool/package-release.py']]"
+          if ($LASTEXITCODE) { throw 'Candidate syntax failed' }
+          & .\tool\node\node.exe --check tests/check_course_ocr_candidate.js
+          if ($LASTEXITCODE) { throw 'Candidate JS syntax failed' }
+          & .\tool\python\python.exe -I -B tests/qualify_llvm_ocr_candidate.py $report $info
+          if ($LASTEXITCODE) { throw 'Candidate source/notice, actual product or privacy gate incomplete' }
+          $r=Get-Content -LiteralPath $report -Raw | ConvertFrom-Json
+          $b=Get-Content -LiteralPath $info -Raw | ConvertFrom-Json
+          if ($r.distribution_qualified -ne $true -or $r.customer_candidate_accepted -ne $true -or $r.customer_zip_verified -ne $true -or $r.candidate_commit -cne $b.source_commit -or (git rev-parse HEAD).Trim() -cne $r.candidate_commit) { throw 'Incomplete customer acceptance' }
+          foreach ($key in @('archive','manifest','checksums')) {
+            "$key=$($b.$key)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+          Write-Output ("OCR_CANDIDATE_SHA256="+$b.archive_sha256+" source="+$b.source_commit)
+      - name: Upload only the accepted pristine customer ZIP and integrity metadata
+        id: upload
+        if: steps.candidate.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Codex-Portable-0.172.0-qualified-course-ocr-candidate-${{ github.run_id }}
+          path: |
+            ${{ steps.candidate.outputs.archive }}
+            ${{ steps.candidate.outputs.manifest }}
+            ${{ steps.candidate.outputs.checksums }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - name: Download exact customer candidate for independent hash readback
+        id: download
+        if: steps.upload.outcome == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: Codex-Portable-0.172.0-qualified-course-ocr-candidate-${{ github.run_id }}
+          path: tmp/qualified-ocr-candidate-readback
+      - name: Verify downloadable artifact and push only its exact staged source to existing dev
+        id: readback
+        if: steps.download.outcome == 'success'
+        continue-on-error: true
+        env:
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          root=Path.cwd();report=root/'tmp/qualified-course-ocr.json'
+          r=json.loads(report.read_bytes());b=json.loads((root/'tmp/qualified-course-ocr-build.json').read_bytes())
+          def git(*a):return subprocess.check_output(['git',*a])
+          def rev():return git('rev-parse','HEAD').decode().strip()
+          def ref(n):
+              v,k=git('ls-remote','origin',n).decode().strip().split('\t');assert n==k
+              return v
+          def sha(p):
+              with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
+          def save():report.write_text(json.dumps(r,ensure_ascii=True,indent=2)+'\n',encoding='utf-8')
+          branch='refs/heads/dev/stable-tool-refresh';start=os.environ['GITHUB_SHA'];frozen='4fb0b50228057cd0be41fbb191e15e065e64e368'
+          assert r['customer_candidate_accepted'] and r['distribution_qualified'] and r['customer_zip_verified'] and r['scratch_removed']
+          assert rev()==b['source_commit']==r['candidate_commit'] and git('rev-parse','HEAD^').decode().strip()==start
+          assert not git('status','--porcelain=v1','--untracked-files=all')
+          folder=root/'tmp/qualified-ocr-candidate-readback'
+          assert len(list(p for p in folder.rglob('*') if p.is_file()))==3
+          readback={}
+          for k in ('archive','manifest','checksums'):
+              p=Path(b[k]);q=folder/p.name
+              assert p.is_file() and q.is_file() and p.stat().st_size==q.stat().st_size and sha(p)==sha(q)
+              readback[k]={'name':q.name,'size':q.stat().st_size,'sha256':sha(q)}
+          assert readback['archive']['sha256']==b['archive_sha256']
+          sums={}
+          for line in (folder/readback['checksums']['name']).read_text(encoding='ascii').splitlines():
+              h,n=line.split(None,1);assert n not in sums;sums[n]=h
+          assert sums=={readback[k]['name']:readback[k]['sha256'] for k in ('archive','manifest')}
+          manifest=json.loads((folder/readback['manifest']['name']).read_bytes())
+          assert manifest['source_commit']==rev() and manifest['course_ocr']['exe']['sha256']==r['runtime_pe']['sha256']
+          assert manifest['course_ocr']['notice_manifest']==r['notice_manifest_identity']
+          assert ref(branch)==start and ref('refs/heads/main')==ref('refs/tags/v0.172.0-portable.1')==frozen
+          r['artifact']={'id':os.environ['ARTIFACT_ID'],'url':os.environ['ARTIFACT_URL'],'readback':readback,'verified_downloadable':True,'retention_days':14}
+          save()
+          subprocess.run(['git','push','origin','HEAD:'+branch],check=True)
+          assert ref(branch)==rev() and ref('refs/heads/main')==ref('refs/tags/v0.172.0-portable.1')==frozen
+          r['candidate_pushed']=True;save()
+          print('OCR_CANDIDATE_ARTIFACT='+json.dumps(r['artifact']),flush=True)
+          '@ | & .\tool\python\python.exe -I -B -
+          if ($LASTEXITCODE) { throw 'Customer artifact hash readback or exact source push failed' }
+      - name: Upload evidence only (no unqualified bytes or reproduction archive)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qualified-course-ocr-evidence
+          path: |
+            tmp/qualified-course-ocr.json
+            tmp/llvm-ocr-link-map.txt
+            tmp/llvm-ocr-link-reading.txt
+          if-no-files-found: error
+          retention-days: 14
+      - if: always() && steps.readback.outcome != 'success'
+        run: throw 'Qualified customer OCR candidate not delivered'
+  record:
+    needs: [windows]
+    if: always() && github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1 && github.event.before == '24ad1d155d329044c178bae5d8460bcb34469b52'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      BASE: 24ad1d155d329044c178bae5d8460bcb34469b52
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      WINDOWS: ${{ needs.windows.result }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: dev/stable-tool-refresh
+          fetch-depth: 4
+          lfs: false
+      - name: Download exact acceptance evidence
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qualified-course-ocr-evidence
+          path: tmp/qualified-course-ocr-evidence
+      - name: Preserve real acceptance or blocking evidence and clear one-time trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/bin/python3 -I -B - <<'PY'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          branch="refs/heads/dev/stable-tool-refresh";start=os.environ["GITHUB_SHA"];frozen=os.environ["FROZEN"];run=os.environ["GITHUB_RUN_ID"]
+          def git(*a):return subprocess.check_output(["git",*a])
+          def rev():return git("rev-parse","HEAD").decode().strip()
+          def ref(n):
+              v,k=git("ls-remote","origin",n).decode().strip().split("\t");assert k==n
+              return v
+          workflow=".github/workflows/qualified-course-ocr.yml"
+          assert rev()==ref(branch) and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          assert git("rev-parse",start+"^").decode().strip()==os.environ["BASE"]
+          assert {n.decode() for n in git("diff","--name-only","-z",start+"^",start).split(b"\0") if n}=={workflow}
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          folder=Path("tmp/qualified-course-ocr-evidence");report=folder/"qualified-course-ocr.json"
+          data=json.loads(report.read_bytes()) if report.is_file() else {"source_commit":start,"completed":False,"rows":[],"report_missing":True}
+          assert data["source_commit"]==start
+          if rev()!=start:
+              assert data.get("candidate_pushed") and data["candidate_commit"]==rev() and git("rev-parse","HEAD^").decode().strip()==start
+              assert data.get("artifact",{}).get("verified_downloadable")
+          else:
+              assert not data.get("candidate_pushed",False)
+          for name,field in (("llvm-ocr-link-map.txt","map_sha256"),("llvm-ocr-link-reading.txt","reading_sha256")):
+              p=folder/name
+              if p.is_file():
+                  got=hashlib.sha256(p.read_bytes()).hexdigest()
+                  data.setdefault("artifact_evidence_readback",{})[name]={"sha256":got,"size":p.stat().st_size,"matches_report":got==data.get("actual_link",{}).get(field)}
+          delivered=os.environ["WINDOWS"]=="success" and data.get("candidate_pushed",False) and data.get("artifact",{}).get("verified_downloadable",False)
+          data.update(run_id=run,windows_job=os.environ["WINDOWS"],customer_delivered=bool(delivered),prior_candidate_unchanged=True,original_index_unchanged=True)
+          target=Path("tests/qualified_course_ocr_"+run+".json");assert not target.exists()
+          target.write_text(json.dumps(data,ensure_ascii=True,indent=2)+"\n",encoding="utf-8")
+          notes=Path("DEVELOPMENT.md")
+          notes.write_bytes(notes.read_bytes()+("\n\n## Qualified course OCR customer candidate\n\nRun "+run+"; "+target.as_posix()+
+              ". Windows="+data["windows_job"]+"; source notice="+str(data.get("source_notice_review_passed",False))+
+              "; distribution qualified="+str(data.get("distribution_qualified",False))+
+              "; actual whole-customer acceptance="+str(data.get("customer_candidate_accepted",False))+
+              "; delivered="+str(bool(delivered))+"; artifact="+str(data.get("artifact",{}).get("id","none"))+
+              ". Old private technical test, original ZIP, Office, dual-window not rerun. Main and official release unchanged.\n").encode("utf-8"))
+          initial=rev()
+          git("rm","--",workflow);git("add","--",str(target),"DEVELOPMENT.md")
+          assert {n.decode() for n in git("diff","--cached","--name-only","-z").split(b"\0") if n}=={workflow,target.as_posix(),"DEVELOPMENT.md"}
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Record qualified OCR candidate evidence and remove one-time trigger")
+          final=rev();assert ref(branch)==initial
+          subprocess.run(["git","push","origin","HEAD:"+branch],check=True)
+          assert ref(branch)==final and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          print("QUALIFIED_OCR_FINAL="+final,flush=True)
+          print("QUALIFIED_OCR_DELIVERED="+str(bool(delivered)),flush=True)
+          PY
