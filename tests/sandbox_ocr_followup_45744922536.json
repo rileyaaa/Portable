@@ -1,0 +1,1340 @@
+{
+  "source_commit": "96a2451331e01af771e213553251e2d3b67e1a8d",
+  "run_id": "45744922536",
+  "prior_run": "45741929384",
+  "workflow_steps": {
+    "POLICY": "success",
+    "BUILD": "success",
+    "NATIVE": "failure",
+    "ALT": "success"
+  },
+  "native_windows_latest": {
+    "metadata": {
+      "prior_run": "45741929384",
+      "prior_source": "5b8d3dae6d2d6f8966ce39eb48c32072c2b4c04b",
+      "source_commit": "96a2451331e01af771e213553251e2d3b67e1a8d",
+      "scope": "main",
+      "runner_image": "win25-vs2026",
+      "runner_image_version": "20261116.315.1",
+      "completed": true,
+      "archive_sha256": "58b716d53aec090629f658956c61f074bdc619f0f9f404cd7c2b351b93080219",
+      "manifest_sha256": "12c911991317e7e0f33857636b16c2710c081639afe177d30b009ed6ef084610",
+      "file_count": 9147
+    },
+    "rows": [
+      {
+        "mode": "normal",
+        "item": "exact new candidate ZIP and moved tree",
+        "status": "PASS_ACTUAL",
+        "detail": 9147
+      },
+      {
+        "mode": "normal",
+        "item": "native Windows token",
+        "status": "OBSERVED",
+        "detail": {
+          "restricted": true,
+          "restricting_sid_count": 4,
+          "elevated": false
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "actual native configuration and restricted token",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "configuration_verified": true,
+          "restricted_token": {
+            "restricted": true,
+            "restricting_sid_count": 4,
+            "elevated": false
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "actual write matrix package_root",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": false,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "ace_count": 7,
+            "inherited": 6,
+            "restricted_allow_write": 0,
+            "restricted_deny_write": 0
+          },
+          "existing_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "restricted_allow_write": 0,
+            "restricted_deny_write": 0
+          },
+          "overwrite_restore": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "create": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "actual write matrix work",
+        "status": "FAIL",
+        "detail": {
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 6,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "existing_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "overwrite_restore": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "create": {
+            "ok": true
+          },
+          "new_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 5,
+            "inherited": 5,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "actual write matrix tmp",
+        "status": "FAIL",
+        "detail": {
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 6,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "existing_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "overwrite_restore": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "create": {
+            "ok": true
+          },
+          "new_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 5,
+            "inherited": 5,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "actual write matrix tool",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": false,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "ace_count": 7,
+            "inherited": 6,
+            "restricted_allow_write": 0,
+            "restricted_deny_write": 0
+          },
+          "existing_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "restricted_allow_write": 0,
+            "restricted_deny_write": 0
+          },
+          "overwrite_restore": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "create": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "actual write matrix skills",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": false,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "ace_count": 7,
+            "inherited": 6,
+            "restricted_allow_write": 0,
+            "restricted_deny_write": 0
+          },
+          "existing_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "restricted_allow_write": 0,
+            "restricted_deny_write": 0
+          },
+          "overwrite_restore": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "create": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "actual write matrix outside",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": false,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "ace_count": 7,
+            "inherited": 6,
+            "restricted_allow_write": 0,
+            "restricted_deny_write": 0
+          },
+          "existing_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "restricted_allow_write": 0,
+            "restricted_deny_write": 0
+          },
+          "overwrite_restore": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "create": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "directory ACL diagnostic work 0o700",
+        "status": "OBSERVED",
+        "detail": {
+          "parent_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 7,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "mkdir": {
+            "ok": true
+          },
+          "child_acl": {
+            "winerror": 5
+          },
+          "child_write_read_delete": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "directory_cleanup": {
+            "ok": false,
+            "errno": 13,
+            "winerror": 5
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "directory ACL diagnostic work 0o777",
+        "status": "OBSERVED",
+        "detail": {
+          "parent_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 7,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "mkdir": {
+            "ok": true
+          },
+          "child_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 8,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "child_write_read_delete": {
+            "ok": true
+          },
+          "directory_cleanup": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "existing writable parent inherited scratch control work",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "parent_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 7,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "mkdir": {
+            "ok": true
+          },
+          "child_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 8,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "child_write_read_delete": {
+            "ok": true
+          },
+          "directory_cleanup": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "directory ACL diagnostic tmp 0o700",
+        "status": "OBSERVED",
+        "detail": {
+          "parent_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 6,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "mkdir": {
+            "ok": true
+          },
+          "child_acl": {
+            "winerror": 5
+          },
+          "child_write_read_delete": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "directory_cleanup": {
+            "ok": false,
+            "errno": 13,
+            "winerror": 5
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "directory ACL diagnostic tmp 0o777",
+        "status": "OBSERVED",
+        "detail": {
+          "parent_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 6,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "mkdir": {
+            "ok": true
+          },
+          "child_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 8,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "child_write_read_delete": {
+            "ok": true
+          },
+          "directory_cleanup": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "existing writable parent inherited scratch control tmp",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "parent_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 6,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "mkdir": {
+            "ok": true
+          },
+          "child_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 8,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "child_write_read_delete": {
+            "ok": true
+          },
+          "directory_cleanup": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "fixed merge_runs native file roundtrip and scratch cleanup",
+        "status": "PASS_ACTUAL",
+        "detail": "actual assertions"
+      },
+      {
+        "mode": "normal",
+        "item": "fixed comment native file roundtrip and scratch cleanup",
+        "status": "PASS_ACTUAL",
+        "detail": "actual assertions"
+      },
+      {
+        "mode": "normal",
+        "item": "fixed add_slide native file roundtrip and scratch cleanup",
+        "status": "PASS_ACTUAL",
+        "detail": "actual assertions"
+      },
+      {
+        "mode": "normal",
+        "item": "malformed packed document fails without scratch residue",
+        "status": "PASS_ACTUAL",
+        "detail": "actual assertions"
+      },
+      {
+        "mode": "normal",
+        "item": "SSH actual sandbox keygen/readback",
+        "status": "FAIL",
+        "detail": "Traceback (most recent call last):\n  File \"D:\\a\\Portable\\Portable\\tmp\\sandbox-ocr-followup-cb154e8f4fc84d7ab9f4d3fc47631a8b\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 34, in case\n    try:row(item,\"PASS_ACTUAL\",fn() or \"actual assertions\")\n                               ~~^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\sandbox-ocr-followup-cb154e8f4fc84d7ab9f4d3fc47631a8b\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 242, in ssh\n    py(\"tool/portable-ssh.py\",\"keygen\",\"--name\",name,\"--unencrypted\")\n    ~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\sandbox-ocr-followup-cb154e8f4fc84d7ab9f4d3fc47631a8b\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 203, in py\n    if expect is not None:assert r.returncode==expect,(rel,r.returncode,out[-1800:],err[-1800:])\n                                 ^^^^^^^^^^^^^^^^^^^^\nAssertionError: ('tool/portable-ssh.py', 2, '', \"Portable SSH: [WinError 5] Access is denied: 'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\sandbox-ocr-followup-cb154e8f4fc84d7ab9f4d3fc47631a8b\\\\\\\\normal\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\work\\\\\\\\ssh\\\\\\\\keys'\\r\\n\")\n"
+      },
+      {
+        "mode": "normal",
+        "item": "SSH ACL diagnostic work",
+        "status": "OBSERVED",
+        "detail": {
+          "exists": true,
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 6,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "SSH ACL diagnostic work/ssh",
+        "status": "OBSERVED",
+        "detail": {
+          "exists": true,
+          "acl": {
+            "winerror": 5
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "SSH ACL diagnostic work/ssh/keys",
+        "status": "OBSERVED",
+        "detail": {
+          "exists": false,
+          "acl": {
+            "winerror": 2
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "actual native Codex BAT/Host consumer completed",
+        "status": "PASS_ACTUAL",
+        "detail": "independent of failed consumer assertions"
+      },
+      {
+        "mode": "normal",
+        "item": "actual system cache marker and all shipped member byte check",
+        "status": "FAIL",
+        "detail": {
+          "marker": "408224ce9771867c",
+          "original_marker_sha256": "4d62db30f20142b98f1f15cdf82ba0826155ef1978cc8a60331f85259d44cfd5",
+          "runtime_marker_sha256": "9bce3c1689f722b54ab5e3c7a474a0e857472020ae4f41780b8049e1df303415",
+          "missing": [
+            "home/skills/.system/openai-docs/references/upgrading-to-gpt-5p6-sol.md",
+            "home/skills/.system/plugin-creator/SKILL.md",
+            "home/skills/.system/plugin-creator/agents/openai.yaml",
+            "home/skills/.system/plugin-creator/assets/plugin-creator-small.svg",
+            "home/skills/.system/plugin-creator/assets/plugin-creator.png",
+            "home/skills/.system/plugin-creator/references/installing-and-updating.md",
+            "home/skills/.system/plugin-creator/references/plugin-json-spec.md",
+            "home/skills/.system/plugin-creator/scripts/create_basic_plugin.py",
+            "home/skills/.system/plugin-creator/scripts/identifier_validation.py",
+            "home/skills/.system/plugin-creator/scripts/read_marketplace_name.py",
+            "home/skills/.system/plugin-creator/scripts/update_plugin_cachebuster.py",
+            "home/skills/.system/plugin-creator/scripts/validate_plugin.py"
+          ],
+          "new": [
+            "home/skills/.system/create-statusline/SKILL.md",
+            "home/skills/.system/create-statusline/agents/openai.yaml",
+            "home/skills/.system/create-statusline/assets/statusline.py",
+            "home/skills/.system/create-statusline/references/statusline.d.ts",
+            "home/skills/.system/openai-docs/references/upgrading-to-gpt-6-astra.md"
+          ],
+          "changed_system_non_marker": [
+            "home/skills/.system/openai-docs/SKILL.md",
+            "home/skills/.system/openai-docs/agents/openai.yaml",
+            "home/skills/.system/openai-docs/references/latest-model.md",
+            "home/skills/.system/openai-docs/references/model-migration.md",
+            "home/skills/.system/openai-docs/references/prompting-guide.md",
+            "home/skills/.system/openai-docs/references/upgrade-guide.md",
+            "home/skills/.system/openai-docs/scripts/fetch-codex-manual.mjs",
+            "home/skills/.system/openai-docs/scripts/resolve-latest-model-info.cjs"
+          ],
+          "changed_other_shipped_members": []
+        }
+      },
+      {
+        "mode": "direct-control",
+        "item": "same extracted package SSH ordinary process (not sandbox evidence)",
+        "status": "OBSERVED",
+        "detail": {
+          "restricted": false,
+          "elevated": true,
+          "keygen_returncode": 0,
+          "readback": true
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "exact new candidate ZIP and moved tree",
+        "status": "PASS_ACTUAL",
+        "detail": 9147
+      },
+      {
+        "mode": "maintenance",
+        "item": "native Windows token",
+        "status": "OBSERVED",
+        "detail": {
+          "restricted": true,
+          "restricting_sid_count": 5,
+          "elevated": false
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "actual native configuration and restricted token",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "configuration_verified": true,
+          "restricted_token": {
+            "restricted": true,
+            "restricting_sid_count": 5,
+            "elevated": false
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "actual write matrix package_root",
+        "status": "FAIL",
+        "detail": {
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 6,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "existing_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "overwrite_restore": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "create": {
+            "ok": true
+          },
+          "new_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 5,
+            "inherited": 5,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "actual write matrix work",
+        "status": "FAIL",
+        "detail": {
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 9,
+            "inherited": 7,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "existing_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 5,
+            "inherited": 5,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "overwrite_restore": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "create": {
+            "ok": true
+          },
+          "new_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 6,
+            "inherited": 6,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "actual write matrix tmp",
+        "status": "FAIL",
+        "detail": {
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 9,
+            "inherited": 7,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "existing_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 5,
+            "inherited": 5,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "overwrite_restore": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "create": {
+            "ok": true
+          },
+          "new_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 6,
+            "inherited": 6,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "actual write matrix tool",
+        "status": "FAIL",
+        "detail": {
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 7,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "existing_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "overwrite_restore": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "create": {
+            "ok": true
+          },
+          "new_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 5,
+            "inherited": 5,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "actual write matrix skills",
+        "status": "FAIL",
+        "detail": {
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 8,
+            "inherited": 7,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "existing_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "overwrite_restore": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "create": {
+            "ok": true
+          },
+          "new_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 5,
+            "inherited": 5,
+            "restricted_allow_write": 1,
+            "restricted_deny_write": 0
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "actual write matrix outside",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": false,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "ace_count": 7,
+            "inherited": 6,
+            "restricted_allow_write": 0,
+            "restricted_deny_write": 0
+          },
+          "existing_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "restricted_allow_write": 0,
+            "restricted_deny_write": 0
+          },
+          "overwrite_restore": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "create": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "directory ACL diagnostic work 0o700",
+        "status": "OBSERVED",
+        "detail": {
+          "parent_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 9,
+            "inherited": 8,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "mkdir": {
+            "ok": true
+          },
+          "child_acl": {
+            "winerror": 5
+          },
+          "child_write_read_delete": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "directory_cleanup": {
+            "ok": false,
+            "errno": 13,
+            "winerror": 5
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "directory ACL diagnostic work 0o777",
+        "status": "OBSERVED",
+        "detail": {
+          "parent_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 9,
+            "inherited": 8,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "mkdir": {
+            "ok": true
+          },
+          "child_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 9,
+            "inherited": 9,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "child_write_read_delete": {
+            "ok": true
+          },
+          "directory_cleanup": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "existing writable parent inherited scratch control work",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "parent_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 9,
+            "inherited": 8,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "mkdir": {
+            "ok": true
+          },
+          "child_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 9,
+            "inherited": 9,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "child_write_read_delete": {
+            "ok": true
+          },
+          "directory_cleanup": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "directory ACL diagnostic tmp 0o700",
+        "status": "OBSERVED",
+        "detail": {
+          "parent_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 9,
+            "inherited": 7,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "mkdir": {
+            "ok": true
+          },
+          "child_acl": {
+            "winerror": 5
+          },
+          "child_write_read_delete": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "directory_cleanup": {
+            "ok": false,
+            "errno": 13,
+            "winerror": 5
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "directory ACL diagnostic tmp 0o777",
+        "status": "OBSERVED",
+        "detail": {
+          "parent_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 9,
+            "inherited": 7,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "mkdir": {
+            "ok": true
+          },
+          "child_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 9,
+            "inherited": 9,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "child_write_read_delete": {
+            "ok": true
+          },
+          "directory_cleanup": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "existing writable parent inherited scratch control tmp",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "parent_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 9,
+            "inherited": 7,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "mkdir": {
+            "ok": true
+          },
+          "child_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 9,
+            "inherited": 9,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          },
+          "child_write_read_delete": {
+            "ok": true
+          },
+          "directory_cleanup": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "fixed merge_runs native file roundtrip and scratch cleanup",
+        "status": "PASS_ACTUAL",
+        "detail": "actual assertions"
+      },
+      {
+        "mode": "maintenance",
+        "item": "fixed comment native file roundtrip and scratch cleanup",
+        "status": "PASS_ACTUAL",
+        "detail": "actual assertions"
+      },
+      {
+        "mode": "maintenance",
+        "item": "fixed add_slide native file roundtrip and scratch cleanup",
+        "status": "PASS_ACTUAL",
+        "detail": "actual assertions"
+      },
+      {
+        "mode": "maintenance",
+        "item": "malformed packed document fails without scratch residue",
+        "status": "PASS_ACTUAL",
+        "detail": "actual assertions"
+      },
+      {
+        "mode": "maintenance",
+        "item": "SSH actual sandbox keygen/readback",
+        "status": "FAIL",
+        "detail": "Traceback (most recent call last):\n  File \"D:\\a\\Portable\\Portable\\tmp\\sandbox-ocr-followup-cb154e8f4fc84d7ab9f4d3fc47631a8b\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 34, in case\n    try:row(item,\"PASS_ACTUAL\",fn() or \"actual assertions\")\n                               ~~^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\sandbox-ocr-followup-cb154e8f4fc84d7ab9f4d3fc47631a8b\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 242, in ssh\n    py(\"tool/portable-ssh.py\",\"keygen\",\"--name\",name,\"--unencrypted\")\n    ~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\a\\Portable\\Portable\\tmp\\sandbox-ocr-followup-cb154e8f4fc84d7ab9f4d3fc47631a8b\\maintenance\\Portable \u4e2d\u6587 \u7a7a\u683c\\work\\tool-probe\\documents.py\", line 203, in py\n    if expect is not None:assert r.returncode==expect,(rel,r.returncode,out[-1800:],err[-1800:])\n                                 ^^^^^^^^^^^^^^^^^^^^\nAssertionError: ('tool/portable-ssh.py', 2, '', \"Portable SSH: [WinError 5] Access is denied: 'D:\\\\\\\\a\\\\\\\\Portable\\\\\\\\Portable\\\\\\\\tmp\\\\\\\\sandbox-ocr-followup-cb154e8f4fc84d7ab9f4d3fc47631a8b\\\\\\\\maintenance\\\\\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\\\\\work\\\\\\\\ssh\\\\\\\\keys'\\r\\n\")\n"
+      },
+      {
+        "mode": "maintenance",
+        "item": "SSH ACL diagnostic work",
+        "status": "OBSERVED",
+        "detail": {
+          "exists": true,
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "ace_count": 9,
+            "inherited": 7,
+            "restricted_allow_write": 2,
+            "restricted_deny_write": 0
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "SSH ACL diagnostic work/ssh",
+        "status": "OBSERVED",
+        "detail": {
+          "exists": true,
+          "acl": {
+            "winerror": 5
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "SSH ACL diagnostic work/ssh/keys",
+        "status": "OBSERVED",
+        "detail": {
+          "exists": false,
+          "acl": {
+            "winerror": 2
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "actual native Codex BAT/Host consumer completed",
+        "status": "PASS_ACTUAL",
+        "detail": "independent of failed consumer assertions"
+      },
+      {
+        "mode": "maintenance",
+        "item": "actual system cache marker and all shipped member byte check",
+        "status": "FAIL",
+        "detail": {
+          "marker": "408224ce9771867c",
+          "original_marker_sha256": "4d62db30f20142b98f1f15cdf82ba0826155ef1978cc8a60331f85259d44cfd5",
+          "runtime_marker_sha256": "9bce3c1689f722b54ab5e3c7a474a0e857472020ae4f41780b8049e1df303415",
+          "missing": [
+            "home/skills/.system/openai-docs/references/upgrading-to-gpt-5p6-sol.md",
+            "home/skills/.system/plugin-creator/SKILL.md",
+            "home/skills/.system/plugin-creator/agents/openai.yaml",
+            "home/skills/.system/plugin-creator/assets/plugin-creator-small.svg",
+            "home/skills/.system/plugin-creator/assets/plugin-creator.png",
+            "home/skills/.system/plugin-creator/references/installing-and-updating.md",
+            "home/skills/.system/plugin-creator/references/plugin-json-spec.md",
+            "home/skills/.system/plugin-creator/scripts/create_basic_plugin.py",
+            "home/skills/.system/plugin-creator/scripts/identifier_validation.py",
+            "home/skills/.system/plugin-creator/scripts/read_marketplace_name.py",
+            "home/skills/.system/plugin-creator/scripts/update_plugin_cachebuster.py",
+            "home/skills/.system/plugin-creator/scripts/validate_plugin.py"
+          ],
+          "new": [
+            "home/skills/.system/create-statusline/SKILL.md",
+            "home/skills/.system/create-statusline/agents/openai.yaml",
+            "home/skills/.system/create-statusline/assets/statusline.py",
+            "home/skills/.system/create-statusline/references/statusline.d.ts",
+            "home/skills/.system/openai-docs/references/upgrading-to-gpt-6-astra.md"
+          ],
+          "changed_system_non_marker": [
+            "home/skills/.system/openai-docs/SKILL.md",
+            "home/skills/.system/openai-docs/agents/openai.yaml",
+            "home/skills/.system/openai-docs/references/latest-model.md",
+            "home/skills/.system/openai-docs/references/model-migration.md",
+            "home/skills/.system/openai-docs/references/prompting-guide.md",
+            "home/skills/.system/openai-docs/references/upgrade-guide.md",
+            "home/skills/.system/openai-docs/scripts/fetch-codex-manual.mjs",
+            "home/skills/.system/openai-docs/scripts/resolve-latest-model-info.cjs"
+          ],
+          "changed_other_shipped_members": []
+        }
+      },
+      {
+        "mode": "marker",
+        "item": "independent native launch marker repeatability",
+        "status": "PASS_ACTUAL",
+        "detail": [
+          "408224ce9771867c",
+          "408224ce9771867c"
+        ]
+      },
+      {
+        "mode": "ocr",
+        "item": "actual OS language inventory",
+        "status": "OBSERVED",
+        "detail": {
+          "available": [
+            "en-US"
+          ],
+          "supported": false
+        }
+      },
+      {
+        "mode": "ocr",
+        "item": "Chinese OCR",
+        "status": "BLOCKED_LANGUAGE_MISSING",
+        "detail": "no zh-Hans-CN; no installation or substitute"
+      }
+    ]
+  },
+  "alternate_windows_2022": {
+    "metadata": {
+      "scope": "ocr-only",
+      "source_commit": "96a2451331e01af771e213553251e2d3b67e1a8d",
+      "runner_image": "win22",
+      "runner_image_version": "20261116.370.1",
+      "completed": true
+    },
+    "rows": [
+      {
+        "mode": "ocr",
+        "item": "alternate Windows actual language inventory",
+        "status": "OBSERVED",
+        "detail": {
+          "supported": false,
+          "available": [
+            "en-US"
+          ]
+        }
+      },
+      {
+        "mode": "ocr",
+        "item": "Chinese OCR",
+        "status": "BLOCKED_LANGUAGE_MISSING",
+        "detail": "No Chinese engine on Windows Server 2022; no installation."
+      }
+    ]
+  },
+  "prior_course_evidence": "tests/course_candidate_45741929384.json",
+  "prior_followup_evidence": "tests/original_followup_candidate_45741929384.json",
+  "prior_downloadable_candidate": "https://github.com/rileyaaa/Portable/actions/runs/45741929384/artifacts/15081294806",
+  "prior_candidate_is_not_current_source": true,
+  "new_candidate_uploaded": false,
+  "whole_package_all_pass_claim": false,
+  "chinese_recognized": false,
+  "native_unresolved": [
+    {
+      "mode": "normal",
+      "item": "actual write matrix work"
+    },
+    {
+      "mode": "normal",
+      "item": "actual write matrix tmp"
+    },
+    {
+      "mode": "normal",
+      "item": "SSH actual sandbox keygen/readback"
+    },
+    {
+      "mode": "normal",
+      "item": "actual system cache marker and all shipped member byte check"
+    },
+    {
+      "mode": "maintenance",
+      "item": "actual write matrix package_root"
+    },
+    {
+      "mode": "maintenance",
+      "item": "actual write matrix work"
+    },
+    {
+      "mode": "maintenance",
+      "item": "actual write matrix tmp"
+    },
+    {
+      "mode": "maintenance",
+      "item": "actual write matrix tool"
+    },
+    {
+      "mode": "maintenance",
+      "item": "actual write matrix skills"
+    },
+    {
+      "mode": "maintenance",
+      "item": "SSH actual sandbox keygen/readback"
+    },
+    {
+      "mode": "maintenance",
+      "item": "actual system cache marker and all shipped member byte check"
+    }
+  ],
+  "qualified_targeted_batch": false
+}
