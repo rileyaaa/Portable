@@ -116,6 +116,30 @@ def verify_payload(root, manifest):
             raise ValueError("Browser is not Windows x64")
 
 
+def payload_state(root, manifest, prefix):
+    destination = checked(root, root / prefix, directory=True, missing=True)
+    if not destination.exists():
+        return "missing"
+    try:
+        verify_payload(root, manifest)
+    except (FileNotFoundError, ValueError, struct.error):
+        # Never install over an existing revision, even when only the EXE is missing.
+        return "incomplete"
+    return "verified"
+
+
+def report_payload_state(manifest, state):
+    actions = {
+        "missing": "Pinned revision directory is missing; rerun with -Install.",
+        "incomplete": "Existing pinned revision is incomplete or changed; restore the same version from a verified package. Do not remove the browser profile.",
+        "verified": "Pinned browser files verified.",
+    }
+    print(json.dumps({"verified": state == "verified", "state": state,
+                      "version": manifest["browserVersion"], "files": manifest["fileCount"],
+                      "action": actions[state]}))
+    return 0 if state == "verified" else 1
+
+
 def extract_archive(root, archive, stage, manifest, prefix):
     checked(root, archive)
     checked(root, stage, directory=True)
@@ -190,9 +214,7 @@ def main():
     manifest, prefix = load_manifest(root)
     destination = checked(root, root / prefix, directory=True, missing=True)
     if options.check or not options.install or destination.exists():
-        verify_payload(root, manifest)
-        print(json.dumps({"verified": True, "version": manifest["browserVersion"], "files": manifest["fileCount"]}))
-        return
+        return report_payload_state(manifest, payload_state(root, manifest, prefix))
     if os.name != "nt":
         raise ValueError("Install the Windows x64 browser from Windows x64")
     if options.session is None:
@@ -215,7 +237,7 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        raise SystemExit(main())
     except Exception as error:
         # Network exceptions may contain proxy credentials; callers receive a bounded error.
         raise SystemExit("Pinned browser installation/check failed (" + type(error).__name__ + ").")

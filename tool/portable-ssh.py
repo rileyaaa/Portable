@@ -184,11 +184,11 @@ def _keygen(ws: Workspace, name: str, unencrypted: bool) -> int:
     if unencrypted:
         cipher = serialization.NoEncryption()
     else:
-        first = getpass.getpass("New SSH key passphrase: ")
-        second = getpass.getpass("Confirm passphrase: ")
+        first = getpass.getpass("New SSH key passphrase: ").encode("utf-8")
+        second = getpass.getpass("Confirm passphrase: ").encode("utf-8")
         if not first or not hmac.compare_digest(first, second):
             raise SSHBoundaryError("Nonempty passphrases did not match.")
-        cipher = serialization.BestAvailableEncryption(first.encode("utf-8"))
+        cipher = serialization.BestAvailableEncryption(first)
     key = ed25519.Ed25519PrivateKey.generate()
     private = key.private_bytes(
         encoding=serialization.Encoding.PEM,

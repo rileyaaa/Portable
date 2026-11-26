@@ -301,6 +301,41 @@ class PortableSSHTests(unittest.TestCase):
             SSH._keygen(self.ws, "id_ed25519", unencrypted=True)
         self.assertEqual(private.read_bytes(), before)
 
+    def test_unicode_passphrase_roundtrip(self):
+        try:
+            from cryptography.hazmat.primitives import serialization
+            import bcrypt
+        except ImportError:
+            self.skipTest("Encrypted OpenSSH key dependencies unavailable")
+        passphrase = "\u4e2d\u6587-\u5bc6\u78bc-\U0001f511"
+        with mock.patch.object(SSH.getpass, "getpass", side_effect=[passphrase, passphrase]):
+            self.assertEqual(SSH._keygen(self.ws, "synthetic", False), 0)
+        private = self.ws.path("keys", "synthetic", existing=True)
+        public = self.ws.path("keys", "synthetic.pub", existing=True)
+        key = serialization.load_ssh_private_key(private.read_bytes(), passphrase.encode("utf-8"))
+        self.assertEqual(
+            key.public_key().public_bytes(serialization.Encoding.OpenSSH,
+                                          serialization.PublicFormat.OpenSSH),
+            public.read_bytes().strip(),
+        )
+        with self.assertRaises(ValueError):
+            serialization.load_ssh_private_key(private.read_bytes(), b"wrong")
+        if os.name == "posix":
+            self.assertEqual(private.stat().st_mode & 0o777, 0o600)
+
+    def test_mismatch_no_key_files(self):
+        try:
+            import cryptography
+        except ImportError:
+            self.skipTest("cryptography unavailable")
+        for first, second in [("\u4e2d\u6587", "\u4e2d\u6588"), ("", "")]:
+            with self.subTest(empty=not first):
+                with mock.patch.object(SSH.getpass, "getpass", side_effect=[first, second]):
+                    with self.assertRaisesRegex(SSH.SSHBoundaryError, "did not match"):
+                        SSH._keygen(self.ws, "synthetic", False)
+                self.assertFalse(self.ws.path("keys", "synthetic").exists())
+                self.assertFalse(self.ws.path("keys", "synthetic.pub").exists())
+
     def test_linked_ancestor_of_package_root_is_rejected(self):
         outer = self.root.parent / "alias"
         try:

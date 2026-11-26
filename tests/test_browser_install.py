@@ -69,6 +69,39 @@ class BrowserInstallTests(unittest.TestCase):
             browser._RejectBrowserDownloadRedirect().redirect_request(
                 request, None, 302, "Found", {}, "https://example.invalid/browser.zip")
 
+    def test_missing_revision_and_incomplete_payload_are_distinct(self):
+        executable = bytearray(128)
+        executable[:2] = b"MZ"
+        executable[60:64] = (64).to_bytes(4, "little")
+        executable[64:70] = b"PE\0\0\x64\x86"
+        files = {"chrome-win64/chrome.exe": bytes(executable),
+                 "chrome-win64/chrome.dll": b"synthetic dll"}
+        manifest = self.make_archive(files)
+        manifest["revision"] = "1247"
+        profile = self.root / "cache/browser/profile"
+        profile.mkdir(parents=True)
+        sentinel = profile / "sentinel"
+        sentinel.write_bytes(b"preserve")
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "missing")
+        self.assertFalse((self.root / self.prefix).exists())
+        for name, content in files.items():
+            path = self.root / self.prefix / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "verified")
+        for name, content in files.items():
+            path = self.root / self.prefix / name
+            path.unlink()
+            self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "incomplete")
+            self.assertFalse(path.exists())
+            path.write_bytes(content)
+        dll = self.root / self.prefix / "chrome-win64/chrome.dll"
+        corrupt = b"X" * len(files["chrome-win64/chrome.dll"])
+        dll.write_bytes(corrupt)
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "incomplete")
+        self.assertEqual(dll.read_bytes(), corrupt)
+        self.assertEqual(sentinel.read_bytes(), b"preserve")
+
     def test_pinned_browser_inventory_matches_installed_official_bytes(self):
         manifest, prefix = browser.load_manifest(ROOT)
         self.assertEqual(prefix, "tool/automation/browsers/chromium-1727472/")
