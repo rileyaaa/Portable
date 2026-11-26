@@ -90,7 +90,7 @@ def source_licenses(nested_archive,origin):
                     for b in iter(lambda:f.read(1024*1024),b""):h.update(b)
                 models.append({"path":n,"size":x.size,"sha256":h.hexdigest()})
             leaf=n.rsplit("/",1)[-1]
-            if re.fullmatch(r"(?i)(license|licence|copying|copyright|notice|authors|patents)(?:[._-].*)?",leaf) and x.size<=1024*1024:
+            if (leaf.casefold()=="leptonica-license.txt" or re.fullmatch(r"(?i)(license|licence|copying|copyright|notice|authors|patents)(?:[._-].*)?",leaf)) and x.size<=1024*1024:
                 if len(docs)>=200:raise AssertionError("license inventory cap")
                 b=tar.extractfile(x).read()
                 docs.append({"path":n,"sha256":document(b,{**origin,"source_member":n})})

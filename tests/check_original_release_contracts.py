@@ -31,7 +31,7 @@ assert selected["metadata"]["original_zip_sha256"]==a.ASSETS[a.ZIP][1] and len(s
 assert selected["metadata"]["frozen_source"]==a.FROZEN
 
 CONSUMER=r'''
-import json,os,sys,tomllib
+import json,os,sys,tomllib,subprocess
 from pathlib import Path
 root=Path(os.environ["CODEX_INSTALL_DIR"]).resolve()
 work=root/"work/tool-probe"
@@ -39,14 +39,25 @@ assert Path(sys.executable).resolve()==root/"tool/python/python.exe" and sys.fla
 assert Path(os.environ["CODEX_HOME"]).resolve()==root/"home"
 names=("CODEX_API_KEY","CODEX_ACCESS_TOKEN","GH_TOKEN","GITHUB_TOKEN","NODE_OPTIONS","NODE_PATH","NODE_EXTRA_CA_CERTS")
 checks={n:n not in os.environ for n in names}
-assert all(checks.values()),[n for n,v in checks.items() if not v]
-# Presence of host preload would create an external owned marker, which the
-# supervisor independently checks. Do not execute or access any host file.
-cfg=tomllib.loads((root/"home/config.toml").read_text(encoding="utf-8-sig"))
-features=cfg["features"]
-assert features.get("apps") is False and features.get("plugins") is False and features.get("plugin_sharing") is False
-(work/"targeted-contract-results.json").write_text(json.dumps({"native_child_host_inputs_absent":checks,
-    "features":{n:features[n] for n in ("apps","plugins","plugin_sharing")}}),encoding="utf-8")
+result={"native_child_host_inputs_absent":checks,"features":{},"node_actual":False}
+report=work/"targeted-contract-results.json"
+def save():report.write_text(json.dumps(result),encoding="utf-8")
+save()
+try:
+    node=root/"tool/node/node.exe";assert node.is_file()
+    probe=subprocess.run([str(node),"-e","console.log(JSON.stringify({exe:process.execPath,options:process.env.NODE_OPTIONS??null,marker:'NODE_CONTRACT_OK'}))"],
+       cwd=work,stdin=subprocess.DEVNULL,capture_output=True,timeout=45)
+    if probe.returncode==0:
+        d=json.loads(probe.stdout.decode("utf-8"))
+        result["node_actual"]=Path(d["exe"]).resolve()==node.resolve() and d["options"] is None and d["marker"]=="NODE_CONTRACT_OK"
+    result["node_exit"]=probe.returncode
+except Exception as e:result["node_error"]=type(e).__name__
+save()
+try:
+    cfg=tomllib.loads((root/"home/config.toml").read_text(encoding="utf-8-sig"))
+    result["features"]={n:cfg["features"].get(n) for n in ("apps","plugins","plugin_sharing")}
+except Exception as e:result["config_error"]=type(e).__name__
+save()
 print("PORTABLE_RELEASE_FULL_CONSUMER_DONE",flush=True)
 '''
 
@@ -73,13 +84,12 @@ def cases(owned,fixture):
       NODE_OPTIONS="--require="+str(preload),NODE_PATH=str(owned/"not-a-package"),NODE_EXTRA_CA_CERTS=str(owned/"not-a-certificate.pem"))
     a.m.MODEL_REQUESTS.clear();a.m.MODEL_ERRORS.clear()
     handler=a.handler_for(fixture)
-    assertions={"auth":0,"query":0,"instruction":0}
+    assertions={"auth":0,"query":0,"instruction":0,"requests":0,"instruction_seen":0}
     def checked_handler(body,url):
-        if not assertions["instruction"]:
-            # First actual Responses request, not just generated TOML.
+        if not assertions["instruction_seen"]:
             content=json.dumps({"instructions":body.get("instructions"),"input":body.get("input")},ensure_ascii=False)
-            assert MARK in content,"local model instructions did not reach actual model request"
-            assertions["instruction"]+=1
+            assertions["instruction"]=int(MARK in content)
+            assertions["instruction_seen"]=1
         return handler(body,url)
     Parent=a.m.provider("",model=MODEL,handler=checked_handler,
        expected_headers={"X-Portable-Audit":"synthetic-package-value","X-Portable-Audit-Static":"synthetic-static"},
@@ -89,9 +99,11 @@ def cases(owned,fixture):
             try:
                 u=urllib.parse.urlsplit(self.path)
                 assert u.path=="/v1/responses"
-                assert urllib.parse.parse_qs(u.query)=={"portable_contract":["synthetic-query"]},"configured query absent/different"
-                assert self.headers.get("Authorization")=="Bearer "+SYNTHETIC,"synthetic authentication conflict"
-                assertions["query"]+=1;assertions["auth"]+=1
+                auth=self.headers.get("Authorization")
+                assert auth is None or auth.startswith("Bearer synthetic-"),"unexpected non-synthetic auth; not recorded"
+                assertions["requests"]+=1
+                assertions["query"]+=int(urllib.parse.parse_qs(u.query)=={"portable_contract":["synthetic-query"]})
+                assertions["auth"]+=int(auth=="Bearer "+SYNTHETIC)
                 self.path=u.path
             except Exception as exc:
                 a.m.MODEL_ERRORS.append(str(exc));self.send_error(400,"Synthetic contract mismatch");return
@@ -139,10 +151,11 @@ def cases(owned,fixture):
         rc,out,err=a.bat(fixture,entry,args,env,timeout=550)
         q=work/"targeted-contract-results.json"
         actual=json.loads(q.read_bytes()) if q.exists() else {}
-        if assertions["auth"] and assertions["query"]:
-            a.row("normal","actual configured query on local Responses","PASS_ACTUAL",str(assertions["query"])+" matching local requests",COVERS,["CODEX_QUERY_PARAMS_TOML"])
-            a.row("normal","actual local synthetic Authorization despite host auth/base conflicts","PASS_ACTUAL","matched expected package key and configured local peer; no values stored",COVERS,["OPENAI_API_KEY","CODEX_API_KEY","CODEX_ACCESS_TOKEN","OPENAI_BASE_URL"])
-        else:a.row("normal","actual synthetic request authentication/query","FAIL","no matching actual local request",COVERS,["OPENAI_API_KEY","CODEX_QUERY_PARAMS_TOML"])
+        received=assertions["requests"]
+        a.row("normal","actual configured query on local Responses","PASS_ACTUAL" if received and assertions["query"]==received else "FAIL",
+            str(assertions["query"])+"/"+str(received)+" matching local requests",COVERS,["CODEX_QUERY_PARAMS_TOML"])
+        a.row("normal","actual local synthetic Authorization despite host auth/base conflicts","PASS_ACTUAL" if received and assertions["auth"]==received else "FAIL",
+            str(assertions["auth"])+"/"+str(received)+" matching expected synthetic auth and configured loopback; no values stored",COVERS,["OPENAI_API_KEY","CODEX_API_KEY","CODEX_ACCESS_TOKEN","OPENAI_BASE_URL"])
         if assertions["instruction"]:
             a.row("normal","actual package-local model instruction marker in Responses","PASS_ACTUAL","marker in actual request",COVERS,["CODEX_MODEL_INSTRUCTIONS_FILE"])
         else:a.row("normal","actual package-local model instruction marker in Responses","FAIL","no matching request marker",COVERS,["CODEX_MODEL_INSTRUCTIONS_FILE"])
@@ -150,8 +163,9 @@ def cases(owned,fixture):
         for n in ("CODEX_API_KEY","CODEX_ACCESS_TOKEN","GH_TOKEN","GITHUB_TOKEN","NODE_OPTIONS","NODE_PATH","NODE_EXTRA_CA_CERTS"):
             a.row("normal","actual native child inherited-host rejection "+n,"PASS_ACTUAL" if checks.get(n) is True else "FAIL",
                 "negative inheritance boundary only; not independent tool activation",COVERS,[n])
-        a.row("normal","host Node preload marker absent","PASS_ACTUAL" if not host_marker.exists() and checks.get("NODE_OPTIONS") else "FAIL",
-            "owned synthetic preload did not execute; no arbitrary user script",COVERS,["NODE_OPTIONS"])
+        a.row("normal","actual bundled Node child and host preload marker absent","PASS_ACTUAL" if actual.get("node_actual") and not host_marker.exists() and checks.get("NODE_OPTIONS") else "FAIL",
+            "explicit bundled Node process="+str(actual.get("node_actual"))+"; synthetic preload marker exists="+str(host_marker.exists())+"; rc="+str(actual.get("node_exit")),
+            COVERS+["tool/node/node.exe"],["NODE_OPTIONS"])
         if actual.get("features")=={"apps":False,"plugins":False,"plugin_sharing":False}:
             a.row("normal","feature config gate without explicit extension opt-in","PASS_CONFIG_GATE",
               "actual launched child read apps/plugins/plugin_sharing=false; real plugin execution and official connector authorization NOT tested",
@@ -165,14 +179,25 @@ def cases(owned,fixture):
         assert a.digest(fixture/n)==a.MEMBERS[n]["sha256"],n
     a.row("integrity","original launcher/binary members unchanged after targeted cases","PASS_ACTUAL","no developer payload copied")
 def main():
-    a.guard()
-    owned=ROOT/"tmp"/("original-contract-"+uuid.uuid4().hex[:8]);owned.mkdir()
+    owned=None
     try:
+        parent=ROOT/"tmp";parent.mkdir(exist_ok=True);a.ancestors(parent)
+        assert REPORT.parent.resolve()==parent.resolve();a.save()
+        a.guard()
+        owned=parent/("original-contract-"+uuid.uuid4().hex[:8]);owned.mkdir();a.ancestors(owned)
+        probe=owned/"scratch-preflight.bin";probe.write_bytes(b"synthetic")
+        assert probe.read_bytes()==b"synthetic";probe.unlink()
+        a.row("harness","owned scratch and report preflight","HARNESS_READY","owned parent created, ordinary ancestors, write/read/delete passed")
         manifest=a.download(owned);a.MEMBERS=manifest["files"];a.ROOT=a.extract(owned,manifest)
         a.row("integrity","exact original ZIP and all 9076 members, real Chinese-space move","PASS_ACTUAL",len(a.MEMBERS))
         cases(owned,a.ROOT);a.META["completed"]=True
     except Exception:a.row("harness","targeted original contract probe","FAIL",traceback.format_exc()[-6000:])
-    finally:a.save();a.ancestors(owned);shutil.rmtree(owned)
+    finally:
+        try:
+            if owned is not None and owned.exists():a.ancestors(owned);shutil.rmtree(owned)
+            a.META["scratch_removed"]=owned is None or not owned.exists()
+        except Exception:a.row("harness","owned scratch cleanup","FAIL",traceback.format_exc()[-3000:])
+        a.save()
     return int(not a.META["completed"] or any(x["status"]=="FAIL" for x in a.ROWS))
 if __name__=="__main__":
     for stream in (sys.stdout,sys.stderr):stream.reconfigure(encoding="utf-8",errors="backslashreplace")

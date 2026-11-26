@@ -1,7 +1,7 @@
 """Rebuild only PNG/LSTM OCR from exact previously signature-verified sources.
 Native Windows research: no vendor binary, no installation, no candidate ZIP.
 """
-import csv,ctypes as C,hashlib,importlib.util,json,os,re,shutil,subprocess,sys,tarfile,time,traceback,uuid
+import csv,ctypes as C,hashlib,importlib.util,json,os,re,shutil,subprocess,sys,tarfile,time,traceback,uuid,xml.etree.ElementTree as ET
 from ctypes import wintypes as W
 from pathlib import Path
 ROOT=Path(__file__).absolute().parents[1]
@@ -32,6 +32,18 @@ SOURCES={
  "tess":("mingw-w64-tesseract-ocr","tesseract-ocr-5.5.4.tar.gz")}
 GROUPS={x["pkgbase"]:x for x in PREV["provenance"]["sources"]}
 BINARY_LOCK={x["name"]:x for x in LOCK["package_lock"]}
+REVIEW=json.loads((ROOT/"tests/minimal_ocr_original_contracts_45753551403.json").read_bytes())
+assert REVIEW["model_source_signature_and_bytes_verified"] and REVIEW["old_runtime_files_mapped"]==43
+assert REVIEW["prior_candidate_id"]=="15085655070" and REVIEW["prior_candidate_unchanged"]
+PRIMARY={
+ "zlib":("LICENSE","e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2"),
+ "png":("LICENSE","bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526"),
+ "lept":("leptonica-license.txt","87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806"),
+ "tess":("LICENSE","cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30")}
+def git_blob(data):
+    return hashlib.sha1(b"blob "+str(len(data)).encode("ascii")+b"\0"+data,usedforsecurity=False).hexdigest()
+def license_name(name):
+    return name.casefold()=="leptonica-license.txt" or bool(re.fullmatch(r"(?i)(license|licence|copying|copyright|notice|authors|patents)(?:[._-].*)?",name))
 
 
 def member_name(s):
@@ -81,19 +93,31 @@ def source(base,key,group,leaf):
                 with tar.extractfile(e) as src,nested.open("xb") as out:shutil.copyfileobj(src,out,1024*1024)
     assert recipe and hashlib.sha256(recipe).hexdigest()==g["recipes"][0]["sha256"] and entry
     nested_hash=m.digest(nested)
+    old=REVIEW["source_review"]["source_evidence"][group]
+    old_nested=[x for x in old["nested_archives"] if x["path"]==entry]
+    assert len(old_nested)==1 and old_nested[0]["sha256"]==nested_hash
     assert nested_hash.encode("ascii") in recipe,("upstream nested source not pinned in signed recipe",key,nested_hash)
     root=extract_upstream(nested,base/(key+"-src"))
+    license_path,license_sha=PRIMARY[key]
+    actual=(root/license_path).read_bytes()
+    assert hashlib.sha256(actual).hexdigest()==license_sha,("exact upstream primary license mismatch",key)
     for p in root.rglob("*"):
-        if p.is_file() and re.fullmatch(r"(?i)(license|licence|copying|copyright|notice|authors|patents)(?:[._-].*)?",p.name):
+        if p.is_file() and license_name(p.name):
             assert p.stat().st_size<=1024*1024 and len(docs)<200
             raw=p.read_bytes()
             docs.append({"path":p.relative_to(root).as_posix(),"sha256":hashlib.sha256(raw).hexdigest(),
                          "text":raw.decode("utf-8","backslashreplace")})
-    assert docs,("upstream license missing",key)
+    assert docs and any(x["path"]==license_path and x["sha256"]==license_sha for x in docs),("upstream license missing",key)
+    if key=="lept":
+        assert git_blob(actual)=="73d44c601c0746534128804c3fb0b93772897f82"
+        assert {x["path"] for x in docs if x["sha256"]==license_sha}=={"leptonica-license.txt","src/leptonica-license.txt","prog/leptonica-license.txt"},docs
+        row("Leptonica exact signed nested source root/src/prog license and official Git blob","PASS_ACTUAL",
+            {"sha256":license_sha,"git_blob_sha1":git_blob(actual),"files":[x["path"] for x in docs]})
     m.OUT["sources"][key]={"group":group,"version":g["version"],"signed_archive":g["archive"],"source_url":g["url"],
        "prior_signature":g["signature_verification"],"recipe_sha256":g["recipes"][0]["sha256"],
        "nested_member":entry,"nested_sha256":nested_hash,"source_file_count":sum(x.is_file() for x in root.rglob("*")),
-       "license_notice_documents":docs,"cmake_sha256":m.digest(root/"CMakeLists.txt"),"applied_packager_patches":[]}
+       "license_notice_documents":docs,"primary_license":{"path":license_path,"sha256":license_sha,"git_blob_sha1":git_blob(actual)},
+       "cmake_sha256":m.digest(root/"CMakeLists.txt"),"cmake_git_blob_sha1":git_blob((root/"CMakeLists.txt").read_bytes()),"applied_packager_patches":[]}
     save()
     archive.unlink();nested.unlink()
     return root
@@ -163,7 +187,9 @@ def build(base,srcs,vs,cmake):
     common=["-G","Visual Studio 17 2022","-A","x64",f"-DCMAKE_GENERATOR_INSTANCE={vs}",
         f"-DCMAKE_INSTALL_PREFIX={prefix}",f"-DCMAKE_PREFIX_PATH={prefix}",
         "-DCMAKE_INSTALL_LIBDIR=lib","-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded","-DCMAKE_POLICY_DEFAULT_CMP0091=NEW",
-        "-DBUILD_SHARED_LIBS=OFF","-DCMAKE_FIND_USE_PACKAGE_REGISTRY=FALSE","-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=FALSE",
+        "-DBUILD_SHARED_LIBS=OFF","-DCMAKE_VS_GLOBALS=VcpkgEnabled=false;VcpkgEnableManifest=false",
+        "-DCMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH=FALSE",
+        "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=FALSE","-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=FALSE",
         "-DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=TRUE","-DCMAKE_FIND_PACKAGE_NO_SYSTEM_PACKAGE_REGISTRY=TRUE",
         "-DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=TRUE","-DCMAKE_DISABLE_FIND_PACKAGE_SW=TRUE","-DCMAKE_DISABLE_FIND_PACKAGE_Git=TRUE",
         "-DCMAKE_DISABLE_FIND_PACKAGE_CURL=TRUE","-DCMAKE_DISABLE_FIND_PACKAGE_LibArchive=TRUE",
@@ -179,6 +205,12 @@ def build(base,srcs,vs,cmake):
                   "-DENABLE_NATIVE=OFF","-DUSE_SYSTEM_ICU=OFF","-DENABLE_CCACHE=OFF","-DENABLE_PRECOMPILED_HEADERS=OFF",
                   "-DENABLE_LTO=OFF","-DINSTALL_CONFIGS=ON"]}
     m.OUT["build_recipe"]={"common":common,"components":opts,"configuration":"Release","parallel":2,"source_patches":[]};save()
+    for key,flags in opts.items():
+        raw=(srcs[key]/"CMakeLists.txt").read_text(encoding="utf-8")
+        for flag in flags:
+            name=flag[2:].split("=")[0]
+            assert re.search(r"\b"+re.escape(name)+r"\b",raw),(key,name)
+    row("fixed upstream build-option preflight","PASS_ACTUAL",list(opts))
     dep=[]
     for key in ("zlib","png","lept","tess"):
         dest=builds/key;dest.mkdir()
@@ -189,14 +221,34 @@ def build(base,srcs,vs,cmake):
         assert c["CMAKE_GENERATOR"]=="Visual Studio 17 2022" and c["CMAKE_GENERATOR_PLATFORM"]=="x64"
         assert c["CMAKE_MSVC_RUNTIME_LIBRARY"]=="MultiThreaded"
         selected={k:v for k,v in c.items() if re.match(r"(?i)(ZLIB|PNG|Leptonica|CURL|LibArchive|TIFF|JPEG|GIF|OpenJPEG|WebP|ICU|OpenMP)_",k)}
+        # Generated project source/build directories are not dependency lookups.
         for name,val in selected.items():
+            if name.upper().endswith(("_SOURCE_DIR","_BINARY_DIR")):
+                if re.match(r"^[A-Za-z]:[/\\]",val):
+                    assert Path(val).resolve().is_relative_to(base.resolve()),("project source/build outside scratch",name,val)
+                continue
             if re.search(r"(?:LIBRARY|LIBRARIES|INCLUDE_DIR|_DIR)(?:_(?:RELEASE|DEBUG))?$",name,re.I):
                 if val.endswith("-NOTFOUND") or not val or val in ("optimized","debug","general"):continue
                 for part in val.split(";"):
                     if re.match(r"^[A-Za-z]:[/\\]",part):
                         assert Path(part).resolve().is_relative_to(prefix.resolve()),("unexpected host dependency",name,part)
+        for flag in opts[key]:
+            n,v=flag[2:].split("=",1)
+            assert c.get(n)==v,("effective CMake option mismatch",key,n,c.get(n),v)
+        # Inspect the actual generated Release compile projects for static CRT.
+        ns={"v":"http://schemas.microsoft.com/developer/msbuild/2003"}
+        targets={"zlib":{"zlibstatic"},"png":{"png_static"},"lept":{"leptonica"},"tess":{"libtesseract","tesseract"}}[key]
+        crt={}
+        for project in dest.rglob("*.vcxproj"):
+            if project.stem not in targets:continue
+            groups=ET.parse(project).getroot().findall("v:ItemDefinitionGroup",ns)
+            vals=[r.text for g in groups if "Release|x64" in g.get("Condition","") for r in g.findall("v:ClCompile/v:RuntimeLibrary",ns)]
+            assert vals and set(vals)=={"MultiThreaded"},("actual Release static CRT selection",project.name,vals)
+            crt[project.stem]=vals
+        assert set(crt)==targets,("missing generated compile target",key,crt,targets)
         m.OUT["builds"].append({"component":key,"cache_dependency_selections":selected,
-            "cache_sha256":m.digest(dest/"CMakeCache.txt"),"sdk_version":c.get("CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION")});save()
+            "actual_release_runtime_library":crt,"cache_sha256":m.digest(dest/"CMakeCache.txt"),
+            "sdk_version":c.get("CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION")});save()
         run([cmake,"--build",dest,"--config","Release","--parallel","2"],dest,env,"build",timeout=1500)
         run([cmake,"--install",dest,"--config","Release"],dest,env,"install",timeout=180)
         if key=="zlib":
@@ -245,7 +297,14 @@ def model(base,runtime):
     assert m.digest(src)==want["sha256"] and src.stat().st_size==want["size"]
     t=runtime/"tessdata";t.mkdir();(t/"configs").mkdir()
     shutil.copyfile(src,t/"chi_sim.traineddata")
-    m.OUT["model"]=want;save()
+    reviewed=REVIEW["source_review"]["source_evidence"]["mingw-w64-tesseract-data"]
+    assert reviewed["model_exact_source_match"] and reviewed["signature_verification"]["verified"]
+    assert reviewed["nested_archives"][0]["models"][0]["sha256"]==want["sha256"]
+    model_doc=reviewed["documents"][0]
+    doc=REVIEW["source_review"]["license_documents"][model_doc["sha256"]]
+    assert hashlib.sha256(doc["text"].encode("utf-8")).hexdigest()==model_doc["sha256"]
+    m.OUT["model"]={**want,"signed_source":reviewed["archive"],"source_signature":reviewed["signature_verification"],
+        "source_license":doc,"source_recipe_sha256":reviewed["recipe"]["sha256"]};save()
     archive.unlink()
 
 
@@ -295,17 +354,25 @@ def reduced_run(runtime,image,psm,name,_unused1,_unused2):
 
 
 def main():
-    m.ancestors(ROOT);base=ROOT/"tmp"/("ocr-min-"+uuid.uuid4().hex[:8]);base.mkdir()
+    base=None
     try:
+        m.ancestors(ROOT);parent=ROOT/"tmp";parent.mkdir(exist_ok=True);m.ancestors(parent)
+        assert REPORT.parent.resolve()==parent.resolve();save()
+        base=parent/("ocr-min-"+uuid.uuid4().hex[:8]);base.mkdir();m.ancestors(base)
+        vs,cmake=tools()
         srcs={k:source(base,k,*v) for k,v in SOURCES.items()}
         row("four exact signed-source recipe and actual upstream source/license inventories","PASS_ACTUAL",list(srcs))
-        vs,cmake=tools();exe,prefix=build(base,srcs,vs,cmake);pe_check(exe)
-        runtime=base/"Portable \u4e2d\u6587 \u7a7a\u683c";runtime.mkdir();bd=runtime/"bin";bd.mkdir()
+        exe,prefix=build(base,srcs,vs,cmake);pe_check(exe)
+        runtime=base/"runtime-initial";runtime.mkdir();bd=runtime/"bin";bd.mkdir()
         shutil.copyfile(exe,bd/"tesseract.exe");assert m.digest(bd/"tesseract.exe")==m.digest(exe)
         model(base,runtime)
         cfg=srcs["tess"]/"tessdata/configs/tsv";assert cfg.is_file()
         shutil.copyfile(cfg,runtime/"tessdata/configs/tsv")
         m.OUT["tsv_config"]={"sha256":m.digest(cfg),"size":cfg.stat().st_size};save()
+        expected={p.relative_to(runtime).as_posix():m.digest(p) for p in runtime.rglob("*") if p.is_file()}
+        initial=runtime;runtime=base/"Portable \u4e2d\u6587 \u7a7a\u683c";initial.rename(runtime);bd=runtime/"bin"
+        assert not initial.exists() and {p.relative_to(runtime).as_posix():m.digest(p) for p in runtime.rglob("*") if p.is_file()}==expected
+        row("actual isolated runtime Chinese-space relocation and exact member readback","PASS_ACTUAL",expected)
         cells=w.fixture(runtime);w.local_run=reduced_run
         w.recognize(runtime,cells,None,None)
         assert len(list(bd.iterdir()))==1 and m.digest(bd/"tesseract.exe")==m.OUT["runtime_pe"]["sha256"]
@@ -313,7 +380,13 @@ def main():
         row("reduced build technical acceptance, not redistribution/integration","PASS_ACTUAL",{"one_exe":True,"third_party_dlls":0,"model_bytes":m.OUT["model"]["size"]})
     except Exception:row("reduced source-built OCR","FAIL_OR_BLOCKED",traceback.format_exc()[-8000:])
     finally:
-        shutil.rmtree(base);m.OUT["scratch_removed"]=not base.exists();m.OUT["completed"]=True;save()
+        try:
+            if base is not None and base.exists():m.ancestors(base);shutil.rmtree(base)
+            m.OUT["scratch_removed"]=base is None or not base.exists()
+        except Exception:
+            row("owned build scratch cleanup","FAIL",traceback.format_exc()[-3000:])
+            m.OUT["technical_recognition_passed"]=False
+        m.OUT["completed"]=True;save()
     return int(not m.OUT["technical_recognition_passed"])
 if __name__=="__main__":
     for stream in (sys.stdout,sys.stderr):stream.reconfigure(encoding="utf-8",errors="backslashreplace")
