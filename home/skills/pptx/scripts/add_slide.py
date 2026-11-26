@@ -29,7 +29,6 @@ import re
 import shutil
 import sys
 from typing import NoReturn
-import tempfile
 import zipfile
 from pathlib import Path
 
@@ -56,7 +55,7 @@ if __name__ == "__main__" and sys.flags.safe_path:
         if stream is not None and not stream.isatty() and hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
 
-from office.helpers import ensure_portable_tree_no_reparse, portable_temp_dir, resolve_portable_path, rezip, safe_extract
+from office.helpers import ensure_portable_tree_no_reparse, portable_temporary_directory, resolve_portable_path, rezip, safe_extract
 
 MINIMAL_SLIDE_XML = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
@@ -339,7 +338,7 @@ def add_slide_to_package(
     package: Path, source: str, after: str | None = None, output: Path | None = None
 ) -> str:
     out = output or package
-    with tempfile.TemporaryDirectory(dir=portable_temp_dir()) as tmp:
+    with portable_temporary_directory() as tmp:
         tmp_path = Path(tmp)
         with zipfile.ZipFile(package) as zf:
             safe_extract(zf, tmp_path)

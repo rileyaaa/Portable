@@ -26,7 +26,6 @@ import argparse
 import random
 import shutil
 import sys
-import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,7 +57,7 @@ if __name__ == "__main__" and sys.flags.safe_path:
         if stream is not None and not stream.isatty() and hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
 
-from office.helpers import ensure_portable_tree_no_reparse, opc_target, portable_temp_dir, resolve_portable_path, rezip as _rezip, safe_extract as _safe_extract
+from office.helpers import ensure_portable_tree_no_reparse, opc_target, portable_temporary_directory, resolve_portable_path, rezip as _rezip, safe_extract as _safe_extract
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 NS = {
@@ -367,7 +366,7 @@ def main() -> None:
             print(msg)
         elif src.is_file() and src.suffix.lower() in (".docx", ".dotx"):
             out = resolve_portable_path(args.output, must_exist=False) if args.output else src
-            with tempfile.TemporaryDirectory(dir=portable_temp_dir()) as tmp:
+            with portable_temporary_directory() as tmp:
                 tmp_path = Path(tmp)
                 with zipfile.ZipFile(src) as zf:
                     _safe_extract(zf, tmp_path)

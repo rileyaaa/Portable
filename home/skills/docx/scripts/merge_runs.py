@@ -26,7 +26,6 @@ Usage:
 
 import argparse
 import sys
-import tempfile
 import zipfile
 from pathlib import Path
 
@@ -55,7 +54,7 @@ if __name__ == "__main__" and sys.flags.safe_path:
         if stream is not None and not stream.isatty() and hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
 
-from office.helpers import XML_SPACE, ensure_portable_tree_no_reparse, portable_temp_dir, rendered_text, resolve_portable_path, rezip, safe_extract
+from office.helpers import XML_SPACE, ensure_portable_tree_no_reparse, portable_temporary_directory, rendered_text, resolve_portable_path, rezip, safe_extract
 
 WORDML_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
@@ -319,7 +318,7 @@ def main() -> None:
             print(_merge_or_die(src))
         elif src.is_file() and src.suffix.lower() in (".docx", ".dotx"):
             out = resolve_portable_path(args.output, must_exist=False) if args.output else src
-            with tempfile.TemporaryDirectory(dir=portable_temp_dir()) as tmp:
+            with portable_temporary_directory() as tmp:
                 tmp_path = Path(tmp)
                 with zipfile.ZipFile(src) as zf:
                     safe_extract(zf, tmp_path)

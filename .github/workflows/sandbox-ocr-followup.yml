@@ -1,0 +1,231 @@
+name: Narrow Windows sandbox ACL and Chinese OCR followup
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths: [.github/workflows/sandbox-ocr-followup.yml]
+permissions: {}
+concurrency:
+  group: portable-sandbox-ocr-followup
+  cancel-in-progress: false
+jobs:
+  ocr_alt:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1
+    runs-on: windows-2022
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Read-only alternative Windows OCR language preflight, no language install
+        id: preflight
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $report = Join-Path $env:RUNNER_TEMP 'ocr-alt.json'
+          "ALT_REPORT=$report" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          $meta = [ordered]@{scope='ocr-only';source_commit=$env:GITHUB_SHA;runner_image=$env:ImageOS;runner_image_version=$env:ImageVersion;completed=$true}
+          $rows = @()
+          $supported = $false
+          try {
+            [void][Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime]
+            [void][Windows.Globalization.Language,Windows.Globalization,ContentType=WindowsRuntime]
+            $language = [Windows.Globalization.Language]::new('zh-Hans-CN')
+            $available = @([Windows.Media.Ocr.OcrEngine]::AvailableRecognizerLanguages | ForEach-Object {$_.LanguageTag})
+            $supported = [Windows.Media.Ocr.OcrEngine]::IsLanguageSupported($language)
+            $rows += [ordered]@{mode='ocr';item='alternate Windows actual language inventory';status='OBSERVED';detail=@{available=$available;supported=$supported}}
+            if (-not $supported) { $rows += [ordered]@{mode='ocr';item='Chinese OCR';status='BLOCKED_LANGUAGE_MISSING';detail='No Chinese engine on Windows Server 2022; no installation.'} }
+            else { $meta.completed=$false; $rows += [ordered]@{mode='ocr';item='Chinese OCR';status='NOT_RUN';detail='Language available; actual candidate recognition still required.'} }
+          } catch {
+            $rows += [ordered]@{mode='ocr';item='alternate Windows OCR API';status='BLOCKED_API';detail=$_.Exception.GetType().FullName}
+          }
+          [IO.File]::WriteAllText($report,(@{metadata=$meta;rows=$rows}|ConvertTo-Json -Depth 12),(New-Object Text.UTF8Encoding($false)))
+          "supported=$($supported.ToString().ToLowerInvariant())" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Output (Get-Content -LiteralPath $report -Raw)
+      - name: Preserve bytes only if alternate engine exists
+        if: steps.preflight.outputs.supported == 'true'
+        run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'Git config failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: steps.preflight.outputs.supported == 'true'
+        with:
+          lfs: true
+          persist-credentials: false
+      - name: Actual candidate Chinese OCR only if preinstalled
+        id: recognize
+        if: steps.preflight.outputs.supported == 'true'
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA) { throw 'Unexpected source' }
+          $build = Join-Path $env:RUNNER_TEMP 'ocr-alt-build.json'
+          $json = & .\tool\python\python.exe -B tool/package-release.py --version v0.172.0-portable.2
+          if ($LASTEXITCODE) { throw 'Alternate candidate build failed' }
+          $joined = $json -join [Environment]::NewLine
+          $value = $joined | ConvertFrom-Json
+          if ($value.source_commit -cne $env:GITHUB_SHA) { throw 'Wrong source commit' }
+          [IO.File]::WriteAllText($build,$joined,(New-Object Text.UTF8Encoding($false)))
+          & .\tool\python\python.exe -B tests/check_sandbox_ocr_followup.py ocr-only $build $env:ALT_REPORT
+          if ($LASTEXITCODE) { throw 'Alternate Chinese recognition not qualified' }
+      - name: Upload only tiny alternate OCR evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: alternate-ocr-evidence
+          path: ${{ runner.temp }}/ocr-alt.json
+          if-no-files-found: error
+          retention-days: 14
+  targeted:
+    needs: [ocr_alt]
+    if: always() && github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1
+    runs-on: windows-latest
+    timeout-minutes: 65
+    permissions:
+      contents: write
+      actions: read
+    defaults:
+      run:
+        shell: powershell
+    env:
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      BASE: a0a28bb510a04145e635810d3291c1868fefb938
+    steps:
+      - name: Preserve source bytes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'Git config failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Verify one dev branch, frozen release and previous evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or $event.before -cne $env:BASE) { throw 'Unexpected candidate base' }
+          $prior = Invoke-RestMethod -Uri 'https://api.github.com/repos/rileyaaa/Portable/actions/runs/45741929384' -Headers @{Authorization=('Bearer '+$env:GH_TOKEN);Accept='application/vnd.github+json';'User-Agent'='portable-sandbox-followup'}
+          if ($prior.status -cne 'completed' -or (Test-Path -LiteralPath '.github/workflows/course-assistant-candidate.yml')) { throw 'Previous candidate not finalized' }
+          $expected = @('home/skills/docx/scripts/merge_runs.py','home/skills/docx/scripts/comment.py','home/skills/pptx/scripts/add_slide.py','tests/sandbox_ocr_followup_45741929384.md','tests/sandbox_acl_consumer.py','tests/check_sandbox_ocr_followup.py','.github/workflows/sandbox-ocr-followup.yml')
+          $changed = @(git diff --name-only $env:BASE HEAD)
+          if ($LASTEXITCODE -or $changed.Count -ne $expected.Count -or @(Compare-Object $expected $changed).Count) { throw 'Unexpected changed paths' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@('refs/heads/dev/stable-tool-refresh',$env:GITHUB_SHA))) {
+            $actual = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -or $actual -cne ($pair[1]+[char]9+$pair[0])) { throw 'Frozen or developer ref changed' }
+          }
+          git diff --exit-code $env:BASE HEAD -- run-codex.ps1 env.ps1 Version_History tool home/skills/course-assistant home/skills/portable-ssh tests/course_candidate_45741929384.json tests/original_followup_candidate_45741929384.json tests/release_audit_v0.172.0-portable.1-wrapper-corrected.json
+          if ($LASTEXITCODE) { throw 'Protected runtime or previous evidence changed' }
+          'TARGETED_SCOPE_CONFIRMED=true' | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "TARGETED_REPORT=$(Join-Path $env:RUNNER_TEMP 'sandbox-ocr-main.json')" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "TARGETED_BUILD=$(Join-Path $env:RUNNER_TEMP 'sandbox-ocr-build.json')" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "ALT_DIR=$(Join-Path $env:RUNNER_TEMP 'sandbox-ocr-alt')" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Download alternate tiny language evidence
+        id: alt
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: alternate-ocr-evidence
+          path: ${{ runner.temp }}/sandbox-ocr-alt
+      - name: Only changed source syntax and existing customer input gate
+        id: policy
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'Missing pinned LFS payload' }
+          & .\tool\python\python.exe -B -c "from pathlib import Path; [compile(p.read_bytes(),str(p),'exec') for p in map(Path, ['home/skills/docx/scripts/merge_runs.py','home/skills/docx/scripts/comment.py','home/skills/pptx/scripts/add_slide.py','tests/sandbox_acl_consumer.py','tests/check_sandbox_ocr_followup.py'])]"
+          if ($LASTEXITCODE) { throw 'Targeted Python syntax failed' }
+          & .\tool\python\python.exe -B tool/package-release.py --check
+          if ($LASTEXITCODE) { throw 'Customer input validation failed' }
+      - name: Build exact new candidate locally, no release or whole-package upload
+        id: build
+        if: steps.policy.outcome == 'success'
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $json = & .\tool\python\python.exe -B tool/package-release.py --version v0.172.0-portable.2
+          if ($LASTEXITCODE) { throw 'Candidate build failed' }
+          $joined = $json -join [Environment]::NewLine
+          $value = $joined | ConvertFrom-Json
+          if ($value.source_commit -cne $env:GITHUB_SHA) { throw 'Wrong candidate source' }
+          [IO.File]::WriteAllText($env:TARGETED_BUILD,$joined,(New-Object Text.UTF8Encoding($false)))
+          Write-Output ("TARGETED_CANDIDATE_SHA256="+$value.archive_sha256+" files="+$value.file_count)
+      - name: Native normal and maintenance write matrix, Office and SSH, Chinese-only OCR if supported
+        id: native
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/check_sandbox_ocr_followup.py main $env:TARGETED_BUILD $env:TARGETED_REPORT
+          if ($LASTEXITCODE) { throw 'Targeted rows contain unresolved or blocked cases; preserve evidence' }
+      - name: Record separate evidence and remove only this temporary trigger
+        if: always() && env.TARGETED_SCOPE_CONFIRMED == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          POLICY: ${{ steps.policy.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          NATIVE: ${{ steps.native.outcome }}
+          ALT: ${{ steps.alt.outcome }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import base64,json,os,subprocess,sys
+          from pathlib import Path
+          branch="refs/heads/dev/stable-tool-refresh"
+          frozen=os.environ["FROZEN"];start=os.environ["GITHUB_SHA"]
+          assert os.environ["GITHUB_REF"]==branch
+          auth=base64.b64encode(("x-access-token:"+os.environ.pop("GH_TOKEN")).encode()).decode()
+          print("::add-mask::"+auth,flush=True)
+          cfg=["-c","http.https://github.com/.extraheader=AUTHORIZATION: basic "+auth]
+          def git(*args):return subprocess.check_output(["git",*args])
+          def rev(ref="HEAD"):return git("rev-parse",ref).decode().strip()
+          def ref(name):
+              v,n=git(*cfg,"ls-remote","origin",name).decode().strip().split("\t")
+              assert n==name
+              return v
+          assert rev()==ref(branch)==start
+          assert ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          main=Path(os.environ["TARGETED_REPORT"])
+          alt=Path(os.environ["ALT_DIR"])/"ocr-alt.json"
+          def read(p):
+              return json.loads(p.read_bytes()) if p.exists() else {"metadata":{"completed":False},"rows":[]}
+          report=read(main);alternate=read(alt)
+          result={"source_commit":start,"run_id":os.environ["GITHUB_RUN_ID"],"prior_run":"45741929384",
+              "workflow_steps":{k:os.environ[k] for k in ("POLICY","BUILD","NATIVE","ALT")},
+              "native_windows_latest":report,"alternate_windows_2022":alternate,
+              "prior_course_evidence":"tests/course_candidate_45741929384.json",
+              "prior_followup_evidence":"tests/original_followup_candidate_45741929384.json",
+              "prior_downloadable_candidate":"https://github.com/rileyaaa/Portable/actions/runs/45741929384/artifacts/15081294806",
+              "prior_candidate_is_not_current_source":True,"new_candidate_uploaded":False,"whole_package_all_pass_claim":False}
+          rows=report["rows"];alts=alternate["rows"]
+          result["chinese_recognized"]=any(x["item"]=="actual bundled Chinese course OCR" and x["status"]=="PASS_ACTUAL" for x in rows+alts)
+          result["native_unresolved"]=[{"mode":x["mode"],"item":x["item"]} for x in rows if x["status"]=="FAIL"]
+          result["qualified_targeted_batch"]=bool(report["metadata"].get("completed") and not result["native_unresolved"] and result["chinese_recognized"] and result["workflow_steps"]["BUILD"]=="success" and result["workflow_steps"]["POLICY"]=="success")
+          target=Path("tests/sandbox_ocr_followup_"+os.environ["GITHUB_RUN_ID"]+".json")
+          assert not target.exists()
+          target.write_text(json.dumps(result,indent=2,ensure_ascii=True)+"\n",encoding="utf-8")
+          notes=Path("DEVELOPMENT.md")
+          url="https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]
+          notes.write_bytes(notes.read_bytes()+("\n\n## Targeted Windows sandbox ACL and Chinese OCR followup\n\n"
+              "Candidate source "+start+"; "+url+". Independent results: "+target.as_posix()+
+              ". Prior course and frozen original evidence retained byte-for-byte. Chinese OCR actual recognition="+str(result["chinese_recognized"])+
+              "; targeted batch qualified="+str(result["qualified_targeted_batch"])+
+              "; native unresolved="+json.dumps(result["native_unresolved"],ensure_ascii=True)+
+              ". No full repeat, new dependency, ACL/sandbox change, formal release or new customer artifact.\n").encode("utf-8"))
+          workflow=".github/workflows/sandbox-ocr-followup.yml"
+          git("rm","--",workflow);git("add","--",str(target),"DEVELOPMENT.md")
+          assert set(git("diff","--cached","--name-only","-z").decode().split("\0"))-{""}=={workflow,target.as_posix(),"DEVELOPMENT.md"}
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Record targeted sandbox and OCR evidence; remove temporary workflow")
+          final=rev();assert ref(branch)==start
+          subprocess.run(["git",*cfg,"push","origin","HEAD:"+branch],check=True)
+          assert ref(branch)==final and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          print("TARGETED_FINAL_DEV="+final,flush=True)
+          print("TARGETED_RESULT="+json.dumps({"chinese_recognized":result["chinese_recognized"],"unresolved":result["native_unresolved"]},ensure_ascii=True),flush=True)
+          if not result["qualified_targeted_batch"]:raise SystemExit(1)
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'Targeted batch unresolved; evidence preserved' }
