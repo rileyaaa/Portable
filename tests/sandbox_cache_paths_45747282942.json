@@ -1,0 +1,3221 @@
+{
+  "run_id": "45747282942",
+  "prior_run": "45744922536",
+  "prior_record": "a96e0c70494de030da297f574e3d048977c8d1f3",
+  "probe_source_commit": "4426479e1c4a5bf49c4e99c51a4d3bb4cd8dc981",
+  "probe": {
+    "metadata": {
+      "prior_run": "45744922536",
+      "prior_record": "a96e0c70494de030da297f574e3d048977c8d1f3",
+      "source_commit": "4426479e1c4a5bf49c4e99c51a4d3bb4cd8dc981",
+      "phase": "probe",
+      "completed": true,
+      "runner_image": "win25-vs2026",
+      "runner_image_version": "20261116.315.1",
+      "upstream_system_source": "3d86e43b075adeba2193ec5c22ac92f55afd82e6",
+      "chinese_ocr": "BLOCKED_PREVIOUS_BOTH_RUNNERS_NO_NEW_AUTHORIZED_ENVIRONMENT",
+      "archive_sha256": "8d772f0cc3e887907e3d43ca597e1fb59da6ae72cb710cf00eb61c9b9a3f0045",
+      "manifest_sha256": "076700afa35d8b1c4d5913f905fc815df14a86dab5d9dbf77f4c9432bc89e88f",
+      "file_count": 9147,
+      "zip_verified": true
+    },
+    "rows": [
+      {
+        "mode": "normal",
+        "item": "exact pristine candidate ZIP and moved tree",
+        "status": "PASS_ACTUAL",
+        "detail": 9147
+      },
+      {
+        "mode": "normal",
+        "item": "native Windows token",
+        "status": "OBSERVED",
+        "detail": {
+          "restricted": true,
+          "restricting_sid_count": 4,
+          "elevated": false,
+          "enabled_group_count": 11,
+          "deny_only_group_count": 2
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "native restricted token and unchanged launcher policy",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "configuration_verified": true,
+          "restricted_token": {
+            "restricted": true,
+            "restricting_sid_count": 4,
+            "elevated": false,
+            "enabled_group_count": 11,
+            "deny_only_group_count": 2
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "host-precreated non-readonly write matrix package_root",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "ace_masks": {
+              "normal_allow": "0x1200a9",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200a9",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": false,
+            "restricted_write_data_ace": false
+          },
+          "native_open": {
+            "read": {
+              "ok": true
+            },
+            "write_data": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_write": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_read_write": {
+              "ok": false,
+              "winerror": 5
+            }
+          },
+          "rplus_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "write_only_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "expected_write": false,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 7,
+            "inherited": 6,
+            "ace_masks": {
+              "normal_allow": "0x1200af",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200af",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "sandbox-created close/reopen/overwrite/delete matrix package_root",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": false,
+          "create": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "host-precreated non-readonly write matrix work",
+        "status": "FAIL",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "ace_masks": {
+              "normal_allow": "0x1200a9",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200a9",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": false,
+            "restricted_write_data_ace": true
+          },
+          "native_open": {
+            "read": {
+              "ok": true
+            },
+            "write_data": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_write": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_read_write": {
+              "ok": false,
+              "winerror": 5
+            }
+          },
+          "rplus_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "write_only_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 8,
+            "inherited": 6,
+            "ace_masks": {
+              "normal_allow": "0x1200af",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200af",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": true
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "sandbox-created close/reopen/overwrite/delete matrix work",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": true,
+          "create": {
+            "ok": true
+          },
+          "reopened": {
+            "attributes": {
+              "readonly": false,
+              "attributes_hex": "0x20",
+              "size": 24
+            },
+            "acl": {
+              "protected": false,
+              "auto_inherited": true,
+              "null_dacl": false,
+              "owner_is_token_user": true,
+              "ace_count": 5,
+              "inherited": 5,
+              "ace_masks": {
+                "normal_allow": "0x1f01ff",
+                "normal_deny": "0x0",
+                "user_allow": "0x1f01ff",
+                "enabled_group_allow": "0x1200a9",
+                "deny_only_deny": "0x0",
+                "restricted_allow": "0x1301bf",
+                "restricted_deny": "0x0"
+              },
+              "normal_write_data_ace": true,
+              "restricted_write_data_ace": true
+            },
+            "native_open": {
+              "read": {
+                "ok": true
+              },
+              "write_data": {
+                "ok": true
+              },
+              "generic_write": {
+                "ok": true
+              },
+              "generic_read_write": {
+                "ok": true
+              }
+            },
+            "rplus_overwrite": {
+              "ok": true
+            },
+            "write_only_overwrite": {
+              "ok": true
+            }
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "host-precreated non-readonly write matrix tmp",
+        "status": "FAIL",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "ace_masks": {
+              "normal_allow": "0x1200a9",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200a9",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": false,
+            "restricted_write_data_ace": true
+          },
+          "native_open": {
+            "read": {
+              "ok": true
+            },
+            "write_data": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_write": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_read_write": {
+              "ok": false,
+              "winerror": 5
+            }
+          },
+          "rplus_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "write_only_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 8,
+            "inherited": 6,
+            "ace_masks": {
+              "normal_allow": "0x1200af",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200af",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": true
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "sandbox-created close/reopen/overwrite/delete matrix tmp",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": true,
+          "create": {
+            "ok": true
+          },
+          "reopened": {
+            "attributes": {
+              "readonly": false,
+              "attributes_hex": "0x20",
+              "size": 24
+            },
+            "acl": {
+              "protected": false,
+              "auto_inherited": true,
+              "null_dacl": false,
+              "owner_is_token_user": true,
+              "ace_count": 5,
+              "inherited": 5,
+              "ace_masks": {
+                "normal_allow": "0x1f01ff",
+                "normal_deny": "0x0",
+                "user_allow": "0x1f01ff",
+                "enabled_group_allow": "0x1200a9",
+                "deny_only_deny": "0x0",
+                "restricted_allow": "0x1301bf",
+                "restricted_deny": "0x0"
+              },
+              "normal_write_data_ace": true,
+              "restricted_write_data_ace": true
+            },
+            "native_open": {
+              "read": {
+                "ok": true
+              },
+              "write_data": {
+                "ok": true
+              },
+              "generic_write": {
+                "ok": true
+              },
+              "generic_read_write": {
+                "ok": true
+              }
+            },
+            "rplus_overwrite": {
+              "ok": true
+            },
+            "write_only_overwrite": {
+              "ok": true
+            }
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "host-precreated non-readonly write matrix tool",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "ace_masks": {
+              "normal_allow": "0x1200a9",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200a9",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": false,
+            "restricted_write_data_ace": false
+          },
+          "native_open": {
+            "read": {
+              "ok": true
+            },
+            "write_data": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_write": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_read_write": {
+              "ok": false,
+              "winerror": 5
+            }
+          },
+          "rplus_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "write_only_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "expected_write": false,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 7,
+            "inherited": 6,
+            "ace_masks": {
+              "normal_allow": "0x1200af",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200af",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "sandbox-created close/reopen/overwrite/delete matrix tool",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": false,
+          "create": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "host-precreated non-readonly write matrix skills",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "ace_masks": {
+              "normal_allow": "0x1200a9",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200a9",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": false,
+            "restricted_write_data_ace": false
+          },
+          "native_open": {
+            "read": {
+              "ok": true
+            },
+            "write_data": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_write": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_read_write": {
+              "ok": false,
+              "winerror": 5
+            }
+          },
+          "rplus_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "write_only_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "expected_write": false,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 7,
+            "inherited": 6,
+            "ace_masks": {
+              "normal_allow": "0x1200af",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200af",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "sandbox-created close/reopen/overwrite/delete matrix skills",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": false,
+          "create": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "host-precreated non-readonly write matrix outside",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "ace_masks": {
+              "normal_allow": "0x1200a9",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200a9",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": false,
+            "restricted_write_data_ace": false
+          },
+          "native_open": {
+            "read": {
+              "ok": true
+            },
+            "write_data": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_write": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_read_write": {
+              "ok": false,
+              "winerror": 5
+            }
+          },
+          "rplus_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "write_only_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "expected_write": false,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 7,
+            "inherited": 6,
+            "ace_masks": {
+              "normal_allow": "0x1200af",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200af",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "sandbox-created close/reopen/overwrite/delete matrix outside",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": false,
+          "create": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "SSH actual unchanged private-directory keygen",
+        "status": "FAIL",
+        "detail": {
+          "returncode": 2,
+          "stderr": "Portable SSH: [WinError 5] Access is denied: 'D:\\\\a\\\\Portable\\\\Portable\\\\tmp\\\\cache-path-followup-c56a70d9ef4646888292873d62a4a9ea\\\\normal\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\work\\\\ssh\\\\keys'\r\n",
+          "work/ssh": {
+            "exists": true,
+            "acl": {
+              "winerror": 5
+            }
+          },
+          "work/ssh/keys": {
+            "exists": false,
+            "acl": {
+              "winerror": 2
+            }
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "fixed NumPy actual argument parser split",
+        "status": "OBSERVED",
+        "detail": {
+          "space_argument_split": true
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "f2py direct versus wrapper ascii-relative",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "direct-module": {
+            "returncode": 0,
+            "stdout": "Reading fortran codes...\r\n\tReading file 'sample.f90' (format:free)\r\nPost-processing...\r\n\tBlock: sample\r\n\t\t\tBlock: addone\r\nApplying post-processing hooks...\r\n  character_backward_compatibility_hook\r\nPost-processing (stage 2)...\r\nSaving signatures to file \".\\direct-module.pyf\"\r\n",
+            "stderr": "",
+            "signature_verified": true
+          },
+          "portable-cmd": {
+            "returncode": 0,
+            "stdout": "Reading fortran codes...\r\n\tReading file 'sample.f90' (format:free)\r\nPost-processing...\r\n\tBlock: sample\r\n\t\t\tBlock: addone\r\nApplying post-processing hooks...\r\n  character_backward_compatibility_hook\r\nPost-processing (stage 2)...\r\nSaving signatures to file \".\\portable-cmd.pyf\"\r\n",
+            "stderr": "",
+            "signature_verified": true
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "f2py direct versus wrapper chinese-relative",
+        "status": "FAIL",
+        "detail": {
+          "direct-module": {
+            "returncode": 1,
+            "stdout": "Reading fortran codes...\r\n",
+            "stderr": "mat:%s%s)\\n'\r\n    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n            % (repr(currentfilename), sourcecodeform,\r\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n               (strictf77 and ',strict') or ''))\r\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"D:\\a\\Portable\\Portable\\tmp\\cache-path-followup-c56a70d9ef4646888292873d62a4a9ea\\normal\\Portable \\u4e2d\\u6587 \\u7a7a\\u683c\\tool\\python\\Lib\\site-packages\\numpy\\f2py\\crackfortran.py\", line 243, in outmess\r\n    sys.stdout.write(line)\r\n    ~~~~~~~~~~~~~~~~^^^^^^\r\n  File \"encodings\\cp1252.py\", line 19, in encode\r\nUnicodeEncodeError: 'charmap' codec can't encode characters in position 15-16: character maps to <undefined>\r\n",
+            "signature_verified": false
+          },
+          "portable-cmd": {
+            "returncode": 1,
+            "stdout": "Reading fortran codes...\r\n\tReading file '\u4e2d\u6587.f90' (format:free)\r\nPost-processing...\r\n\tBlock: sample\r\n\t\t\tBlock: addone\r\nApplying post-processing hooks...\r\n  character_backward_compatibility_hook\r\nPost-processing (stage 2)...\r\nSaving signatures to file \".\\portable-cmd.pyf\"\r\n",
+            "stderr": "ne 788, in main\r\n    run_main(sys.argv[1:])\r\n    ~~~~~~~~^^^^^^^^^^^^^^\r\n  File \"D:\\a\\Portable\\Portable\\tmp\\cache-path-followup-c56a70d9ef4646888292873d62a4a9ea\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\tool\\python\\Lib\\site-packages\\numpy\\f2py\\f2py2e.py\", line 478, in run_main\r\n    postlist = callcrackfortran(files, options)\r\n  File \"D:\\a\\Portable\\Portable\\tmp\\cache-path-followup-c56a70d9ef4646888292873d62a4a9ea\\normal\\Portable \u4e2d\u6587 \u7a7a\u683c\\tool\\python\\Lib\\site-packages\\numpy\\f2py\\f2py2e.py\", line 363, in callcrackfortran\r\n    f.write(pyf)\r\n    ~~~~~~~^^^^^\r\n  File \"encodings\\cp1252.py\", line 19, in encode\r\nUnicodeEncodeError: 'charmap' codec can't encode characters in position 172-173: character maps to <undefined>\r\n",
+            "signature_verified": false
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "f2py direct versus wrapper space-relative",
+        "status": "KNOWN_LIMIT",
+        "detail": {
+          "direct-module": {
+            "returncode": 0,
+            "stdout": "Reading fortran codes...\r\nPost-processing...\r\nApplying post-processing hooks...\r\n  character_backward_compatibility_hook\r\nPost-processing (stage 2)...\r\nSaving signatures to file \".\\direct-module.pyf\"\r\n",
+            "stderr": "OSError: [Errno 2] No such file or directory: 'two'. Skipping file \"two\".\r\nOSError: [Errno 2] No such file or directory: 'words.f90'. Skipping file \"words.f90\".\r\n",
+            "signature_verified": false
+          },
+          "portable-cmd": {
+            "returncode": 0,
+            "stdout": "Reading fortran codes...\r\nPost-processing...\r\nApplying post-processing hooks...\r\n  character_backward_compatibility_hook\r\nPost-processing (stage 2)...\r\nSaving signatures to file \".\\portable-cmd.pyf\"\r\n",
+            "stderr": "OSError: [Errno 2] No such file or directory: 'two'. Skipping file \"two\".\r\nOSError: [Errno 2] No such file or directory: 'words.f90'. Skipping file \"words.f90\".\r\n",
+            "signature_verified": false
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "f2py direct versus wrapper absolute-chinese-space",
+        "status": "KNOWN_LIMIT",
+        "detail": {
+          "direct-module": {
+            "returncode": 0,
+            "stdout": "Reading fortran codes...\r\nPost-processing...\r\nApplying post-processing hooks...\r\n  character_backward_compatibility_hook\r\nPost-processing (stage 2)...\r\nSaving signatures to file \".\\direct-module.pyf\"\r\n",
+            "stderr": "OSError: [Errno 2] No such file or directory: 'D:\\\\a\\\\Portable\\\\Portable\\\\tmp\\\\cache-path-followup-c56a70d9ef4646888292873d62a4a9ea\\\\normal\\\\Portable'. Skipping file \"D:\\a\\Portable\\Portable\\tmp\\cache-path-followup-c56a70d9ef4646888292873d62a4a9ea\\normal\\Portable\".\r\nOSError: [Errno 2] No such file or directory: '\\u4e2d\\u6587'. Skipping file \"\\u4e2d\\u6587\".\r\nOSError: [Errno 2] No such file or directory: '\\u7a7a\\u683c\\\\work\\\\tool-probe\\\\targeted-output\\\\f2py\\\\absolute-chinese-space\\\\sample.f90'. Skipping file \"\\u7a7a\\u683c\\work\\tool-probe\\targeted-output\\f2py\\absolute-chinese-space\\sample.f90\".\r\n",
+            "signature_verified": false
+          },
+          "portable-cmd": {
+            "returncode": 0,
+            "stdout": "Reading fortran codes...\r\nPost-processing...\r\nApplying post-processing hooks...\r\n  character_backward_compatibility_hook\r\nPost-processing (stage 2)...\r\nSaving signatures to file \".\\portable-cmd.pyf\"\r\n",
+            "stderr": "OSError: [Errno 2] No such file or directory: 'D:\\\\a\\\\Portable\\\\Portable\\\\tmp\\\\cache-path-followup-c56a70d9ef4646888292873d62a4a9ea\\\\normal\\\\Portable'. Skipping file \"D:\\a\\Portable\\Portable\\tmp\\cache-path-followup-c56a70d9ef4646888292873d62a4a9ea\\normal\\Portable\".\r\nOSError: [Errno 2] No such file or directory: '\u4e2d\u6587'. Skipping file \"\u4e2d\u6587\".\r\nOSError: [Errno 2] No such file or directory: '\u7a7a\u683c\\\\work\\\\tool-probe\\\\targeted-output\\\\f2py\\\\absolute-chinese-space\\\\sample.f90'. Skipping file \"\u7a7a\u683c\\work\\tool-probe\\targeted-output\\f2py\\absolute-chinese-space\\sample.f90\".\r\n",
+            "signature_verified": false
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "direct bundled Android sqlite3 ascii-relative",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "returncode": 0,
+          "stdout": "21\r\n",
+          "stderr": "",
+          "database_verified": true,
+          "actual_files": [
+            "sample.sqlite"
+          ]
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "direct bundled Android sqlite3 chinese-relative",
+        "status": "OBSERVED_PATH_FAILURE",
+        "detail": {
+          "returncode": 1,
+          "stdout": "",
+          "stderr": "Error: unable to open database \"??.sqlite\": unable to open database file\r\n",
+          "database_verified": false,
+          "actual_files": []
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "direct bundled Android sqlite3 space-relative",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "returncode": 0,
+          "stdout": "21\r\n",
+          "stderr": "",
+          "database_verified": true,
+          "actual_files": [
+            "two words.sqlite"
+          ]
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "direct bundled Android sqlite3 absolute-chinese-space",
+        "status": "OBSERVED_PATH_FAILURE",
+        "detail": {
+          "returncode": 1,
+          "stdout": "",
+          "stderr": "Error: unable to open database \"D:\\a\\Portable\\Portable\\tmp\\cache-path-followup-c56a70d9ef4646888292873d62a4a9ea\\normal\\Portable ?? ??\\work\\tool-probe\\targeted-output\\android-sqlite\\absolute-chinese-space\\sample.sqlite\": unable to open database file\r\n",
+          "database_verified": false,
+          "actual_files": []
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "direct bundled Android etc1tool ascii-relative",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "encode": {
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          },
+          "encoded_exact_path": true,
+          "image_verified": true,
+          "decode": {
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          },
+          "actual_files": [
+            "decoded.png",
+            "sample.pkm",
+            "sample.png"
+          ]
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "direct bundled Android etc1tool chinese-relative",
+        "status": "OBSERVED_PATH_FAILURE",
+        "detail": {
+          "encode": {
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "Could not open input file ??.png for reading: 22\r\n"
+          },
+          "encoded_exact_path": false,
+          "image_verified": false,
+          "actual_files": [
+            "\u4e2d\u6587.png"
+          ]
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "direct bundled Android etc1tool space-relative",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "encode": {
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          },
+          "encoded_exact_path": true,
+          "image_verified": true,
+          "decode": {
+            "returncode": 0,
+            "stdout": "",
+            "stderr": ""
+          },
+          "actual_files": [
+            "decode words.png",
+            "two words.pkm",
+            "two words.png"
+          ]
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "direct bundled Android etc1tool absolute-chinese-space",
+        "status": "OBSERVED_PATH_FAILURE",
+        "detail": {
+          "encode": {
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "Could not open input file D:\\a\\Portable\\Portable\\tmp\\cache-path-followup-c56a70d9ef4646888292873d62a4a9ea\\normal\\Portable ?? ??\\work\\tool-probe\\targeted-output\\android-etc\\absolute-chinese-space\\sample.png for reading: 22\r\n"
+          },
+          "encoded_exact_path": false,
+          "image_verified": false,
+          "actual_files": [
+            "sample.png"
+          ]
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "fixed HTTPX CLI optional dependency refusal",
+        "status": "KNOWN_LIMIT",
+        "detail": {
+          "versions": {
+            "httpx": "0.28.1",
+            "rich": "15.0.0",
+            "click": null,
+            "pygments": "2.20.0"
+          },
+          "cli_requires": [
+            "click==8.*; extra == 'cli'",
+            "pygments==2.*; extra == 'cli'",
+            "rich<14,>=10; extra == 'cli'"
+          ],
+          "actual_help": {
+            "returncode": 1,
+            "stdout": "The httpx command line client could not run because the required dependencies were not installed.\r\nMake sure you've installed everything with: pip install 'httpx[cli]'\r\n",
+            "stderr": ""
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "fixed rg PATH priority identity",
+        "status": "PASS_ACTUAL",
+        "detail": "PATH identity only in this batch; actual two rg content probes already passed 45741929384"
+      },
+      {
+        "mode": "normal",
+        "item": "synthetic precreated sentinel bytes retained",
+        "status": "PASS_ACTUAL",
+        "detail": ""
+      },
+      {
+        "mode": "normal-host-metadata",
+        "item": "native Windows token",
+        "status": "OBSERVED",
+        "detail": {
+          "restricted": false,
+          "restricting_sid_count": 0,
+          "elevated": true,
+          "enabled_group_count": 13,
+          "deny_only_group_count": 0
+        }
+      },
+      {
+        "mode": "normal-host-metadata",
+        "item": "host-precreated ACL after native package_root",
+        "status": "OBSERVED",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "normal-host-metadata",
+        "item": "host-precreated ACL after native work",
+        "status": "OBSERVED",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "normal-host-metadata",
+        "item": "host-precreated ACL after native tmp",
+        "status": "OBSERVED",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "normal-host-metadata",
+        "item": "host-precreated ACL after native tool",
+        "status": "OBSERVED",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "normal-host-metadata",
+        "item": "host-precreated ACL after native skills",
+        "status": "OBSERVED",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "normal-host-metadata",
+        "item": "host-precreated ACL after native outside",
+        "status": "OBSERVED",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "normal-host-metadata",
+        "item": "host read-only SSH directory ACL work/ssh",
+        "status": "OBSERVED",
+        "detail": {
+          "exists": true,
+          "acl": {
+            "protected": true,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": true,
+            "ace_count": 3,
+            "inherited": 0,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "normal-host-metadata",
+        "item": "host read-only SSH directory ACL work/ssh/keys",
+        "status": "OBSERVED",
+        "detail": {
+          "exists": false,
+          "acl": {
+            "winerror": 2
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "host read-only metadata diagnostic",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "returncode": 0,
+          "stderr": ""
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "actual native launcher/Host completed",
+        "status": "PASS_ACTUAL",
+        "detail": "not equivalent to all consumer assertions"
+      },
+      {
+        "mode": "normal",
+        "item": "fixed embedded system cache source membership and all bytes",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "verified": true,
+          "missing": [],
+          "extra": [],
+          "source_blob_mismatches": [],
+          "marker_matches_prior_native": true,
+          "marker": "408224ce9771867c\n",
+          "files": {
+            "create-statusline/SKILL.md": {
+              "source_git_blob_sha1": "1c4f8e2fc3ca3bc82b571d8249d12236e82b1b59",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "5fd8c685666fe64182b5531f26bebbab3722cae3acbbba93e4ff140af365d88f",
+              "size": 2801
+            },
+            "create-statusline/agents/openai.yaml": {
+              "source_git_blob_sha1": "5b1f887a9138416870f64ba2fe21602e4a59cfa7",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "3bf863a8856d04a6a1c4f23b3aae6cbf5388544129662c55cc733c2d9c23bbbf",
+              "size": 45
+            },
+            "create-statusline/assets/statusline.py": {
+              "source_git_blob_sha1": "0dc04236cc60b3401d1dc9fdacb28e59bbc838ed",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "2c63f7bf996fc65ed1be9dabc19df548601528554bf6b1b843d39a37f9c54af6",
+              "size": 3425
+            },
+            "create-statusline/references/statusline.d.ts": {
+              "source_git_blob_sha1": "d0581ca6f865118ba99af712da51b6ed7c9f0a55",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "b716c3c55a38105ab81c111386a410a681ab9b72558934b2b153a771776eee71",
+              "size": 5493
+            },
+            "imagegen/LICENSE.txt": {
+              "source_git_blob_sha1": "13e25df86ce06eb6488e6a6bc5c5847f5dedc352",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "44e03f7e263eb3ad256440c1eeab5e49168baff5a78ecef9a5447261cf3a91bc",
+              "size": 10977
+            },
+            "imagegen/SKILL.md": {
+              "source_git_blob_sha1": "c39b1f921ce679f08416ab16ceb01945835bb950",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "706d4d96e1d5c9e6023fe3ccabba1bb34b364024d344fd25b8515ec7d28fe3c4",
+              "size": 19516
+            },
+            "imagegen/agents/openai.yaml": {
+              "source_git_blob_sha1": "5e01d4410ef4918b45d942175e7ddc39ba7ab5d2",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "1797be4076717806df54aa9331c07ac8eebe32c69f32132d5858712b05406146",
+              "size": 281
+            },
+            "imagegen/assets/imagegen-small.svg": {
+              "source_git_blob_sha1": "20128b2dba2b93ecd7c398bb379b6049dc94a944",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "087c1632a3b8a2ed4d6218952e7ba7ae2221a979f84233667ed2c587998784da",
+              "size": 2894
+            },
+            "imagegen/assets/imagegen.png": {
+              "source_git_blob_sha1": "94b54541a9affd39a7aa09d0efd5bc6b712b723b",
+              "variant": "exact-source-blob",
+              "actual_sha256": "95952f644064eb9e890f98d8db07216347186526e4c41ad66d3420629eb86e20",
+              "size": 1711
+            },
+            "imagegen/references/cli.md": {
+              "source_git_blob_sha1": "748c83c745b6f010d4afba27224cb947c02e9485",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "29dc8c1e3e5d9a20aee587fedb46a464552b6ec118d93bbd90c8d86e30502c8c",
+              "size": 9897
+            },
+            "imagegen/references/codex-network.md": {
+              "source_git_blob_sha1": "5ce1fbc748bdccdd837c35b37b6cc1c95c0aa89b",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "cba3b4d24d30f38adf8021b6e9b49ec5261a9e45e7df31047ec451c916c99b0a",
+              "size": 1812
+            },
+            "imagegen/references/image-api.md": {
+              "source_git_blob_sha1": "64eff30ee6ab19671ff31b83c992ac19e9829430",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "695909437b792aff171477dba127476a11235c220beb06533cce7c1495a042c8",
+              "size": 6162
+            },
+            "imagegen/references/prompting.md": {
+              "source_git_blob_sha1": "5a826563580bc014897fa61629314ae8a6171513",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "d957a45cb24fe2cf1a85858674fc533f15a5f4621355f559a13a93168999c2dd",
+              "size": 8394
+            },
+            "imagegen/references/sample-prompts.md": {
+              "source_git_blob_sha1": "3e6b46fd02ed7bc85d771a1c35c1c85e9db16ddd",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "76cc8a2988efb6e844a99ff9908b2b11cc07467510fc909002abcc0ee3f0701b",
+              "size": 18039
+            },
+            "imagegen/scripts/image_gen.py": {
+              "source_git_blob_sha1": "ca78422d715585f6983a300199ed79e45bdb7ac0",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "3666b807de3f0a1d0a4a767b886d612c0b8f71025c500bba6693d1c6995a0873",
+              "size": 35697
+            },
+            "imagegen/scripts/remove_chroma_key.py": {
+              "source_git_blob_sha1": "f14df3551888464cd9dc7b75c9678c20f084ed97",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "fa2989807052b857bed08f7fee0caa2502b54c46afc0a6f28cd706c25f636630",
+              "size": 14354
+            },
+            "openai-docs/LICENSE.txt": {
+              "source_git_blob_sha1": "13e25df86ce06eb6488e6a6bc5c5847f5dedc352",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "44e03f7e263eb3ad256440c1eeab5e49168baff5a78ecef9a5447261cf3a91bc",
+              "size": 10977
+            },
+            "openai-docs/SKILL.md": {
+              "source_git_blob_sha1": "7c3190ab2cbbe89e47739bd3142d07ca445826bb",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "d80a1ef9a4e38c0ec62f6294ef5be57670905413508a6f20b860e136d1ccbb82",
+              "size": 3086
+            },
+            "openai-docs/agents/openai.yaml": {
+              "source_git_blob_sha1": "e3f5d7db204de431a7b671e403437dcaaba5bb04",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "a4e37375d0f096a27867dbb39a2ce917c96035b37692afe8206c3d3335077d97",
+              "size": 367
+            },
+            "openai-docs/assets/openai-small.svg": {
+              "source_git_blob_sha1": "1d075dc04f617247747ca8e44f8aa9193e0ab3e6",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "85ef0a2cde497872edec1525f1d538ccc42b33ff47acdbb88499a1631a4bdb21",
+              "size": 1094
+            },
+            "openai-docs/assets/openai.png": {
+              "source_git_blob_sha1": "e9b9eb80cd90ccdfc7e276b07f4046aa9c9d1887",
+              "variant": "exact-source-blob",
+              "actual_sha256": "156cc84d7332bfe95b310350bd470b690d22aa33d65340cc6c2e06022946194c",
+              "size": 1429
+            },
+            "openai-docs/references/codex-self-knowledge.md": {
+              "source_git_blob_sha1": "f0195313661d0a12531cbaa8c26fcda03803a5ae",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "f945bf2a7cea6892d7a11ac38fb18b744fefd6d273654a8410c4c79e9f647fbe",
+              "size": 7488
+            },
+            "openai-docs/references/latest-model.md": {
+              "source_git_blob_sha1": "2f7ec86f19c14e4c9b5c74b007f661a15fadd5d4",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "2ba1596479f54c6b9204db69eed7197a6ad8663038914a73078d5691ee56b0c6",
+              "size": 1596
+            },
+            "openai-docs/references/mcp-diagnostics.md": {
+              "source_git_blob_sha1": "a49d0f2993dc6c08c14bd5c6bee7c710b3f0296c",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "e9df2b2f8faa28930db4a2937cdb3665b4548ac958e80a8601a5dd0da1e6fad0",
+              "size": 2345
+            },
+            "openai-docs/references/model-migration.md": {
+              "source_git_blob_sha1": "dfaafff966151e25bebbd6f3058aafab8b2dd148",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "5499ebded1d7bd0a5cdbf9d7cb426cc539014b476c1c72803bd9b81e6dcce12a",
+              "size": 6291
+            },
+            "openai-docs/references/model-selection.md": {
+              "source_git_blob_sha1": "6ff3dfaecaead748e4ff2fa6f65d6eae314e8264",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "ce020100a28004500c927abcd57cff154c5c360eb72d918ef7d72492e2484cce",
+              "size": 1356
+            },
+            "openai-docs/references/official-docs.md": {
+              "source_git_blob_sha1": "204e31ed993a2caab225571350af7fa874fbee53",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "b2301d72b8092be5f5727d8d1cbc75740887d836f4f13b469f40c1db16b39fe3",
+              "size": 3362
+            },
+            "openai-docs/references/prompting-guide.md": {
+              "source_git_blob_sha1": "b6430d0d49b566c97b0e1fa6d46cea4230844dc3",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "69517cde6c3bac945100a9da946d65c9effdd145d7600dead41f8adc1c1a7e38",
+              "size": 10243
+            },
+            "openai-docs/references/upgrade-guide.md": {
+              "source_git_blob_sha1": "98b9ed96e3fd61c669a33f18de91570d3e4b9582",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "8e8efc61597e1db278b0a56519c1bba9166f32f3d5f4fe6569617b395cf8893b",
+              "size": 1858
+            },
+            "openai-docs/references/upgrading-to-gpt-6-astra.md": {
+              "source_git_blob_sha1": "a61f582e7da80ad8684c81b592912aee7113c837",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "789fcaf0999f56cebf801d0f6e6bdfe347dcfb5eff3d9a40ff815c15336f8699",
+              "size": 19912
+            },
+            "openai-docs/scripts/fetch-codex-manual.mjs": {
+              "source_git_blob_sha1": "d491382e76dfe26966350a883fab7a812793a6d8",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "6172bd2caa95593b735c3e60c0bd5d7ae49ca0a345440f2d2a36e0dfc556801a",
+              "size": 16248
+            },
+            "openai-docs/scripts/resolve-latest-model-info": {
+              "source_git_blob_sha1": "7d00122a37c81a30a7d91d8d74126398975f6493",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "8f5006efa15c034ede29821b627d7b86c43f7dfaab422d335f45b9be8d04e2d5",
+              "size": 1077
+            },
+            "openai-docs/scripts/resolve-latest-model-info.cjs": {
+              "source_git_blob_sha1": "676b64cbe65d7888f6ae94d785c052411e1500b5",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "2eee6052aa77c9e98d7ea8a59caca73c3158eded7ee707308ec563211c30692f",
+              "size": 4079
+            },
+            "review-agent/SKILL.md": {
+              "source_git_blob_sha1": "c694020c1c5de0e8fee4e933f55e0f6b3d055d8a",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "bb46315f6bc4b7051c05f807d19b1689b20418ac6c42590406d805c10fa2fd1a",
+              "size": 2718
+            },
+            "review-agent/agents/openai.yaml": {
+              "source_git_blob_sha1": "ebbb0b041fb2d88c226fdaef198f9c8e53396552",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "579774dde24f21ee57d5cb63f69c2fce0da04b81538c636a0e0dd37dc836c811",
+              "size": 258
+            },
+            "skill-creator/SKILL.md": {
+              "source_git_blob_sha1": "490ccc6c3e0015eb982bb5c108c2df083be2c6c2",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "cccd291077ec57c6f50ca6529f0f3fb93212da09473effb2fcec808e81b21288",
+              "size": 15540
+            },
+            "skill-creator/agents/openai.yaml": {
+              "source_git_blob_sha1": "3095c600ce769c862519df036ab5777a5a947fec",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "b750627cdd588fdbb5b46e854d3384d1a504fad3b8ed73ca5d7ead3804df78b6",
+              "size": 188
+            },
+            "skill-creator/assets/skill-creator-small.svg": {
+              "source_git_blob_sha1": "c6e4f67c624a00705a662dbd0230b8c531180f56",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "edb19a0c59f9a1b5253b9af6d2f9f03cac27b2fe6a0275ebccbbdbff07891a1a",
+              "size": 1322
+            },
+            "skill-creator/assets/skill-creator.png": {
+              "source_git_blob_sha1": "4f3d6d82fa78fbdce97af3c17f6a25c683aa3290",
+              "variant": "exact-source-blob",
+              "actual_sha256": "a4024b0306ddb05847e1012879d37aaf1e658205199da596f5145ed7a88d9162",
+              "size": 1563
+            },
+            "skill-creator/license.txt": {
+              "source_git_blob_sha1": "d645695673349e3947e8e5ae42332d0ac3164cd7",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5",
+              "size": 11560
+            },
+            "skill-creator/references/openai_yaml.md": {
+              "source_git_blob_sha1": "90f9e8e863dff501c0125e2ead20c1dd6c3028d5",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "7039d465b05342cbacf861f08d20192ab1eeee112bc5d8ff0fb66234756887a9",
+              "size": 2405
+            },
+            "skill-creator/scripts/generate_openai_yaml.py": {
+              "source_git_blob_sha1": "870eefcea9bd0184806b8eb305526e883d2f7241",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "30c73f1ea7d47dbab2b231bb92c5bf9026f1ad14ba8e3b3a4a544092c4d24ebe",
+              "size": 6900
+            },
+            "skill-creator/scripts/init_skill.py": {
+              "source_git_blob_sha1": "2ed2fa3125c720fcce60a29f3dd82d04b14d9fa0",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "74dfa9361a93bee6932d6cbb332ed19ac26a27ba3800e69fb07ba7512c1025f9",
+              "size": 10622
+            },
+            "skill-creator/scripts/quick_validate.py": {
+              "source_git_blob_sha1": "e27023ece4bd259ef36560e19995eec7b6a345bf",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "6068513d924ed3559e186dfcdead7439129828dcf402167fd925c06dffbf2806",
+              "size": 4376
+            },
+            "skill-installer/LICENSE.txt": {
+              "source_git_blob_sha1": "d645695673349e3947e8e5ae42332d0ac3164cd7",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5",
+              "size": 11560
+            },
+            "skill-installer/SKILL.md": {
+              "source_git_blob_sha1": "030135b6e015f3c4b9976d80f4f46dbd8487b016",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "2892d8b2fb11631132118f340aed80ae17e59d5a571fc2c4f4a4a7e73f139d52",
+              "size": 3425
+            },
+            "skill-installer/agents/openai.yaml": {
+              "source_git_blob_sha1": "88d40cd9468441cfc83ffed52f9d71867392b850",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "bd64b4d6893138706b3e3540f266ab809ccdcd08375652ae9f9d1e029fe50d02",
+              "size": 226
+            },
+            "skill-installer/assets/skill-installer-small.svg": {
+              "source_git_blob_sha1": "ccfc034241ae8e6bea7284e188aed142a67c53e9",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "099e5a4b5e5f0f918a8de0d2059f0a86211da623dbb75f86f13dc9f7c08c778d",
+              "size": 926
+            },
+            "skill-installer/assets/skill-installer.png": {
+              "source_git_blob_sha1": "2977cd5bb49b3b8bd50d8bf476d7cffbb3f88a46",
+              "variant": "exact-source-blob",
+              "actual_sha256": "d0a230b1a79b71b858b7c215a0fbb0768d6459c14ea4ef80c61592629bf0e605",
+              "size": 1086
+            },
+            "skill-installer/scripts/github_utils.py": {
+              "source_git_blob_sha1": "711f597e4cf0c08b897083c1c337e13524a76260",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "2f9702afb9f0da740181fa4a3214f663e460f80cd5cea2e7dcaab00ad269082e",
+              "size": 680
+            },
+            "skill-installer/scripts/install-skill-from-github.py": {
+              "source_git_blob_sha1": "2d05f74924037738dbcc60cb677412ddc7e17d36",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "110cc7e4e395c2c9ba070d47db7d21be5164591c35015ae364fc9c9905b08de8",
+              "size": 12272
+            },
+            "skill-installer/scripts/list-skills.py": {
+              "source_git_blob_sha1": "0015571c5a64b4c7f54ee435b7f91b8ec4694a72",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "2cd6eecbaf9be7c86e80a14d7042f95d6abb83b6baee5f17dd075fa7a71c83de",
+              "size": 3054
+            },
+            ".codex-system-skills.marker": {
+              "actual_sha256": "9bce3c1689f722b54ab5e3c7a474a0e857472020ae4f41780b8049e1df303415",
+              "size": 17,
+              "variant": "native-fingerprint-observed-in-two-prior-launches"
+            }
+          },
+          "runtime_delta_against_pristine": {
+            "removed": [
+              "openai-docs/references/upgrading-to-gpt-5p6-sol.md",
+              "plugin-creator/SKILL.md",
+              "plugin-creator/agents/openai.yaml",
+              "plugin-creator/assets/plugin-creator-small.svg",
+              "plugin-creator/assets/plugin-creator.png",
+              "plugin-creator/references/installing-and-updating.md",
+              "plugin-creator/references/plugin-json-spec.md",
+              "plugin-creator/scripts/create_basic_plugin.py",
+              "plugin-creator/scripts/identifier_validation.py",
+              "plugin-creator/scripts/read_marketplace_name.py",
+              "plugin-creator/scripts/update_plugin_cachebuster.py",
+              "plugin-creator/scripts/validate_plugin.py"
+            ],
+            "added": [
+              "create-statusline/SKILL.md",
+              "create-statusline/agents/openai.yaml",
+              "create-statusline/assets/statusline.py",
+              "create-statusline/references/statusline.d.ts",
+              "openai-docs/references/upgrading-to-gpt-6-astra.md"
+            ],
+            "changed": [
+              ".codex-system-skills.marker",
+              "openai-docs/SKILL.md",
+              "openai-docs/agents/openai.yaml",
+              "openai-docs/references/latest-model.md",
+              "openai-docs/references/model-migration.md",
+              "openai-docs/references/prompting-guide.md",
+              "openai-docs/references/upgrade-guide.md",
+              "openai-docs/scripts/fetch-codex-manual.mjs",
+              "openai-docs/scripts/resolve-latest-model-info.cjs"
+            ]
+          }
+        }
+      },
+      {
+        "mode": "normal",
+        "item": "all non-system shipped bytes and custom skill membership",
+        "status": "FAIL",
+        "detail": {
+          "verified": false,
+          "changed_non_system_shipped": [],
+          "missing_custom_skill_members": [],
+          "unexpected_custom_skill_members": [
+            "home/skills/sandbox-followup-existing.txt"
+          ]
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "exact pristine candidate ZIP and moved tree",
+        "status": "PASS_ACTUAL",
+        "detail": 9147
+      },
+      {
+        "mode": "maintenance",
+        "item": "native Windows token",
+        "status": "OBSERVED",
+        "detail": {
+          "restricted": true,
+          "restricting_sid_count": 5,
+          "elevated": false,
+          "enabled_group_count": 11,
+          "deny_only_group_count": 2
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "native restricted token and unchanged launcher policy",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "configuration_verified": true,
+          "restricted_token": {
+            "restricted": true,
+            "restricting_sid_count": 5,
+            "elevated": false,
+            "enabled_group_count": 11,
+            "deny_only_group_count": 2
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "host-precreated non-readonly write matrix package_root",
+        "status": "FAIL",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "ace_masks": {
+              "normal_allow": "0x1200a9",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200a9",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": false,
+            "restricted_write_data_ace": true
+          },
+          "native_open": {
+            "read": {
+              "ok": true
+            },
+            "write_data": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_write": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_read_write": {
+              "ok": false,
+              "winerror": 5
+            }
+          },
+          "rplus_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "write_only_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 8,
+            "inherited": 6,
+            "ace_masks": {
+              "normal_allow": "0x1200af",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200af",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "sandbox-created close/reopen/overwrite/delete matrix package_root",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": true,
+          "create": {
+            "ok": true
+          },
+          "reopened": {
+            "attributes": {
+              "readonly": false,
+              "attributes_hex": "0x20",
+              "size": 24
+            },
+            "acl": {
+              "protected": false,
+              "auto_inherited": true,
+              "null_dacl": false,
+              "owner_is_token_user": true,
+              "ace_count": 5,
+              "inherited": 5,
+              "ace_masks": {
+                "normal_allow": "0x1f01ff",
+                "normal_deny": "0x0",
+                "user_allow": "0x1f01ff",
+                "enabled_group_allow": "0x1200a9",
+                "deny_only_deny": "0x0",
+                "restricted_allow": "0x1301bf",
+                "restricted_deny": "0x0"
+              },
+              "normal_write_data_ace": true,
+              "restricted_write_data_ace": true
+            },
+            "native_open": {
+              "read": {
+                "ok": true
+              },
+              "write_data": {
+                "ok": true
+              },
+              "generic_write": {
+                "ok": true
+              },
+              "generic_read_write": {
+                "ok": true
+              }
+            },
+            "rplus_overwrite": {
+              "ok": true
+            },
+            "write_only_overwrite": {
+              "ok": true
+            }
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "host-precreated non-readonly write matrix work",
+        "status": "FAIL",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 5,
+            "inherited": 5,
+            "ace_masks": {
+              "normal_allow": "0x1200a9",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200a9",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": false,
+            "restricted_write_data_ace": true
+          },
+          "native_open": {
+            "read": {
+              "ok": true
+            },
+            "write_data": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_write": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_read_write": {
+              "ok": false,
+              "winerror": 5
+            }
+          },
+          "rplus_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "write_only_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 9,
+            "inherited": 7,
+            "ace_masks": {
+              "normal_allow": "0x1200af",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200af",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "sandbox-created close/reopen/overwrite/delete matrix work",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": true,
+          "create": {
+            "ok": true
+          },
+          "reopened": {
+            "attributes": {
+              "readonly": false,
+              "attributes_hex": "0x20",
+              "size": 24
+            },
+            "acl": {
+              "protected": false,
+              "auto_inherited": true,
+              "null_dacl": false,
+              "owner_is_token_user": true,
+              "ace_count": 6,
+              "inherited": 6,
+              "ace_masks": {
+                "normal_allow": "0x1f01ff",
+                "normal_deny": "0x0",
+                "user_allow": "0x1f01ff",
+                "enabled_group_allow": "0x1200a9",
+                "deny_only_deny": "0x0",
+                "restricted_allow": "0x1301bf",
+                "restricted_deny": "0x0"
+              },
+              "normal_write_data_ace": true,
+              "restricted_write_data_ace": true
+            },
+            "native_open": {
+              "read": {
+                "ok": true
+              },
+              "write_data": {
+                "ok": true
+              },
+              "generic_write": {
+                "ok": true
+              },
+              "generic_read_write": {
+                "ok": true
+              }
+            },
+            "rplus_overwrite": {
+              "ok": true
+            },
+            "write_only_overwrite": {
+              "ok": true
+            }
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "host-precreated non-readonly write matrix tmp",
+        "status": "FAIL",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 5,
+            "inherited": 5,
+            "ace_masks": {
+              "normal_allow": "0x1200a9",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200a9",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": false,
+            "restricted_write_data_ace": true
+          },
+          "native_open": {
+            "read": {
+              "ok": true
+            },
+            "write_data": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_write": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_read_write": {
+              "ok": false,
+              "winerror": 5
+            }
+          },
+          "rplus_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "write_only_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 9,
+            "inherited": 7,
+            "ace_masks": {
+              "normal_allow": "0x1200af",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200af",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "sandbox-created close/reopen/overwrite/delete matrix tmp",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": true,
+          "create": {
+            "ok": true
+          },
+          "reopened": {
+            "attributes": {
+              "readonly": false,
+              "attributes_hex": "0x20",
+              "size": 24
+            },
+            "acl": {
+              "protected": false,
+              "auto_inherited": true,
+              "null_dacl": false,
+              "owner_is_token_user": true,
+              "ace_count": 6,
+              "inherited": 6,
+              "ace_masks": {
+                "normal_allow": "0x1f01ff",
+                "normal_deny": "0x0",
+                "user_allow": "0x1f01ff",
+                "enabled_group_allow": "0x1200a9",
+                "deny_only_deny": "0x0",
+                "restricted_allow": "0x1301bf",
+                "restricted_deny": "0x0"
+              },
+              "normal_write_data_ace": true,
+              "restricted_write_data_ace": true
+            },
+            "native_open": {
+              "read": {
+                "ok": true
+              },
+              "write_data": {
+                "ok": true
+              },
+              "generic_write": {
+                "ok": true
+              },
+              "generic_read_write": {
+                "ok": true
+              }
+            },
+            "rplus_overwrite": {
+              "ok": true
+            },
+            "write_only_overwrite": {
+              "ok": true
+            }
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "host-precreated non-readonly write matrix tool",
+        "status": "FAIL",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "ace_masks": {
+              "normal_allow": "0x1200a9",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200a9",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": false,
+            "restricted_write_data_ace": true
+          },
+          "native_open": {
+            "read": {
+              "ok": true
+            },
+            "write_data": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_write": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_read_write": {
+              "ok": false,
+              "winerror": 5
+            }
+          },
+          "rplus_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "write_only_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 8,
+            "inherited": 7,
+            "ace_masks": {
+              "normal_allow": "0x1200af",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200af",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "sandbox-created close/reopen/overwrite/delete matrix tool",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": true,
+          "create": {
+            "ok": true
+          },
+          "reopened": {
+            "attributes": {
+              "readonly": false,
+              "attributes_hex": "0x20",
+              "size": 24
+            },
+            "acl": {
+              "protected": false,
+              "auto_inherited": true,
+              "null_dacl": false,
+              "owner_is_token_user": true,
+              "ace_count": 5,
+              "inherited": 5,
+              "ace_masks": {
+                "normal_allow": "0x1f01ff",
+                "normal_deny": "0x0",
+                "user_allow": "0x1f01ff",
+                "enabled_group_allow": "0x1200a9",
+                "deny_only_deny": "0x0",
+                "restricted_allow": "0x1301bf",
+                "restricted_deny": "0x0"
+              },
+              "normal_write_data_ace": true,
+              "restricted_write_data_ace": true
+            },
+            "native_open": {
+              "read": {
+                "ok": true
+              },
+              "write_data": {
+                "ok": true
+              },
+              "generic_write": {
+                "ok": true
+              },
+              "generic_read_write": {
+                "ok": true
+              }
+            },
+            "rplus_overwrite": {
+              "ok": true
+            },
+            "write_only_overwrite": {
+              "ok": true
+            }
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "host-precreated non-readonly write matrix skills",
+        "status": "FAIL",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "ace_masks": {
+              "normal_allow": "0x1200a9",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200a9",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": false,
+            "restricted_write_data_ace": true
+          },
+          "native_open": {
+            "read": {
+              "ok": true
+            },
+            "write_data": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_write": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_read_write": {
+              "ok": false,
+              "winerror": 5
+            }
+          },
+          "rplus_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "write_only_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "expected_write": true,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 8,
+            "inherited": 7,
+            "ace_masks": {
+              "normal_allow": "0x1200af",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200af",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x1301bf",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "sandbox-created close/reopen/overwrite/delete matrix skills",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": true,
+          "create": {
+            "ok": true
+          },
+          "reopened": {
+            "attributes": {
+              "readonly": false,
+              "attributes_hex": "0x20",
+              "size": 24
+            },
+            "acl": {
+              "protected": false,
+              "auto_inherited": true,
+              "null_dacl": false,
+              "owner_is_token_user": true,
+              "ace_count": 5,
+              "inherited": 5,
+              "ace_masks": {
+                "normal_allow": "0x1f01ff",
+                "normal_deny": "0x0",
+                "user_allow": "0x1f01ff",
+                "enabled_group_allow": "0x1200a9",
+                "deny_only_deny": "0x0",
+                "restricted_allow": "0x1301bf",
+                "restricted_deny": "0x0"
+              },
+              "normal_write_data_ace": true,
+              "restricted_write_data_ace": true
+            },
+            "native_open": {
+              "read": {
+                "ok": true
+              },
+              "write_data": {
+                "ok": true
+              },
+              "generic_write": {
+                "ok": true
+              },
+              "generic_read_write": {
+                "ok": true
+              }
+            },
+            "rplus_overwrite": {
+              "ok": true
+            },
+            "write_only_overwrite": {
+              "ok": true
+            }
+          },
+          "delete_created": {
+            "ok": true
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "host-precreated non-readonly write matrix outside",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "ace_masks": {
+              "normal_allow": "0x1200a9",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200a9",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": false,
+            "restricted_write_data_ace": false
+          },
+          "native_open": {
+            "read": {
+              "ok": true
+            },
+            "write_data": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_write": {
+              "ok": false,
+              "winerror": 5
+            },
+            "generic_read_write": {
+              "ok": false,
+              "winerror": 5
+            }
+          },
+          "rplus_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "write_only_overwrite": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          },
+          "expected_write": false,
+          "directory_acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 7,
+            "inherited": 6,
+            "ace_masks": {
+              "normal_allow": "0x1200af",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1200af",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "sandbox-created close/reopen/overwrite/delete matrix outside",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "expected_write": false,
+          "create": {
+            "ok": false,
+            "errno": 13,
+            "winerror": null
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "SSH actual unchanged private-directory keygen",
+        "status": "FAIL",
+        "detail": {
+          "returncode": 2,
+          "stderr": "Portable SSH: [WinError 5] Access is denied: 'D:\\\\a\\\\Portable\\\\Portable\\\\tmp\\\\cache-path-followup-c56a70d9ef4646888292873d62a4a9ea\\\\maintenance\\\\Portable \u4e2d\u6587 \u7a7a\u683c\\\\work\\\\ssh\\\\keys'\r\n",
+          "work/ssh": {
+            "exists": true,
+            "acl": {
+              "winerror": 5
+            }
+          },
+          "work/ssh/keys": {
+            "exists": false,
+            "acl": {
+              "winerror": 2
+            }
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "synthetic precreated sentinel bytes retained",
+        "status": "PASS_ACTUAL",
+        "detail": ""
+      },
+      {
+        "mode": "maintenance-host-metadata",
+        "item": "native Windows token",
+        "status": "OBSERVED",
+        "detail": {
+          "restricted": false,
+          "restricting_sid_count": 0,
+          "elevated": true,
+          "enabled_group_count": 13,
+          "deny_only_group_count": 0
+        }
+      },
+      {
+        "mode": "maintenance-host-metadata",
+        "item": "host-precreated ACL after native package_root",
+        "status": "OBSERVED",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "maintenance-host-metadata",
+        "item": "host-precreated ACL after native work",
+        "status": "OBSERVED",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 5,
+            "inherited": 5,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "maintenance-host-metadata",
+        "item": "host-precreated ACL after native tmp",
+        "status": "OBSERVED",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 5,
+            "inherited": 5,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "maintenance-host-metadata",
+        "item": "host-precreated ACL after native tool",
+        "status": "OBSERVED",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "maintenance-host-metadata",
+        "item": "host-precreated ACL after native skills",
+        "status": "OBSERVED",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": true,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 4,
+            "inherited": 4,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "maintenance-host-metadata",
+        "item": "host-precreated ACL after native outside",
+        "status": "OBSERVED",
+        "detail": {
+          "attributes": {
+            "readonly": false,
+            "attributes_hex": "0x20",
+            "size": 24
+          },
+          "acl": {
+            "protected": false,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": false,
+            "ace_count": 3,
+            "inherited": 3,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "maintenance-host-metadata",
+        "item": "host read-only SSH directory ACL work/ssh",
+        "status": "OBSERVED",
+        "detail": {
+          "exists": true,
+          "acl": {
+            "protected": true,
+            "auto_inherited": false,
+            "null_dacl": false,
+            "owner_is_token_user": true,
+            "ace_count": 3,
+            "inherited": 0,
+            "ace_masks": {
+              "normal_allow": "0x1f01ff",
+              "normal_deny": "0x0",
+              "user_allow": "0x0",
+              "enabled_group_allow": "0x1f01ff",
+              "deny_only_deny": "0x0",
+              "restricted_allow": "0x0",
+              "restricted_deny": "0x0"
+            },
+            "normal_write_data_ace": true,
+            "restricted_write_data_ace": false
+          }
+        }
+      },
+      {
+        "mode": "maintenance-host-metadata",
+        "item": "host read-only SSH directory ACL work/ssh/keys",
+        "status": "OBSERVED",
+        "detail": {
+          "exists": false,
+          "acl": {
+            "winerror": 2
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "host read-only metadata diagnostic",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "returncode": 0,
+          "stderr": ""
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "actual native launcher/Host completed",
+        "status": "PASS_ACTUAL",
+        "detail": "not equivalent to all consumer assertions"
+      },
+      {
+        "mode": "maintenance",
+        "item": "fixed embedded system cache source membership and all bytes",
+        "status": "PASS_ACTUAL",
+        "detail": {
+          "verified": true,
+          "missing": [],
+          "extra": [],
+          "source_blob_mismatches": [],
+          "marker_matches_prior_native": true,
+          "marker": "408224ce9771867c\n",
+          "files": {
+            "create-statusline/SKILL.md": {
+              "source_git_blob_sha1": "1c4f8e2fc3ca3bc82b571d8249d12236e82b1b59",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "5fd8c685666fe64182b5531f26bebbab3722cae3acbbba93e4ff140af365d88f",
+              "size": 2801
+            },
+            "create-statusline/agents/openai.yaml": {
+              "source_git_blob_sha1": "5b1f887a9138416870f64ba2fe21602e4a59cfa7",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "3bf863a8856d04a6a1c4f23b3aae6cbf5388544129662c55cc733c2d9c23bbbf",
+              "size": 45
+            },
+            "create-statusline/assets/statusline.py": {
+              "source_git_blob_sha1": "0dc04236cc60b3401d1dc9fdacb28e59bbc838ed",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "2c63f7bf996fc65ed1be9dabc19df548601528554bf6b1b843d39a37f9c54af6",
+              "size": 3425
+            },
+            "create-statusline/references/statusline.d.ts": {
+              "source_git_blob_sha1": "d0581ca6f865118ba99af712da51b6ed7c9f0a55",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "b716c3c55a38105ab81c111386a410a681ab9b72558934b2b153a771776eee71",
+              "size": 5493
+            },
+            "imagegen/LICENSE.txt": {
+              "source_git_blob_sha1": "13e25df86ce06eb6488e6a6bc5c5847f5dedc352",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "44e03f7e263eb3ad256440c1eeab5e49168baff5a78ecef9a5447261cf3a91bc",
+              "size": 10977
+            },
+            "imagegen/SKILL.md": {
+              "source_git_blob_sha1": "c39b1f921ce679f08416ab16ceb01945835bb950",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "706d4d96e1d5c9e6023fe3ccabba1bb34b364024d344fd25b8515ec7d28fe3c4",
+              "size": 19516
+            },
+            "imagegen/agents/openai.yaml": {
+              "source_git_blob_sha1": "5e01d4410ef4918b45d942175e7ddc39ba7ab5d2",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "1797be4076717806df54aa9331c07ac8eebe32c69f32132d5858712b05406146",
+              "size": 281
+            },
+            "imagegen/assets/imagegen-small.svg": {
+              "source_git_blob_sha1": "20128b2dba2b93ecd7c398bb379b6049dc94a944",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "087c1632a3b8a2ed4d6218952e7ba7ae2221a979f84233667ed2c587998784da",
+              "size": 2894
+            },
+            "imagegen/assets/imagegen.png": {
+              "source_git_blob_sha1": "94b54541a9affd39a7aa09d0efd5bc6b712b723b",
+              "variant": "exact-source-blob",
+              "actual_sha256": "95952f644064eb9e890f98d8db07216347186526e4c41ad66d3420629eb86e20",
+              "size": 1711
+            },
+            "imagegen/references/cli.md": {
+              "source_git_blob_sha1": "748c83c745b6f010d4afba27224cb947c02e9485",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "29dc8c1e3e5d9a20aee587fedb46a464552b6ec118d93bbd90c8d86e30502c8c",
+              "size": 9897
+            },
+            "imagegen/references/codex-network.md": {
+              "source_git_blob_sha1": "5ce1fbc748bdccdd837c35b37b6cc1c95c0aa89b",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "cba3b4d24d30f38adf8021b6e9b49ec5261a9e45e7df31047ec451c916c99b0a",
+              "size": 1812
+            },
+            "imagegen/references/image-api.md": {
+              "source_git_blob_sha1": "64eff30ee6ab19671ff31b83c992ac19e9829430",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "695909437b792aff171477dba127476a11235c220beb06533cce7c1495a042c8",
+              "size": 6162
+            },
+            "imagegen/references/prompting.md": {
+              "source_git_blob_sha1": "5a826563580bc014897fa61629314ae8a6171513",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "d957a45cb24fe2cf1a85858674fc533f15a5f4621355f559a13a93168999c2dd",
+              "size": 8394
+            },
+            "imagegen/references/sample-prompts.md": {
+              "source_git_blob_sha1": "3e6b46fd02ed7bc85d771a1c35c1c85e9db16ddd",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "76cc8a2988efb6e844a99ff9908b2b11cc07467510fc909002abcc0ee3f0701b",
+              "size": 18039
+            },
+            "imagegen/scripts/image_gen.py": {
+              "source_git_blob_sha1": "ca78422d715585f6983a300199ed79e45bdb7ac0",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "3666b807de3f0a1d0a4a767b886d612c0b8f71025c500bba6693d1c6995a0873",
+              "size": 35697
+            },
+            "imagegen/scripts/remove_chroma_key.py": {
+              "source_git_blob_sha1": "f14df3551888464cd9dc7b75c9678c20f084ed97",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "fa2989807052b857bed08f7fee0caa2502b54c46afc0a6f28cd706c25f636630",
+              "size": 14354
+            },
+            "openai-docs/LICENSE.txt": {
+              "source_git_blob_sha1": "13e25df86ce06eb6488e6a6bc5c5847f5dedc352",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "44e03f7e263eb3ad256440c1eeab5e49168baff5a78ecef9a5447261cf3a91bc",
+              "size": 10977
+            },
+            "openai-docs/SKILL.md": {
+              "source_git_blob_sha1": "7c3190ab2cbbe89e47739bd3142d07ca445826bb",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "d80a1ef9a4e38c0ec62f6294ef5be57670905413508a6f20b860e136d1ccbb82",
+              "size": 3086
+            },
+            "openai-docs/agents/openai.yaml": {
+              "source_git_blob_sha1": "e3f5d7db204de431a7b671e403437dcaaba5bb04",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "a4e37375d0f096a27867dbb39a2ce917c96035b37692afe8206c3d3335077d97",
+              "size": 367
+            },
+            "openai-docs/assets/openai-small.svg": {
+              "source_git_blob_sha1": "1d075dc04f617247747ca8e44f8aa9193e0ab3e6",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "85ef0a2cde497872edec1525f1d538ccc42b33ff47acdbb88499a1631a4bdb21",
+              "size": 1094
+            },
+            "openai-docs/assets/openai.png": {
+              "source_git_blob_sha1": "e9b9eb80cd90ccdfc7e276b07f4046aa9c9d1887",
+              "variant": "exact-source-blob",
+              "actual_sha256": "156cc84d7332bfe95b310350bd470b690d22aa33d65340cc6c2e06022946194c",
+              "size": 1429
+            },
+            "openai-docs/references/codex-self-knowledge.md": {
+              "source_git_blob_sha1": "f0195313661d0a12531cbaa8c26fcda03803a5ae",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "f945bf2a7cea6892d7a11ac38fb18b744fefd6d273654a8410c4c79e9f647fbe",
+              "size": 7488
+            },
+            "openai-docs/references/latest-model.md": {
+              "source_git_blob_sha1": "2f7ec86f19c14e4c9b5c74b007f661a15fadd5d4",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "2ba1596479f54c6b9204db69eed7197a6ad8663038914a73078d5691ee56b0c6",
+              "size": 1596
+            },
+            "openai-docs/references/mcp-diagnostics.md": {
+              "source_git_blob_sha1": "a49d0f2993dc6c08c14bd5c6bee7c710b3f0296c",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "e9df2b2f8faa28930db4a2937cdb3665b4548ac958e80a8601a5dd0da1e6fad0",
+              "size": 2345
+            },
+            "openai-docs/references/model-migration.md": {
+              "source_git_blob_sha1": "dfaafff966151e25bebbd6f3058aafab8b2dd148",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "5499ebded1d7bd0a5cdbf9d7cb426cc539014b476c1c72803bd9b81e6dcce12a",
+              "size": 6291
+            },
+            "openai-docs/references/model-selection.md": {
+              "source_git_blob_sha1": "6ff3dfaecaead748e4ff2fa6f65d6eae314e8264",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "ce020100a28004500c927abcd57cff154c5c360eb72d918ef7d72492e2484cce",
+              "size": 1356
+            },
+            "openai-docs/references/official-docs.md": {
+              "source_git_blob_sha1": "204e31ed993a2caab225571350af7fa874fbee53",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "b2301d72b8092be5f5727d8d1cbc75740887d836f4f13b469f40c1db16b39fe3",
+              "size": 3362
+            },
+            "openai-docs/references/prompting-guide.md": {
+              "source_git_blob_sha1": "b6430d0d49b566c97b0e1fa6d46cea4230844dc3",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "69517cde6c3bac945100a9da946d65c9effdd145d7600dead41f8adc1c1a7e38",
+              "size": 10243
+            },
+            "openai-docs/references/upgrade-guide.md": {
+              "source_git_blob_sha1": "98b9ed96e3fd61c669a33f18de91570d3e4b9582",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "8e8efc61597e1db278b0a56519c1bba9166f32f3d5f4fe6569617b395cf8893b",
+              "size": 1858
+            },
+            "openai-docs/references/upgrading-to-gpt-6-astra.md": {
+              "source_git_blob_sha1": "a61f582e7da80ad8684c81b592912aee7113c837",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "789fcaf0999f56cebf801d0f6e6bdfe347dcfb5eff3d9a40ff815c15336f8699",
+              "size": 19912
+            },
+            "openai-docs/scripts/fetch-codex-manual.mjs": {
+              "source_git_blob_sha1": "d491382e76dfe26966350a883fab7a812793a6d8",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "6172bd2caa95593b735c3e60c0bd5d7ae49ca0a345440f2d2a36e0dfc556801a",
+              "size": 16248
+            },
+            "openai-docs/scripts/resolve-latest-model-info": {
+              "source_git_blob_sha1": "7d00122a37c81a30a7d91d8d74126398975f6493",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "8f5006efa15c034ede29821b627d7b86c43f7dfaab422d335f45b9be8d04e2d5",
+              "size": 1077
+            },
+            "openai-docs/scripts/resolve-latest-model-info.cjs": {
+              "source_git_blob_sha1": "676b64cbe65d7888f6ae94d785c052411e1500b5",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "2eee6052aa77c9e98d7ea8a59caca73c3158eded7ee707308ec563211c30692f",
+              "size": 4079
+            },
+            "review-agent/SKILL.md": {
+              "source_git_blob_sha1": "c694020c1c5de0e8fee4e933f55e0f6b3d055d8a",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "bb46315f6bc4b7051c05f807d19b1689b20418ac6c42590406d805c10fa2fd1a",
+              "size": 2718
+            },
+            "review-agent/agents/openai.yaml": {
+              "source_git_blob_sha1": "ebbb0b041fb2d88c226fdaef198f9c8e53396552",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "579774dde24f21ee57d5cb63f69c2fce0da04b81538c636a0e0dd37dc836c811",
+              "size": 258
+            },
+            "skill-creator/SKILL.md": {
+              "source_git_blob_sha1": "490ccc6c3e0015eb982bb5c108c2df083be2c6c2",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "cccd291077ec57c6f50ca6529f0f3fb93212da09473effb2fcec808e81b21288",
+              "size": 15540
+            },
+            "skill-creator/agents/openai.yaml": {
+              "source_git_blob_sha1": "3095c600ce769c862519df036ab5777a5a947fec",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "b750627cdd588fdbb5b46e854d3384d1a504fad3b8ed73ca5d7ead3804df78b6",
+              "size": 188
+            },
+            "skill-creator/assets/skill-creator-small.svg": {
+              "source_git_blob_sha1": "c6e4f67c624a00705a662dbd0230b8c531180f56",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "edb19a0c59f9a1b5253b9af6d2f9f03cac27b2fe6a0275ebccbbdbff07891a1a",
+              "size": 1322
+            },
+            "skill-creator/assets/skill-creator.png": {
+              "source_git_blob_sha1": "4f3d6d82fa78fbdce97af3c17f6a25c683aa3290",
+              "variant": "exact-source-blob",
+              "actual_sha256": "a4024b0306ddb05847e1012879d37aaf1e658205199da596f5145ed7a88d9162",
+              "size": 1563
+            },
+            "skill-creator/license.txt": {
+              "source_git_blob_sha1": "d645695673349e3947e8e5ae42332d0ac3164cd7",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5",
+              "size": 11560
+            },
+            "skill-creator/references/openai_yaml.md": {
+              "source_git_blob_sha1": "90f9e8e863dff501c0125e2ead20c1dd6c3028d5",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "7039d465b05342cbacf861f08d20192ab1eeee112bc5d8ff0fb66234756887a9",
+              "size": 2405
+            },
+            "skill-creator/scripts/generate_openai_yaml.py": {
+              "source_git_blob_sha1": "870eefcea9bd0184806b8eb305526e883d2f7241",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "30c73f1ea7d47dbab2b231bb92c5bf9026f1ad14ba8e3b3a4a544092c4d24ebe",
+              "size": 6900
+            },
+            "skill-creator/scripts/init_skill.py": {
+              "source_git_blob_sha1": "2ed2fa3125c720fcce60a29f3dd82d04b14d9fa0",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "74dfa9361a93bee6932d6cbb332ed19ac26a27ba3800e69fb07ba7512c1025f9",
+              "size": 10622
+            },
+            "skill-creator/scripts/quick_validate.py": {
+              "source_git_blob_sha1": "e27023ece4bd259ef36560e19995eec7b6a345bf",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "6068513d924ed3559e186dfcdead7439129828dcf402167fd925c06dffbf2806",
+              "size": 4376
+            },
+            "skill-installer/LICENSE.txt": {
+              "source_git_blob_sha1": "d645695673349e3947e8e5ae42332d0ac3164cd7",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5",
+              "size": 11560
+            },
+            "skill-installer/SKILL.md": {
+              "source_git_blob_sha1": "030135b6e015f3c4b9976d80f4f46dbd8487b016",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "2892d8b2fb11631132118f340aed80ae17e59d5a571fc2c4f4a4a7e73f139d52",
+              "size": 3425
+            },
+            "skill-installer/agents/openai.yaml": {
+              "source_git_blob_sha1": "88d40cd9468441cfc83ffed52f9d71867392b850",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "bd64b4d6893138706b3e3540f266ab809ccdcd08375652ae9f9d1e029fe50d02",
+              "size": 226
+            },
+            "skill-installer/assets/skill-installer-small.svg": {
+              "source_git_blob_sha1": "ccfc034241ae8e6bea7284e188aed142a67c53e9",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "099e5a4b5e5f0f918a8de0d2059f0a86211da623dbb75f86f13dc9f7c08c778d",
+              "size": 926
+            },
+            "skill-installer/assets/skill-installer.png": {
+              "source_git_blob_sha1": "2977cd5bb49b3b8bd50d8bf476d7cffbb3f88a46",
+              "variant": "exact-source-blob",
+              "actual_sha256": "d0a230b1a79b71b858b7c215a0fbb0768d6459c14ea4ef80c61592629bf0e605",
+              "size": 1086
+            },
+            "skill-installer/scripts/github_utils.py": {
+              "source_git_blob_sha1": "711f597e4cf0c08b897083c1c337e13524a76260",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "2f9702afb9f0da740181fa4a3214f663e460f80cd5cea2e7dcaab00ad269082e",
+              "size": 680
+            },
+            "skill-installer/scripts/install-skill-from-github.py": {
+              "source_git_blob_sha1": "2d05f74924037738dbcc60cb677412ddc7e17d36",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "110cc7e4e395c2c9ba070d47db7d21be5164591c35015ae364fc9c9905b08de8",
+              "size": 12272
+            },
+            "skill-installer/scripts/list-skills.py": {
+              "source_git_blob_sha1": "0015571c5a64b4c7f54ee435b7f91b8ec4694a72",
+              "variant": "source-blob-via-crlf-checkout",
+              "actual_sha256": "2cd6eecbaf9be7c86e80a14d7042f95d6abb83b6baee5f17dd075fa7a71c83de",
+              "size": 3054
+            },
+            ".codex-system-skills.marker": {
+              "actual_sha256": "9bce3c1689f722b54ab5e3c7a474a0e857472020ae4f41780b8049e1df303415",
+              "size": 17,
+              "variant": "native-fingerprint-observed-in-two-prior-launches"
+            }
+          },
+          "runtime_delta_against_pristine": {
+            "removed": [
+              "openai-docs/references/upgrading-to-gpt-5p6-sol.md",
+              "plugin-creator/SKILL.md",
+              "plugin-creator/agents/openai.yaml",
+              "plugin-creator/assets/plugin-creator-small.svg",
+              "plugin-creator/assets/plugin-creator.png",
+              "plugin-creator/references/installing-and-updating.md",
+              "plugin-creator/references/plugin-json-spec.md",
+              "plugin-creator/scripts/create_basic_plugin.py",
+              "plugin-creator/scripts/identifier_validation.py",
+              "plugin-creator/scripts/read_marketplace_name.py",
+              "plugin-creator/scripts/update_plugin_cachebuster.py",
+              "plugin-creator/scripts/validate_plugin.py"
+            ],
+            "added": [
+              "create-statusline/SKILL.md",
+              "create-statusline/agents/openai.yaml",
+              "create-statusline/assets/statusline.py",
+              "create-statusline/references/statusline.d.ts",
+              "openai-docs/references/upgrading-to-gpt-6-astra.md"
+            ],
+            "changed": [
+              ".codex-system-skills.marker",
+              "openai-docs/SKILL.md",
+              "openai-docs/agents/openai.yaml",
+              "openai-docs/references/latest-model.md",
+              "openai-docs/references/model-migration.md",
+              "openai-docs/references/prompting-guide.md",
+              "openai-docs/references/upgrade-guide.md",
+              "openai-docs/scripts/fetch-codex-manual.mjs",
+              "openai-docs/scripts/resolve-latest-model-info.cjs"
+            ]
+          }
+        }
+      },
+      {
+        "mode": "maintenance",
+        "item": "all non-system shipped bytes and custom skill membership",
+        "status": "FAIL",
+        "detail": {
+          "verified": false,
+          "changed_non_system_shipped": [],
+          "missing_custom_skill_members": [],
+          "unexpected_custom_skill_members": [
+            "home/skills/sandbox-followup-existing.txt"
+          ]
+        }
+      },
+      {
+        "mode": "system",
+        "item": "two independent fixed native cache byte manifests agree",
+        "status": "FAIL",
+        "detail": {
+          "witness_count": 0,
+          "all_53_match": false
+        }
+      }
+    ]
+  },
+  "workflow_steps": {
+    "POLICY": "success",
+    "BUILD": "success",
+    "PROBE": "failure",
+    "SEED": "success",
+    "CANDIDATE": "skipped",
+    "VERIFY": "skipped",
+    "UPLOAD": "skipped",
+    "DOWNLOAD": "skipped",
+    "READBACK": "skipped"
+  },
+  "verified_system_seed_kept": false,
+  "candidate_source_commit": null,
+  "candidate_verification": {
+    "metadata": {
+      "completed": false
+    },
+    "rows": []
+  },
+  "artifact": {
+    "id": "",
+    "url": "",
+    "readback": "skipped",
+    "verified_downloadable": false,
+    "retention_days": 14
+  },
+  "native_unresolved": [
+    {
+      "mode": "normal",
+      "item": "host-precreated non-readonly write matrix work",
+      "status": "FAIL"
+    },
+    {
+      "mode": "normal",
+      "item": "host-precreated non-readonly write matrix tmp",
+      "status": "FAIL"
+    },
+    {
+      "mode": "normal",
+      "item": "SSH actual unchanged private-directory keygen",
+      "status": "FAIL"
+    },
+    {
+      "mode": "normal",
+      "item": "f2py direct versus wrapper chinese-relative",
+      "status": "FAIL"
+    },
+    {
+      "mode": "normal",
+      "item": "direct bundled Android sqlite3 chinese-relative",
+      "status": "OBSERVED_PATH_FAILURE"
+    },
+    {
+      "mode": "normal",
+      "item": "direct bundled Android sqlite3 absolute-chinese-space",
+      "status": "OBSERVED_PATH_FAILURE"
+    },
+    {
+      "mode": "normal",
+      "item": "direct bundled Android etc1tool chinese-relative",
+      "status": "OBSERVED_PATH_FAILURE"
+    },
+    {
+      "mode": "normal",
+      "item": "direct bundled Android etc1tool absolute-chinese-space",
+      "status": "OBSERVED_PATH_FAILURE"
+    },
+    {
+      "mode": "normal",
+      "item": "all non-system shipped bytes and custom skill membership",
+      "status": "FAIL"
+    },
+    {
+      "mode": "maintenance",
+      "item": "host-precreated non-readonly write matrix package_root",
+      "status": "FAIL"
+    },
+    {
+      "mode": "maintenance",
+      "item": "host-precreated non-readonly write matrix work",
+      "status": "FAIL"
+    },
+    {
+      "mode": "maintenance",
+      "item": "host-precreated non-readonly write matrix tmp",
+      "status": "FAIL"
+    },
+    {
+      "mode": "maintenance",
+      "item": "host-precreated non-readonly write matrix tool",
+      "status": "FAIL"
+    },
+    {
+      "mode": "maintenance",
+      "item": "host-precreated non-readonly write matrix skills",
+      "status": "FAIL"
+    },
+    {
+      "mode": "maintenance",
+      "item": "SSH actual unchanged private-directory keygen",
+      "status": "FAIL"
+    },
+    {
+      "mode": "maintenance",
+      "item": "all non-system shipped bytes and custom skill membership",
+      "status": "FAIL"
+    },
+    {
+      "mode": "system",
+      "item": "two independent fixed native cache byte manifests agree",
+      "status": "FAIL"
+    }
+  ],
+  "known_limits": [
+    {
+      "mode": "normal",
+      "item": "f2py direct versus wrapper space-relative"
+    },
+    {
+      "mode": "normal",
+      "item": "f2py direct versus wrapper absolute-chinese-space"
+    },
+    {
+      "mode": "normal",
+      "item": "fixed HTTPX CLI optional dependency refusal"
+    }
+  ],
+  "chinese_ocr": "BLOCKED_PREVIOUS_BOTH_RUNNERS_NO_NEW_AUTHORIZED_ENVIRONMENT",
+  "whole_package_all_pass_claim": false,
+  "course_qualified": false,
+  "original_official_evidence_unchanged": true,
+  "prior_course_evidence": "tests/course_candidate_45741929384.json",
+  "prior_office_and_acl_evidence": "tests/sandbox_ocr_followup_45744922536.json",
+  "limitations": [
+    "No prior dual-window/50-question/Office/OCR language reruns.",
+    "SSH ACL metadata and synthetic keygen only; no remote SSH, ACL edits, elevation or sandbox bypass.",
+    "Chinese OCR not re-tested; MSYS2 research is not a verified complete offline fallback.",
+    "No whole package or formal release qualification; candidate source and artifact identity separate from old ZIP."
+  ]
+}
