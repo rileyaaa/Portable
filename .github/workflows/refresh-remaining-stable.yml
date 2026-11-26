@@ -1,0 +1,202 @@
+name: Independent remaining parser and text stable wheel acceptance (one time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths: [.github/workflows/refresh-remaining-stable.yml]
+permissions: {}
+concurrency:
+  group: stable-tool-refresh-remaining-stable
+  cancel-in-progress: false
+jobs:
+  refresh:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.event.before == 'cad348f0e8482b4db8f95d02e45f5c2c9e7faa74' && github.run_attempt == 1
+    runs-on: windows-latest
+    timeout-minutes: 100
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: powershell
+    env:
+      BASE: fbc3b63c73cb507455f78c2315ebb5a4604d9a58
+      PARENT: cad348f0e8482b4db8f95d02e45f5c2c9e7faa74
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      TARGET_BRANCH: dev/stable-tool-refresh
+    steps:
+      - name: Preserve tracked bytes and isolate CI PowerShell cache
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'Git configuration failed' }
+          $cache = Join-Path $env:RUNNER_TEMP ('remaining-stable-pscache-' + [Guid]::NewGuid().ToString('N'))
+          $null = New-Item -ItemType Directory -Path $cache
+          ('PSModuleAnalysisCachePath=' + (Join-Path $cache 'ModuleAnalysisCache')) | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          lfs: true
+          persist-credentials: false
+      - name: Confirm exact accepted baseline and frozen refs
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA -or (git rev-parse 'HEAD^').Trim() -cne $env:PARENT) { throw 'Wrong checkout' }
+          $changes = @(git diff --name-only $env:BASE HEAD)
+          $expected = @('tests/check_remaining_stable_refresh.py','tests/stage_remaining_stable_refresh.py','.github/workflows/refresh-remaining-stable.yml')
+          if ($LASTEXITCODE -or $changes.Count -ne 3 -or @(Compare-Object $expected $changes).Count -ne 0) { throw 'Unexpected initial developer diff' }
+          foreach ($pair in @(@('refs/heads/main',$env:FROZEN),@('refs/tags/v0.172.0-portable.1',$env:FROZEN),@("refs/heads/$env:TARGET_BRANCH",$env:GITHUB_SHA))) {
+            $remote = (git ls-remote origin $pair[0]) -join ''
+            if ($LASTEXITCODE -or $remote -cne ($pair[1] + [char]9 + $pair[0])) { throw 'Frozen or developer ref changed' }
+          }
+          git checkout --detach $env:GITHUB_SHA
+          if ($LASTEXITCODE) { throw 'Detached CI checkout failed' }
+          git lfs install --local
+          if ($LASTEXITCODE) { throw 'LFS hook unavailable' }
+          git lfs fsck
+          if ($LASTEXITCODE) { throw 'Existing accepted LFS integrity failed' }
+          & .\tool\python\python.exe -B tool/python-lock.py validate --requirements tool/python-packages.in.txt --lock tool/python-packages.lock.txt
+          if ($LASTEXITCODE) { throw 'Baseline lock invalid' }
+          & .\tool\python\python.exe -B tool/python-lock.py validate-runtime --requirements tool/python-packages.in.txt
+          if ($LASTEXITCODE) { throw 'Baseline installed closure invalid' }
+          'SCOPE_CONFIRMED=true' | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          & .\tool\python\python.exe -B -c "from pathlib import Path; [compile(p.read_bytes(),str(p),'exec') for p in (Path('tests/check_remaining_stable_refresh.py'),Path('tests/stage_remaining_stable_refresh.py'))]"
+          if ($LASTEXITCODE) { throw 'Targeted fixture syntax failed' }
+          'FIXTURES_READY=true' | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Independently accept and deliver lxml 6.1.3
+        if: always() && env.FIXTURES_READY == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/stage_remaining_stable_refresh.py lxml
+          if ($LASTEXITCODE) { throw 'lxml candidate not accepted; see actual first failure' }
+      - name: Independently accept and deliver pyyaml 6.0.4
+        if: always() && env.FIXTURES_READY == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/stage_remaining_stable_refresh.py pyyaml
+          if ($LASTEXITCODE) { throw 'pyyaml candidate not accepted; see actual first failure' }
+      - name: Independently accept and deliver markdown-it-py 4.3.0
+        if: always() && env.FIXTURES_READY == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/stage_remaining_stable_refresh.py markdown-it-py
+          if ($LASTEXITCODE) { throw 'markdown-it-py candidate not accepted; see actual first failure' }
+      - name: Independently accept and deliver charset-normalizer 3.5.3
+        if: always() && env.FIXTURES_READY == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/stage_remaining_stable_refresh.py charset-normalizer
+          if ($LASTEXITCODE) { throw 'charset-normalizer candidate not accepted; see actual first failure' }
+      - name: Independently accept and deliver pygments 2.21.0
+        if: always() && env.FIXTURES_READY == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tool\python\python.exe -B tests/stage_remaining_stable_refresh.py pygments
+          if ($LASTEXITCODE) { throw 'pygments candidate not accepted; see actual first failure' }
+      - name: Record actual outcomes and remove only the one-time trigger and staging helper
+        if: always() && env.SCOPE_CONFIRMED == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import base64,json,os,subprocess,sys
+          from pathlib import Path
+          from importlib.metadata import distributions
+          for stream in (sys.stdout,sys.stderr):stream.reconfigure(encoding="utf-8",errors="backslashreplace")
+          branch="refs/heads/dev/stable-tool-refresh";frozen=os.environ["FROZEN"]
+          trigger=os.environ["GITHUB_SHA"]
+          assert os.environ["GITHUB_REF"]==branch
+          auth=base64.b64encode(("x-access-token:"+os.environ.pop("GH_TOKEN")).encode()).decode()
+          print("::add-mask::"+auth,flush=True)
+          cfg=["-c","http.https://github.com/.extraheader=AUTHORIZATION: basic "+auth]
+          def git(*a):return subprocess.check_output(["git",*a])
+          def rev(ref="HEAD"):return git("rev-parse",ref).decode().strip()
+          def ref(name):
+              v,n=git(*cfg,"ls-remote","origin",name).decode().strip().split("\t")
+              assert n==name
+              return v
+          def names(*a):return set(git(*a).decode("utf-8").split("\0"))-{""}
+          assert ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          path=Path(os.environ["RUNNER_TEMP"])/("portable-remaining-stable-"+os.environ["GITHUB_RUN_ID"]+".json")
+          state=json.loads(path.read_bytes()) if path.exists() else {"trigger":trigger,"groups":{}}
+          assert state["trigger"]==trigger
+          groups=state["groups"]
+          ordered={"lxml":("6.1.1","6.1.3"),"pyyaml":("6.0.3","6.0.4"),"markdown-it-py":("4.2.0","4.3.0"),"charset-normalizer":("3.4.7","3.5.3"),"pygments":("2.20.0","2.21.0")}
+          known=trigger
+          for group in ordered:
+              data=groups.get(group,{})
+              if data.get("status")=="delivered":
+                  assert data["base"]==known
+                  known=data["commit"]
+              else:
+                  assert data.get("status")!="remote-unconfirmed","Unknown remote outcome; preserve actual ref"
+          assert ref(branch)==known==rev(),"Unexpected local or remote state"
+          assert not git("status","--porcelain=v1","--untracked-files=all"),"Dirty checkout; do not remove unknown files"
+          assert subprocess.run(["git","symbolic-ref","-q","HEAD"],capture_output=True).returncode!=0
+          installed={d.metadata["Name"].lower().replace("_","-"):d.version for d in distributions(path=["tool/python/Lib/site-packages"])}
+          assert len(installed)==49
+          pins={k.lower().replace("_","-"):v for k,v in (s.split("==",1) for s in Path("tool/python-packages.in.txt").read_text(encoding="utf-8").splitlines() if "==" in s and not s.startswith("#"))}
+          assert installed==pins
+          url="https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]
+          lines=["\n## 2026-11-26: remaining stable wheel review and targeted closeout\n",
+                 "Baseline frozen main/tag 4fb0b502 and previously accepted dev fbc3b63c. Prior 49-distribution inventory matched 35 compatible latest releases; 14 had newer metadata candidates. No repeat full browser/MCP, LFS recovery, CA or image/packager suite. Scoped wheel gates verify fixed official artifact SHA-256, full RECORD, selected upstream source/license blobs, Windows AMD64 native payload, existing launcher identity/entry points, exact lock and installed closure. Successful groups require actual relocated normal/YOLO consumer checks and normal remote push/readback."]
+          accepted=[]
+          for group,(old,new) in ordered.items():
+              d=groups.get(group,{})
+              if d.get("status")=="delivered":
+                  assert installed[group]==new
+                  accepted.append(group)
+                  lines.append(group+" "+old+" -> "+new+" delivered "+d["commit"]+"; exact targeted native and customer input validation passed.")
+              else:
+                  assert installed[group]==old
+                  lines.append(group+" "+old+" retained; "+(d.get("error") or "did not reach acceptance; see actual job log."))
+          lines.extend([
+              "Retain the Node-distribution npm 11.20.0 (registry payload divergence), Corepack 0.35.0 (parent configuration discovery behavior), ADB 37.0.1 (host profile API), Python 3.14.10 (ABI), and the verified Chrome Stable 158.0.8127.88 / Playwright built-in MCP 1.65.1 pair. No standalone alpha MCP, host runtime replacement or optional install.",
+              "Other metadata candidates are not claimed to be runtime-tested incompatible: idna 3.20 changes STD3/Unicode processing; NumPy 2.5.5 and pandas 3.1.1 need numerical/native behavior review, including changed datetime resolution; PyMuPDF 2.x rearranges the PDF/layout package closure; python-dateutil 4.0 changes parsing acceptance; soupsieve 4.1.3 spans major selector changes; setuptools 84.2.1 changes the historical build closure; tabulate 0.10.0 requires PDF/table-output and optional manifest review. Preserve fixed versions; no incidental resolver upgrades.",
+              "Known ADB/PowerShell startup limits and untested real accounts/devices/SSH, optional Office rendering and formula recalculation remain. No main/tag/Release changes. " + url + "\n"])
+          dev=Path("DEVELOPMENT.md");dev.write_bytes(dev.read_bytes()+("\n\n".join(lines)).encode())
+          doc=Path("tool/\u5de5\u5177\u66f4\u65b0\u8bf4\u660e.md")
+          doc.write_bytes(doc.read_bytes()+("\n### 2026-11-26 targeted remaining wheel review\n\n"+"\n".join(group+": "+installed[group]+" ("+("delivered" if group in accepted else "retained")+")" for group in ordered)+"\n\nExact results and retained candidates: DEVELOPMENT.md; "+url+"\n").encode())
+          # Correct an independently proven stale statement from the already
+          # accepted packaging run. No launch or product behavior change.
+          readme=Path("README.md");raw=readme.read_bytes()
+          old="Windows \u5b9e\u9645\u6253\u5305\u9a8c\u6536\u5c1a\u672a\u6267\u884c\u3002".encode()
+          new="\u5f00\u53d1\u5206\u652f\u5df2\u901a\u8fc7 Windows \u5e38\u7528\u6a21\u5f0f onedir \u4e0e YOLO \u6a21\u5f0f onefile \u4e2d\u6587\u7a7a\u683c\u8def\u5f84\u6784\u5efa\u3001\u642c\u8fc1\u548c\u6267\u884c\u9a8c\u6536\uff08AC 45690490980\uff09\uff0c\u672a\u53d1\u5e03\u65b0\u6b63\u5f0f\u7248\u3002".encode()
+          assert raw.count(old)==1
+          readme.write_bytes(raw.replace(old,new,1))
+          helper="tests/stage_remaining_stable_refresh.py";workflow=".github/workflows/refresh-remaining-stable.yml"
+          deleted={helper,workflow}
+          if not accepted:deleted.add("tests/check_remaining_stable_refresh.py")
+          git("rm","--",*sorted(deleted))
+          docs={"DEVELOPMENT.md","README.md",doc.as_posix()}
+          git("add","--",*sorted(docs))
+          assert names("diff","--cached","--name-only","-z")==deleted|docs
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Record remaining stable candidate results and remove temporary validation entry")
+          final=rev()
+          assert ref(branch)==known
+          subprocess.run(["git",*cfg,"push","origin","HEAD:"+branch],check=True)
+          assert ref(branch)==final and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          subprocess.run(["git",*cfg,"fetch","--no-tags","origin",branch],check=True)
+          assert rev("FETCH_HEAD")==final and rev("FETCH_HEAD^{tree}")==rev("HEAD^{tree}")
+          print("FINAL_DEV_COMMIT="+final,flush=True)
+          print("REMAINING_STABLE_RESULTS="+json.dumps(groups,ensure_ascii=True),flush=True)
+          print("REMAINING_STABLE_FINAL_PINS="+json.dumps(pins,ensure_ascii=True,sort_keys=True),flush=True)
+          print("TEMPORARY_TRIGGER_REMOVED=PASS",flush=True)
+          if len(accepted)!=len(ordered):raise SystemExit(1)
+          print("REMAINING_STABLE_CLOSEOUT=PASS",flush=True)
+          '@ | & .\tool\python\python.exe -B -
+          if ($LASTEXITCODE) { throw 'One or more candidates retained, or cleanup/readback failed; inspect exact results' }
