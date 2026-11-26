@@ -1,0 +1,229 @@
+name: Locked OCR XmlLite native feasibility and exact provenance
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths: [.github/workflows/locked-ocr-xmllite.yml]
+permissions: {}
+concurrency:
+  group: portable-locked-ocr-xmllite
+  cancel-in-progress: false
+jobs:
+  windows_ocr:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1 && github.event.before == 'eb7a10c6423078e3b1a8764149089685494f14b7'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Preserve exact bytes
+        run: |
+          git config --global core.autocrlf false
+          if ($LASTEXITCODE) { throw 'Git config failed' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Exact previous lock, Microsoft System32 XmlLite and local Chinese recognition
+        id: native
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference='Stop'
+          if ((git rev-parse HEAD).Trim() -cne $env:GITHUB_SHA) { throw 'Unexpected source' }
+          $root=$pwd.Path
+          $scratch=Join-Path $root 'tmp/locked-ocr-env'
+          New-Item -ItemType Directory -Path $scratch -Force | Out-Null
+          foreach ($key in @('HOME','USERPROFILE','APPDATA','LOCALAPPDATA','TEMP','TMP','TMPDIR','PROGRAMDATA','ALLUSERSPROFILE','PUBLIC')) {
+            [Environment]::SetEnvironmentVariable($key,$scratch,'Process')
+          }
+          $env:PSModuleAnalysisCachePath=Join-Path $scratch 'ps-module-cache'
+          $env:PATH=(Join-Path $env:SystemRoot 'System32')
+          & .\tool\python\python.exe -I -B -c "from pathlib import Path; compile(Path('tests/check_locked_ocr_xmllite.py').read_bytes(),'tests/check_locked_ocr_xmllite.py','exec')"
+          if ($LASTEXITCODE) { throw 'Probe syntax failure' }
+          & .\tool\python\python.exe -I -B tests/check_locked_ocr_xmllite.py (Join-Path $root 'tmp/locked-ocr-native.json')
+          if ($LASTEXITCODE) { throw 'Technical feasibility incomplete; no integration' }
+      - name: Preserve only native synthetic JSON, no OCR binaries or images
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: locked-ocr-native-evidence
+          path: tmp/locked-ocr-native.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve actual native failure status
+        if: always() && steps.native.outcome != 'success'
+        run: throw 'Native technical recognition not passed'
+  provenance:
+    if: github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1 && github.event.before == 'eb7a10c6423078e3b1a8764149089685494f14b7'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Fixed publisher keyring, 49 exact archive signatures and corresponding source inventory
+        id: verify
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mkdir -p tmp/locked-provenance-env
+          export HOME="$PWD/tmp/locked-provenance-env"
+          export TMPDIR="$HOME"
+          export XDG_CACHE_HOME="$HOME"
+          export XDG_CONFIG_HOME="$HOME"
+          export PATH=/usr/bin:/bin
+          /usr/bin/python3 -I -B -c "from pathlib import Path; compile(Path('tests/check_locked_ocr_provenance.py').read_bytes(),'tests/check_locked_ocr_provenance.py','exec')"
+          /usr/bin/python3 -I -B tests/check_locked_ocr_provenance.py "$PWD/tmp/locked-ocr-provenance.json"
+      - name: Preserve only signature/source research JSON, no archives or keys
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: locked-ocr-provenance-evidence
+          path: tmp/locked-ocr-provenance.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve actual signature failure status
+        if: always() && steps.verify.outcome != 'success'
+        run: exit 1
+  record:
+    needs: [windows_ocr, provenance]
+    if: always() && github.repository == 'rileyaaa/Portable' && github.ref == 'refs/heads/dev/stable-tool-refresh' && github.event_name == 'push' && github.run_attempt == 1 && github.event.before == 'eb7a10c6423078e3b1a8764149089685494f14b7'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+      actions: read
+    env:
+      FROZEN: 4fb0b50228057cd0be41fbb191e15e065e64e368
+      BASE: eb7a10c6423078e3b1a8764149089685494f14b7
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+          lfs: false
+      - name: Verify scope and immutable earlier records
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$BASE"
+          /usr/bin/python3 -I -B - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          branch="refs/heads/dev/stable-tool-refresh"
+          start=os.environ["GITHUB_SHA"];frozen=os.environ["FROZEN"];base=os.environ["BASE"]
+          expected={"tests/original_release_45739266926_coverage.json","tests/original_release_45739266926_coverage.md",
+            "tests/ocr_synthetic_glyphs.json","tests/check_locked_ocr_xmllite.py","tests/check_locked_ocr_provenance.py",
+            "tests/locked_ocr_45749259260_redistribution.md",".github/workflows/locked-ocr-xmllite.yml"}
+          paths={n.decode("utf-8") for n in subprocess.check_output(["git","diff","--name-only","-z",base,"HEAD"]).split(b"\0") if n}
+          assert paths==expected,(sorted(paths-expected),sorted(expected-paths))
+          for ref,want in ((branch,start),("refs/heads/main",frozen),("refs/tags/v0.172.0-portable.1",frozen)):
+              value=subprocess.check_output(["git","ls-remote","origin",ref]).decode().strip()
+              assert value==want+"\t"+ref
+          prior=json.loads(Path("tests/fixed_seed_f2py_ocr_45749259260.json").read_bytes())
+          assert prior["artifact"]["verified_downloadable"] and prior["artifact"]["id"]=="15085655070"
+          assert not Path(".github/workflows/fixed-seed-f2py-ocr.yml").exists()
+          raw="tests/release_audit_v0.172.0-portable.1-wrapper-corrected.json"
+          index=json.loads(Path("tests/original_release_45739266926_coverage.json").read_bytes())
+          assert index["metadata"]["raw_git_blob_sha1"]==subprocess.check_output(["git","rev-parse","HEAD:"+raw]).decode().strip()
+          j=json.loads(Path(raw).read_bytes())
+          for n,e in enumerate(index["all_raw_rows"],1):
+              r=j["rows"][n-1]
+              assert e=={"row":n,"mode":r["mode"],"item":r["item"],"status":r["status"]}
+          assert len(index["all_raw_rows"])==len(j["rows"])==576
+          for group,inv in (("entries","entry_inventory"),("environment","environment_inventory"),("python_distributions","python_distribution_inventory"),("npm_packages","npm_package_inventory")):
+              assert len(index[group])==len(j["metadata"][inv])
+          assert len(index["mcp_tools"])==len(j["metadata"]["mcp_advertised"])
+          for group in ("entries","environment","python_distributions","mcp_tools"):
+              for entry in index[group]:
+                  for e in entry.get("evidence",[]):
+                      assert e==index["all_raw_rows"][e["row"]-1]
+          print("Original immutable coverage index and narrow source scope verified.")
+          PY
+      - name: Download native JSON evidence only
+        id: native_report
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: locked-ocr-native-evidence
+          path: tmp/locked-ocr-native-evidence
+      - name: Download independent provenance JSON evidence only
+        id: provenance_report
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: locked-ocr-provenance-evidence
+          path: tmp/locked-ocr-provenance-evidence
+      - name: Record evidence and remove only this temporary trigger
+        if: always() && steps.scope.outcome == 'success'
+        shell: bash
+        env:
+          NATIVE: ${{ needs.windows_ocr.result }}
+          PROVENANCE: ${{ needs.provenance.result }}
+          NATIVE_REPORT: ${{ steps.native_report.outcome }}
+          PROVENANCE_REPORT: ${{ steps.provenance_report.outcome }}
+        run: |
+          set -euo pipefail
+          /usr/bin/python3 -I -B - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          branch="refs/heads/dev/stable-tool-refresh"
+          start=os.environ["GITHUB_SHA"];frozen=os.environ["FROZEN"]
+          def git(*args):return subprocess.check_output(["git",*args])
+          def rev():return git("rev-parse","HEAD").decode().strip()
+          def ref(name):
+              v,n=git("ls-remote","origin",name).decode().strip().split("\t")
+              assert n==name
+              return v
+          assert rev()==ref(branch)==start and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          assert not git("status","--porcelain=v1","--untracked-files=all")
+          def read(p):
+              p=Path(p)
+              if not p.exists():return {"completed":False,"rows":[]}
+              j=json.loads(p.read_bytes());assert j["source_commit"]==start
+              return j
+          native=read("tmp/locked-ocr-native-evidence/locked-ocr-native.json")
+          provenance=read("tmp/locked-ocr-provenance-evidence/locked-ocr-provenance.json")
+          signed=sum(x.get("status")=="PASS_SIGNATURE" for x in provenance.get("packages",[]))
+          sources=[x for x in provenance.get("sources",[]) if x.get("runtime_required")]
+          inspected=sum(x.get("status")=="SOURCE_SIGNED_ARCHIVE_INSPECTED" for x in sources)
+          result={"source_commit":start,"run_id":os.environ["GITHUB_RUN_ID"],"prior_run":"45749259260",
+            "prior_record":"eb7a10c6423078e3b1a8764149089685494f14b7","prior_candidate_id":"15085655070",
+            "native":native,"provenance":provenance,
+            "workflow_steps":{k:os.environ[k] for k in ("NATIVE","PROVENANCE","NATIVE_REPORT","PROVENANCE_REPORT")},
+            "native_recognition_passed":bool(native.get("technical_recognition_passed",False)),
+            "binary_archive_signatures_verified":signed,"runtime_source_groups_inspected":inspected,
+            "runtime_source_groups_total":len(sources),"redistribution_qualified":False,
+            "ocr_integrated":False,"new_candidate_built":False,"prior_candidate_unchanged":True,
+            "original_coverage_index":"tests/original_release_45739266926_coverage.json",
+            "whole_package_all_pass_claim":False}
+          target=Path("tests/locked_ocr_xmllite_"+os.environ["GITHUB_RUN_ID"]+".json")
+          assert not target.exists()
+          target.write_text(json.dumps(result,indent=2,ensure_ascii=True)+"\n",encoding="utf-8")
+          notes=Path("DEVELOPMENT.md")
+          url="https://github.com/rileyaaa/Portable/actions/runs/"+os.environ["GITHUB_RUN_ID"]
+          notes.write_bytes(notes.read_bytes()+("\n\n## Frozen MSYS2 OCR graph: native XmlLite and independent provenance\n\n"
+              "Prior exact archive graph 45749259260, current research source "+start+"; "+url+
+              ". Actual result: "+target.as_posix()+". Native recognition="+str(result["native_recognition_passed"])+
+              "; archive signatures "+str(signed)+"/49; signed runtime source groups inspected "+str(inspected)+"/"+str(len(sources))+
+              ". No redistribution clearance or integration. Prior seed/f2py downloadable candidate 15085655070 unchanged; no new ZIP. Original-release coverage index retains only original evidence. Existing ACL/SSH limitations unchanged.\n").encode("utf-8"))
+          workflow=".github/workflows/locked-ocr-xmllite.yml"
+          git("rm","--",workflow);git("add","--",str(target),"DEVELOPMENT.md")
+          assert {n.decode("utf-8") for n in git("diff","--cached","--name-only","-z").split(b"\0") if n}=={workflow,target.as_posix(),"DEVELOPMENT.md"}
+          git("-c","user.name=github-actions[bot]","-c","user.email=41898282+github-actions[bot]@users.noreply.github.com","commit","-m","Record isolated OCR technical and provenance evidence; remove temporary trigger")
+          final=rev();assert ref(branch)==start
+          subprocess.run(["git","push","origin","HEAD:"+branch],check=True)
+          assert ref(branch)==final and ref("refs/heads/main")==ref("refs/tags/v0.172.0-portable.1")==frozen
+          print("LOCKED_OCR_FINAL_DEV="+final,flush=True)
+          print("LOCKED_OCR_RESULT="+json.dumps({"native_recognition":result["native_recognition_passed"],"verified_signatures":signed,"runtime_sources_inspected":inspected,"redistribution_qualified":False},ensure_ascii=True),flush=True)
+          # No unconditional green claim from an incomplete redistribution gate.
+          raise SystemExit(1)
+          PY
