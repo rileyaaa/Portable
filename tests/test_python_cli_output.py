@@ -1,6 +1,8 @@
 """Check the existing console_script wrapper without invoking any vendor CLI."""
 import importlib.util
 import io
+import json
+import subprocess
 from pathlib import Path
 import stat
 import sys
@@ -47,6 +49,53 @@ class PythonCliOutputTests(unittest.TestCase):
             stderr.flush()
             self.assertEqual(data_out.getvalue().decode("utf-8").splitlines(), [text])
             self.assertEqual(data_err.getvalue().decode("utf-8").splitlines(), [text])
+
+    def test_console_script_exit_contract_matches_vendor_launcher(self):
+        # Use a synthetic registered console_script, never a vendor CLI.
+        # A separate interpreter observes the real SystemExit exit code and
+        # stderr, rather than only checking the wrapper's Python return value.
+        harness = r"""
+import importlib.metadata
+import json
+import runpy
+import sys
+import types
+from unittest import mock
+
+mode, source, value = sys.argv[1:]
+result = json.loads(value)
+fixture = types.ModuleType("portable_cli_exit_fixture")
+fixture.entry = lambda: result
+sys.modules[fixture.__name__] = fixture
+entry = importlib.metadata.EntryPoint(
+    name="synthetic", value=fixture.__name__ + ":entry", group="console_scripts")
+if mode == "vendor":
+    sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+    sys.exit(entry.load()())
+sys.argv = [source, "synthetic"]
+with mock.patch.object(importlib.metadata, "entry_points",
+                       return_value=importlib.metadata.EntryPoints([entry])):
+    runpy.run_path(source, run_name="__main__")
+"""
+        error = "\u4fbf\u643a \u8def\u5f84: synthetic failure"
+        for value, code, errors in ((None, 0, []), (0, 0, []), (7, 7, []),
+                                    (True, 1, []), (False, 0, []),
+                                    (error, 1, [error])):
+            with self.subTest(value=value):
+                encoded = json.dumps(value, ensure_ascii=True)
+                command = [sys.executable, "-I", "-B", "-c", harness]
+                expected = subprocess.run(
+                    [*command, "vendor", str(SOURCE), encoded],
+                    capture_output=True, cwd=ROOT, timeout=30, check=False)
+                actual = subprocess.run(
+                    [*command, "portable", str(SOURCE), encoded],
+                    capture_output=True, cwd=ROOT, timeout=30, check=False)
+                self.assertEqual(expected.returncode, code)
+                self.assertEqual(expected.stdout, b"")
+                self.assertEqual(expected.stderr.decode("utf-8").splitlines(), errors)
+                self.assertEqual(actual.returncode, expected.returncode)
+                self.assertEqual(actual.stdout, expected.stdout)
+                self.assertEqual(actual.stderr, expected.stderr)
 
     def test_preserves_interactive_console_and_non_reconfigurable_stream(self):
         module = load_wrapper()

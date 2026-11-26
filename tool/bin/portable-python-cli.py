@@ -43,7 +43,7 @@ def _configure_redirected_output() -> None:
             stream.reconfigure(encoding="utf-8", errors="backslashreplace")
 
 
-def main() -> int:
+def main() -> object:
     _configure_redirected_output()
     if len(sys.argv) < 2:
         print("usage: portable-python-cli.py <console-script-name> [args...]", file=sys.stderr)
@@ -51,8 +51,9 @@ def main() -> int:
     requested = sys.argv[1]
     ep = _find_entry_point(requested)
     sys.argv = [requested, *sys.argv[2:]]
-    result = ep.load()()
-    return int(result) if isinstance(result, int) else 0
+    # Preserve distlib's sys.exit(entrypoint()) contract, including a
+    # non-integer failure message that must not become exit code zero.
+    return ep.load()()
 
 
 if __name__ == "__main__":
