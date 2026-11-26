@@ -1,5 +1,7 @@
 """Synthetic browser archives exercise the production installer without networking."""
+from contextlib import redirect_stdout
 import hashlib
+import io
 import importlib.util
 import json
 import os
@@ -101,6 +103,26 @@ class BrowserInstallTests(unittest.TestCase):
         self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "incomplete")
         self.assertEqual(dll.read_bytes(), corrupt)
         self.assertEqual(sentinel.read_bytes(), b"preserve")
+
+    def test_state_messages_name_the_exact_revision(self):
+        manifest = {"revision": "1727472", "browserVersion": "158.0.8127.88", "fileCount": 305}
+        for state, rc in (("missing", 1), ("incomplete", 1), ("verified", 0)):
+            with self.subTest(state=state):
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(browser.report_payload_state(manifest, state), rc)
+                report = json.loads(output.getvalue())
+                self.assertEqual(report["state"], state)
+                self.assertEqual(report["verified"], rc == 0)
+                self.assertEqual(report["version"], manifest["browserVersion"])
+                self.assertEqual(report["files"], 305)
+                self.assertIn("tool/automation/browsers/chromium-1727472", report["action"])
+                if state == "missing":
+                    self.assertIn("-Install", report["action"])
+                elif state == "incomplete":
+                    self.assertIn("same version", report["action"])
+                    self.assertIn("profile", report["action"])
+                    self.assertNotIn("-Install", report["action"])
 
     def test_pinned_browser_inventory_matches_installed_official_bytes(self):
         manifest, prefix = browser.load_manifest(ROOT)

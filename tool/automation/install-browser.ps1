@@ -28,6 +28,7 @@ $browserRoot = Assert-AutomationPath -Root $root -Path (Join-Path $PSScriptRoot 
 $python = Assert-AutomationPath -Root $root -Path (Join-Path $root 'tool\python\python.exe')
 $installer = Assert-AutomationPath -Root $root -Path (Join-Path $PSScriptRoot 'install-browser.py')
 $executable = Assert-AutomationPath -Root $root -Path (Join-Path $PSScriptRoot $manifest.browser.executable) -MayNotExist
+$revisionDestination = Assert-AutomationPath -Root $root -Path (Split-Path -Parent (Split-Path -Parent $executable)) -Directory -MayNotExist
 $checkOnly = $Check -or -not $Install
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT -or -not [Environment]::Is64BitOperatingSystem) {
     throw 'Check or install the Windows x64 browser from Windows x64.'
@@ -64,6 +65,7 @@ try {
             Action = $status.action
             MCPVersion = $manifest.playwrightMcp; BrowserVersion = $manifest.browser.version
             Destination = $browserRoot; OfficialURL = $manifest.browser.downloadUrl
+            RevisionDestination = $revisionDestination
             BrowserPresent = [IO.File]::Exists($executable)
             BrowserVerified = ($status.state -eq 'verified')
             BrowserState = $status.state
@@ -74,7 +76,7 @@ try {
     if ($result.ExitCode -ne 0) {
         if ($null -ne $status -and $status.PSObject.Properties['state'] -and
             $status.state -eq 'incomplete' -and $status.version -ceq $manifest.browser.version) {
-            throw 'Existing pinned browser revision is incomplete or changed. Restore the same version from a verified package; preserve cache/browser/profile. No automatic replacement was attempted.'
+            throw "Existing pinned browser revision '$revisionDestination' is incomplete or changed. Restore the same version from a verified package; preserve cache/browser/profile. No automatic replacement was attempted."
         }
         throw 'Pinned Chromium installation or integrity check failed. No host browser fallback or additional browser components were installed.'
     }

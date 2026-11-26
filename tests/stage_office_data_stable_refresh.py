@@ -10,6 +10,7 @@ import csv
 import email.parser
 import hashlib
 import importlib.metadata as md
+import importlib.util
 import io
 import json
 import os
@@ -390,6 +391,39 @@ def replace_once(data, old, new):
     return data.replace(old, new, 1)
 
 
+def update_locks(raw_input, raw_lock, name, old, new, old_sha, new_sha):
+    """Pure staging operation; preserve spelling, line endings and other pins."""
+    # Use the maintained lock parser, including its input-digest and duplicate
+    # checks. This is not an installer or a new runtime command.
+    spec = importlib.util.spec_from_file_location(
+        "portable_lock_for_stage", Path(__file__).absolute().parents[1] / "tool/python-lock.py")
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    validator.validate_lock(raw_lock, raw_input)
+    key = validator.normalized_name(name)
+    if (not re.fullmatch(validator.NAME, name) or
+            not all(re.fullmatch(validator.VERSION, v) for v in (old, new)) or
+            not all(re.fullmatch(r"[a-f0-9]{64}", h) for h in (old_sha, new_sha))):
+        raise ValueError("Invalid fixed wheel identity")
+
+    def replace_pin(raw, expected, replacement):
+        # Whole lines only; never match a prefix, a comment, or part of a hash.
+        matches = [m for m in re.finditer(rb"(?m)^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\r\n]+)(?=\r?$)", raw)
+                   if validator.normalized_name(m.group(1).decode("ascii")) == key]
+        if len(matches) != 1 or matches[0].group(2) != expected:
+            raise ValueError("Expected one exact old pin for " + key)
+        match = matches[0]
+        return raw[:match.start(2)] + replacement + raw[match.end(2):]
+
+    new_input = replace_pin(raw_input, old.encode("ascii"), new.encode("ascii"))
+    new_lock = replace_pin(raw_lock, (old + " --hash=sha256:" + old_sha).encode("ascii"),
+                           (new + " --hash=sha256:" + new_sha).encode("ascii"))
+    new_lock = replace_once(new_lock, b"# requirements-sha256: " + digest(raw_input).encode("ascii"),
+                            b"# requirements-sha256: " + digest(new_input).encode("ascii"))
+    validator.validate_lock(new_lock, new_input)
+    return new_input, new_lock
+
+
 def main(name):
     assert os.name == "nt" and sys.version_info[:3] == (3, 14, 10)
     assert Path(sys.executable).resolve() == PY and sys.flags.isolated and sys.flags.ignore_environment
@@ -536,13 +570,7 @@ def main(name):
             assert versions() == before | {name: new}
             assert "No broken requirements found." in pip("check")
             consumer(new)
-            old_pin = ("XlsxWriter" if name == "xlsxwriter" else name) + "==" + old
-            new_pin = old_pin.split("==")[0] + "==" + new
-            new_input = replace_once(raw_input, old_pin.encode(), new_pin.encode())
-            new_lock = replace_once(raw_lock, (name + "==" + old + " --hash=sha256:" + old_sha).encode(),
-                                     (name + "==" + new + " --hash=sha256:" + new_sha).encode())
-            new_lock = replace_once(new_lock, b"# requirements-sha256: " + digest(raw_input).encode(),
-                                    b"# requirements-sha256: " + digest(new_input).encode())
+            new_input, new_lock = update_locks(raw_input, raw_lock, name, old, new, old_sha, new_sha)
             inp.write_bytes(new_input)
             lock.write_bytes(new_lock)
             allowed = {PREFIX + p for p in old_owned | new_owned} | {"tool/python-packages.in.txt", "tool/python-packages.lock.txt"}

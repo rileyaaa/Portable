@@ -129,10 +129,11 @@ def payload_state(root, manifest, prefix):
 
 
 def report_payload_state(manifest, state):
+    revision_path = f"tool/automation/browsers/chromium-{manifest['revision']}"
     actions = {
-        "missing": "Pinned revision directory is missing; rerun with -Install.",
-        "incomplete": "Existing pinned revision is incomplete or changed; restore the same version from a verified package. Do not remove the browser profile.",
-        "verified": "Pinned browser files verified.",
+        "missing": f"Pinned revision directory {revision_path} is missing; rerun with -Install.",
+        "incomplete": f"Existing pinned revision {revision_path} is incomplete or changed; restore the same version from a verified package. Do not remove the browser profile.",
+        "verified": f"Pinned browser files verified in {revision_path}.",
     }
     print(json.dumps({"verified": state == "verified", "state": state,
                       "version": manifest["browserVersion"], "files": manifest["fileCount"],

@@ -287,4 +287,5 @@ update
 - Keep all downloaded tools, generated files, test artifacts, credentials, SDK state, package-manager caches, and temporary files under the Codex package root (`CODEX_INSTALL_DIR` or the parent of `CODEX_HOME`).
 - Prefer package-local paths from `ANDROID_HOME`, `ANDROID_USER_HOME`, `APKTOOL_FRAMEWORK_DIR`, `FRIDA_CACHE_DIR`, `MITMPROXY_HOME`, `APPIUM_HOME`, `APK_LAB_CACHE_DIR`, `APK_LAB_TMP_DIR`, and `APK_LAB_JOBS_DIR`.
 - Before writing/deleting, resolve the final absolute path and keep it inside the package root; skip reparse points/symlinks.
+- For authorized local `sqlite3.exe` / `etc1tool.exe` tasks, use the package-local absolute executable and validated task cwd with ASCII relative filenames. Native Unicode arguments are a known Windows limitation; never copy only the SQLite main file when WAL may be active, and never accept an etc1tool exit code alone. See the package's [tool update guide](../../../../../tool/工具更新说明.md#android-platform-tools-本地文件用法不涉及设备) for snapshot and output verification.
 - Start Appium, device sessions, proxies, emulators, Frida, or GUI tools only for the current task and stop them when done.
