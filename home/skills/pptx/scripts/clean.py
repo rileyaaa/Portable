@@ -22,6 +22,29 @@ from pathlib import Path
 
 import defusedxml.minidom
 
+# The embedded interpreter deliberately omits the script directory.
+# Admit only the verified, ordinary bundled scripts directory for this CLI.
+if __name__ == "__main__" and sys.flags.safe_path:
+    import stat
+    _script = Path(__file__).absolute()
+    _root = _script.parents[4]
+    if _script.relative_to(_root).parts != ("home", "skills", "pptx", "scripts", "clean.py"):
+        raise RuntimeError("Office script is outside its bundled layout")
+    _directory = _script.parent
+    for _entry in (*reversed(_script.parents), _directory / "office", _directory / "office/helpers"):
+        _info = _entry.lstat()
+        if not stat.S_ISDIR(_info.st_mode) or getattr(_info, "st_file_attributes", 0) & 0x400:
+            raise RuntimeError("Office import path crosses a link or non-directory")
+    for _entry in (_script, _root / "env.ps1", _root / "codex.exe", _directory / "office/helpers/__init__.py"):
+        _info = _entry.lstat()
+        if not stat.S_ISREG(_info.st_mode) or _info.st_nlink != 1 or getattr(_info, "st_file_attributes", 0) & 0x400:
+            raise RuntimeError("Office import requires ordinary single-link package files")
+    sys.path.insert(0, str(_directory))
+    # Embedded Python ignores PYTHONIOENCODING. Preserve interactive output.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and not stream.isatty() and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+
 from office.helpers import SLIDE_REL_TYPE, ensure_portable_tree_no_reparse, opc_target, rels_source_part
 
 

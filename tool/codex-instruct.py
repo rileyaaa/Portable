@@ -12,6 +12,7 @@ import argparse
 import os
 import re
 import stat
+import sys
 import tempfile
 from pathlib import Path
 
@@ -292,4 +293,8 @@ def main() -> int:
     return 0
 
 if __name__ == "__main__":
+    # Embedded Python ignores PYTHONIOENCODING. Preserve interactive output.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and not stream.isatty() and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     raise SystemExit(main())
