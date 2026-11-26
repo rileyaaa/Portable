@@ -182,8 +182,16 @@ def build(base,tc,srcs):
             libs=list((prefix/"lib").glob("*.a"));assert len(libs)==1,libs
             dep=[f"-DZLIB_ROOT:PATH={prefix.as_posix()}","-DZLIB_USE_STATIC_LIBS=ON",f"-DZLIB_LIBRARY_RELEASE:FILEPATH={libs[0].as_posix()}",f"-DZLIB_INCLUDE_DIR:PATH={(prefix/'include').as_posix()}"]
         elif key=="png":
-            libs=[f for f in (prefix/"lib").glob("*.a") if "png" in f.name.lower()];assert len(libs)==1,libs
-            dep += [f"-DPNG_LIBRARY_RELEASE:FILEPATH={libs[0].as_posix()}",f"-DPNG_PNG_INCLUDE_DIR:PATH={(prefix/'include').as_posix()}"]
+            # libpng's GNU Windows branch deliberately installs libpng16.a
+            # plus a byte-for-byte libpng.a compatibility copy. Verify both
+            # actual ordinary files, then pin the ABI-specific archive.
+            libs={f.name:f for f in (prefix/"lib").glob("*.a") if "png" in f.name.lower()}
+            assert set(libs)=={"libpng.a","libpng16.a"},libs
+            for f in libs.values():m.ordinary(f)
+            assert m.digest(libs["libpng.a"])==m.digest(libs["libpng16.a"]),"libpng alias bytes differ"
+            row("actual GNU Windows libpng16 archive and exact compatibility alias","PASS_ACTUAL",
+                {"canonical":"libpng16.a","alias":"libpng.a","sha256":m.digest(libs["libpng16.a"]),"upstream_cmake":"v1.6.59 create_symlink copies target on Windows"})
+            dep += [f"-DPNG_LIBRARY_RELEASE:FILEPATH={libs['libpng16.a'].as_posix()}",f"-DPNG_PNG_INCLUDE_DIR:PATH={(prefix/'include').as_posix()}"]
         elif key=="lept":
             cfg=(dest/"src/config_auto.h").read_text(encoding="utf-8")
             assert re.search(r"(?m)^#define HAVE_LIBPNG(?:\s+1)?\s*$",cfg) and re.search(r"(?m)^#define HAVE_LIBZ(?:\s+1)?\s*$",cfg)
