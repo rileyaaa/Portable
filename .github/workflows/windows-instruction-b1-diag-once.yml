@@ -1,0 +1,643 @@
+name: Windows instruction B1 bounded diagnostic (one-time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/windows-instruction-b1-diag-once.yml
+permissions:
+  contents: read
+jobs:
+  instruction-b1-diag:
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - name: Verify one-time trigger and native runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            $e = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+            if ($env:GITHUB_REPOSITORY -cne 'rileyaaa/Portable' -or $env:GITHUB_REF -cne 'refs/heads/dev/stable-tool-refresh' -or
+                $env:GITHUB_EVENT_NAME -cne 'push' -or $env:GITHUB_RUN_ATTEMPT -cne '1' -or $env:RUNNER_OS -cne 'Windows' -or
+                $env:RUNNER_ARCH -cne 'X64' -or $PSVersionTable.PSEdition -cne 'Core' -or -not [Environment]::Is64BitProcess -or
+                $e.before -cne 'f552f181555bd4e52abb764951e1947122d5bc5b' -or $e.after -cne $env:GITHUB_SHA -or
+                $e.ref -cne $env:GITHUB_REF -or $e.head_commit.id -cne $env:GITHUB_SHA -or
+                $e.created -ne $false -or $e.deleted -ne $false -or $e.forced -ne $false) { throw 'IN_TRIGGER_OR_RUNNER' }
+          } catch { Write-Output 'IN_TRIGGER=BLOCKED'; exit 1 }
+          Write-Output 'IN_TRIGGER=PASS'
+          Write-Output 'IN_FULL_LAUNCHER=NOT_RUN;CODEX=NOT_RUN;EMBEDDED_PYTHON=NOT_RUN;BAT=NOT_RUN;ZIP=NOT_RUN;RELEASE_MODES=NOT_RUN'
+      - name: Acquire three raw texts and diagnose D0 then B1
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            $python = (Get-Command python.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+            $win = [IO.Path]::GetFullPath([Environment]::GetFolderPath('Windows'))
+            if ($win -notmatch '^[A-Za-z]:\\' -or -not [IO.File]::Exists((Join-Path $win 'System32\cmd.exe'))) { throw 'IN_SYSTEM_PATH' }
+            $temp = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+            $cursor = $temp
+            while ($cursor) {
+              $i = Get-Item -LiteralPath $cursor -Force -ErrorAction Stop
+              if (-not $i.PSIsContainer -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'IN_UNSAFE_PARENT' }
+              $cursor = [IO.Path]::GetDirectoryName($cursor.TrimEnd('\'))
+            }
+            $owned = Join-Path $temp ('instruction-native-' + [Guid]::NewGuid().ToString('N'))
+            if (Test-Path -LiteralPath $owned) { throw 'IN_SCOPE_EXISTS' }
+            $null = New-Item -ItemType Directory -Path $owned -ErrorAction Stop
+            $probe = Join-Path $owned 'probe.py'
+            $worker = Join-Path $owned 'worker.ps1'
+          } catch { Write-Output 'IN_BOOTSTRAP=BLOCKED'; exit 1 }
+          $py = @'
+          import base64, ctypes as C, hashlib, json, os, re, shutil, stat, struct, subprocess, sys, threading, time, tomllib
+          from pathlib import Path
+
+          REPO = 'rileyaaa/Portable'
+          PARENT = 'f552f181555bd4e52abb764951e1947122d5bc5b'
+          TREE = 'e016aef861b4fd82e88bb68de223f589f9e14444'
+          TARGET = 'windows-instruction-b1-diag-once.yml'
+          OLD = {
+              'windows-instruction-native-once.yml': 'd451143c805fc0775989afd723798cc6f4d748f4',
+              'import-round12.yml': '4b6deae44ab11e353c37a653389317832cbab526',
+              'local-native-tool-paths-once.yml': 'bd2fda2a557880b2a32c0bda092f6c9ae7262feb',
+              'release.yml': '066f09832bb131bed784b82ad16776857fa8e38c',
+              'windows-cache-whatif-once.yml': '8b0d7aadcd62433b35b0a8975d87679a460bd3d4',
+              'windows-cache-whatif-real-once.yml': '3c96d6742c73d844f4cc87cb322fcf9009d63cb1',
+              'windows-native-stdin-argv-once.yml': 'f7d1bb845bb9184deb2e4a1f350650a388562908',
+              'windows-readonly-host-wal-once.yml': 'dd904171c32cc7769e0ff8874eec5d2711764269',
+          }
+          # bytes, SHA-256, Git blob, BOM, CRLF count
+          PINS = {
+              'tool/codex-instruct.py': (12679,'1677563677e977607f577fa778f18b403f3e89414c51db1774ffaf84be3f0ea4','79d0dd85acaf064c2de5f84b9cabf5e834e9e7b6',False,0),
+              'env.ps1': (26208,'87473b5276d40a0286b3e52fdc6013fc74a338a316224c5513adad4343d0c258','fee7920e3e12a56c9f5a7f3693de360c1f49a760',True,391),
+              'run-codex.ps1': (205937,'16f1bb1e7b098900233a646afaae84b6eea1271b8898ae83d9bde2e2125c30fb','2eaac598eaf07eadf725a58308d8e81672a3e2bb',True,3666),
+          }
+          NAME = "模型 指令's"
+          MD = NAME+'.md'
+          INPUT = '輸入 指令.md'
+          SOURCE_MD = '\ufeff# 新指令\r\nYou are Codex, based on GPT-5.5, synthetic fixture.\r\n保留中文\r\n'.encode('utf-8')
+          INSTALLED = SOURCE_MD.decode('utf-8-sig').replace('\r\n','\n').encode('utf-8')
+          NEW_ENV = ("\ufeff# 原設定\n$env:CODEX_MODEL = 'fixture-model'\n$env:CODEX_MODEL_INSTRUCTIONS_FILE = '"+MD.replace("'","''")+"'\n").encode('utf-8')
+          GENERATED = 'home/codex-runtime-instructions.generated.md'
+          CONFIG = 'home/config.toml'
+
+
+          def need(ok,label):
+              if not ok: raise RuntimeError(label)
+
+
+          def sha(b): return hashlib.sha256(b).hexdigest()
+
+
+          def blob(b): return hashlib.sha1(('blob '+str(len(b))+'\0').encode('ascii')+b).hexdigest()
+
+
+          def is_oid(s): return type(s) is str and re.fullmatch('[0-9a-f]{40}',s) is not None
+
+
+          def identity(raw,pin):
+              n,h,b,bom,crlf=pin
+              need(len(raw)==n and sha(raw)==h and blob(raw)==b,'IN_SOURCE_IDENTITY')
+              need(raw.startswith(b'\xef\xbb\xbf')==bom and raw.endswith(b'\n'),'IN_SOURCE_ENCODING')
+              raw.decode('utf-8-sig' if bom else 'utf-8','strict')
+              need(raw.count(b'\r\n')==crlf and raw.count(b'\r')==crlf and (not crlf or raw.count(b'\n')==crlf),'IN_SOURCE_EOL')
+
+
+          def ordinary(p,directory):
+              s=p.lstat()
+              need(not stat.S_ISLNK(s.st_mode) and not getattr(s,'st_file_attributes',0)&0x400 and (stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode) and s.st_nlink==1),'IN_UNSAFE_ENTRY')
+              return s
+
+
+          def plain(p):
+              p=Path(os.path.abspath(p))
+              if os.name=='nt': need(re.fullmatch('[A-Za-z]:',p.drive) and ':' not in str(p)[2:],'IN_LOCAL_PATH')
+              for q in (*reversed(p.parents),p): ordinary(q,True)
+              return p
+
+
+          def snap(root):
+              result={}; pending=[plain(root)]
+              while pending:
+                  p=pending.pop(); d=stat.S_ISDIR(p.lstat().st_mode); s=ordinary(p,d)
+                  need(len(result)<2048 and (d or s.st_size<=2097152),'IN_SNAPSHOT_BOUND')
+                  result[p.relative_to(root).as_posix()]=('d',s.st_mode,s.st_ino) if d else ('f',s.st_mode,s.st_ino,s.st_size,s.st_mtime_ns,sha(p.read_bytes()))
+                  if d: pending.extend(p.iterdir())
+              return result
+
+
+          def changes(before,after):
+              return {k for k in before.keys()|after.keys() if before.get(k)!=after.get(k)}
+
+
+          def mkdir(p):
+              if not os.path.lexists(p):
+                  mkdir(p.parent); p.mkdir()
+              plain(p)
+
+
+          def put(p,b):
+              mkdir(p.parent)
+              with p.open('xb') as f: f.write(b)
+              ordinary(p,False)
+
+
+          def unique(pairs):
+              d=dict(pairs); need(len(d)==len(pairs),'IN_JSON_DUPLICATE'); return d
+
+
+          def decode_blob(doc,pin):
+              need(type(doc) is dict and doc.get('sha')==pin[2] and type(doc.get('size')) is int and doc['size']==pin[0] and doc.get('encoding')=='base64' and type(doc.get('content')) is str,'IN_BLOB_SCHEMA')
+              raw=base64.b64decode(doc['content'].replace('\n','').replace('\r',''),validate=True)
+              identity(raw,pin); return raw
+
+
+          def api(kind,oid):
+              import http.client, ssl
+              need(kind in ('commits','trees','blobs') and is_oid(oid),'IN_API_SCOPE')
+              c=http.client.HTTPSConnection('api.github.com',443,timeout=10,context=ssl.create_default_context())
+              try:
+                  c.request('GET','/repos/'+REPO+'/git/'+kind+'/'+oid,headers={'User-Agent':'Portable-instruction-native-once','Accept':'application/vnd.github+json','Accept-Encoding':'identity','Connection':'close','X-GitHub-Api-Version':'2022-11-28'})
+                  r=c.getresponse()
+                  print('IN_SOURCE_HTTP='+kind+';'+str(r.status),flush=True)
+                  need(r.status==200 and not r.headers.get_all('WWW-Authenticate',[]) and not r.headers.get_all('Proxy-Authenticate',[]),'IN_API_STATUS')
+                  ct=r.headers.get_all('Content-Type',[]); ce=r.headers.get_all('Content-Encoding',[])
+                  need(len(ct)==1 and ',' not in ct[0] and ct[0].split(';',1)[0].strip().lower()=='application/json' and (not ce or len(ce)==1 and ce[0].lower()=='identity'),'IN_API_TYPE')
+                  raw=r.read(1048577); need(len(raw)<=1048576,'IN_API_BOUND')
+                  lengths=r.headers.get_all('Content-Length',[])
+                  need(not lengths or len(lengths)==1 and lengths[0]==str(len(raw)),'IN_API_LENGTH')
+                  return json.loads(raw.decode('utf-8','strict'),object_pairs_hook=unique)
+              finally: c.close()
+
+
+          def tree(oid):
+              d=api('trees',oid); need(d.get('sha')==oid and d.get('truncated') is False and type(d.get('tree')) is list,'IN_TREE_SCHEMA')
+              out={}
+              for x in d['tree']:
+                  k=x.get('path'); v=(x.get('mode'),x.get('type'),x.get('sha'))
+                  need(type(k) is str and k not in out and '/' not in k and k not in ('','.','..') and is_oid(v[2]),'IN_TREE_ENTRY')
+                  out[k]=v
+              return out
+
+
+          def only_dir(a,b,k):
+              need(a.get(k,())[:2]==b.get(k,())[:2]==('040000','tree') and {n:v for n,v in a.items() if n!=k}=={n:v for n,v in b.items() if n!=k},'IN_TREE_DELTA')
+              return a[k][2],b[k][2]
+
+
+          def only_workflow(a,b):
+              want={n:('100644','blob',v) for n,v in OLD.items()}
+              need(a==want and TARGET not in a and b.get(TARGET,())[:2]==('100644','blob') and is_oid(b[TARGET][2]) and {k:v for k,v in b.items() if k!=TARGET}==a,'IN_WORKFLOW_DELTA')
+
+
+          def acquire(scope,head):
+              need(is_oid(head) and head!=PARENT,'IN_HEAD')
+              c=api('commits',head)
+              need(c.get('sha')==head and [x.get('sha') for x in c.get('parents',[])]==[PARENT] and is_oid(c.get('tree',{}).get('sha')),'IN_PARENT')
+              a,b=tree(TREE),tree(c['tree']['sha']); ag,bg=only_dir(a,b,'.github')
+              aw,bw=only_dir(tree(ag),tree(bg),'workflows'); only_workflow(tree(aw),tree(bw))
+              need(a.get('tool',())[:2]==('040000','tree'),'IN_PRODUCT_TREE')
+              t=tree(a['tool'][2])
+              for path,pin in PINS.items():
+                  entry=t.get('codex-instruct.py') if path.startswith('tool/') else a.get(path)
+                  need(entry==('100644','blob',pin[2]),'IN_PRODUCT_TREE')
+              print('IN_TREE_DELTA=SOLE_ADD;OLD_WORKFLOWS=8/8',flush=True)
+              for path,pin in PINS.items():
+                  raw=decode_blob(api('blobs',pin[2]),pin); p=scope/'source'/path
+                  put(p,raw); identity(p.read_bytes(),pin)
+              print('IN_RAW_SOURCE=3/3;BOM_CRLF=PASS',flush=True)
+
+
+          def source_bytes(scope):
+              result={}
+              for name,pin in PINS.items():
+                  p=scope/'source'/name; plain(p.parent); ordinary(p,False)
+                  raw=p.read_bytes(); identity(raw,pin); result[name]=raw
+              need(set(snap(scope/'source'))=={'.','tool',*PINS},'IN_SOURCE_SET')
+              return result
+
+
+          def fixture(data,raw):
+              root=data/'handoff'/'Portable 中文 空格'
+              for name,b in raw.items():
+                  put(root/name,b); identity((root/name).read_bytes(),PINS[name])
+              put(root/'codex.exe',b'NON-EXECUTABLE SYNTHETIC ROOT MARKER\n')
+              put(root/INPUT,SOURCE_MD); put(root/'inside-sentinel',b'owned inside\n')
+              put(root/'env.local.ps1',NEW_ENV); put(root/'home'/MD,INSTALLED)
+              put(root/'home/fixture-model-unrestricted.md',b'AUTO_NOT_SELECTED\n')
+              put(root/CONFIG,b'# synthetic existing config\n'); mkdir(root/'tmp')
+              for path,size,h in [('env.local.ps1',109,'0af231ef7c1b9d2d51710976c1c213b9c1628862af93867692087f171520727f'),('home/'+MD,77,'2922c8298acc88a9d0e3d0eb1e6bc178eb8526c63a8f36c9425bbdd5b81af183')]:
+                  raw=(root/path).read_bytes(); need(len(raw)==size and sha(raw)==h,'IN_A5_EXPECTED_BYTES')
+              print('IN_A5_FIXTURE=RECONSTRUCTED_EXPECTED_BYTES;2/2',flush=True)
+              return root
+
+
+          def runtime(scope,label,win,ps,python):
+              r=scope/'runtime'/label
+              for d in ('home','tmp','appdata','localappdata','programdata','cache'):
+                  put(r/d/'sentinel',b'owned runtime\n')
+              e={'SystemRoot':str(win),'WINDIR':str(win),'SystemDrive':win.drive,'COMSPEC':str(win/'System32/cmd.exe'),
+                 'PATH':str(python.parent)+';'+str(win/'System32'),'PATHEXT':'.COM;.EXE;.BAT;.CMD','HOME':str(r/'home'),'USERPROFILE':str(r/'home'),
+                 'APPDATA':str(r/'appdata'),'LOCALAPPDATA':str(r/'localappdata'),'PROGRAMDATA':str(r/'programdata'),'ALLUSERSPROFILE':str(r/'programdata'),
+                 'TEMP':str(r/'tmp'),'TMP':str(r/'tmp'),'TMPDIR':str(r/'tmp'),'HOMEDRIVE':r.drive,'HOMEPATH':str(r/'home')[len(r.drive):],
+                 'XDG_CACHE_HOME':str(r/'cache'),'XDG_CONFIG_HOME':str(r/'appdata'),'PSModulePath':str(ps.parent/'Modules'),
+                 'PSModuleAnalysisCachePath':str(r/'localappdata/ModuleAnalysisCache'),'POWERSHELL_TELEMETRY_OPTOUT':'1'}
+              return r,e
+
+
+          def read_config(root):
+              b=(root/CONFIG).read_bytes(); need(not b.startswith(b'\xef\xbb\xbf'),'IN_CONFIG_BOM')
+              doc=tomllib.loads(b.decode('utf-8','strict')); p=root/GENERATED
+              need(doc=={'model_instructions_file':str(p)},'IN_CONFIG_REFERENCE')
+              raw=p.read_bytes(); need(not raw.startswith(b'\xef\xbb\xbf'),'IN_RUNTIME_BOM')
+              s=raw.decode('utf-8','strict').replace('\r\n','\n')
+              tail='# User Model Instructions\n\n# 新指令\nYou are Codex, synthetic fixture.\n保留中文\n\n'
+              need(s.startswith('# Runtime Model Identity\n') and 'Current configured/requested model: fixture-model.' in s and s.count('# User Model Instructions')==1 and s.endswith(tail) and 'AUTO_NOT_SELECTED' not in s,'IN_RUNTIME_CONTENT')
+
+
+          def job_guard():
+              from ctypes import wintypes as W
+              class Basic(C.Structure):
+                  _fields_=[('t1',C.c_longlong),('t2',C.c_longlong),('flags',W.DWORD),('min',C.c_size_t),('max',C.c_size_t),('active',W.DWORD),('affinity',C.c_size_t),('priority',W.DWORD),('schedule',W.DWORD)]
+              class Limits(C.Structure):
+                  _fields_=[('basic',Basic),('io',C.c_ulonglong*6),('mem',C.c_size_t*4)]
+              class Accounting(C.Structure):
+                  _fields_=[('times',C.c_longlong*4),('faults',W.DWORD),('total',W.DWORD),('active',W.DWORD),('terminated',W.DWORD)]
+              k=C.WinDLL('kernel32',use_last_error=True)
+              def f(name,res,*args):
+                  fn=getattr(k,name); fn.restype=res; fn.argtypes=args; return fn
+              j=f('CreateJobObjectW',W.HANDLE,C.c_void_p,W.LPCWSTR)(None,None)
+              need(j,'IN_JOB_CREATE'); lim=Limits(); lim.basic.flags=0x2008; lim.basic.active=2
+              need(f('SetInformationJobObject',W.BOOL,W.HANDLE,C.c_int,C.c_void_p,W.DWORD)(j,9,C.byref(lim),C.sizeof(lim)),'IN_JOB_LIMIT')
+              need(f('AssignProcessToJobObject',W.BOOL,W.HANDLE,W.HANDLE)(j,f('GetCurrentProcess',W.HANDLE)()),'IN_JOB_ASSIGN')
+              def accounting():
+                  x=Accounting()
+                  need(f('QueryInformationJobObject',W.BOOL,W.HANDLE,C.c_int,C.c_void_p,W.DWORD,C.c_void_p)(j,1,C.byref(x),C.sizeof(x),None),'IN_JOB_ACCOUNTING')
+                  return x.active,x.total,x.terminated
+              need(accounting()==(1,1,0),'IN_JOB_INITIAL'); return accounting
+
+
+          SAFE=True
+          CAP=65536
+          DEADLINE=15.0
+          TAIL=2.0
+          D0=('ENTRY','ENGINE_OK','CONSOLE_OK','VERSION','ARGV_OK','WORKER_EXIT_BEGIN')
+          D1=('ENTRY','ENGINE_OK','CONSOLE_OK','VERSION','SOURCE_HASH_BEGIN','SOURCE_HASH_END','AST_PARSE_BEGIN','AST_PARSE_END','AST_LOAD_BEGIN','AST_LOAD_END','SLICE_HASH_BEGIN','SLICE_HASH_END','SLICES','S1_BEGIN','S1_END','S2_BEGIN','S2_END','ENV_ASSERT_END','ENV','RESOLVE_BEGIN','S3_BEGIN','S3_END','RESOLVE','S4_BEGIN','S4_END','S5_BEGIN','S5_END','WRITE','WORKER_EXIT_BEGIN')
+          LITERALS={b'IN_PS_SLICES=12/12;5/5':'SLICES',b'IN_PS_ENV=PASS':'ENV',b'IN_PS_RESOLVE_BEGIN=1':'RESOLVE_BEGIN',b'IN_PS_RESOLVE=PASS':'RESOLVE',b'IN_PS_WRITE=PASS':'WRITE'}
+          D0_ERROR=b'IN_DIAG_D0_STDERR=PASS\r\n'
+
+
+          def classify(raw,expected):
+              pieces=raw.split(b'\n'); partial=bool(pieces[-1]); tokens=[]; version=None
+              unknown=False; stage='NONE'; order=True
+              for row in pieces[:-1]:
+                  if row.endswith(b'\r'): row=row[:-1]
+                  m=re.fullmatch(rb'IN_PS_ENGINE=(5\.1\.[0-9]{1,10}\.[0-9]{1,10})',row)
+                  if m: token='VERSION'; version=m[1].decode('ascii')
+                  elif row in LITERALS: token=LITERALS[row]
+                  elif row.startswith(b'IN_DIAG_STAGE='):
+                      tag=row[14:]
+                      token=next((s for s in expected if s.encode('ascii')==tag and s not in ('VERSION',*LITERALS.values())),None)
+                  else: token=None
+                  if token is None: unknown=True; continue
+                  if len(tokens)>=len(expected) or token!=expected[len(tokens)]: order=False
+                  if order and not unknown and token not in ('VERSION',*LITERALS.values()): stage=token
+                  tokens.append(token)
+              return stage,order,unknown,partial,tuple(tokens)==expected and not unknown and not partial and order,version
+
+
+          class Capture:
+              def __init__(self,stream):
+                  self.lock=threading.Lock(); self.data=bytearray(); self.eof=False
+                  self.done=False; self.overflow=False; self.error=False
+                  def reader():
+                      try:
+                          while True:
+                              with self.lock: size=min(4096,CAP+1-len(self.data))
+                              b=stream.read(size)
+                              with self.lock:
+                                  if not b: self.eof=True; break
+                                  self.data.extend(b)
+                                  if len(self.data)>CAP: self.overflow=True; break
+                      except BaseException:
+                          with self.lock: self.error=True
+                      finally:
+                          try: stream.close()
+                          except BaseException:
+                              with self.lock: self.error=True
+                          with self.lock: self.done=True
+                  threading.Thread(target=reader,daemon=True).start()
+
+              def state(self):
+                  with self.lock:
+                      return bytes(self.data),self.eof,self.done,self.overflow,self.error
+
+
+          def sample(p,out,err,accounting,expected):
+              a,b=out.state(),err.state(); rc=p.poll(); active,total,terminated=accounting()
+              return rc,a,b,active,total,terminated,classify(a[0],expected)
+
+
+          def emit(label,phase,s,reason,elapsed):
+              rc,a,b,active,total,terminated,info=s
+              stage,order,unknown,partial,complete,version=info
+              err_kind='EMPTY' if not b[0] else ('D0_MARKER' if b[0]==D0_ERROR else 'D0_PREFIX' if label=='D0' and D0_ERROR.startswith(b[0]) else 'WORKER_FAILURE' if b[0]==b'IN_PS_WORKER_FAILED\r\n' else 'OTHER')
+              print(f'IN_DIAG={label};PHASE={phase};REASON={reason};ELAPSED_MS={elapsed};CHILD={"RUNNING" if rc is None else "EXITED"};RC={"NA" if rc is None else rc};OUT_EOF={int(a[1])};ERR_EOF={int(b[1])};OUT_DONE={int(a[2])};ERR_DONE={int(b[2])};JOB_ACTIVE={active};JOB_TOTAL={total};JOB_TERMINATED={terminated};LAST_STAGE={stage};ORDER={int(order)};UNKNOWN={int(unknown)};PARTIAL={int(partial)};OUT={len(a[0])};ERR={len(b[0])};OUT_SHA={sha(a[0])};ERR_SHA={sha(b[0])};OUT_LIMIT={int(a[3])};ERR_LIMIT={int(b[3])};ERR_KIND={err_kind};ERR_PARTIAL={int(bool(b[0]) and not b[0].endswith(bytes([10])))};READ_ERROR={int(a[4] or b[4])}',flush=True)
+
+
+          def monitor(label,argv,cwd,env,accounting,count,expected):
+              global SAFE
+              need(accounting()[:2]==(1,count-1),'IN_JOB_BEFORE')
+              SAFE=False
+              p=subprocess.Popen(argv,cwd=cwd,env=env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,bufsize=0)
+              begin=time.monotonic(); deadline=begin+DEADLINE
+              out,err=Capture(p.stdout),Capture(p.stderr)
+              while True:
+                  s=sample(p,out,err,accounting,expected); now=time.monotonic()
+                  rc,a,b,active,total,_,info=s
+                  stderr_ok=D0_ERROR.startswith(b[0]) if label=='D0' else not b[0]
+                  if a[3] or b[3]: reason='OUTPUT_LIMIT'
+                  elif a[4] or b[4]: reason='PIPE_ERROR'
+                  elif active not in (1,2) or total!=count: reason='JOB_DRIFT'
+                  elif info[2] or not info[1]: reason='UNKNOWN_OR_ORDER'
+                  elif not stderr_ok: reason='STDERR'
+                  elif now>=deadline: reason='TIMEOUT'
+                  elif rc is not None and a[2] and b[2] and active==1:
+                      reason='PASS' if rc==0 and a[1] and b[1] and info[4] and (b[0]==D0_ERROR if label=='D0' else not b[0]) else 'EXIT_CONTRACT'
+                  else:
+                      time.sleep(min(0.02,max(0,deadline-now))); continue
+                  break
+              emit(label,'PRE_END',s,reason,int((now-begin)*1000))
+              # Never give the child additional execution time after a failed gate.
+              if reason!='PASS' and p.poll() is None:
+                  p.kill()
+              until=time.monotonic()+TAIL
+              while True:
+                  final=sample(p,out,err,accounting,expected)
+                  rc,a,b,active,total,_,info=final
+                  if rc is not None and a[2] and b[2] and active==1 and total==count:
+                      SAFE=True; break
+                  now=time.monotonic()
+                  if now>=until: break
+                  time.sleep(min(0.02,max(0,until-now)))
+              emit(label,'FINAL',final,reason,int((time.monotonic()-begin)*1000))
+              need(SAFE,'IN_CHILD_TEARDOWN_UNCONFIRMED')
+              if reason=='PASS':
+                  need(info[4] and a[1] and b[1] and not a[3] and not b[3] and not a[4] and not b[4] and rc==0 and (b[0]==D0_ERROR if label=='D0' else not b[0]),'IN_FINAL_CAPTURE')
+                  print('IN_PS_ENGINE='+info[5],flush=True)
+              return reason,info[5]
+
+
+          STARTUP = r'''param([string]$Root,[string]$Case,[string]$Expected)
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          function Mark([string]$Stage) { [Console]::Out.WriteLine('IN_DIAG_STAGE='+$Stage); [Console]::Out.Flush() }
+          try {
+              Mark 'ENTRY'
+              if ($PSVersionTable.PSEdition -cne 'Desktop' -or $PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1 -or -not [Environment]::Is64BitProcess) { throw 'ENGINE' }
+              Mark 'ENGINE_OK'
+              [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+              Mark 'CONSOLE_OK'
+              [Console]::WriteLine('IN_PS_ENGINE='+$PSVersionTable.PSVersion.ToString())
+              if ($Case -cne 'B1' -or $Root -cne [IO.Path]::Combine($PSScriptRoot,'fixtures\handoff\Portable 中文 空格') -or $Expected -cne "模型 指令's.md") { throw 'ARGV' }
+              Mark 'ARGV_OK'
+              [Console]::Error.WriteLine('IN_DIAG_D0_STDERR=PASS'); [Console]::Error.Flush()
+              Mark 'WORKER_EXIT_BEGIN'
+              exit 0
+          } catch { [Console]::Error.WriteLine('IN_PS_WORKER_FAILED'); exit 22 }
+          '''
+
+
+          def test(scope,win,python,ps):
+              raw=source_bytes(scope)
+              need(ps==win/'System32/WindowsPowerShell/v1.0/powershell.exe' and C.WinDLL('kernel32').GetACP()==1252,'IN_PS_OR_ACP')
+              print('IN_ACP=1252;CLI_RERUN=0',flush=True)
+              print('IN_D1_STATUS=NOT_RUN',flush=True)
+              accounting=job_guard()
+              def no_network(event,args):
+                  if event.startswith(('socket.','http.client.','urllib.Request')): raise RuntimeError('IN_RUNTIME_NETWORK')
+              sys.addaudithook(no_network)
+              put(scope/'startup.ps1',STARTUP.encode('utf-8-sig'))
+              data=scope/'fixtures'; outside=data/'outside 中文 空格'
+              for d in ('cwd','home','tmp'): put(outside/d/'sentinel',b'owned outside\n')
+              put(outside/'sentinel.md',b'owned outside input\n')
+              h=fixture(data,raw)
+              def fixed_scope(): return {k:v for k,v in snap(scope).items() if k.split('/',1)[0] not in ('fixtures','runtime')}
+              fixed=fixed_scope(); version=None
+              for count,label,rt_label,script,expected in [(2,'D0','D0','startup.ps1',D0),(3,'D1','B1','worker.ps1',D1)]:
+                  for name,pin in PINS.items(): identity((h/name).read_bytes(),pin)
+                  rtd,e=runtime(scope,rt_label,win,ps,python)
+                  e.update(CODEX_HOME=str(outside/'home'),CODEX_INSTALL_DIR=str(outside),CODEX_MODEL_INSTRUCTIONS_FILE=str(outside/'sentinel.md'))
+                  need(not os.path.lexists(e['PSModuleAnalysisCachePath']),'IN_CACHE_PREEXISTS')
+                  before=snap(data); rb=snap(scope/'runtime')
+                  argv=[str(ps),'-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(scope/script),'-Root',str(h),'-Case','B1','-Expected',MD]
+                  print('IN_DIAG_BEGIN='+label,flush=True)
+                  if label=='D1': print('IN_D1_STATUS=STARTED',flush=True)
+                  reason,observed=monitor(label,argv,outside/'cwd',e,accounting,count,expected)
+                  after=snap(scope/'runtime'); key=rtd.relative_to(scope/'runtime').as_posix()+'/localappdata/ModuleAnalysisCache'
+                  prefix=h.relative_to(data).as_posix()+'/'
+                  permitted=set() if label=='D0' else {prefix+CONFIG,prefix+GENERATED}
+                  actual=changes(before,snap(data))
+                  bounded=actual<=permitted and changes(rb,after)<={key} and (key not in after or after[key][0]=='f') and fixed_scope()==fixed
+                  print('IN_DIAG_BOUNDARY='+label+';'+('PASS' if bounded else 'REJECT'),flush=True)
+                  need(bounded,'IN_FIXTURE_OR_RUNTIME_DELTA')
+                  need(reason=='PASS','IN_'+label+'_'+reason)
+                  need(actual==permitted,'IN_REQUIRED_OUTPUT')
+                  if label=='D0':
+                      version=observed; print('IN_D0=PASS',flush=True)
+                  else:
+                      need(version==observed,'IN_PS_VERSION_DRIFT'); read_config(h)
+                      print('IN_D1_B1_SLICE=PASS',flush=True)
+                      print('IN_D1_STATUS=PASS',flush=True)
+              need(accounting()[:2]==(1,3),'IN_FINAL_JOB')
+
+          def main():
+              need(len(sys.argv)==7 and os.name=='nt' and sys.version_info[:3]==(3,12,10) and struct.calcsize('P')==8 and sys.flags.isolated and sys.dont_write_bytecode,'IN_RUNTIME')
+              mode,scope,temp,head,win,python=sys.argv[1:]
+              scope=plain(scope); temp=plain(temp); win=plain(win); python=Path(os.path.abspath(python)); ps=win/'System32/WindowsPowerShell/v1.0/powershell.exe'
+              need(scope.parent==temp and re.fullmatch('instruction-native-[0-9a-f]{32}',scope.name) and Path(__file__).absolute()==scope/'probe.py' and Path(sys.executable).samefile(python),'IN_OWNED_SCOPE')
+              if mode=='cleanup':
+                  snap(scope); shutil.rmtree(scope); need(not os.path.lexists(scope),'IN_CLEANUP'); print('IN_OWNED_CLEANUP=PASS',flush=True); return
+              for exe in (python,ps):
+                  plain(exe.parent); st=exe.lstat()
+                  # OS-owned runtime files can legitimately be WinSxS hard links.
+                  need(stat.S_ISREG(st.st_mode) and not getattr(st,'st_file_attributes',0)&0x400,'IN_RUNTIME_FILE')
+                  with exe.open('rb') as f:
+                      need(f.read(2)==b'MZ','IN_RUNTIME_PE'); f.seek(60); off=struct.unpack('<I',f.read(4))[0]
+                      need(64<=off<=st.st_size-6,'IN_RUNTIME_PE'); f.seek(off); need(f.read(6)==b'PE\0\0\x64\x86','IN_RUNTIME_X64')
+              print('IN_PYTHON='+'.'.join(map(str,sys.version_info[:3]))+';X64;PATH_SHA='+sha(str(python).encode('utf-8')),flush=True)
+              if mode=='acquire': acquire(scope,head)
+              elif mode=='test': test(scope,win,python,ps)
+              else: raise RuntimeError('IN_MODE')
+
+
+          if __name__=='__main__':
+              try: main()
+              except BaseException as exc:
+                  label=str(exc) if isinstance(exc,RuntimeError) and re.fullmatch('IN_[A-Z0-9_]+',str(exc)) else 'IN_UNCLASSIFIED_FAILURE'
+                  print('IN_FAILURE='+label,flush=True)
+                  if len(sys.argv)>1 and sys.argv[1]=='test': print('IN_CLEANUP_SAFE='+('YES' if SAFE else 'NO'),flush=True)
+                  os._exit(1)
+              if sys.argv[1]=='test': print('IN_CLEANUP_SAFE='+('YES' if SAFE else 'NO'),flush=True)
+          '@
+          $ps = @'
+          param([string]$Root,[string]$Case,[string]$Expected)
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          function Mark([string]$Stage) { [Console]::Out.WriteLine('IN_DIAG_STAGE='+$Stage); [Console]::Out.Flush() }
+          try {
+              Mark 'ENTRY'
+              if ($Case -cne 'B1') { throw 'CASE' }
+              if ($PSVersionTable.PSEdition -cne 'Desktop' -or $PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1 -or -not [Environment]::Is64BitProcess) { throw 'ENGINE' }
+              Mark 'ENGINE_OK'
+              [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+              Mark 'CONSOLE_OK'
+              [Console]::WriteLine('IN_PS_ENGINE='+$PSVersionTable.PSVersion.ToString())
+              $Launcher = Join-Path $Root 'run-codex.ps1'
+              $EnvFile = Join-Path $Root 'env.ps1'
+              Mark 'SOURCE_HASH_BEGIN'
+              if ((Get-FileHash -LiteralPath $Launcher -Algorithm SHA256).Hash.ToLowerInvariant() -cne '16f1bb1e7b098900233a646afaae84b6eea1271b8898ae83d9bde2e2125c30fb' -or (Get-FileHash -LiteralPath $EnvFile -Algorithm SHA256).Hash.ToLowerInvariant() -cne '87473b5276d40a0286b3e52fdc6013fc74a338a316224c5513adad4343d0c258') { throw 'SOURCE' }
+              Mark 'SOURCE_HASH_END'
+              Mark 'AST_PARSE_BEGIN'
+              $Tokens = $null; $ParseErrors = $null
+              $Ast = [System.Management.Automation.Language.Parser]::ParseFile($Launcher,[ref]$Tokens,[ref]$ParseErrors)
+              if ($ParseErrors.Count -ne 0) { throw 'PARSE' }
+              Mark 'AST_PARSE_END'
+              Mark 'AST_LOAD_BEGIN'
+              $Definitions = @($Ast.FindAll({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst]},$true))
+              $Names = @('Test-IsUnderDirectory','Assert-PortablePath','Assert-PortableRegularInputFile','Write-PortableNewUtf8File','Move-TemporaryFileIntoPlace','Write-Utf8TextAtomic','Get-RuntimeModelIdentityInstructions','Remove-PortableDerivedStateFile','New-RuntimeModelInstructions','Convert-ToTomlString','Get-PortableFixedChildEnvironmentNames','Clear-UnconfiguredPortableEnvironment')
+              foreach ($Name in $Names) {
+                  $D = @($Definitions | Where-Object { $_.Name -ceq $Name })
+                  if ($D.Count -ne 1) { throw 'FUNCTION' }
+                  . ([scriptblock]::Create($D[0].Extent.Text))
+              }
+              Mark 'AST_LOAD_END'
+              Mark 'SLICE_HASH_BEGIN'
+              $Lines = [IO.File]::ReadAllLines($Launcher,[Text.Encoding]::UTF8)
+              function Read-Slice([int]$First,[int]$Last,[string]$Hash) {
+                  $Text = ($Lines[($First-1)..($Last-1)] -join "`r`n")+"`r`n"
+                  $Hasher = [Security.Cryptography.SHA256]::Create()
+                  try { $Actual = [BitConverter]::ToString($Hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($Text))).Replace('-','').ToLowerInvariant() } finally { $Hasher.Dispose() }
+                  if ($Actual -cne $Hash) { throw 'SLICE' }
+                  return $Text
+              }
+              $S1 = Read-Slice 603 603 '58a8465c278770775fd9083ebfdd817e5961b53d74fcd443eed94bd624012407'
+              $S2 = Read-Slice 1142 1145 '3b344cd843d9c298c2aefbb4d891b6e73ffd59049466f9965fa05c92e9e24f3c'
+              $S3 = Read-Slice 3004 3021 '0dac4531309914a65da2300e8e4b6b921b74d3fd9a4c3f19cd709f0b6d912fdd'
+              $S4 = Read-Slice 3235 3240 'a464e89b78069d012a58335397875b4630a3000f445fb200ebb8ac7385ac7bca'
+              $S5 = Read-Slice 3488 3489 'ef7453e7e249d724fcb3ba59b205fa7b5c8a6a2cb0f5ddb15802dcbc82f380bb'
+              Mark 'SLICE_HASH_END'
+              [Console]::WriteLine('IN_PS_SLICES=12/12;5/5')
+              Mark 'S1_BEGIN'
+              . ([scriptblock]::Create($S1))
+              Mark 'S1_END'
+              Mark 'S2_BEGIN'
+              try { . ([scriptblock]::Create($S2)) } catch { throw 'ENV' }
+              Mark 'S2_END'
+              if ($env:CODEX_HOME -cne (Join-Path $Root 'home') -or $env:CODEX_INSTALL_DIR -cne $Root -or $script:CodexPortableRoot -cne $Root -or $env:CODEX_MODEL -cne 'fixture-model' -or $script:CodexPortableAutoModelInstructions -ne $false -or [string]$env:CODEX_MODEL_INSTRUCTIONS_FILE -cne $Expected) { throw 'ENV_VALUE' }
+              Mark 'ENV_ASSERT_END'
+              [Console]::WriteLine('IN_PS_ENV=PASS')
+              [Console]::WriteLine('IN_PS_RESOLVE_BEGIN=1')
+              Mark 'S3_BEGIN'
+              . ([scriptblock]::Create($S3))
+              Mark 'S3_END'
+              [Console]::WriteLine('IN_PS_RESOLVE=PASS')
+              Mark 'S4_BEGIN'
+              $Builder = New-Object System.Text.StringBuilder
+              . ([scriptblock]::Create($S4))
+              Mark 'S4_END'
+              Mark 'S5_BEGIN'
+              $GeneratedConfigPath = Join-Path $env:CODEX_HOME 'config.toml'
+              . ([scriptblock]::Create($S5))
+              Mark 'S5_END'
+              [Console]::WriteLine('IN_PS_WRITE=PASS')
+              Mark 'WORKER_EXIT_BEGIN'
+              exit 0
+          } catch {
+              [Console]::Error.WriteLine('IN_PS_WORKER_FAILED')
+              exit 22
+          }
+          '@
+          $probeHash = 'f0eec3bd7ea38b650e4184fc85c92509d5718f6802f1f533317022c908c56d27'
+          $workerHash = 'bf3aac76cc5dce995dd7e32fc616a48a1c5d3390f524b44701b2efee8ffc1c3a'
+          function Assert-Harness([string]$Path,[string]$Hash) {
+            $i=Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+            if ($i.PSIsContainer -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) -or [string]$i.LinkType -eq 'HardLink' -or (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $Hash) { throw 'IN_HARNESS_IDENTITY' }
+          }
+          function Invoke-Probe([string]$Mode,[int]$Timeout) {
+            Assert-Harness $probe $probeHash
+            if ($Mode -cne 'cleanup') { Assert-Harness $worker $workerHash }
+            $si = [Diagnostics.ProcessStartInfo]::new()
+            $si.FileName = $python
+            $si.UseShellExecute = $false
+            $si.RedirectStandardInput = $true
+            $si.RedirectStandardOutput = $true
+            $si.RedirectStandardError = $true
+            $si.StandardOutputEncoding = [Text.Encoding]::ASCII
+            $si.StandardErrorEncoding = [Text.Encoding]::ASCII
+            $si.WorkingDirectory = $temp
+            foreach ($arg in @('-I','-S','-B',$probe,$Mode,$owned,$temp,$env:GITHUB_SHA,$win,$python)) { $si.ArgumentList.Add($arg) }
+            $si.Environment.Clear()
+            foreach ($pair in @(@('SystemRoot',$win),@('WINDIR',$win),@('SystemDrive',[IO.Path]::GetPathRoot($win).TrimEnd('\')),@('ComSpec',(Join-Path $win 'System32\cmd.exe')),@('PATH',((Split-Path -Parent $python)+';'+(Join-Path $win 'System32'))))) { $si.Environment[$pair[0]]=$pair[1] }
+            foreach ($d in @('home','tmp','appdata','localappdata','programdata')) {
+              $p=Join-Path $owned ('boot\'+$d)
+              $i=Get-Item -LiteralPath $p -Force -ErrorAction Stop
+              if (-not $i.PSIsContainer -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'IN_BOOT_PATH' }
+            }
+            foreach ($pair in @(@('HOME','home'),@('USERPROFILE','home'),@('TEMP','tmp'),@('TMP','tmp'),@('TMPDIR','tmp'),@('APPDATA','appdata'),@('LOCALAPPDATA','localappdata'),@('PROGRAMDATA','programdata'))) { $si.Environment[$pair[0]]=Join-Path $owned ('boot\'+$pair[1]) }
+            $proc=[Diagnostics.Process]::new(); $proc.StartInfo=$si
+            if ($Mode -cne 'cleanup') { $script:cleanupSafe=$false }
+            try {
+              if (-not $proc.Start()) { throw 'IN_PROBE_START' }
+              $proc.StandardInput.Close()
+              $out=$proc.StandardOutput.ReadToEndAsync(); $err=$proc.StandardError.ReadToEndAsync()
+              if (-not $proc.WaitForExit($Timeout*1000)) {
+                if (-not $proc.HasExited) { $proc.Kill($true) }
+                if (-not $proc.WaitForExit(2000)) { throw 'IN_PROBE_KILL_UNCONFIRMED' }
+                throw 'IN_PROBE_TIMEOUT'
+              }
+              if (-not [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($out,$err),2000)) { throw 'IN_PROBE_DRAIN_TIMEOUT' }
+              $raw=$out.GetAwaiter().GetResult(); $errorText=$err.GetAwaiter().GetResult()
+              if ($raw.Length -gt 65536 -or $errorText.Length -gt 65536) { throw 'IN_PROBE_OUTPUT_BOUND' }
+              $lines=$raw -split "`r?`n"
+              foreach ($line in $lines) {
+                if (-not $line) { continue }
+                if ($line -cnotmatch '^IN_[A-Z0-9_]+=[A-Za-z0-9_./;=:-]+$') { throw 'IN_PROBE_OUTPUT' }
+                Write-Output $line
+              }
+              if ($Mode -ceq 'acquire') { $script:cleanupSafe=$true }
+              if ($Mode -ceq 'test') {
+                $safeLines=@($lines | Where-Object { $_ -cmatch '^IN_CLEANUP_SAFE=' })
+                $nonempty=@($lines | Where-Object { $_ })
+                $script:cleanupSafe=($safeLines.Count -eq 1 -and $safeLines[0] -ceq 'IN_CLEANUP_SAFE=YES' -and $nonempty[-1] -ceq 'IN_CLEANUP_SAFE=YES')
+              }
+              if ($errorText.Length -ne 0 -or $proc.ExitCode -ne 0 -or ($Mode -ceq 'test' -and -not $script:cleanupSafe)) { throw 'IN_PROBE_BLOCKED' }
+            } finally { $proc.Dispose() }
+          }
+          $ready=$false; $script:cleanupSafe=$true; $failed=$false
+          try {
+            $null=New-Item -ItemType Directory -Path (Join-Path $owned 'boot') -ErrorAction Stop
+            foreach ($d in @('home','tmp','appdata','localappdata','programdata')) { $null=New-Item -ItemType Directory -Path (Join-Path $owned ('boot\'+$d)) -ErrorAction Stop }
+            $py=$py.Replace("`r`n","`n").TrimEnd([char[]]"`r`n")+"`n"
+            $ps=$ps.Replace("`r`n","`n").TrimEnd([char[]]"`r`n")+"`n"
+            [IO.File]::WriteAllText($probe,$py,[Text.UTF8Encoding]::new($false))
+            Assert-Harness $probe $probeHash
+            $ready=$true
+            [IO.File]::WriteAllText($worker,$ps,[Text.UTF8Encoding]::new($true))
+            Assert-Harness $worker $workerHash
+            Write-Output 'IN_HARNESS_IDENTITY=PASS'
+            Write-Output 'IN_PHASE=OFFICIAL_GIT_TEXT_ACQUISITION'
+            Invoke-Probe acquire 105
+            Write-Output 'IN_PHASE=LOCAL_D0_D1_ONLY'
+            Invoke-Probe test 145
+          } catch {
+            $failed=$true
+            $known=@('IN_HARNESS_IDENTITY','IN_BOOT_PATH','IN_PROBE_START','IN_PROBE_KILL_UNCONFIRMED','IN_PROBE_TIMEOUT','IN_PROBE_DRAIN_TIMEOUT','IN_PROBE_OUTPUT_BOUND','IN_PROBE_OUTPUT','IN_PROBE_BLOCKED')
+            $code=$_.Exception.Message
+            if ($known -ccontains $code) { Write-Output ('IN_WRAPPER='+$code) } else { Write-Output 'IN_WRAPPER=UNCLASSIFIED' }
+          } finally {
+            if ($ready -and $script:cleanupSafe) {
+              try { Invoke-Probe cleanup 20 } catch { $failed=$true; Write-Output 'IN_CLEANUP=FAILED' }
+            } else { $failed=$true; Write-Output 'IN_CLEANUP=NOT_ATTEMPTED_UNSAFE_OR_UNVERIFIED' }
+          }
+          if ($failed) { exit 1 }
+          Write-Output 'IN_B1_DIAGNOSTIC_GATE=PASS'
