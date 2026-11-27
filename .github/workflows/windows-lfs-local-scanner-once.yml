@@ -11,7 +11,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 6
     env:
-      LS_PARENT: 3141ca1b3fc535e1371598567f7f437248fdae68
+      LS_PARENT: 3cc153eafda5d2103d39c9febdad8392418503f7
       GIT_LFS_SKIP_SMUDGE: '1'
     steps:
       - name: Verify one-time push
@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 5
+          fetch-depth: 6
           persist-credentials: false
           lfs: false
           submodules: false
@@ -68,11 +68,14 @@ jobs:
 
           BASE = '1dc8e7a442e54332b5ffcf93421ec6116de9389a'
           TREE = 'efa66809452cae18a8745601bd7dfd0402f867e9'
-          PARENT = '3141ca1b3fc535e1371598567f7f437248fdae68'
-          PARENT_TREE = '4fe6c9024acb1aa0f069e444ba9304d73b37cb12'
+          PREVIOUS = '3141ca1b3fc535e1371598567f7f437248fdae68'
+          PREVIOUS_TREE = '4fe6c9024acb1aa0f069e444ba9304d73b37cb12'
+          PARENT = '3cc153eafda5d2103d39c9febdad8392418503f7'
+          PARENT_TREE = '5d7480d76e754464fdc97ac14edbfebda1914837'
           OLD = '.github/workflows/windows-cache-whatif-once.yml'
           OLD_BLOB = '8b0d7aadcd62433b35b0a8975d87679a460bd3d4'
           NEW = '.github/workflows/windows-lfs-local-scanner-once.yml'
+          SCANNER_BLOB = '7a542283be4d05d3db366fa1bea75d30a760dc10'
           ORIGIN = 'https://github.com/rileyaaa/Portable.git'
           PINS = {'\u6e05\u7406\u7f13\u5b58.bat': '6a6023c9b6d2f58c9ec7be507406c7e8dc94a582',
                   '\u6e05\u7406\u7f13\u5b58.ps1': 'aa92566c7618e47f429fee2949c34832c0dd87b6',
@@ -301,18 +304,23 @@ jobs:
 
           def verify_product(o, source, head):
               original = inventory(source); no_alternates(source)
-              commits = o.import_batch({head:'commit',PARENT:'commit',BASE:'commit'},source)
-              bt,bp = commit_info(commits[BASE]); pt,pp = commit_info(commits[PARENT]); ht,hp = commit_info(commits[head])
-              need(bt == TREE and pt == PARENT_TREE and pp == ['2f9aef88d34eb2d60aa9b4e9b29bed02d2a98e7e'] and hp == [PARENT], 'OG_FIXED_COMMIT_TREE')
-              count = o.tree_closure((bt,pt,ht), source)
-              base,prev,now = (entries(o,t) for t in (bt,pt,ht))
-              def sole_add(before,after,path,blob=None):
+              commits = o.import_batch({head:'commit',PARENT:'commit',PREVIOUS:'commit',BASE:'commit'},source)
+              bt,bp = commit_info(commits[BASE]); vt,vp = commit_info(commits[PREVIOUS])
+              pt,pp = commit_info(commits[PARENT]); ht,hp = commit_info(commits[head])
+              need(bt == TREE and vt == PREVIOUS_TREE and vp == ['2f9aef88d34eb2d60aa9b4e9b29bed02d2a98e7e'] and
+                   pt == PARENT_TREE and pp == [PREVIOUS] and hp == [PARENT], 'OG_FIXED_COMMIT_TREE')
+              count = o.tree_closure((bt,vt,pt,ht), source)
+              base,prev,parent,now = (entries(o,t) for t in (bt,vt,pt,ht))
+              def sole_delta(before,after,path,old_blob=None,new_blob=None):
                   ancestors = {p.as_posix() for p in Path(path).parents if p.as_posix()!='.'}
-                  need(path not in before and path in after and after[path][:2]==('100644','blob'), 'OG_DELTA_FILE')
-                  need(blob is None or after[path][2]==blob, 'OG_DELTA_BLOB')
+                  expected = None if old_blob is None else ('100644','blob',old_blob)
+                  need(before.get(path)==expected and path in after and after[path][:2]==('100644','blob'), 'OG_DELTA_FILE')
+                  need((old_blob is None or after[path][2]!=old_blob) and (new_blob is None or after[path][2]==new_blob), 'OG_DELTA_BLOB')
                   need(all(before.get(p,())[:2]==after.get(p,())[:2]==('040000','tree') for p in ancestors), 'OG_DELTA_ANCESTORS')
-                  need({k:v for k,v in before.items() if k not in ancestors}=={k:v for k,v in after.items() if k not in ancestors|{path}}, 'OG_DELTA_EXTRA')
-              sole_add(base,prev,OLD,OLD_BLOB); sole_add(prev,now,NEW)
+                  need({k:v for k,v in before.items() if k not in ancestors|{path}}=={k:v for k,v in after.items() if k not in ancestors|{path}}, 'OG_DELTA_EXTRA')
+              sole_delta(base,prev,OLD,new_blob=OLD_BLOB)
+              sole_delta(prev,parent,NEW,new_blob=SCANNER_BLOB)
+              sole_delta(parent,now,NEW,old_blob=SCANNER_BLOB)
               need('.lfsconfig' not in now and [k for k in now if k.rsplit('/',1)[-1].casefold()=='codex.exe']==['codex.exe'], 'OG_LFS_PATH_SCOPE')
               need(all(base.get(p)==('100644','blob',oid) for p,oid in PINS.items()), 'OG_PRODUCT_PIN')
               blobs = o.import_batch({**{oid:'blob' for oid in PINS.values()},OLD_BLOB:'blob'},source)
@@ -320,9 +328,11 @@ jobs:
               need(len(p)==134 and blobs[PINS['codex.exe']]==p, 'OG_POINTER_BYTES')
               need(b'codex.exe filter=lfs diff=lfs merge=lfs -text' in blobs[PINS['.gitattributes']].splitlines(), 'OG_LFS_ATTRIBUTE')
               o.exact_loose_set(); o.integrity(); need(inventory(source)==original,'OG_SOURCE_OBJECT_METADATA_CHANGED')
-              print('OG_IMPORTED='+json.dumps({'commits':3,'trees':count,'blobs':len(blobs),'total':len(o.imported)}),flush=True)
+              print('OG_IMPORTED='+json.dumps({'commits':4,'trees':count,'blobs':len(blobs),'total':len(o.imported)}),flush=True)
               print('OG_FIXED_COMMIT_TREE=PASS',flush=True)
               print('OG_SOLE_WORKFLOW_DELTAS=PASS',flush=True)
+              print('OG_BASE_TO_PARENT=PASS;scoped_adds=2',flush=True)
+              print('OG_PARENT_TO_HEAD=PASS;modified=1',flush=True)
               print('OG_NO_ALTERNATES=PASS',flush=True)
               print('OG_FIXED_PRODUCT_PINS=PASS;count=5',flush=True)
               print('OG_POINTER=PASS;bytes=134;oid='+OID+';size='+str(SIZE),flush=True)
@@ -333,8 +343,17 @@ jobs:
 
           def start_lfs(o):
               o.integrity(); before = inventory(o.scope)
+              print('LS_VERSION_EXPECTED=3.8.1;windows/amd64',flush=True)
               r = o.run('lfs','version')
-              need(r.returncode==0 and not r.stderr and re.fullmatch(rb'git-lfs/3\.7\.0 \([^;\r\n]+; windows amd64; go [^\r\n]+\)\r?\n',r.stdout), 'LS_FIXED_VERSION_REQUIRED')
+              print('LS_VERSION_RC='+str(r.returncode),flush=True)
+              need(r.returncode==0,'LS_VERSION_COMMAND_FAILED')
+              need(not r.stderr,'LS_VERSION_STDERR')
+              need(len(r.stdout)<=256,'LS_VERSION_OUTPUT_BOUND')
+              m = re.fullmatch(rb'git-lfs/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}) \([^;\r\n]+; ([a-z0-9]{1,16}) ([a-z0-9]{1,16}); go [^\r\n]+\)\r?\n',r.stdout)
+              need(m is not None,'LS_VERSION_FORMAT')
+              print('LS_VERSION_OBSERVED='+m.group(1).decode('ascii'),flush=True)
+              need(m.group(1)==b'3.8.1','LS_FIXED_VERSION_REQUIRED')
+              need(m.group(2)==b'windows' and m.group(3)==b'amd64','LS_VERSION_PLATFORM')
               need(inventory(o.scope)==before,'LS_VERSION_SIDE_EFFECT')
               o.integrity()
               raw = o.config.read_bytes(); names = o.keys(o.config)
@@ -343,7 +362,7 @@ jobs:
               with o.config.open('ab') as f: f.write(SUFFIX)
               o.lfs_hash = hashlib.sha256(expected).digest(); o.lfs_keys = set(names)|{FORMAT}
               lfs_gate(o)
-              print('LS_VERSION=3.7.0;windows/amd64',flush=True)
+              print('LS_VERSION=3.8.1;windows/amd64',flush=True)
               print('LS_OWNED_CONFIG_TRANSITION=PASS',flush=True)
 
 
@@ -453,7 +472,7 @@ jobs:
               need(len(sys.argv)==5,'OG_ARGS')
               scope,checkout=plain(sys.argv[1]),plain(sys.argv[2]); head,gitexe=sys.argv[3:]
               need(scope.parent==plain(os.environ['RUNNER_TEMP']) and scope.name.startswith('owned-lfs-') and set(scope.iterdir())=={Path(__file__).absolute()},'OG_OWNED_SCOPE')
-              need(re.fullmatch(r'[0-9a-f]{40}',head) and head not in (BASE,PARENT) and Path(gitexe).is_absolute(),'OG_INPUTS')
+              need(re.fullmatch(r'[0-9a-f]{40}',head) and head not in (BASE,PREVIOUS,PARENT) and Path(gitexe).is_absolute(),'OG_INPUTS')
               source=plain(checkout/'.git/objects'); no_alternates(source)
               win=Path(os.environ['SystemRoot']); cmd=win/'System32/cmd.exe'; need(cmd.is_file(),'OG_SYSTEM_PATH')
               e={'SystemRoot':str(win),'WINDIR':str(win),'SystemDrive':win.drive,'COMSPEC':str(cmd),'PATH':str(Path(gitexe).parent)+';'+str(cmd.parent)}
