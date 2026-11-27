@@ -1,0 +1,359 @@
+# REVIEW ONLY: do not submit or run without separate authorization.
+# Two synthetic files only. No checkout, LFS, product Python, ZIP or Host/WAL.
+name: Windows native stdin and argv diagnostic (one-time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/windows-native-stdin-argv-once.yml
+permissions:
+  contents: read
+concurrency:
+  group: portable-native-stdin-argv-diagnostic
+  cancel-in-progress: false
+jobs:
+  directed:
+    if: >-
+      github.repository == 'rileyaaa/Portable' &&
+      github.ref == 'refs/heads/dev/stable-tool-refresh' &&
+      github.event_name == 'push' &&
+      github.event.before == '66ea19210ff13cd6dd6dc2bc46bb41f0ec638974' &&
+      github.event.after == github.sha &&
+      !github.event.created && !github.event.deleted && !github.event.forced &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'ci: diagnose native stdin and argv with two synthetic files'
+    runs-on: windows-2025
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: powershell
+    env:
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: 'false'
+      GIT_TERMINAL_PROMPT: '0'
+      TRIGGER_PARENT: 66ea19210ff13cd6dd6dc2bc46bb41f0ec638974
+    steps:
+      - name: Verify exact diagnostic trigger
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          $BaseUrl = "$env:GITHUB_API_URL/repos/rileyaaa/Portable"
+          $Commit = Invoke-RestMethod -Uri "$BaseUrl/commits/$env:GITHUB_SHA" -Headers $Headers
+          $Head = Invoke-RestMethod -Uri "$BaseUrl/git/ref/heads/dev/stable-tool-refresh" -Headers $Headers
+          $Files = @($Commit.files)
+          if ($Head.object.sha -cne $env:GITHUB_SHA -or $Commit.sha -cne $env:GITHUB_SHA -or
+              @($Commit.parents).Count -ne 1 -or $Commit.parents[0].sha -cne $env:TRIGGER_PARENT -or
+              $Commit.commit.message -cne 'ci: diagnose native stdin and argv with two synthetic files' -or $Files.Count -ne 1 -or
+              $Files[0].status -cne 'added' -or $Files[0].filename -cne '.github/workflows/windows-native-stdin-argv-once.yml') {
+            throw 'Unexpected diagnostic trigger'
+          }
+          Write-Output 'TRIGGER_GATE=PASS_ACTUAL'
+      - name: Observe native stdin; verify independent bounded argv
+        env:
+          GIT_NO_LAZY_FETCH: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Expected Windows PowerShell 5.1' }
+          $Git = (Get-Command git.exe -CommandType Application | Select-Object -First 1).Source
+          if (-not $Git) { throw 'Runner Git prerequisite missing' }
+          foreach ($Key in @('GIT_DIR','GIT_WORK_TREE','GIT_COMMON_DIR','GIT_INDEX_FILE','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_CONFIG_PARAMETERS')) {
+            if ([Environment]::GetEnvironmentVariable($Key)) { throw 'Unexpected inherited Git repository override' }
+          }
+          $Version = @(& $Git --version)
+          if ($LASTEXITCODE -ne 0 -or $Version.Count -ne 1) { throw 'Cannot identify Git' }
+          Write-Output ("PS_VERSION=" + $PSVersionTable.PSVersion + " GIT_VERSION=" + $Version[0] + " GIT_SHA256=" + (Get-FileHash -LiteralPath $Git -Algorithm SHA256).Hash.ToLowerInvariant())
+          function Check-Directory([string]$Path) {
+            $Item = Get-Item -LiteralPath $Path -Force
+            if (-not $Item.PSIsContainer -or ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe diagnostic directory' }
+          }
+          function Hex([byte[]]$Data) { return [BitConverter]::ToString($Data).Replace('-','').ToLowerInvariant() }
+          function BlobOid([byte[]]$Data) {
+            $Header = [Text.Encoding]::ASCII.GetBytes("blob $($Data.Length)" + [char]0)
+            $Sha = [Security.Cryptography.SHA1]::Create()
+            try { return (Hex ($Sha.ComputeHash([byte[]]($Header + $Data)))) } finally { $Sha.Dispose() }
+          }
+          function Equal-Oids([string[]]$Raw, [string[]]$Expected, [int]$Exit) {
+            if ($Exit -ne 0 -or $Raw.Count -ne $Expected.Count) { return $false }
+            for ($i=0; $i -lt $Raw.Count; $i++) { if ($Raw[$i] -cne $Expected[$i]) { return $false } }
+            return $true
+          }
+          function Raw-Oids($Result, [string[]]$Expected) {
+            $Lines = [Text.Encoding]::ASCII.GetString($Result.Bytes) -split '\r?\n'
+            if ($Lines.Count -ne $Expected.Count+1 -or $Lines[-1] -cne '') { return $false }
+            return (Equal-Oids ($Lines[0..($Expected.Count-1)]) $Expected $Result.Exit)
+          }
+          function Assert-RawBlobs([string]$Git, [string]$Root, [string[]]$Names, [string[]]$Blobs, [int]$MaxFiles=128) {
+            if ($Names.Count -eq 0 -or $Names.Count -ne $Blobs.Count -or
+                $MaxFiles -lt 1 -or $MaxFiles -gt 128) { throw 'Invalid raw argv inventory' }
+            $Seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+            for ($i=0; $i -lt $Names.Count; $i++) {
+              $Name = $Names[$i]
+              if ($Name -cnotmatch '^tool/python/[ -~]+\z' -or $Name.Contains('"') -or
+                  $Name.Contains('\') -or $Name.Contains(':') -or
+                  @($Name.Split('/') | Where-Object { $_ -in @('', '.', '..') }).Count -ne 0 -or
+                  -not $Seen.Add($Name)) { throw 'Invalid raw argv path' }
+              if ($Blobs[$i] -cnotmatch '^[0-9a-f]{40}\z') { throw 'Invalid raw argv OID' }
+            }
+            # Native argv, never a joined command string. Reserve quotes, separators,
+            # executable/root and fixed arguments well below CreateProcessW's limit.
+            if ($Git.Contains('"') -or $Root.Contains('"') -or
+                $Git.EndsWith('\') -or $Root.EndsWith('\')) { throw 'Invalid raw argv prefix' }
+            $Budget = 8000
+            $FixedUnits = $Git.Length + $Root.Length + 128
+            $Start = 0; $Batches = 0
+            while ($Start -lt $Names.Count) {
+              $End = $Start; $Units = $FixedUnits
+              while ($End -lt $Names.Count -and ($End - $Start) -lt $MaxFiles) {
+                $Need = $Names[$End].Length + 3
+                if ($Units + $Need -gt $Budget) { break }
+                $Units += $Need; $End++
+              }
+              if ($End -eq $Start) { throw 'Raw argv path exceeds batch budget' }
+              [string[]]$Batch = $Names[$Start..($End-1)]
+              $Raw = @(& $Git -C $Root hash-object --no-filters -- @Batch)
+              $Exit = $LASTEXITCODE
+              if ($Exit -ne 0 -or $Raw.Count -ne $Batch.Count) { throw 'Cannot verify raw Python argv batch' }
+              for ($i=0; $i -lt $Raw.Count; $i++) {
+                if ($Raw[$i] -cne $Blobs[$Start+$i]) { throw "Raw Python blob mismatch: $($Batch[$i])" }
+              }
+              $Start = $End; $Batches++
+            }
+            return $Batches
+          }
+          $Temp = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          $Cursor = $Temp
+          while ($Cursor) { Check-Directory $Cursor; $Cursor = [IO.Path]::GetDirectoryName($Cursor.TrimEnd('\')) }
+          $Scratch = Join-Path $Temp ('portable-stdin-argv-' + [Guid]::NewGuid().ToString('N'))
+          if (Test-Path -LiteralPath $Scratch) { throw 'Diagnostic scratch already exists' }
+          $null = New-Item -ItemType Directory -Path $Scratch
+          try {
+            $Root = Join-Path $Scratch 'candidate-source space'
+            $Template = Join-Path $Scratch 'empty-template'
+            $Probe = Join-Path $Scratch 'capture.exe'
+            $null = New-Item -ItemType Directory -Path $Root,$Template
+            $null = New-Item -ItemType Directory -Path (Join-Path $Root 'tool\python') -Force
+            $PlainContent = [byte[]](0x41,0x0d,0x0a,0x42,0x0a)
+            $BomContent = [byte[]](@(0xef,0xbb,0xbf) + $PlainContent)
+            $FixtureNames = @('tool/python/LICENSE.txt','tool/python/space name.txt')
+            $FixtureBlobs = @((BlobOid $PlainContent),(BlobOid $BomContent))
+            if ($FixtureBlobs[0] -ceq $FixtureBlobs[1]) { throw 'Fixture blob identity differs' }
+            [IO.File]::WriteAllBytes((Join-Path $Root $FixtureNames[0]),$PlainContent)
+            [IO.File]::WriteAllBytes((Join-Path $Root $FixtureNames[1]),$BomContent)
+            # Only a synthetic local repository. No checkout, remote, hooks or LFS.
+            $null = & $Git -C $Root init --quiet --object-format=sha1 "--template=$Template"
+            if ($LASTEXITCODE -ne 0) { throw 'Synthetic init failed' }
+            for ($i=0; $i -lt 2; $i++) {
+              $Oid = @(& $Git -C $Root hash-object --no-filters -w -- $FixtureNames[$i])
+              if ($LASTEXITCODE -ne 0 -or $Oid.Count -ne 1 -or $Oid[0] -cne $FixtureBlobs[$i]) { throw 'Synthetic raw blob failed' }
+              $null = & $Git -C $Root update-index --add --cacheinfo ("100644,"+$Oid[0]+","+$FixtureNames[$i])
+              if ($LASTEXITCODE -ne 0) { throw 'Synthetic index failed' }
+            }
+            $Tree = @(& $Git -C $Root write-tree)
+            if ($LASTEXITCODE -ne 0 -or $Tree.Count -ne 1 -or $Tree[0] -cnotmatch '^[0-9a-f]{40}$') { throw 'Synthetic tree failed' }
+            $Commit = @(& $Git -C $Root -c 'user.name=Portable Diagnostic' -c 'user.email=fixture@example.invalid' -c commit.gpgsign=false commit-tree $Tree[0] -m 'two synthetic files')
+            if ($LASTEXITCODE -ne 0 -or $Commit.Count -ne 1 -or $Commit[0] -cnotmatch '^[0-9a-f]{40}$') { throw 'Synthetic commit failed' }
+            $null = & $Git -C $Root -c "core.hooksPath=$Template" update-ref HEAD $Commit[0]
+            if ($LASTEXITCODE -ne 0) { throw 'Synthetic HEAD failed' }
+            # Compile a tiny .NET Framework byte receiver locally; no downloaded helper.
+            $ReceiverSource = @'
+          using System;
+          using System.Diagnostics;
+          using System.IO;
+          using System.Text;
+          using System.Threading.Tasks;
+          public static class PortableStdinProbe {
+              static void Emit(byte[] data) {
+                  Stream s = Console.OpenStandardOutput();
+                  s.Write(data, 0, data.Length); s.Flush();
+              }
+              static void Line(string text) { Emit(Encoding.ASCII.GetBytes(text + "\n")); }
+              static byte[] Capture() {
+                  using (var data = new MemoryStream()) {
+                      var stream = Console.OpenStandardInput();
+                      byte[] buffer = new byte[256]; int n;
+                      while ((n = stream.Read(buffer, 0, buffer.Length)) != 0) {
+                          if (data.Length + n > 1024) throw new InvalidDataException();
+                          data.Write(buffer, 0, n);
+                      }
+                      return data.ToArray();
+                  }
+              }
+              static int Main(string[] a) {
+                  try {
+                      if (a.Length == 1 && a[0] == "capture") { Line("b" + Convert.ToBase64String(Capture())); return 0; }
+                      if (a.Length == 1 && a[0] == "raw-capture") { Emit(Capture()); return 0; }
+                      bool tree = a.Length == 3 && a[0] == "tree";
+                      bool hash = a.Length == 4 && a[0] == "hash";
+                      bool echo = a.Length == 4 && a[0] == "echo";
+                      if (!tree && !hash && !echo) return 2;
+                      byte[] input = tree ? null : Convert.FromBase64String(a[3].Substring(1));
+                      if (input != null && (!a[3].StartsWith("b", StringComparison.Ordinal) || input.Length > 1024)) return 2;
+                      var si = new ProcessStartInfo(a[1]);
+                      si.Arguments = tree ? "-c core.quotepath=false ls-tree -r --full-tree HEAD -- tool/python" :
+                          hash ? "hash-object --no-filters --stdin-paths" : "raw-capture";
+                      si.WorkingDirectory = a[2]; si.UseShellExecute = false; si.CreateNoWindow = true;
+                      si.RedirectStandardOutput = true; si.RedirectStandardError = true;
+                      si.RedirectStandardInput = input != null;
+                      // This helper runs only after both legacy captures for replay.
+                      // Use the property where present; Framework fallback is restored.
+                      Encoding saved = null;
+                      try {
+                          if (input != null) {
+                              var enc = new UTF8Encoding(false, true);
+                              var property = typeof(ProcessStartInfo).GetProperty("StandardInputEncoding");
+                              if (property != null) property.SetValue(si, enc, null);
+                              else { saved = Console.InputEncoding; Console.InputEncoding = enc; }
+                          }
+                          using (var p = new Process())
+                          using (var output = new MemoryStream())
+                          using (var error = new MemoryStream()) {
+                              p.StartInfo = si;
+                              if (!p.Start()) throw new InvalidOperationException();
+                              try {
+                                  Task ot = p.StandardOutput.BaseStream.CopyToAsync(output);
+                                  Task et = p.StandardError.BaseStream.CopyToAsync(error);
+                                  if (input != null) {
+                                      var writer = p.StandardInput;
+                                      if (writer.Encoding.GetPreamble().Length != 0) throw new InvalidDataException();
+                                      writer.BaseStream.Write(input, 0, input.Length);
+                                      writer.BaseStream.Flush(); writer.Close();
+                                  }
+                                  if (!p.WaitForExit(10000) || !Task.WaitAll(new Task[] {ot, et}, 5000)) throw new TimeoutException();
+                                  if (output.Length > 1024 || error.Length > 4096) throw new InvalidDataException();
+                                  Line(p.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" +
+                                      Convert.ToBase64String(output.ToArray()) + "|" + error.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                              } finally { if (!p.HasExited) { p.Kill(); p.WaitForExit(5000); } }
+                          }
+                      } finally { if (saved != null) Console.InputEncoding = saved; }
+                      return 0;
+                  } catch (Exception) { return 2; }
+              }
+          }
+          '@
+            # Compile out of process so PS does not load/lock the receiver assembly.
+            $Compiler = Join-Path ([Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory()) 'csc.exe'
+            $ReceiverFile = Join-Path $Scratch 'receiver.cs'
+            [IO.File]::WriteAllText($ReceiverFile,$ReceiverSource,[Text.UTF8Encoding]::new($false,$true))
+            $null = & $Compiler /nologo /target:exe "/out:$Probe" $ReceiverFile
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $Probe -PathType Leaf)) { throw 'Diagnostic receiver compile failed' }
+            function Invoke-RawProbe([string]$Mode, [string]$Exe, [byte[]]$Data) {
+              if ($Mode -ceq 'tree') { $Reply = @(& $Probe $Mode $Exe $Root) }
+              else { $Reply = @(& $Probe $Mode $Exe $Root ('b'+[Convert]::ToBase64String($Data))) }
+              if ($LASTEXITCODE -ne 0 -or $Reply.Count -ne 1) { throw 'Raw probe failed' }
+              $Parts = $Reply[0].Split([char]'|')
+              if ($Parts.Count -ne 3 -or $Parts[0] -notmatch '^-?[0-9]{1,10}$' -or $Parts[2] -notmatch '^[0-9]{1,4}$') { throw 'Raw probe reply invalid' }
+              $Bytes = [Convert]::FromBase64String($Parts[1])
+              if ($Bytes.Length -gt 1024) { throw 'Raw probe reply oversized' }
+              return [pscustomobject]@{ Exit=[int]$Parts[0]; Bytes=$Bytes; StderrBytes=[int]$Parts[2] }
+            }
+            function Replay([byte[]]$Data) {
+              # Verify this raw writer's bytes independently before sending them to Git.
+              $Echo = Invoke-RawProbe 'echo' $Probe $Data
+              if ($Echo.Exit -ne 0 -or (Hex $Echo.Bytes) -cne (Hex $Data)) { throw 'Raw replay transport changed bytes' }
+              return (Invoke-RawProbe 'hash' $Git $Data)
+            }
+            $Source = Invoke-RawProbe 'tree' $Git
+            Write-Output ('TREE_RAW_HEX='+(Hex $Source.Bytes))
+            if ($Source.Exit -ne 0) { throw 'Raw ls-tree failed' }
+            # Same parser and ordinal path contract as the original raw-Python gate.
+            $Lines = @(& $Git -C $Root -c core.quotepath=false ls-tree -r --full-tree HEAD -- tool/python)
+            if ($LASTEXITCODE -ne 0 -or $Lines.Count -ne 2) { throw 'Synthetic inventory mismatch' }
+            $Names = New-Object 'System.Collections.Generic.List[string]'
+            $Blobs = New-Object 'System.Collections.Generic.List[string]'
+            $Expected = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+            foreach ($Line in $Lines) {
+              if ($Line -cnotmatch '^(100644|100755) blob ([0-9a-f]{40})\t(tool/python/[ -~]+)$') { throw 'Unexpected Python tree entry' }
+              $Blob = $Matches[2]; $Name = $Matches[3]
+              if ($Name.Contains('"') -or $Name.Contains('\') -or $Name.Contains(':') -or
+                  @($Name.Split('/') | Where-Object { $_ -in @('', '.', '..') }).Count -ne 0 -or
+                  -not $Expected.Add($Name)) { throw 'Unsafe Python tree entry' }
+              $Names.Add($Name); $Blobs.Add($Blob)
+            }
+            $Actual = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+            $Pending = New-Object 'System.Collections.Generic.Stack[string]'
+            $Pending.Push((Join-Path $Root 'tool\python'))
+            while ($Pending.Count -gt 0) {
+              $Dir = $Pending.Pop(); Check-Directory $Dir
+              foreach ($Item in @(Get-ChildItem -LiteralPath $Dir -Force)) {
+                if ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked Python tree entry' }
+                if ($Item.PSIsContainer) { $Pending.Push($Item.FullName); continue }
+                if ($null -eq $Item.PSObject.Properties['LinkType'] -or $Item.LinkType -or ([string]$Item.Mode).Contains('l')) { throw 'Linked/invalid Python file' }
+                $Name = $Item.FullName.Substring($Root.Length + 1).Replace('\','/')
+                if (-not $Expected.Contains($Name) -or -not $Actual.Add($Name)) { throw 'Extra Python file' }
+              }
+            }
+            if (-not $Actual.SetEquals($Expected)) { throw 'Missing Python file' }
+            if (-not (Equal-Oids ($Names.ToArray()) $FixtureNames 0) -or -not (Equal-Oids ($Blobs.ToArray()) $FixtureBlobs 0)) { throw 'Synthetic path/OID identity differs' }
+            $SourceLines = [Text.Encoding]::ASCII.GetString($Source.Bytes) -split '\r?\n'
+            if ($SourceLines.Count -ne 3 -or $SourceLines[2] -cne '' -or -not (Equal-Oids ($SourceLines[0..1]) $Lines 0)) { throw 'Raw ls-tree and native lines differ' }
+            Write-Output ('FIRST_NAME_UTF16='+(($Names[0].ToCharArray() | ForEach-Object { '{0:X4}' -f [int]$_ }) -join ' '))
+            # Capture both historical native pipes in this step scope, before raw replay
+            # can adjust a child's console encoding. Expected native errors are evidence.
+            $Observations = @()
+            foreach ($Mode in @('initial','outputencoding_r2')) {
+              if ($Mode -ceq 'outputencoding_r2') { $OutputEncoding = [System.Text.UTF8Encoding]::new($false, $true) }
+              $Preambles = [ordered]@{output_encoding=$OutputEncoding.GetPreamble().Length; console_input=([Console]::InputEncoding).GetPreamble().Length; console_output=([Console]::OutputEncoding).GetPreamble().Length}
+              $Captured = @($Names | & $Probe capture)
+              if ($LASTEXITCODE -ne 0 -or $Captured.Count -ne 1 -or -not $Captured[0].StartsWith('b')) { throw 'Native stdin capture failed' }
+              $Data = [Convert]::FromBase64String($Captured[0].Substring(1))
+              if ($Data.Length -gt 1024) { throw 'Native stdin capture oversized' }
+              $SavedPreference = $ErrorActionPreference
+              try {
+                $ErrorActionPreference = 'Continue'
+                $Raw = @($Names | & $Git -C $Root hash-object --no-filters --stdin-paths 2>$null)
+                $Exit = $LASTEXITCODE
+              } finally { $ErrorActionPreference = $SavedPreference }
+              $Match = Equal-Oids $Raw ($Blobs.ToArray()) $Exit
+              $Observations += [pscustomobject]@{Mode=$Mode; Bytes=$Data; DirectExit=$Exit; DirectCount=$Raw.Count; DirectMatch=$Match}
+              Write-Output ('NATIVE_STDIN='+([ordered]@{mode=$Mode; preambles=$Preambles; bytes=$Data.Length; hex=(Hex $Data); cr=@($Data | Where-Object {$_ -eq 13}).Count; lf=@($Data | Where-Object {$_ -eq 10}).Count; direct_exit=$Exit; direct_count=$Raw.Count; direct_match=$Match} | ConvertTo-Json -Compress))
+            }
+            # Independent argv is assessed before interpreting either legacy observation.
+            $Combined = Assert-RawBlobs $Git $Root ($Names.ToArray()) ($Blobs.ToArray())
+            $Separate = Assert-RawBlobs $Git $Root ($Names.ToArray()) ($Blobs.ToArray()) -MaxFiles 1
+            if ($Combined -ne 1 -or $Separate -ne 2) { throw 'Unexpected synthetic argv batch count' }
+            foreach ($Bad in @(([string][char]0xfeff + $Names[0]),'tool/python/bad"name.txt','tool/other/LICENSE.txt')) {
+              $Rejected = $false
+              try { $null = Assert-RawBlobs $Git $Root @($Bad,$Names[1]) ($Blobs.ToArray()) }
+              catch { if ($_.Exception.Message -cne 'Invalid raw argv path') { throw }; $Rejected = $true }
+              if (-not $Rejected) { throw 'Invalid argv path accepted' }
+            }
+            $BomPath = Join-Path $Root $FixtureNames[1]
+            try {
+              [IO.File]::WriteAllBytes($BomPath,$PlainContent)
+              $Rejected = $false
+              try { $null = Assert-RawBlobs $Git $Root ($Names.ToArray()) ($Blobs.ToArray()) }
+              catch { if ($_.Exception.Message -cne "Raw Python blob mismatch: $($Names[1])") { throw }; $Rejected = $true }
+              if (-not $Rejected) { throw 'Removed content BOM accepted' }
+            } finally { [IO.File]::WriteAllBytes($BomPath,$BomContent) }
+            $null = Assert-RawBlobs $Git $Root ($Names.ToArray()) ($Blobs.ToArray())
+            Write-Output 'ARGV_GATE=PASS_ACTUAL combined=1 separate=2 files=2 invalid_paths=3 content_bom=preserved'
+            $AllLegacyMatch = $true
+            foreach ($Observation in $Observations) {
+              $Replayed = Replay $Observation.Bytes
+              $Match = Raw-Oids $Replayed ($Blobs.ToArray())
+              if (-not $Observation.DirectMatch -or -not $Match) { $AllLegacyMatch = $false }
+              Write-Output ('RAW_REPLAY='+([ordered]@{mode=$Observation.Mode; byte_echo_match=$true; exit=$Replayed.Exit; oid_match=$Match; stderr_bytes=$Replayed.StderrBytes} | ConvertTo-Json -Compress))
+            }
+            $Encoding = [Text.UTF8Encoding]::new($false,$true)
+            foreach ($Separator in @("`n","`r`n")) {
+              $Data = $Encoding.GetBytes((($Names.ToArray()) -join $Separator)+$Separator)
+              $Replayed = Replay $Data
+              if (-not (Raw-Oids $Replayed ($Blobs.ToArray()))) { throw 'Explicit BOM-free bytes failed' }
+              Write-Output ('EXPLICIT_BYTES_GATE=PASS_ACTUAL separator='+(Hex ($Encoding.GetBytes($Separator)))+' files=2')
+            }
+            $BadWire = [byte[]](@(0xef,0xbb,0xbf)+$Data)
+            $BadResult = Replay $BadWire
+            if ($BadResult.Exit -eq 0) { throw 'BOM-prefixed stdin path accepted' }
+            Write-Output ('PATH_BOM_GATE=PASS_ACTUAL exit='+$BadResult.Exit)
+            if ($AllLegacyMatch) { Write-Output 'LEGACY_RESULT=NOT_REPRODUCED_ROOT_UNDETERMINED' }
+            else { Write-Output 'LEGACY_RESULT=MISMATCH_OBSERVED_LAYER_UNDETERMINED' }
+            Write-Output 'SYNTHETIC_DIAGNOSTIC=PASS_ACTUAL; FULL_PYTHON=NOT_RUN; PACKAGER=NOT_RUN; HOST=NOT_RUN; WAL=NOT_RUN'
+          } finally {
+            Check-Directory $Scratch
+            Remove-Item -LiteralPath $Scratch -Recurse -Force
+            if (Test-Path -LiteralPath $Scratch) { throw 'Synthetic scratch cleanup failed' }
+            Write-Output 'SYNTHETIC_CLEANUP=PASS_ACTUAL'
+          }
