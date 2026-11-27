@@ -1,0 +1,195 @@
+name: Windows P1 synthetic output boundary (one-time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/windows-p1-output-marker-once.yml
+permissions: {}
+jobs:
+  marker-only:
+    runs-on: windows-2025
+    timeout-minutes: 5
+    env:
+      P1_BASE: e1b0829a95c5e1f1c94266f37ef8f852c7f331bb
+    steps:
+      - name: Synthetic marker bytes and native PowerShell gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $e = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          if ($env:GITHUB_REPOSITORY -cne 'rileyaaa/Portable' -or
+              $env:GITHUB_REF -cne 'refs/heads/dev/stable-tool-refresh' -or
+              $env:GITHUB_EVENT_NAME -cne 'push' -or $env:GITHUB_RUN_ATTEMPT -cne '1' -or
+              $env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64' -or
+              $PSVersionTable.PSEdition -cne 'Core' -or -not [Environment]::Is64BitProcess -or
+              $e.ref -cne $env:GITHUB_REF -or $e.before -cne $env:P1_BASE -or
+              $e.after -cne $env:GITHUB_SHA -or $e.head_commit.id -cne $env:GITHUB_SHA -or
+              $e.created -ne $false -or $e.deleted -ne $false -or $e.forced -ne $false) {
+            throw 'MARKER_ENV_OR_TRIGGER_INCONCLUSIVE'
+          }
+          $python = (Get-Command python -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          # Nonzero native exits are intentional negative controls. Scope: this step only.
+          $PSNativeCommandUseErrorActionPreference = $false
+          Write-Output "MARKER_ENV=Windows/X64;PS=$($PSVersionTable.PSVersion);ImageOS=$env:ImageOS;ImageVersion=$env:ImageVersion"
+          $probe = @'
+          import json, os, pathlib, struct, subprocess, sys
+          if os.name != 'nt' or struct.calcsize('P') != 8:
+              raise RuntimeError('MARKER_WINDOWS_PYTHON_REQUIRED')
+          mode, variant, report_path = sys.argv[1:]
+          wrapper = r'''
+          import json, pathlib, subprocess, sys
+          mode, variant, report_path = sys.argv[1:]
+          lines = [b'P1_SYNTH_RUNTIME=1.2.3', b'P1_SYNTH_A=PASS', b'P1_SYNTH_B=PASS']
+          if variant == 'missing':
+              del lines[1]
+          elif variant == 'duplicate':
+              lines.insert(1, lines[1])
+          elif variant == 'replace':
+              lines[2] = lines[1]
+          elif variant == 'blank':
+              lines.insert(1, b'')
+          raw = b'\n'.join(lines) + b'\n'
+          if variant == 'crlf':
+              raw = raw.replace(b'\n', b'\r\n')
+          elif variant == 'bad-tail':
+              raw = raw[:-1]
+          elif variant == 'crcrlf':
+              raw = raw.replace(b'\n', b'\r\r\n')
+          elif variant == 'mixed':
+              raw = raw.replace(b'\n', b'\r\n', 1)
+          elif variant == 'bom':
+              raw = b'\xef\xbb\xbf' + raw
+          elif variant not in ('natural', 'lf', 'missing', 'duplicate', 'replace', 'blank', 'nonzero', 'stderr'):
+              raise RuntimeError('UNKNOWN_SYNTHETIC_VARIANT')
+          if variant == 'natural':
+              test = '\n'.join('print(' + repr(x.decode('ascii')) + ', flush=True)' for x in lines)
+          else:
+              test = 'import sys\nsys.stdout.buffer.write(' + repr(raw) + ')\nsys.stdout.buffer.flush()'
+          if variant == 'nonzero':
+              test += '\nraise SystemExit(7)'
+          if variant == 'stderr':
+              test += '\nsys.stderr.buffer.write(b"synthetic stderr\\n")'
+          def need(ok, label):
+              if not ok:
+                  raise RuntimeError(label)
+          print('P1_SYNTH_SOURCE=PASS', flush=True)
+          child = subprocess.run([sys.executable, '-I', '-B', '-'],
+                                 input=test.encode('ascii'), capture_output=True, timeout=15)
+          expected = (raw, raw.replace(b'\n', b'\r\n')) if variant == 'natural' else (raw,)
+          need(child.stdout in expected and child.returncode == (7 if variant == 'nonzero' else 0)
+               and child.stderr == (b'synthetic stderr\n' if variant == 'stderr' else b''), 'FIXTURE_MISMATCH')
+          with pathlib.Path(report_path).open('x', encoding='ascii') as stream:
+              json.dump({'child_bytes': len(child.stdout), 'child_hex': child.stdout.hex(),
+                         'child_rc': child.returncode, 'child_stderr_hex': child.stderr.hex()}, stream)
+          if mode == 'original':
+              print(child.stdout.decode('ascii')[-2000:], end='', flush=True)
+          if child.returncode or child.stderr:
+              raise RuntimeError('P1_NATIVE_FAILED: ' + child.stderr.decode('utf-8', 'replace')[-1000:])
+          if mode == 'candidate':
+              text = child.stdout.decode('ascii')
+              normalized = text.replace('\r\n', '\n')
+              need(normalized.endswith('\n') and '\r' not in normalized
+                   and text in (normalized, normalized.replace('\n', '\r\n')),
+                   'P1_NATIVE_OUTPUT_FORMAT')
+              print(normalized, end='', flush=True)
+          elif mode != 'original':
+              raise RuntimeError('UNKNOWN_MODE')
+          print('P1_SYNTH_CLEANUP=PASS', flush=True)
+          '''
+          wrapped = subprocess.run([sys.executable, '-I', '-S', '-B', '-', mode, variant, report_path],
+                                   input=wrapper.encode('ascii'), capture_output=True, timeout=30)
+          path = pathlib.Path(report_path)
+          report = json.loads(path.read_text(encoding='ascii'))
+          child_raw = bytes.fromhex(report['child_hex'])
+          report.update(python=sys.version.split()[0], mode=mode, variant=variant,
+                        child_crlf=child_raw.count(b'\r\n'),
+                        wrapper_bytes=len(wrapped.stdout), wrapper_hex=wrapped.stdout.hex(),
+                        wrapper_rc=wrapped.returncode, wrapper_stderr_hex=wrapped.stderr.hex(),
+                        wrapper_crcrlf=wrapped.stdout.count(b'\r\r\n'))
+          error = wrapped.stderr.decode('ascii', 'backslashreplace')
+          report['error_kind'] = ('NATIVE_FAILED' if 'RuntimeError: P1_NATIVE_FAILED:' in error else
+                                  'FORMAT' if 'RuntimeError: P1_NATIVE_OUTPUT_FORMAT' in error else
+                                  'ASCII' if 'UnicodeDecodeError:' in error else
+                                  'OTHER' if error else 'NONE')
+          if mode == 'candidate':
+              expected_raw = b'P1_SYNTH_SOURCE=PASS\n'
+              if wrapped.returncode == 0:
+                  expected_raw += child_raw.replace(b'\r\n', b'\n') + b'P1_SYNTH_CLEANUP=PASS\n'
+              report['raw_boundary_ok'] = wrapped.stdout in (expected_raw, expected_raw.replace(b'\n', b'\r\n'))
+          path.write_text(json.dumps(report, ensure_ascii=True), encoding='ascii')
+          # Relay the measured wrapper pipe bytes, not decoded/reprinted text.
+          sys.stdout.buffer.write(wrapped.stdout)
+          sys.stdout.buffer.flush()
+          raise SystemExit(wrapped.returncode)
+          '@
+          $expected = @('P1_SYNTH_SOURCE=PASS','P1_SYNTH_RUNTIME=1.2.3',
+                        'P1_SYNTH_A=PASS','P1_SYNTH_B=PASS','P1_SYNTH_CLEANUP=PASS')
+          function Get-MarkerGate([object[]]$Lines, [int]$Code) {
+            if ($Code -ne 0) { return 'NATIVE_RC' }
+            if ($Lines.Count -ne $expected.Count -or $Lines[1] -cnotmatch '^P1_SYNTH_RUNTIME=\d+\.\d+\.\d+$') { return 'COUNT_OR_RUNTIME' }
+            for ($i=0; $i -lt $expected.Count; $i++) {
+              if ($Lines[$i] -cne $expected[$i]) { return 'ORDER' }
+            }
+            return 'PASS'
+          }
+          $cases = @(
+            @('original','natural','OBSERVE','NONE'),
+            @('candidate','natural','PASS','NONE'),
+            @('candidate','lf','PASS','NONE'),
+            @('candidate','crlf','PASS','NONE'),
+            @('candidate','missing','COUNT_OR_RUNTIME','NONE'),
+            @('candidate','duplicate','COUNT_OR_RUNTIME','NONE'),
+            @('candidate','replace','ORDER','NONE'),
+            @('candidate','blank','COUNT_OR_RUNTIME','NONE'),
+            @('candidate','bad-tail','NATIVE_RC','FORMAT'),
+            @('candidate','crcrlf','NATIVE_RC','FORMAT'),
+            @('candidate','mixed','NATIVE_RC','FORMAT'),
+            @('candidate','bom','NATIVE_RC','ASCII'),
+            @('candidate','nonzero','NATIVE_RC','NATIVE_FAILED'),
+            @('candidate','stderr','NATIVE_RC','NATIVE_FAILED')
+          )
+          $owned = Join-Path $env:RUNNER_TEMP ('p1-marker-' + [Guid]::NewGuid().ToString('N'))
+          if (Test-Path -LiteralPath $owned) { throw 'Unexpected marker directory' }
+          $null = New-Item -ItemType Directory -Path $owned
+          $reports = @()
+          $original = 'INCONCLUSIVE'
+          try {
+            foreach ($case in $cases) {
+              $path = Join-Path $owned ($case[0] + '-' + $case[1] + '.json')
+              $reports += $path
+              $output = @($probe | & $python -I -S -B - $case[0] $case[1] $path)
+              $rc = $LASTEXITCODE
+              $raw = Get-Content -LiteralPath $path -Raw
+              $r = $raw | ConvertFrom-Json
+              $gate = Get-MarkerGate -Lines $output -Code $rc
+              $record = [ordered]@{ bytes=$r; ps_rc=$rc; ps_count=$output.Count; ps_lines=@($output); gate=$gate }
+              Write-Output ('MARKER_CASE=' + ($record | ConvertTo-Json -Depth 5 -Compress))
+              if ($r.mode -cne $case[0] -or $r.variant -cne $case[1] -or $r.wrapper_rc -ne $rc -or $r.error_kind -cne $case[3]) { throw 'MARKER_TELEMETRY_MISMATCH' }
+              if ($case[2] -eq 'OBSERVE') {
+                if ($rc -ne 0) { throw 'Original synthetic wrapper failed' }
+                $expanded = @($expected[0],$expected[1],'',$expected[2],'',$expected[3],'',$expected[4])
+                if ($r.child_crlf -eq 3 -and $r.wrapper_crcrlf -eq 3 -and $gate -eq 'COUNT_OR_RUNTIME' -and
+                    $output.Count -eq 8 -and ($output -join "`n") -ceq ($expanded -join "`n")) {
+                  $original = 'REPRODUCED'
+                } elseif ($gate -eq 'PASS') {
+                  $original = 'NOT_REPRODUCED'
+                } else {
+                  $original = 'DIFFERENT_OBSERVATION'
+                }
+              } else {
+                if ($gate -cne $case[2] -or $r.raw_boundary_ok -ne $true -or $r.wrapper_crcrlf -ne 0 -or
+                    ($case[2] -eq 'NATIVE_RC' -and $rc -ne 1)) { throw 'MARKER_CANDIDATE_GATE_MISMATCH' }
+              }
+            }
+          } finally {
+            foreach ($path in $reports) {
+              if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+            }
+            [IO.Directory]::Delete($owned, $false)
+          }
+          if (Test-Path -LiteralPath $owned) { throw 'MARKER_CLEANUP_FAILED' }
+          Write-Output "P1_SYNTH_ORIGINAL_REPRODUCTION=$original"
+          Write-Output 'P1_SYNTH_CANDIDATE_BOUNDARY=PASS'
+          Write-Output 'P1_SYNTH_OWNED_CLEANUP=PASS'
+          Write-Output 'P1_SYNTH_OUTPUT_GATE=PASS'
+          exit 0
