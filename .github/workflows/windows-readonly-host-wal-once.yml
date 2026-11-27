@@ -1,0 +1,979 @@
+# REVIEW ONLY. Do not commit, dispatch or run without separate authorization.
+# New independent scope: one fixed customer ZIP, a read-only Host positive,
+# and a separate synthetic Unicode WAL Backup API / bundled CLI positive.
+# Not an Office/R3 retry, release, full regression or permission change.
+name: Fixed Windows candidate read-only Host and WAL (one-time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/windows-readonly-host-wal-once.yml
+permissions:
+  contents: read
+concurrency:
+  group: portable-readonly-host-wal-e9f70bce
+  cancel-in-progress: false
+jobs:
+  directed:
+    if: >-
+      github.repository == 'rileyaaa/Portable' &&
+      github.ref == 'refs/heads/dev/stable-tool-refresh' &&
+      github.event_name == 'push' &&
+      github.event.before == 'e9f70bce6c01ff43aa0761f0e3c89d77bb0b96cb' &&
+      github.event.after == github.sha &&
+      !github.event.created && !github.event.deleted && !github.event.forced &&
+      github.run_attempt == 1 &&
+      github.event.head_commit.message == 'ci: verify fixed Windows candidate read-only Host and WAL snapshot'
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: powershell
+    env:
+      # Process-scoped Git setting: preserve raw committed bytes. No global config edit.
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: 'false'
+      GIT_TERMINAL_PROMPT: '0'
+      SOURCE_COMMIT: e9f70bce6c01ff43aa0761f0e3c89d77bb0b96cb
+      SOURCE_TREE: 75dbced2a61741f3d452cb344f0e6be4bb3851f4
+    steps:
+      - name: Verify single approved workflow-only trigger before LFS
+        id: trigger
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          $BaseUrl = "$env:GITHUB_API_URL/repos/rileyaaa/Portable"
+          $Commit = Invoke-RestMethod -Uri "$BaseUrl/commits/$env:GITHUB_SHA" -Headers $Headers
+          $Head = Invoke-RestMethod -Uri "$BaseUrl/git/ref/heads/dev/stable-tool-refresh" -Headers $Headers
+          $Files = @($Commit.files)
+          if ($Head.object.sha -cne $env:GITHUB_SHA -or $Commit.sha -cne $env:GITHUB_SHA -or
+              @($Commit.parents).Count -ne 1 -or $Commit.parents[0].sha -cne $env:SOURCE_COMMIT -or
+              $Commit.commit.message -cne 'ci: verify fixed Windows candidate read-only Host and WAL snapshot' -or
+              $Files.Count -ne 1 -or $Files[0].status -cne 'added' -or
+              $Files[0].filename -cne '.github/workflows/windows-readonly-host-wal-once.yml') {
+            throw 'STOP: unexpected trigger commit or branch HEAD'
+          }
+          Write-Output 'TRIGGER_GATE=PASS_ACTUAL'
+      - name: Checkout exact old source without LFS hydration
+        id: checkout
+        env:
+          GIT_LFS_SKIP_SMUDGE: '1'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: rileyaaa/Portable
+          ref: e9f70bce6c01ff43aa0761f0e3c89d77bb0b96cb
+          path: candidate-source
+          fetch-depth: 1
+          fetch-tags: false
+          lfs: false
+          submodules: false
+          clean: true
+          persist-credentials: false
+      - name: Verify exact checkout before any LFS request
+        id: checkout_gate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            $Root = Join-Path $env:GITHUB_WORKSPACE 'candidate-source'
+            $Git = (Get-Command git.exe -CommandType Application | Select-Object -First 1).Source
+            # Local metadata only: never print arbitrary Git errors or remote strings.
+            $Head = & $Git -C $Root rev-parse HEAD 2>$null
+            if ($LASTEXITCODE -ne 0 -or $Head -cne $env:SOURCE_COMMIT) { throw 'Wrong source' }
+            $Tree = & $Git -C $Root rev-parse 'HEAD^{tree}' 2>$null
+            if ($LASTEXITCODE -ne 0 -or $Tree -cne $env:SOURCE_TREE) { throw 'Wrong source tree' }
+            $Remote = & $Git -C $Root remote get-url origin 2>$null
+            if ($LASTEXITCODE -ne 0 -or $Remote -cnotin @('https://github.com/rileyaaa/Portable','https://github.com/rileyaaa/Portable.git')) {
+              throw 'Wrong fixed remote'
+            }
+          } catch { throw 'CHECKOUT_IDENTITY_FAILED' }
+      - name: Hydrate only the fixed repository LFS objects
+        id: hydration
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_NO_LAZY_FETCH: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Stage = 'prerequisites'; $Code = 'LFS_PREREQUISITE_FAILED'; $ExitCode = $null
+          try {
+            $Root = Join-Path $env:GITHUB_WORKSPACE 'candidate-source'
+            $Git = (Get-Command git.exe -CommandType Application | Select-Object -First 1).Source
+            if (-not $Git -or -not $env:GH_TOKEN -or $env:GITHUB_SERVER_URL -cne 'https://github.com') {
+              throw 'LFS prerequisite failed'
+            }
+            # Same local LFS filter setup and fetch as checkout's lfs:true path.
+            # No global config, credential persistence, alternate origin or proxy override.
+            function Invoke-Lfs([string]$Arguments, [bool]$Authenticated) {
+              $Info = New-Object Diagnostics.ProcessStartInfo
+              $Info.FileName = $Git; $Info.Arguments = $Arguments; $Info.WorkingDirectory = $Root
+              $Info.UseShellExecute = $false; $Info.CreateNoWindow = $true
+              $Info.RedirectStandardOutput = $true; $Info.RedirectStandardError = $true
+              $Info.EnvironmentVariables.Remove('GH_TOKEN')
+              if ($Authenticated) {
+                # Match the pinned checkout action's Basic auth convention, only in this child.
+                $Credential = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('x-access-token:' + $env:GH_TOKEN))
+                $Info.EnvironmentVariables['GIT_CONFIG_COUNT'] = '2'
+                $Info.EnvironmentVariables['GIT_CONFIG_KEY_1'] = 'http.https://github.com/.extraheader'
+                $Info.EnvironmentVariables['GIT_CONFIG_VALUE_1'] = 'AUTHORIZATION: basic ' + $Credential
+              }
+              $Process = New-Object Diagnostics.Process
+              try {
+                $Process.StartInfo = $Info
+                if (-not $Process.Start()) { throw 'LFS child did not start' }
+                # Drain both streams without retaining or printing arbitrary remote diagnostics.
+                $OutTask = $Process.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null)
+                $ErrTask = $Process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+                $Process.WaitForExit()
+                [void]$OutTask.GetAwaiter().GetResult(); [void]$ErrTask.GetAwaiter().GetResult()
+                return [int]$Process.ExitCode
+              } finally {
+                $Info.EnvironmentVariables.Remove('GIT_CONFIG_VALUE_1')
+                $Process.Dispose()
+              }
+            }
+            $Stage = 'local_setup'; $Code = 'LFS_LOCAL_SETUP_FAILED'
+            $ExitCode = Invoke-Lfs 'lfs install --local' $false
+            if ($ExitCode -ne 0) { throw 'Local LFS filter setup failed' }
+            $Stage = 'fetch'; $Code = 'LFS_FETCH_FAILED'; $ExitCode = $null
+            $ExitCode = Invoke-Lfs ('lfs fetch origin ' + $env:SOURCE_COMMIT) $true
+            if ($ExitCode -ne 0) { throw 'Fixed LFS fetch failed' }
+            $Stage = 'checkout_objects'; $Code = 'LFS_CHECKOUT_FAILED'; $ExitCode = $null
+            # git lfs checkout materializes local objects; it does not download.
+            $ExitCode = Invoke-Lfs 'lfs checkout' $false
+            if ($ExitCode -ne 0) { throw 'Local LFS checkout failed' }
+            $Stage = 'complete'; $Code = 'OK'
+          } catch {
+            # Never serialize the exception, process environment or remote output.
+            throw 'Fixed LFS hydration failed; see bounded stage/code summary'
+          } finally {
+            @("stage=$Stage", "code=$Code", "exit_code=$ExitCode") |
+              Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+      - name: Verify raw Python before executing it; build one ZIP and run independent positives
+        id: native
+        env:
+          GIT_NO_LAZY_FETCH: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Root = Join-Path $env:GITHUB_WORKSPACE 'candidate-source'
+          $Git = (Get-Command git.exe -CommandType Application | Select-Object -First 1).Source
+          if (-not $Git) { throw 'Runner Git prerequisite missing' }
+          if ((& $Git -C $Root rev-parse HEAD).Trim() -cne $env:SOURCE_COMMIT -or
+              $LASTEXITCODE -ne 0) { throw 'Source SHA mismatch' }
+          if ((& $Git -C $Root rev-parse 'HEAD^{tree}').Trim() -cne $env:SOURCE_TREE -or
+              $LASTEXITCODE -ne 0) { throw 'Source tree mismatch' }
+          if ((& $Git -C $Root rev-parse 'HEAD:tool/python').Trim() -cne '0acf1ab379c88add26bac05c5af3923e5c6798eb' -or
+              $LASTEXITCODE -ne 0) { throw 'Bundled Python tree mismatch' }
+          # Python must be an ordinary, exact, fully populated source tree before use.
+          function Check-Directory([string]$Path) {
+            $Item = Get-Item -LiteralPath $Path -Force
+            if (-not $Item.PSIsContainer -or ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+              throw "Unsafe input directory: $Path"
+            }
+          }
+          $PythonRoot = Join-Path $Root 'tool\python'
+          $Cursor = $PythonRoot
+          while ($Cursor) {
+            Check-Directory $Cursor
+            $Cursor = [IO.Path]::GetDirectoryName($Cursor.TrimEnd('\'))
+          }
+          $Lines = @(& $Git -C $Root -c core.quotepath=false ls-tree -r --full-tree HEAD -- tool/python)
+          if ($LASTEXITCODE -ne 0 -or $Lines.Count -ne 6132) { throw 'Python inventory mismatch' }
+          $Names = New-Object 'System.Collections.Generic.List[string]'
+          $Blobs = New-Object 'System.Collections.Generic.List[string]'
+          $Expected = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+          foreach ($Line in $Lines) {
+            if ($Line -cnotmatch '^(100644|100755) blob ([0-9a-f]{40})\t(tool/python/[ -~]+)$') { throw 'Unexpected Python tree entry' }
+            $Blob = $Matches[2]; $Name = $Matches[3]
+            if ($Name.Contains('"') -or $Name.Contains('\') -or $Name.Contains(':') -or
+                @($Name.Split('/') | Where-Object { $_ -in @('', '.', '..') }).Count -ne 0 -or
+                -not $Expected.Add($Name)) { throw 'Unsafe Python tree entry' }
+            $Names.Add($Name); $Blobs.Add($Blob)
+          }
+          $Actual = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+          $Pending = New-Object 'System.Collections.Generic.Stack[string]'
+          $Pending.Push($PythonRoot)
+          while ($Pending.Count -gt 0) {
+            $Dir = $Pending.Pop(); Check-Directory $Dir
+            foreach ($Item in @(Get-ChildItem -LiteralPath $Dir -Force)) {
+              if ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked Python tree entry' }
+              if ($Item.PSIsContainer) { $Pending.Push($Item.FullName); continue }
+              if ($null -eq $Item.PSObject.Properties['LinkType'] -or $Item.LinkType -or ([string]$Item.Mode).Contains('l')) {
+                throw 'Linked/invalid Python file'
+              }
+              $Name = $Item.FullName.Substring($Root.Length + 1).Replace('\','/')
+              if (-not $Expected.Contains($Name) -or -not $Actual.Add($Name)) { throw 'Extra Python file' }
+            }
+          }
+          if (-not $Actual.SetEquals($Expected)) { throw 'Missing Python file' }
+          $Raw = @($Names | & $Git -C $Root hash-object --no-filters --stdin-paths)
+          if ($LASTEXITCODE -ne 0 -or $Raw.Count -ne $Blobs.Count) { throw 'Cannot verify raw Python bytes' }
+          for ($i=0; $i -lt $Raw.Count; $i++) {
+            if ($Raw[$i] -cne $Blobs[$i]) { throw "Raw Python blob mismatch: $($Names[$i])" }
+          }
+          Write-Output 'BUNDLED_PYTHON_GATE=PASS_ACTUAL files=6132'
+          $Python = Join-Path $PythonRoot 'python.exe'
+          # ASCII inline Python, avoiding a new tracked helper or host Python.
+          $Code = @'
+          # Inline review-only supervisor. No repository writes or publication.
+          import contextlib
+          import ctypes as C
+          from ctypes import wintypes as W
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import shutil
+          import stat
+          import subprocess
+          import sys
+          import threading
+          import uuid
+          import zipfile
+
+          BASE = 'e9f70bce6c01ff43aa0761f0e3c89d77bb0b96cb'
+          TREE = '75dbced2a61741f3d452cb344f0e6be4bb3851f4'
+          COUNTS = (9350, 165, 9185)
+          LABEL = 'v0.172.0-portable.2'  # local filename only
+          ROOT = Path(sys.argv[1]).absolute()
+          GIT = sys.argv[2]
+          PYTHON = ROOT / 'tool/python/python.exe'
+          LFS_SINGLE = {'codex.exe', 'codex-code-mode-host.exe', 'codex-command-runner.exe',
+                        'codex-windows-sandbox-setup.exe', 'codex-path/rg.exe', 'tool/node/node.exe'}
+          PINS = {
+              '.gitattributes': 'f6e24317bd3cbf5157715b7d304ecbef3361a0a9',
+              '.github/workflows/import-round12.yml': '4b6deae44ab11e353c37a653389317832cbab526',
+              '.github/workflows/local-native-tool-paths-once.yml': 'bd2fda2a557880b2a32c0bda092f6c9ae7262feb',
+              '.github/workflows/release.yml': '066f09832bb131bed784b82ad16776857fa8e38c',
+              'tool/package-release.py': '77b287ca329f52ff5e7ecdbe9d429819fd6e576a',
+              'tool/automation/install-browser.py': '5d3f6b1682fb679c1dfaf15b336d4913987ead98',
+              'tool/runtime-manifest.json': 'c3677d5962ec02f0c6d755d775052d0d907c2a06',
+              'tool/automation/browser-manifest.json': '42d9ff6498a4db108cdced21df0128f4f62d2b65',
+              'run-codex.ps1': '2eaac598eaf07eadf725a58308d8e81672a3e2bb',
+              'env.ps1': 'fee7920e3e12a56c9f5a7f3693de360c1f49a760',
+              'tool/portable-process.ps1': '3e659ab70c0ef7f72b24911dccb74a14f1c0d2fd',
+              '\u542f\u52a8Codex.bat': '918453e080c0c93e7298bac6ef371f0a293359f0',
+              'tests/audit_release_zip.py': '16c13ea90f050bc3b5b89f88b19fa7fb7adf852e',
+              'tests/check_codex_tool_discovery.py': 'c0a8fbae020de5d90b431bb09c78de7fc3af4565',
+              'tests/check_codex_browser_mcp.py': 'f044fe65b8fc58521c118afbd5138d687a82ec2d',
+              'tests/check_browser_mcp_stdio.py': '4ecc8f2631eafd7fc2832b4cd359c7a8d81e56a7',
+              'tool/python/_sqlite3.pyd': '03e85b39712522d52ec8436d8f40d64eafae7591',
+              'tool/python/sqlite3.dll': '286e815b65925a71caf38666788e7bcab9b7d4f3',
+              'tool/android/platform-tools/sqlite3.exe': '24f88e45539330b50a4f6fa15de190db6c2a2442',
+          }
+
+
+          def require(ok, message):
+              if not ok:
+                  raise RuntimeError(message)
+
+
+          def git(*args, data=None):
+              return subprocess.run([GIT, '-C', str(ROOT), *args], input=data,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    check=True, timeout=240).stdout
+
+
+          def ordinary(p, directory=False):
+              s = p.lstat()
+              require(not (stat.S_ISLNK(s.st_mode) or getattr(s, 'st_file_attributes', 0) & 0x400),
+                      'Linked path: ' + str(p))
+              require(stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode) and s.st_nlink == 1,
+                      'Unexpected path type/link count: ' + str(p))
+              return s
+
+
+          def sha(p):
+              ordinary(p)
+              with p.open('rb') as f:
+                  return hashlib.file_digest(f, 'sha256').hexdigest()
+
+
+          def raw_blob(p):
+              s = ordinary(p)
+              h = hashlib.sha1(b'blob ' + str(s.st_size).encode('ascii') + b'\0', usedforsecurity=False)
+              with p.open('rb') as f:
+                  for block in iter(lambda: f.read(1024 * 1024), b''):
+                      h.update(block)
+              return h.hexdigest()
+
+
+          def scan_owned(p):
+              # Validate the entire new tree before cleanup; never follow a reparse point.
+              ordinary(p, True)
+              for entry in p.iterdir():
+                  s = entry.lstat()
+                  require(not (stat.S_ISLNK(s.st_mode) or getattr(s, 'st_file_attributes', 0) & 0x400),
+                          'Unexpected link in owned tree')
+                  if stat.S_ISDIR(s.st_mode):
+                      scan_owned(entry)
+                  else:
+                      ordinary(entry)
+
+
+          def read_pointers(blobs):
+              keys = sorted(set(blobs))
+              out = git('cat-file', '--batch', data=('\n'.join(keys) + '\n').encode('ascii'))
+              pos = 0
+              records = {}
+              for oid in keys:
+                  end = out.index(b'\n', pos)
+                  header = out[pos:end].decode('ascii').split()
+                  require(len(header) == 3 and header[:2] == [oid, 'blob'], 'Missing pinned LFS pointer')
+                  size = int(header[2]); pos = end + 1
+                  require(0 < size <= 256, 'Unexpected LFS pointer size')
+                  body = out[pos:pos+size]
+                  require(out[pos+size:pos+size+1] == b'\n', 'Malformed cat-file response')
+                  pos += size + 1
+                  match = re.fullmatch(rb'version https://git-lfs.github.com/spec/v1\noid sha256:([0-9a-f]{64})\nsize ([0-9]+)\n', body)
+                  require(match is not None, 'Invalid fixed LFS pointer ' + oid)
+                  require(hashlib.sha1(b'blob ' + str(size).encode() + b'\0' + body,
+                                       usedforsecurity=False).hexdigest() == oid, 'Pointer blob mismatch')
+                  records[oid] = (match[1].decode(), int(match[2]))
+              require(pos == len(out), 'Extra cat-file output')
+              return records
+
+
+          def verify_lfs_payloads(records, lfs, pointers, checked_file, summary):
+              for name in sorted(lfs):
+                  expected, length = pointers[records[name][1]]
+                  # Names and OIDs come only from the validated fixed tree/pointer.
+                  failure = {'code': 'LFS_PAYLOAD_UNSAFE_OR_MISSING', 'path': name,
+                             'expected_sha256': expected, 'expected_size': length}
+                  summary['lfs_identity_error'] = failure
+                  try:
+                      p, st = checked_file(name)
+                  except FileNotFoundError:
+                      failure['code'] = 'LFS_PAYLOAD_MISSING'; raise
+                  failure['code'] = 'LFS_SIZE_MISMATCH'
+                  require(st.st_size == length, 'Fixed LFS payload size mismatch')
+                  failure['code'] = 'LFS_DIGEST_MISMATCH_OR_UNREADABLE'
+                  require(sha(p) == expected, 'Fixed LFS payload digest mismatch')
+              summary['lfs_identity'] = 'PASS_ACTUAL'
+              del summary['lfs_identity_error']
+
+
+          def source_gate(summary):
+              require(sys.platform == 'win32' and sys.version_info[:3] == (3, 14, 10)
+                      and sys.maxsize > 2**32 and Path(sys.executable).resolve() == PYTHON.resolve(),
+                      'Fixed bundled Windows x64 Python required')
+              require(git('rev-parse', 'HEAD').decode().strip() == BASE, 'Wrong source commit')
+              require(git('rev-parse', 'HEAD^{tree}').decode().strip() == TREE, 'Wrong source tree')
+              records = {}
+              for line in git('ls-tree', '-rz', '--full-tree', 'HEAD').split(b'\0'):
+                  if not line:
+                      continue
+                  header, rawname = line.split(b'\t', 1)
+                  mode, kind, oid = header.decode('ascii').split()
+                  name = rawname.decode('utf-8')
+                  require(kind == 'blob' and mode in ('100644', '100755') and name not in records,
+                          'Unexpected Git entry')
+                  require(all(x not in ('', '.', '..') for x in name.split('/')) and '\\' not in name
+                          and ':' not in name and not Path(name).is_absolute(), 'Invalid tracked path')
+                  records[name] = (mode, oid)
+              require(len(records) == COUNTS[0], 'Source count mismatch')
+              require(all(records.get(n, (None, None))[1] == oid for n, oid in PINS.items()), 'Fixed blob mismatch')
+              index = {}
+              for line in git('ls-files', '--stage', '-z').split(b'\0'):
+                  if line:
+                      header, name = line.split(b'\t', 1)
+                      mode, oid, stage = header.decode('ascii').split()
+                      name = name.decode('utf-8')
+                      require(stage == '0' and name not in index, 'Unexpected index stage')
+                      index[name] = (mode, oid)
+              require(index == records and all(x.startswith(b'H ') for x in git('ls-files','-v','-z').split(b'\0') if x), 'Index mismatch')
+              # Hydration is already complete; distinguish exact LFS identity from raw Git checks.
+              summary['lfs_identity'] = 'FAIL'
+              summary['lfs_identity_error'] = {'code': 'LFS_INVENTORY_MISMATCH'}
+              lfs = {n for n in records if n in LFS_SINGLE or n.startswith('tool/automation/browsers/')}
+              require(LFS_SINGLE <= lfs and len(lfs) == 311, 'Fixed LFS inventory mismatch')
+              summary['lfs_identity_error'] = {'code': 'LFS_FILTER_POLICY_MISMATCH'}
+              attrs = git('check-attr', '-z', '--stdin', 'filter', data=b'\0'.join(n.encode('utf-8') for n in records) + b'\0').split(b'\0')
+              require(len(attrs) == 3 * len(records) + 1 and attrs[-1] == b'', 'Attribute response mismatch')
+              attrmap = {attrs[i].decode('utf-8'): attrs[i+2] for i in range(0, len(attrs)-1, 3)}
+              require(set(attrmap) == set(records) and all(v == (b'lfs' if n in lfs else b'unspecified')
+                      for n, v in attrmap.items()), 'Unexpected worktree filter')
+              summary['lfs_identity_error'] = {'code': 'LFS_POINTER_INVALID'}
+              pointers = read_pointers(records[n][1] for n in lfs)
+              summary['lfs_identity_error'] = {'code': 'LFS_TOTAL_BYTES_MISMATCH'}
+              require(sum(pointers[records[n][1]][1] for n in lfs) == 1099802486, 'LFS bytes mismatch')
+              checked_dirs = set()
+
+              def checked_file(name):
+                  p = ROOT / name
+                  for parent in reversed(p.parents):
+                      if parent not in checked_dirs:
+                          ordinary(parent, True); checked_dirs.add(parent)
+                  return p, ordinary(p)
+
+              verify_lfs_payloads(records, lfs, pointers, checked_file, summary)
+              for name, (_, oid) in records.items():
+                  if name not in lfs:
+                      p, _ = checked_file(name)
+                      require(raw_blob(p) == oid, 'Raw Git blob differs: ' + name)
+              require(not git('status', '--porcelain=v1', '--untracked-files=no'), 'Tracked source dirty')
+              print('SOURCE_GATE=PASS_ACTUAL files=9350 lfs_paths=311 lfs_bytes=1099802486', flush=True)
+              return records
+
+
+          def load(name, path):
+              spec = importlib.util.spec_from_file_location(name, path)
+              mod = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(mod)
+              return mod
+
+
+          def verify_member(package, name, rec):
+              p = package / name
+              require(ordinary(p).st_size == rec['size'] and sha(p) == rec['sha256'], 'Extracted bytes differ: ' + name)
+
+
+          # Read-only Windows process observations, only matching owned descendants.
+          class Entry(C.Structure):
+              _fields_ = [('dwSize', W.DWORD), ('cntUsage', W.DWORD), ('th32ProcessID', W.DWORD),
+                          ('th32DefaultHeapID', C.c_size_t), ('th32ModuleID', W.DWORD),
+                          ('cntThreads', W.DWORD), ('th32ParentProcessID', W.DWORD),
+                          ('pcPriClassBase', W.LONG), ('dwFlags', W.DWORD), ('szExeFile', W.WCHAR * 260)]
+
+
+          def observe_owned(root_pid, stop, observations, errors):
+              k = C.WinDLL('kernel32', use_last_error=True)
+              k.CreateToolhelp32Snapshot.argtypes = [W.DWORD, W.DWORD]; k.CreateToolhelp32Snapshot.restype = W.HANDLE
+              k.Process32FirstW.argtypes = [W.HANDLE, C.POINTER(Entry)]; k.Process32FirstW.restype = W.BOOL
+              k.Process32NextW.argtypes = [W.HANDLE, C.POINTER(Entry)]; k.Process32NextW.restype = W.BOOL
+              k.OpenProcess.argtypes = [W.DWORD, W.BOOL, W.DWORD]; k.OpenProcess.restype = W.HANDLE
+              k.QueryFullProcessImageNameW.argtypes = [W.HANDLE, W.DWORD, W.LPWSTR, C.POINTER(W.DWORD)]
+              k.QueryFullProcessImageNameW.restype = W.BOOL
+              k.CloseHandle.argtypes = [W.HANDLE]; k.CloseHandle.restype = W.BOOL
+              wanted = {'codex.exe', 'codex-code-mode-host.exe', 'python.exe'}
+              try:
+                  while not stop.is_set():
+                      snap = k.CreateToolhelp32Snapshot(2, 0)
+                      if snap == C.c_void_p(-1).value:
+                          raise C.WinError(C.get_last_error())
+                      table = {}
+                      try:
+                          e = Entry(); e.dwSize = C.sizeof(e)
+                          ok = k.Process32FirstW(snap, C.byref(e))
+                          if not ok:
+                              raise C.WinError(C.get_last_error())
+                          while ok:
+                              table[int(e.th32ProcessID)] = (int(e.th32ParentProcessID), e.szExeFile.lower())
+                              ok = k.Process32NextW(snap, C.byref(e))
+                          if C.get_last_error() != 18:  # ERROR_NO_MORE_FILES
+                              raise C.WinError(C.get_last_error())
+                      finally:
+                          k.CloseHandle(snap)
+                      owned = {root_pid}
+                      while True:
+                          more = {pid for pid, (parent, _) in table.items() if parent in owned} - owned
+                          if not more:
+                              break
+                          owned.update(more)
+                      for pid in owned & table.keys():
+                          parent, name = table[pid]
+                          if name not in wanted or pid in observations:
+                              continue
+                          h = k.OpenProcess(0x1000 | 0x100000, False, pid)  # query limited information + synchronize
+                          if not h:
+                              continue  # absent positive evidence will fail the gate
+                          size = W.DWORD(32768); buf = C.create_unicode_buffer(size.value)
+                          if k.QueryFullProcessImageNameW(h, 0, buf, C.byref(size)):
+                              observations[pid] = (name, parent, buf.value, h)
+                          else:
+                              k.CloseHandle(h)
+                      stop.wait(0.05)
+              except Exception as e:
+                  errors.append(type(e).__name__ + ': ' + str(e)[:180])
+
+
+          WAL_CODE = r'''
+          from contextlib import closing
+          import hashlib, json, os, pathlib, sqlite3, subprocess, sys
+          root = pathlib.Path(sys.argv[1]); task = pathlib.Path.cwd()
+          assert pathlib.Path(sys.executable).resolve() == (root/'tool/python/python.exe').resolve()
+          assert task.is_relative_to(root/'work')
+          source = task/'\u4e2d\u6587 \u4e8b\u52a1.sqlite'; snapshot = task/'snapshot.sqlite'
+          assert not source.exists() and not snapshot.exists()
+          def digest(p):
+              with p.open('rb') as f: return hashlib.file_digest(f, 'sha256').hexdigest()
+          with closing(sqlite3.connect(source, isolation_level=None, timeout=5)) as writer:
+              assert writer.execute('PRAGMA journal_mode=WAL').fetchone()[0].lower() == 'wal'
+              writer.execute('PRAGMA wal_autocheckpoint=0')
+              base_main = digest(source)
+              writer.execute('BEGIN IMMEDIATE')
+              writer.execute('CREATE TABLE sample(id INTEGER PRIMARY KEY, value TEXT)')
+              writer.execute('INSERT INTO sample VALUES(1, ?)', ('\u5df2\u63d0\u4ea4',))
+              writer.commit()
+              wal = pathlib.Path(str(source)+'-wal'); shm = pathlib.Path(str(source)+'-shm')
+              assert wal.is_file() and wal.stat().st_size > 32 and shm.is_file()
+              assert digest(source) == base_main, 'Committed schema/row not proven WAL-resident'
+              writer.execute('BEGIN IMMEDIATE')
+              writer.execute('INSERT INTO sample VALUES(2, ?)', ('\u672a\u63d0\u4ea4',))
+              assert writer.execute('SELECT count(*) FROM sample').fetchone() == (2,)
+              before = (digest(source), digest(wal))
+              try:
+                  with closing(sqlite3.connect(source.as_uri()+'?mode=ro', uri=True, timeout=5)) as reader, closing(sqlite3.connect(snapshot, timeout=5)) as target:
+                      reader.backup(target)
+                  with closing(sqlite3.connect(snapshot.as_uri()+'?mode=ro', uri=True, timeout=5)) as result:
+                      assert result.execute('PRAGMA quick_check').fetchall() == [('ok',)]
+                      assert result.execute('SELECT id,value FROM sample ORDER BY id').fetchall() == [(1,'\u5df2\u63d0\u4ea4')]
+                  cli = root/'tool/android/platform-tools/sqlite3.exe'
+                  res = subprocess.run([str(cli),'-batch','-readonly','-noheader','snapshot.sqlite',
+                                        'SELECT count(*),sum(id) FROM sample;'], cwd=task,
+                                       capture_output=True, timeout=20, check=True)
+                  assert res.stdout.strip() == b'1|1', 'CLI snapshot readback mismatch'
+                  assert writer.in_transaction and writer.execute('SELECT count(*) FROM sample').fetchone() == (2,)
+                  assert before == (digest(source), digest(wal)), 'Source main/WAL changed during backup/readback'
+                  print('WAL_RESULT='+json.dumps({'sqlite_version':sqlite3.sqlite_version,'committed_rows':1,
+                      'uncommitted_excluded':True,'main_wal_unchanged_during_read':True,
+                      'cli_snapshot_readback':'1|1'},ensure_ascii=True),flush=True)
+              finally:
+                  writer.rollback()
+          '''
+
+
+          def wal_case(package, a, files):
+              for name in ('tool/python/python.exe','tool/python/_sqlite3.pyd','tool/python/sqlite3.dll',
+                           'tool/android/platform-tools/sqlite3.exe'):
+                  verify_member(package, name, files[name])
+              env = a.clean_env()
+              for key, folder in (('HOME','home-runtime'),('USERPROFILE','home-runtime'),('APPDATA','appdata'),
+                                  ('LOCALAPPDATA','localappdata'),('PROGRAMDATA','programdata'),
+                                  ('TEMP','tmp'),('TMP','tmp'),('TMPDIR','tmp')):
+                  d = package/folder; d.mkdir(exist_ok=True); ordinary(d,True); env[key] = str(d)
+              task = package/'work'/'wal-positive'; task.mkdir(parents=True, exist_ok=False)
+              rc, out, err = a.child([str(package/'tool/python/python.exe'),'-I','-B','-c',WAL_CODE,str(package)],
+                                     task, env=env, timeout=120)
+              require(rc == 0, 'WAL native consumer failed: ' + err[-500:])
+              rows = [json.loads(x[len('WAL_RESULT='):]) for x in out.splitlines() if x.startswith('WAL_RESULT=')]
+              require(len(rows)==1 and rows[0]['committed_rows']==1 and rows[0]['uncommitted_excluded'] is True
+                      and rows[0]['main_wal_unchanged_during_read'] is True and rows[0]['cli_snapshot_readback']=='1|1',
+                      'WAL actual result missing')
+              return rows[0]
+
+
+          def host_case(package, a, core, files):
+              m = core.m
+              bat = '\u542f\u52a8Codex.bat'
+              relevant = [bat,'env.ps1','run-codex.ps1','tool/portable-process.ps1','tool/runtime-manifest.json',
+                          *json.loads((package/'tool/runtime-manifest.json').read_bytes())['files'], 'tool/python/python.exe']
+              for name in relevant:
+                  verify_member(package, name, files[name])
+              work = package/'work'; work.mkdir(exist_ok=True); ordinary(work,True)
+              target = work/'host-read-positive.txt'
+              with target.open('xb') as f:
+                  f.write(('owned-synthetic-' + uuid.uuid4().hex + '\n').encode('ascii'))
+              wanted = sha(target)
+              require(not (package/'env.local.ps1').exists() and not (package/'home/auth.json').exists(),
+                      'Candidate must not contain local config or active auth')
+              code = ('import hashlib,json,os,pathlib,sys,time; '
+                      'p=pathlib.Path("host-read-positive.txt"); '
+                      'd=hashlib.sha256(p.read_bytes()).hexdigest(); time.sleep(2); '
+                      'print("HOST_READ_EVIDENCE="+json.dumps(dict(digest=d,exe=sys.executable,cwd=os.getcwd(),pid=os.getpid()),ensure_ascii=True),flush=True)')
+              command = ("& (Join-Path $env:CODEX_INSTALL_DIR 'tool/python/python.exe') -I -B -c '" +
+                         code.replace("'", "''") + "'; exit $LASTEXITCODE")
+              args = {'cmd':command,'workdir':str(work),'login':False,'yield_time_ms':30000,'max_output_tokens':2000}
+              continuation = core.NativeProbeContinuation(True)
+              done = 'portable-read-only-positive-completed'
+              m.MODEL_REQUESTS.clear(); m.MODEL_ERRORS.clear()
+              actual = []
+
+              def handler(body, _):
+                  if len(m.MODEL_REQUESTS) == 1:
+                      entries = list(m.tool_entries(body.get('tools', [])))
+                      custom = [(ns,t) for ns,t in entries if t.get('type')=='custom' and t.get('name')=='exec']
+                      require(len(custom)==1, 'Actual custom Code Mode exec not advertised; no direct fallback')
+                      ns, tool = custom[0]
+                      script = ('const e=ALL_TOOLS.find(x=>x.name.endsWith("exec_command")); '
+                                'if(!e)throw new Error("missing shell"); let r=await tools[e.name]('+json.dumps(args)+'); '
+                                'for(let i=0;;i++){const v=r.structuredContent||r; '
+                                'if(r.isError||v.isError)throw new Error("shell error"); text(JSON.stringify(v)); '
+                                'if(v.exit_code!==undefined&&v.exit_code!==null){if(v.exit_code!==0||v.session_id!=null)throw new Error("shell exit");break;} '
+                                'if(!Number.isSafeInteger(v.session_id)||i>=5)throw new Error("shell deadline"); '
+                                'const w=ALL_TOOLS.find(x=>x.name.endsWith("write_stdin"));if(!w)throw new Error("missing wait"); '
+                                'r=await tools[w.name]({session_id:v.session_id,chars:"",yield_time_ms:30000});}')
+                      item = {'type':'custom_tool_call','call_id':'portable-probe','name':tool['name'],'input':script}
+                      if ns is not None: item['namespace'] = ns
+                      return item
+                  follow = continuation.receive(body)
+                  if follow is not None:
+                      return follow
+                  lines = ''.join(continuation.evidence).splitlines()
+                  found = [json.loads(x[len('HOST_READ_EVIDENCE='):]) for x in lines if x.startswith('HOST_READ_EVIDENCE=')]
+                  require(len(found)==1 and found[0]['digest']==wanted, 'Actual file read result missing/wrong')
+                  require(Path(found[0]['exe']).resolve()==(package/'tool/python/python.exe').resolve()
+                          and Path(found[0]['cwd']).resolve()==work.resolve(), 'Wrong actual consumer path/cwd')
+                  actual.extend(found)
+                  return {'id':'msg_portable_ro','type':'message','role':'assistant','status':'completed',
+                          'content':[{'type':'output_text','text':done,'annotations':[]}]}
+
+              observations = {}; errors = []; stop = threading.Event(); model = 'gpt-6.2-sol'
+              k = C.WinDLL('kernel32', use_last_error=True)
+              k.WaitForSingleObject.argtypes=[W.HANDLE,W.DWORD]; k.WaitForSingleObject.restype=W.DWORD
+              k.CloseHandle.argtypes=[W.HANDLE]; k.CloseHandle.restype=W.BOOL
+              try:
+                  with m.serving(m.provider('',model=model,handler=handler,
+                                   expected_headers={'X-Portable-Audit':'synthetic-package-value','X-Portable-Audit-Static':'synthetic-static'},
+                                   forbidden_headers=('X-Portable-Host-Only',),max_requests=12)) as port:
+                      a.api_config(package,port,model,'normal',
+                                   '$env:CODEX_PROVIDER_MODE = "custom_provider"\n'
+                                   '$env:CODEX_SANDBOX_MODE = "read-only"\n'
+                                   '$env:CODEX_APPROVAL_POLICY = "on-request"\n'
+                                   '$env:CODEX_SANDBOX_NETWORK_ACCESS = "false"\n')
+                      argv = [str(package/bat),'--portable-auth=api','exec','--skip-git-repo-check','--json',
+                              'Read only the authorized synthetic work file.']
+                      cmd = '"'+str(a.CMD)+'" /d /s /c "'+subprocess.list2cmdline(argv)+'"'
+                      proc = subprocess.Popen(cmd,executable=str(a.CMD),cwd=package,env=a.clean_env(),
+                                              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                      thread = threading.Thread(target=observe_owned,args=(proc.pid,stop,observations,errors),daemon=True)
+                      thread.start()
+                      try:
+                          out,err=proc.communicate(timeout=420)
+                      except subprocess.TimeoutExpired:
+                          subprocess.run([str(a.WIN/'System32/taskkill.exe'),'/PID',str(proc.pid),'/T','/F'],
+                                         capture_output=True,timeout=20,check=False)
+                          proc.communicate(timeout=20)
+                          raise RuntimeError('Owned BAT/Host deadline; no retry')
+                      finally:
+                          stop.set(); thread.join(timeout=10)
+                          require(not thread.is_alive(), 'Process observation did not stop')
+                  require(proc.returncode==0 and not m.MODEL_ERRORS and done.encode() in out,
+                          'Actual BAT/Host positive failed: '+str(m.MODEL_ERRORS)[:300]+' '+err.decode('utf-8','replace')[-400:])
+                  require(continuation.finished and continuation.shell_exit==0 and len(actual)==1
+                          and len(m.MODEL_REQUESTS)==2+continuation.wait_count, 'Missing native custom terminal evidence')
+                  import tomllib
+                  cfg = tomllib.loads((package/'home/config.toml').read_text(encoding='utf-8-sig'))
+                  require(cfg.get('sandbox_mode')=='read-only' and cfg.get('approval_policy')=='on-request', 'Read-only policy not selected')
+                  expected = {n:(package/p).resolve() for n,p in [('codex.exe','codex.exe'),
+                              ('codex-code-mode-host.exe','codex-code-mode-host.exe'),('python.exe','tool/python/python.exe')]}
+                  require(not errors and {x[0] for x in observations.values()}==set(expected)
+                          and all(Path(x[2]).resolve()==expected[x[0]] for x in observations.values())
+                          and actual[0]['pid'] in observations and observations[actual[0]['pid']][0]=='python.exe',
+                          'Missing/wrong positive native image observation')
+                  require(all(k.WaitForSingleObject(x[3],5000)==0 for x in observations.values()), 'Observed owned process did not exit')
+                  require(sha(target)==wanted, 'Synthetic read input changed')
+                  require(not list((package/'tmp').glob('session-state-*')) and not list((package/'tmp').glob('process-build-*')),
+                          'Owned session/compiler scratch remains')
+                  for name in relevant:
+                      verify_member(package,name,files[name])
+                  return {'mode':'read-only','read_sha256':wanted,'custom_terminal_exit':0,'cell_waits':continuation.wait_count,
+                          'consumer_cwd':'work','observed_images':sorted({str(expected[x[0]].relative_to(package.resolve())) for x in observations.values()}),
+                          'observed_process_count':len(observations),'observed_processes_exited':True,'scratch_absent':True}
+              finally:
+                  stop.set()
+                  for x in observations.values():
+                      k.CloseHandle(x[3])
+
+
+          # Fixed source locations: package-release.py 77b287ca..., install-browser.py 5d3f6b16...
+          # Only recognized frames from the pinned paths, known exception classes, and fixed codes
+          # enter the summary. No original stderr, exception message, URL, token or argv is copied.
+          PACKAGER_STAGES = {
+              'clean_checkout': 'source_checkout', 'customer_files': 'customer_inventory',
+              'runtime_identity': 'runtime_identity', 'browser_identity': 'browser_identity',
+              'load_manifest': 'browser_identity', 'verify_payload': 'browser_identity',
+              'ocr_distribution_identity': 'ocr_notice_identity', 'identity': 'ocr_notice_identity',
+              'validate_release_tag': 'release_label', 'verify_zip': 'zip_verify',
+          }
+          PACKAGER_CODES = {
+              55:'LINKED_INPUT',58:'NOT_DIRECTORY',60:'NOT_SINGLE_LINK_FILE',72:'INVALID_ARCHIVE_PATH',
+              77:'NONPORTABLE_PATH',80:'PRIVATE_RUNTIME_STATE',82:'PRIVATE_RUNTIME_STATE',88:'PRIVATE_HOME_STATE',
+              100:'NONEMPTY_PLACEHOLDER',110:'CASE_COLLISION',118:'SOURCE_COMMIT_UNKNOWN',128:'NON_BLOB_ENTRY',
+              138:'INDEX_NOT_FULL',142:'UNHYDRATED_LFS_POINTER',144:'DIRTY_SOURCE',177:'RUNTIME_MANIFEST_SIZE',
+              183:'RUNTIME_LAYOUT',187:'LAUNCHER_MANIFEST_MISMATCH',190:'RUNTIME_NOT_COMMITTED',
+              194:'RUNTIME_PAYLOAD_IDENTITY',198:'RUNTIME_NOT_PE',203:'RUNTIME_NOT_X64',209:'PACKAGE_METADATA',
+              211:'UNEXPECTED_EXEC_SERVER',220:'BROWSER_VERIFIER_MISSING',224:'BROWSER_NOT_BUNDLED',
+              235:'BROWSER_INVENTORY_MISMATCH',244:'ZIP_MEMBER_LIST',248:'ZIP_MEMBER_SIZE',251:'ZIP_MEMBER_DIGEST',
+              264:'OCR_LOCK_MISSING',268:'OCR_LOCK_SIZE',271:'OCR_LOCK_IDENTITY',274:'OCR_NOT_QUALIFIED',
+              282:'OCR_FILE_IDENTITY',285:'OCR_FILE_DIGEST',293:'OCR_INVENTORY',316:'OCR_NOTICE_CLOSURE',
+              322:'OCR_SOURCE_MAP',328:'OCR_SOURCE_LINK_PROOF',340:'RELEASE_LABEL_MISMATCH',376:'UNHYDRATED_LFS_POINTER',
+              386:'SOURCE_CHANGED_DURING_BUILD',389:'SOURCE_CHECKOUT_CHANGED',
+          }
+          BROWSER_CODES = {
+              16:'BROWSER_PARENT_TRAVERSAL',19:'BROWSER_PATH_OUTSIDE_ROOT',21:'BROWSER_DEVICE_PATH',
+              30:'BROWSER_LINKED_PATH',38:'BROWSER_PATH_TYPE',55:'BROWSER_ARCHIVE_MEMBER',69:'BROWSER_VERSION_LOCK',
+              75:'BROWSER_STABLE_IDENTITY',78:'BROWSER_REVISION_SOURCE',83:'BROWSER_ARCHIVE_IDENTITY',
+              86:'BROWSER_EXECUTABLE_LAYOUT',90:'BROWSER_INVENTORY_PATH',95:'BROWSER_INVENTORY_ENTRY',
+              100:'BROWSER_INVENTORY_TOTALS',108:'BROWSER_PAYLOAD_DIGEST_OR_SIZE',112:'BROWSER_NOT_PE',116:'BROWSER_NOT_X64',
+          }
+          ERROR_CODES = {
+              'ValueError':'VALUE_ERROR','RuntimeError':'RUNTIME_ERROR','FileNotFoundError':'FILE_NOT_FOUND',
+              'PermissionError':'PERMISSION_DENIED','OSError':'OS_ERROR','FileExistsError':'FILE_EXISTS',
+              'CalledProcessError':'CHILD_COMMAND_FAILED','TimeoutExpired':'COMMAND_TIMEOUT',
+              'JSONDecodeError':'INVALID_JSON','BadZipFile':'INVALID_ZIP','KeyError':'MISSING_KEY',
+              'TypeError':'TYPE_ERROR','AssertionError':'ASSERTION_FAILED','UnicodeDecodeError':'INVALID_ENCODING',
+          }
+
+
+          def build_stage(line):
+              if line <= 348: return 'source_checkout'
+              if line == 349: return 'ocr_notice_identity'
+              if line == 350: return 'runtime_identity'
+              if line == 351: return 'browser_identity'
+              if line == 352: return 'release_label'
+              if line <= 387: return 'zip_write'
+              if line <= 389: return 'source_recheck'
+              if line == 390: return 'zip_verify'
+              if line <= 415: return 'metadata_write'
+              return 'packager_cleanup'
+
+
+          def packager_failure(stderr, exit_code):
+              # First concrete traceback, not a later chained cleanup exception. Inspect at most 16 KiB.
+              # Unknown/malformed diagnostics remain unclassified, never echo a guessed raw reason.
+              frames = []
+              active = False
+              fallback = {'stage':'packager','code':'PACKAGER_NONZERO_UNCLASSIFIED','exit_code':exit_code,
+                          'diagnostic_prefix_truncated':len(stderr)>16384}
+              for line in stderr[:16384].decode('utf-8', 'replace').splitlines():
+                  if line == 'Traceback (most recent call last):':
+                      active = True; frames = []; continue
+                  if not active:
+                      continue
+                  match = re.fullmatch(r'\s*File "([^"\r\n]+)", line ([0-9]{1,6}), in (\w+|<module>)\s*', line)
+                  if match:
+                      path, number, fn = match.groups(); path = path.replace('\\','/').lower()
+                      number = int(number)
+                      if path.endswith('/tool/package-release.py') and 1 <= number <= 450:
+                          frames.append(('packager', number, fn))
+                      elif path.endswith('/tool/automation/install-browser.py') and 1 <= number <= 239:
+                          frames.append(('browser_verifier', number, fn))
+                      continue
+                  error = re.match(r'^([A-Za-z_][A-Za-z0-9_.]*)(?::|$)', line)
+                  if error and not line.startswith('Traceback '):
+                      if not frames:
+                          active = False; continue
+                      # The deepest recognized source frame supplies the code; the nearest enclosing
+                      # known stage supplies context (e.g. ordinary() under runtime_identity()).
+                      stage = 'packager'
+                      for source, number, fn in frames:
+                          if source == 'browser_verifier': stage = 'browser_identity'
+                          elif fn == 'build_release': stage = build_stage(number)
+                          elif fn in PACKAGER_STAGES: stage = PACKAGER_STAGES[fn]
+                      source, number, _ = frames[-1]
+                      exc = error[1].rsplit('.',1)[-1]
+                      code = (PACKAGER_CODES if source == 'packager' else BROWSER_CODES).get(number) if exc == 'ValueError' else None
+                      return {'stage':stage,'code':code or ERROR_CODES.get(exc,'PACKAGER_EXCEPTION'),
+                              'source':source,'line':number,'exit_code':exit_code}
+              return fallback
+
+
+          def build_candidate(summary):
+              summary['packager'] = 'FAIL'
+              try:
+                  result = subprocess.run([str(PYTHON),'-I','-B',str(ROOT/'tool/package-release.py'),'--version',LABEL],cwd=ROOT,
+                                          capture_output=True,timeout=1500,check=False)
+              except subprocess.TimeoutExpired:
+                  summary['packager_error'] = {'stage':'packager','code':'PACKAGER_TIMEOUT'}
+                  raise RuntimeError('Packager deadline; see packager_error') from None
+              except OSError:
+                  summary['packager_error'] = {'stage':'packager','code':'PACKAGER_START_FAILED'}
+                  raise RuntimeError('Packager start failed; see packager_error') from None
+              if result.returncode != 0:
+                  summary['packager_error'] = packager_failure(result.stderr, result.returncode)
+                  raise RuntimeError('Packager nonzero; see packager_error')
+              try:
+                  info = json.loads(result.stdout)
+                  require(isinstance(info, dict), 'Expected packager report object')
+              except (ValueError, RuntimeError):
+                  summary['packager_error'] = {'stage':'packager_report','code':'PACKAGER_BAD_REPORT','exit_code':0}
+                  raise RuntimeError('Packager report invalid; see packager_error') from None
+              summary['packager'] = 'PASS_ACTUAL'
+              return info
+
+
+          # Existing case contracts still decide pass/fail. Keep their small, known diagnostics,
+          # not arbitrary exception tails (which could include an auth header or a signed URL).
+          CASE_ERROR_PREFIXES = (
+              'WAL native consumer failed','WAL actual result missing','Actual BAT/Host positive failed',
+              'Owned BAT/Host deadline','Process observation did not stop','Missing native custom terminal evidence',
+              'Read-only policy not selected','Missing/wrong positive native image observation',
+              'Observed owned process did not exit','Synthetic read input changed','Owned session/compiler scratch remains',
+              'Candidate must not contain local config or active auth','Extracted bytes differ',
+              'Fixed bundled Windows x64 Python required','Wrong source commit','Wrong source tree','Unexpected Git entry',
+              'Invalid tracked path','Source count mismatch','Fixed blob mismatch','Unexpected index stage','Index mismatch',
+              'Fixed LFS inventory mismatch','Attribute response mismatch','Unexpected worktree filter','Missing pinned LFS pointer',
+              'Unexpected LFS pointer size','Malformed cat-file response','Invalid fixed LFS pointer','Pointer blob mismatch',
+              'Extra cat-file output','LFS bytes mismatch','Fixed LFS payload size mismatch','Fixed LFS payload digest mismatch',
+              'Raw Git blob differs','Tracked source dirty','Exact source/customer inventory differs','Pre-existing candidate forbidden',
+              'Packager deadline','Packager start failed','Packager nonzero','Packager report invalid','Unexpected build output',
+              'Unexpected output paths','Candidate SHA mismatch','Checksum list mismatch','Manifest identity mismatch',
+              'Manifest inventory mismatch','ZIP member list mismatch','Extraction inventory mismatch','ZIP differs from fixed source',
+              'Pristine ZIP/metadata changed','Source changed','Owned cleanup failed','Unexpected link in owned tree',
+              'Linked path','Unexpected path type/link count',
+          )
+
+
+          def safe_case_error(error):
+              code = ERROR_CODES.get(type(error).__name__, 'UNCLASSIFIED_EXCEPTION')
+              # The output string is the constant prefix, never the input message or suffix.
+              return {'code':code, 'reason':next((prefix for prefix in CASE_ERROR_PREFIXES if str(error).startswith(prefix)), 'See scoped failure stage')}
+
+
+          def main():
+              summary={'source_commit':BASE,'source_gate':'NOT_RUN','lfs_identity':'NOT_RUN','packager':'NOT_RUN',
+                       'zip':'NOT_RUN','host':'NOT_RUN','wal':'NOT_RUN','cleanup':'NOT_RUN',
+                       'not_run':['SAFE/YOLO/maintenance repeats','TUI/resume/fork','write-denial/ACL','ETW/full OS I/O','ADB','Office','full package regression','release']}
+              out=owned=None; hashes=None; gate_stage='source_gate'
+              try:
+                  records=source_gate(summary); summary['source_gate']='PASS_ACTUAL'
+                  gate_stage='zip_gate'
+                  release=load('review_packager',ROOT/'tool/package-release.py')
+                  names,excluded=release.customer_files(list(records))
+                  require((len(records),len(excluded),len(names))==COUNTS,'Exact source/customer inventory differs')
+                  scratch=ROOT/'tmp'; scratch.mkdir(exist_ok=True); ordinary(scratch,True)
+                  require(not list(scratch.glob('release-*')),'Pre-existing candidate forbidden')
+                  # One build; actual packager retains its own validation and CRC checks.
+                  gate_stage='packager'
+                  info=build_candidate(summary)
+                  gate_stage='zip_gate'
+                  candidate=Path(info['output_dir'])
+                  require(candidate.parent==scratch and re.fullmatch(r'release-[a-z0-9_]+',candidate.name),'Unexpected build output')
+                  ordinary(candidate,True); out=candidate
+                  archive=out/('Codex-Portable-'+LABEL+'-windows-x64.zip'); manifest=out/'release-manifest.json'; sums=out/'SHA256SUMS'
+                  require(all(Path(info[key])==p for key,p in [('archive',archive),('manifest',manifest),('checksums',sums)]),'Unexpected output paths')
+                  hashes={p.name:sha(p) for p in (archive,manifest,sums)}
+                  require(info['source_commit']==BASE and info['archive_sha256']==hashes[archive.name], 'Candidate SHA mismatch')
+                  require(sums.read_text(encoding='ascii').splitlines()==[hashes[p.name]+'  '+p.name for p in (archive,manifest)],'Checksum list mismatch')
+                  meta=json.loads(manifest.read_bytes()); files=meta['files']
+                  require((meta['source_commit'],meta['target'],meta['codex_version'],meta['package_kind'],meta['release_version'])==
+                          (BASE,'x86_64-pc-windows-msvc','0.172.0','customer',LABEL),'Manifest identity mismatch')
+                  require(list(files)==names and meta['excluded_files']==excluded and tuple(meta[k] for k in
+                          ('source_file_count','excluded_file_count','file_count'))==COUNTS,'Manifest inventory mismatch')
+                  # IMPORTANT: normal inherited extraction ACL, not under mkdtemp(0700) release output.
+                  owned=scratch/('host-wal-'+uuid.uuid4().hex); owned.mkdir(); ordinary(owned,True)
+                  extraction=owned/'\u4e2d\u6587 \u7a7a\u683c'; extraction.mkdir(); package=extraction/'Codex'
+                  with zipfile.ZipFile(archive) as z:
+                      require(z.namelist()==['Codex/'+n for n in names],'ZIP member list mismatch')
+                      z.extractall(extraction)  # producer's safe names already checked; extraction reads CRC
+                  scan_owned(package)
+                  require({p.relative_to(package).as_posix() for p in package.rglob('*') if p.is_file()}==set(names),'Extraction inventory mismatch')
+                  for name,rec in files.items():
+                      verify_member(package,name,rec)
+                      source=ROOT/name
+                      require(ordinary(source).st_size==rec['size'] and sha(source)==rec['sha256'],'ZIP differs from fixed source: '+name)
+                  summary.update(zip='ZIP_VERIFIED',archive_sha256=hashes[archive.name],archive_bytes=archive.stat().st_size,
+                                 manifest_sha256=hashes[manifest.name],checksums_sha256=hashes[sums.name],file_count=len(files))
+                  print('ZIP_VERIFIED '+json.dumps({k:summary[k] for k in ('source_commit','archive_sha256','archive_bytes','manifest_sha256','file_count')}),flush=True)
+                  a=load('review_existing_audit',ROOT/'tests/audit_release_zip.py')
+                  core=load('review_existing_continuation',ROOT/'tests/check_codex_tool_discovery.py')
+                  # Independent WAL first, so a failed Host session cannot contaminate its result.
+                  for key,fn in [('wal',lambda:wal_case(package,a,files)),('host',lambda:host_case(package,a,core,files))]:
+                      try:
+                          # Existing continuation logs may include raw Responses; retain only case evidence.
+                          with open(os.devnull,'w',encoding='utf-8') as sink, contextlib.redirect_stdout(sink):
+                              summary[key+'_evidence']=fn()
+                          summary[key]='PASS_ACTUAL'
+                      except Exception as e:
+                          summary[key]='FAIL'; summary[key+'_error']=safe_case_error(e)
+                  if {p.name:sha(p) for p in (archive,manifest,sums)}!=hashes:
+                      summary['zip']='FAIL'; raise RuntimeError('Pristine ZIP/metadata changed')
+                  gate_stage='source_postcheck'
+                  if git('rev-parse','HEAD').decode().strip()!=BASE or git('status','--porcelain=v1','--untracked-files=no'):
+                      summary['source_gate']='FAIL'; raise RuntimeError('Source changed')
+              except Exception as e:
+                  summary['gate_error']={**safe_case_error(e), 'stage':gate_stage}
+                  if summary['source_gate']=='NOT_RUN': summary['source_gate']='FAIL'
+                  elif summary['zip']=='NOT_RUN': summary['zip']='FAIL'
+              finally:
+                  try:
+                      for p in (owned,out):
+                          if p is not None:
+                              scan_owned(p); shutil.rmtree(p); require(not p.exists(),'Owned cleanup failed')
+                      summary['cleanup']='PASS_ACTUAL' if owned is not None and out is not None else 'NOT_RUN'
+                  except Exception as e:
+                      summary['cleanup']='FAIL'; summary['cleanup_error']=safe_case_error(e)
+              ok=(summary['source_gate'],summary['lfs_identity'],summary['packager'],summary['zip'],summary['host'],summary['wal'],summary['cleanup'])==(
+                  'PASS_ACTUAL','PASS_ACTUAL','PASS_ACTUAL','ZIP_VERIFIED','PASS_ACTUAL','PASS_ACTUAL','PASS_ACTUAL') and 'gate_error' not in summary
+              summary['scoped_batch']='PASS_ACTUAL' if ok else 'INCOMPLETE_OR_FAIL'
+              payload=json.dumps(summary,ensure_ascii=True,sort_keys=True,separators=(',',':'))
+              require(len(payload.encode('ascii'))<=8192, 'Scoped summary exceeds limit')
+              # The always step merges actual step outcomes even if checkout or LFS fails.
+              with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8',newline='\n') as stream:
+                  stream.write('summary='+payload+'\n')
+              return 0 if ok else 1
+
+
+          if __name__=='__main__':
+              sys.exit(main())
+          '@
+          $Code | & $Python -I -B - $Root $Git
+          if ($LASTEXITCODE -ne 0) { throw 'Scoped read-only Host/WAL gate failed; no retry or upload' }
+      - name: Report scoped checkout, LFS, packager, WAL and Host result
+        if: ${{ always() && !cancelled() }}
+        env:
+          TRIGGER_OUTCOME: ${{ steps.trigger.outcome }}
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          CHECKOUT_GATE_OUTCOME: ${{ steps.checkout_gate.outcome }}
+          HYDRATION_OUTCOME: ${{ steps.hydration.outcome }}
+          HYDRATION_STAGE: ${{ steps.hydration.outputs.stage }}
+          HYDRATION_CODE: ${{ steps.hydration.outputs.code }}
+          HYDRATION_EXIT_CODE: ${{ steps.hydration.outputs.exit_code }}
+          NATIVE_OUTCOME: ${{ steps.native.outcome }}
+          NATIVE_SUMMARY: ${{ steps.native.outputs.summary }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Outcome([string]$Value) {
+            switch ($Value) { 'success' { 'PASS_ACTUAL' }; 'failure' { 'FAIL' }; default { 'NOT_RUN' } }
+          }
+          $Summary = [ordered]@{
+            source_commit = $env:SOURCE_COMMIT
+            trigger = (Outcome $env:TRIGGER_OUTCOME)
+            checkout_action = (Outcome $env:CHECKOUT_OUTCOME)
+            checkout_gate = (Outcome $env:CHECKOUT_GATE_OUTCOME)
+            checkout = 'NOT_RUN'
+            lfs_hydration = (Outcome $env:HYDRATION_OUTCOME)
+            lfs_identity = 'NOT_RUN'; source_gate = 'NOT_RUN'; packager = 'NOT_RUN'; zip = 'NOT_RUN'
+            wal = 'NOT_RUN'; host = 'NOT_RUN'; cleanup = 'NOT_RUN'; scoped_batch = 'INCOMPLETE_OR_FAIL'
+            not_run = @('SAFE/YOLO/maintenance repeats','TUI/resume/fork','write-denial/ACL','ETW/full OS I/O','ADB','Office','full package regression','release')
+          }
+          if ($Summary.checkout_action -ceq 'FAIL' -or $Summary.checkout_gate -ceq 'FAIL') {
+            $Summary.checkout = 'FAIL'
+            $Summary.checkout_code = if ($Summary.checkout_action -ceq 'FAIL') { 'CHECKOUT_ACTION_FAILED' } else { 'CHECKOUT_IDENTITY_FAILED' }
+          } elseif ($Summary.checkout_action -ceq 'PASS_ACTUAL' -and $Summary.checkout_gate -ceq 'PASS_ACTUAL') {
+            $Summary.checkout = 'PASS_ACTUAL'
+          }
+          if ($env:HYDRATION_OUTCOME -in @('success','failure')) {
+            # Only enum values and numeric exit status from the fixed hydration step.
+            $Summary.lfs_stage = if ($env:HYDRATION_STAGE -cin @('prerequisites','local_setup','fetch','checkout_objects','complete')) { $env:HYDRATION_STAGE } else { 'unknown' }
+            $Summary.lfs_code = if ($env:HYDRATION_CODE -cin @('LFS_PREREQUISITE_FAILED','LFS_LOCAL_SETUP_FAILED','LFS_FETCH_FAILED','LFS_CHECKOUT_FAILED','OK')) { $env:HYDRATION_CODE } else { 'LFS_UNCLASSIFIED' }
+            if ($env:HYDRATION_EXIT_CODE -match '^-?[0-9]{1,10}$') { $Summary.lfs_exit_code = [long]$env:HYDRATION_EXIT_CODE }
+          }
+          $Summary.native_step = (Outcome $env:NATIVE_OUTCOME)
+          $Valid = $false
+          if ($env:NATIVE_SUMMARY -and $env:NATIVE_SUMMARY.Length -le 8192) {
+            try {
+              $Native = $env:NATIVE_SUMMARY | ConvertFrom-Json -ErrorAction Stop
+              if ($Native.source_commit -cne $env:SOURCE_COMMIT) { throw 'Wrong summary source' }
+              # Fields originate solely from the fixed inline supervisor, not raw child output.
+              foreach ($Key in @('lfs_identity','source_gate','packager','zip','wal','host','cleanup')) {
+                $Value = $Native.$Key
+                if ($Value -cnotin @('PASS_ACTUAL','ZIP_VERIFIED','FAIL','NOT_RUN')) { throw 'Invalid scoped status' }
+                $Summary[$Key] = $Value
+              }
+              foreach ($Key in @('lfs_identity_error','packager_error','gate_error','cleanup_error','wal_error','host_error','archive_sha256','archive_bytes','manifest_sha256','checksums_sha256','file_count','wal_evidence','host_evidence','not_run')) {
+                if ($null -ne $Native.PSObject.Properties[$Key]) { $Summary[$Key] = $Native.$Key }
+              }
+              $Valid = $Native.scoped_batch -ceq 'PASS_ACTUAL'
+            } catch {
+              $Summary.native_summary_error = 'INVALID_NATIVE_SUMMARY'
+            }
+          } elseif ($env:NATIVE_OUTCOME -in @('success','failure')) {
+            $Summary.native_summary_error = 'NATIVE_SUMMARY_ABSENT_OR_OVERSIZE'
+          }
+          $Passed = $Valid -and $Summary.trigger -ceq 'PASS_ACTUAL' -and $Summary.checkout -ceq 'PASS_ACTUAL' -and
+            $Summary.lfs_hydration -ceq 'PASS_ACTUAL' -and $Summary.lfs_code -ceq 'OK' -and $Summary.native_step -ceq 'PASS_ACTUAL' -and
+            $Summary.lfs_identity -ceq 'PASS_ACTUAL' -and $Summary.source_gate -ceq 'PASS_ACTUAL' -and
+            $Summary.packager -ceq 'PASS_ACTUAL' -and $Summary.zip -ceq 'ZIP_VERIFIED' -and
+            $Summary.wal -ceq 'PASS_ACTUAL' -and $Summary.host -ceq 'PASS_ACTUAL' -and $Summary.cleanup -ceq 'PASS_ACTUAL'
+          if ($Passed) { $Summary.scoped_batch = 'PASS_ACTUAL' }
+          $Json = $Summary | ConvertTo-Json -Depth 8 -Compress
+          if ([Text.Encoding]::UTF8.GetByteCount($Json) -gt 16384) { throw 'Scoped summary too large' }
+          Write-Output ('HOST_WAL_SUMMARY=' + $Json)
+          [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, ('```json' + "`n" + $Json + "`n" + '```' + "`n"), (New-Object Text.UTF8Encoding($false)))
+          if (-not $Passed) { throw 'Scoped gate incomplete or failed; no retry or upload' }
