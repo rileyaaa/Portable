@@ -103,6 +103,21 @@ def load_manifest(root):
 
 
 def verify_payload(root, manifest):
+    root = Path(root).absolute()
+    revision = checked(root, root / f"tool/automation/browsers/chromium-{manifest['revision']}", directory=True)
+    actual = set()
+    pending = [revision]
+    while pending:
+        directory = checked(root, pending.pop(), directory=True)
+        for entry in directory.iterdir():
+            # Reuse the existing link/reparse and single-link file guards.
+            info = entry.lstat()
+            if stat.S_ISDIR(info.st_mode):
+                pending.append(checked(root, entry, directory=True))
+            else:
+                actual.add(checked(root, entry).relative_to(root).as_posix())
+    if actual != set(manifest["files"]):
+        raise ValueError("Pinned browser payload inventory differs")
     for name, item in manifest["files"].items():
         target = checked(root, root / name)
         if target.stat().st_size != item["size"] or digest(target) != item["sha256"]:

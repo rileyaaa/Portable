@@ -91,6 +91,24 @@ class BrowserInstallTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
         self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "verified")
+        # Compare the actual ordinary-file set, not just the expected entries.
+        # Other revisions and the browser profile are outside this inventory.
+        other = self.root / "tool/automation/browsers/chromium-9999/keep.txt"
+        other.parent.mkdir(parents=True)
+        other.write_bytes(b"other revision")
+        extra = self.root / self.prefix / "chrome-win64/locales/unlisted.pak"
+        extra.parent.mkdir(parents=True)
+        extra.write_bytes(b"unlisted")
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "incomplete")
+        self.assertEqual(extra.read_bytes(), b"unlisted")
+        self.assertEqual(other.read_bytes(), b"other revision")
+        self.assertEqual(sentinel.read_bytes(), b"preserve")
+        extra.unlink()
+        os.link(other, extra)
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "incomplete")
+        self.assertEqual(extra.read_bytes(), b"other revision")
+        extra.unlink()
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "verified")
         for name, content in files.items():
             path = self.root / self.prefix / name
             path.unlink()
@@ -103,6 +121,98 @@ class BrowserInstallTests(unittest.TestCase):
         self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "incomplete")
         self.assertEqual(dll.read_bytes(), corrupt)
         self.assertEqual(sentinel.read_bytes(), b"preserve")
+
+    def test_payload_inventory_case_and_path_types(self):
+        executable = bytearray(128)
+        executable[:2] = b"MZ"
+        executable[60:64] = (64).to_bytes(4, "little")
+        executable[64:70] = b"PE\0\0\x64\x86"
+        files = {"chrome-win64/chrome.exe": bytes(executable),
+                 "chrome-win64/locales/en.pak": b"locale"}
+        manifest = self.make_archive(files)
+        manifest["revision"] = "1247"
+        revision = self.root / self.prefix
+        for name, data in files.items():
+            target = revision / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        expected = revision / "chrome-win64/locales/en.pak"
+        locale_dir = expected.parent
+        # This is a file-set contract, not a directory-set contract. Ordinary
+        # empty directories are harmless; an expected file cannot be a directory.
+        empty = revision / "chrome-win64/empty"
+        empty.mkdir()
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "verified")
+        self.assertTrue(empty.is_dir())
+        for original, alias in ((expected, expected.with_name("EN.PAK")),
+                                (locale_dir, locale_dir.with_name("Locales"))):
+            with self.subTest(alias=alias.name):
+                intermediate = original.with_name("rename-intermediate")
+                original.rename(intermediate)
+                intermediate.rename(alias)
+                self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "incomplete")
+                self.assertTrue(alias.exists())
+                alias.rename(intermediate)
+                intermediate.rename(original)
+                self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "verified")
+        expected.unlink()
+        expected.mkdir()
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "incomplete")
+        self.assertTrue(expected.is_dir())
+        expected.rmdir()
+        locale_dir.rmdir()
+        locale_dir.write_bytes(b"not a directory")
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "incomplete")
+        self.assertEqual(locale_dir.read_bytes(), b"not a directory")
+        locale_dir.unlink()
+        locale_dir.mkdir()
+        # An expected path with the exact bytes is still invalid if hard-linked.
+        owner = self.root / "outside-revision.pak"
+        owner.write_bytes(files["chrome-win64/locales/en.pak"])
+        os.link(owner, expected)
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "incomplete")
+        self.assertEqual(owner.read_bytes(), expected.read_bytes())
+        expected.unlink()
+        expected.write_bytes(owner.read_bytes())
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "verified")
+        if hasattr(os, "mkfifo"):
+            fifo = revision / "chrome-win64/unlisted.fifo"
+            os.mkfifo(fifo)
+            self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "incomplete")
+            fifo.unlink()
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "verified")
+        # Never accept a file at the root of the selected revision as a directory.
+        saved = revision.with_name("saved-revision")
+        revision.rename(saved)
+        revision.write_bytes(b"not a revision directory")
+        with self.assertRaisesRegex(ValueError, "Unexpected browser path type"):
+            browser.payload_state(self.root, manifest, self.prefix)
+        self.assertEqual(revision.read_bytes(), b"not a revision directory")
+
+    def test_payload_inventory_rejects_linked_extra_directory(self):
+        executable = bytearray(128)
+        executable[:2] = b"MZ"
+        executable[60:64] = (64).to_bytes(4, "little")
+        executable[64:70] = b"PE\0\0\x64\x86"
+        manifest = self.make_archive({"chrome-win64/chrome.exe": bytes(executable)})
+        manifest["revision"] = "1247"
+        revision = self.root / self.prefix
+        (revision / "chrome-win64").mkdir(parents=True)
+        (revision / "chrome-win64/chrome.exe").write_bytes(executable)
+        other = self.root / "other-directory"
+        other.mkdir()
+        sentinel = other / "keep.txt"
+        sentinel.write_bytes(b"untouched")
+        link = revision / "chrome-win64/linked-dir"
+        try:
+            link.symlink_to(other, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("Directory symlinks unavailable")
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "incomplete")
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(sentinel.read_bytes(), b"untouched")
+        link.unlink()
+        self.assertEqual(browser.payload_state(self.root, manifest, self.prefix), "verified")
 
     def test_state_messages_name_the_exact_revision(self):
         manifest = {"revision": "1727472", "browserVersion": "158.0.8127.88", "fileCount": 305}
