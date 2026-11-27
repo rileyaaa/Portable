@@ -8,6 +8,7 @@ import re
 import stat
 import struct
 import urllib.request
+from urllib.parse import urlsplit
 import zipfile
 
 
@@ -184,6 +185,14 @@ def download_archive(root, session, manifest):
     # Explicit proxy mapping prevents urllib from consulting the host Windows registry.
     proxies = {name: os.environ.get(name + "_proxy") or os.environ.get(name.upper() + "_PROXY")
                for name in ("http", "https", "no")}
+    all_proxy = os.environ.get("all_proxy") or os.environ.get("ALL_PROXY")
+    if proxies["http"] or proxies["https"] or all_proxy:
+        # The launcher already supplies an HTTP CONNECT bridge for SOCKS.
+        # urllib does not honor ALL_PROXY; without HTTPS_PROXY it would go
+        # direct. Never silently replace the explicitly selected transport.
+        proxy = urlsplit(proxies["https"] or "")
+        if proxy.scheme != "http" or not proxy.hostname:
+            raise ValueError("Pinned browser download requires the configured HTTP proxy/bridge")
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({k: v for k, v in proxies.items() if v}),
         _RejectBrowserDownloadRedirect())
