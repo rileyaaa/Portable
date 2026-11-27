@@ -1,0 +1,548 @@
+name: Windows instruction CLI and native configuration slice (one-time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/windows-instruction-native-once.yml
+permissions:
+  contents: read
+jobs:
+  instruction-native:
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - name: Verify one-time trigger and native runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $e = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          if ($env:GITHUB_REPOSITORY -cne 'rileyaaa/Portable' -or $env:GITHUB_REF -cne 'refs/heads/dev/stable-tool-refresh' -or
+              $env:GITHUB_EVENT_NAME -cne 'push' -or $env:GITHUB_RUN_ATTEMPT -cne '1' -or $env:RUNNER_OS -cne 'Windows' -or
+              $env:RUNNER_ARCH -cne 'X64' -or $PSVersionTable.PSEdition -cne 'Core' -or -not [Environment]::Is64BitProcess -or
+              $e.before -cne '75f32994a19e33ee3eb2c1fa25b09f074ea073f6' -or $e.after -cne $env:GITHUB_SHA -or
+              $e.ref -cne $env:GITHUB_REF -or $e.head_commit.id -cne $env:GITHUB_SHA -or
+              $e.created -ne $false -or $e.deleted -ne $false -or $e.forced -ne $false) { throw 'IN_TRIGGER_OR_RUNNER' }
+          Write-Output 'IN_TRIGGER=PASS'
+          Write-Output 'IN_FULL_LAUNCHER=NOT_RUN;CODEX=NOT_RUN;EMBEDDED_PYTHON=NOT_RUN;BAT=NOT_RUN;ZIP=NOT_RUN;RELEASE_MODES=NOT_RUN'
+      - name: Acquire three raw texts and run isolated native cases
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = (Get-Command python.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          $win = [IO.Path]::GetFullPath([Environment]::GetFolderPath('Windows'))
+          if ($win -notmatch '^[A-Za-z]:\\' -or -not [IO.File]::Exists((Join-Path $win 'System32\cmd.exe'))) { throw 'IN_SYSTEM_PATH' }
+          $temp = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          $cursor = $temp
+          while ($cursor) {
+            $i = Get-Item -LiteralPath $cursor -Force -ErrorAction Stop
+            if (-not $i.PSIsContainer -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'IN_UNSAFE_PARENT' }
+            $cursor = [IO.Path]::GetDirectoryName($cursor.TrimEnd('\'))
+          }
+          $owned = Join-Path $temp ('instruction-native-' + [Guid]::NewGuid().ToString('N'))
+          if (Test-Path -LiteralPath $owned) { throw 'IN_SCOPE_EXISTS' }
+          $null = New-Item -ItemType Directory -Path $owned -ErrorAction Stop
+          $probe = Join-Path $owned 'probe.py'
+          $worker = Join-Path $owned 'worker.ps1'
+          $py = @'
+          import base64, codecs, ctypes as C, hashlib, json, os, re, shutil, stat, struct, subprocess, sys, tomllib
+          from pathlib import Path
+
+          REPO = 'rileyaaa/Portable'
+          PARENT = '75f32994a19e33ee3eb2c1fa25b09f074ea073f6'
+          TREE = '59a907b5a9bdf7dc86d67034c85fbdfee62d8ab8'
+          TARGET = 'windows-instruction-native-once.yml'
+          OLD = {
+              'import-round12.yml': '4b6deae44ab11e353c37a653389317832cbab526',
+              'local-native-tool-paths-once.yml': 'bd2fda2a557880b2a32c0bda092f6c9ae7262feb',
+              'release.yml': '066f09832bb131bed784b82ad16776857fa8e38c',
+              'windows-cache-whatif-once.yml': '8b0d7aadcd62433b35b0a8975d87679a460bd3d4',
+              'windows-cache-whatif-real-once.yml': '3c96d6742c73d844f4cc87cb322fcf9009d63cb1',
+              'windows-native-stdin-argv-once.yml': 'f7d1bb845bb9184deb2e4a1f350650a388562908',
+              'windows-readonly-host-wal-once.yml': 'dd904171c32cc7769e0ff8874eec5d2711764269',
+          }
+          # bytes, SHA-256, Git blob, BOM, CRLF count
+          PINS = {
+              'tool/codex-instruct.py': (12679,'1677563677e977607f577fa778f18b403f3e89414c51db1774ffaf84be3f0ea4','79d0dd85acaf064c2de5f84b9cabf5e834e9e7b6',False,0),
+              'env.ps1': (26208,'87473b5276d40a0286b3e52fdc6013fc74a338a316224c5513adad4343d0c258','fee7920e3e12a56c9f5a7f3693de360c1f49a760',True,391),
+              'run-codex.ps1': (205937,'16f1bb1e7b098900233a646afaae84b6eea1271b8898ae83d9bde2e2125c30fb','2eaac598eaf07eadf725a58308d8e81672a3e2bb',True,3666),
+          }
+          NAME = "模型 指令's"
+          MD = NAME+'.md'
+          INPUT = '輸入 指令.md'
+          SOURCE_MD = '\ufeff# 新指令\r\nYou are Codex, based on GPT-5.5, synthetic fixture.\r\n保留中文\r\n'.encode('utf-8')
+          INSTALLED = SOURCE_MD.decode('utf-8-sig').replace('\r\n','\n').encode('utf-8')
+          OLD_ENV = "\ufeff# 原設定\r\n$env:CODEX_MODEL = 'fixture-model'\r\n$env:CODEX_MODEL_INSTRUCTIONS_FILE = 'old.md'\r\n".encode('utf-8')
+          NEW_ENV = ("\ufeff# 原設定\n$env:CODEX_MODEL = 'fixture-model'\n$env:CODEX_MODEL_INSTRUCTIONS_FILE = '"+MD.replace("'","''")+"'\n").encode('utf-8')
+          GENERATED = 'home/codex-runtime-instructions.generated.md'
+          CONFIG = 'home/config.toml'
+
+
+          def need(ok,label):
+              if not ok: raise RuntimeError(label)
+
+
+          def sha(b): return hashlib.sha256(b).hexdigest()
+
+
+          def blob(b): return hashlib.sha1(('blob '+str(len(b))+'\0').encode('ascii')+b).hexdigest()
+
+
+          def is_oid(s): return type(s) is str and re.fullmatch('[0-9a-f]{40}',s) is not None
+
+
+          def identity(raw,pin):
+              n,h,b,bom,crlf=pin
+              need(len(raw)==n and sha(raw)==h and blob(raw)==b,'IN_SOURCE_IDENTITY')
+              need(raw.startswith(b'\xef\xbb\xbf')==bom and raw.endswith(b'\n'),'IN_SOURCE_ENCODING')
+              raw.decode('utf-8-sig' if bom else 'utf-8','strict')
+              need(raw.count(b'\r\n')==crlf and raw.count(b'\r')==crlf and (not crlf or raw.count(b'\n')==crlf),'IN_SOURCE_EOL')
+
+
+          def ordinary(p,directory):
+              s=p.lstat()
+              need(not stat.S_ISLNK(s.st_mode) and not getattr(s,'st_file_attributes',0)&0x400 and (stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode) and s.st_nlink==1),'IN_UNSAFE_ENTRY')
+              return s
+
+
+          def plain(p):
+              p=Path(os.path.abspath(p))
+              if os.name=='nt': need(re.fullmatch('[A-Za-z]:',p.drive) and ':' not in str(p)[2:],'IN_LOCAL_PATH')
+              for q in (*reversed(p.parents),p): ordinary(q,True)
+              return p
+
+
+          def snap(root):
+              result={}; pending=[plain(root)]
+              while pending:
+                  p=pending.pop(); d=stat.S_ISDIR(p.lstat().st_mode); s=ordinary(p,d)
+                  need(len(result)<2048 and (d or s.st_size<=2097152),'IN_SNAPSHOT_BOUND')
+                  result[p.relative_to(root).as_posix()]=('d',s.st_mode,s.st_ino) if d else ('f',s.st_mode,s.st_ino,s.st_size,s.st_mtime_ns,sha(p.read_bytes()))
+                  if d: pending.extend(p.iterdir())
+              return result
+
+
+          def changes(before,after):
+              return {k for k in before.keys()|after.keys() if before.get(k)!=after.get(k)}
+
+
+          def mkdir(p):
+              if not os.path.lexists(p):
+                  mkdir(p.parent); p.mkdir()
+              plain(p)
+
+
+          def put(p,b):
+              mkdir(p.parent)
+              with p.open('xb') as f: f.write(b)
+              ordinary(p,False)
+
+
+          def rewrite(p,b):
+              plain(p.parent); ordinary(p,False); p.write_bytes(b)
+
+
+          def unique(pairs):
+              d=dict(pairs); need(len(d)==len(pairs),'IN_JSON_DUPLICATE'); return d
+
+
+          def decode_blob(doc,pin):
+              need(type(doc) is dict and doc.get('sha')==pin[2] and type(doc.get('size')) is int and doc['size']==pin[0] and doc.get('encoding')=='base64' and type(doc.get('content')) is str,'IN_BLOB_SCHEMA')
+              raw=base64.b64decode(doc['content'].replace('\n','').replace('\r',''),validate=True)
+              identity(raw,pin); return raw
+
+
+          def api(kind,oid):
+              import http.client, ssl
+              need(kind in ('commits','trees','blobs') and is_oid(oid),'IN_API_SCOPE')
+              c=http.client.HTTPSConnection('api.github.com',443,timeout=10,context=ssl.create_default_context())
+              try:
+                  c.request('GET','/repos/'+REPO+'/git/'+kind+'/'+oid,headers={'User-Agent':'Portable-instruction-native-once','Accept':'application/vnd.github+json','Accept-Encoding':'identity','Connection':'close','X-GitHub-Api-Version':'2022-11-28'})
+                  r=c.getresponse()
+                  print('IN_SOURCE_HTTP='+kind+';'+str(r.status),flush=True)
+                  need(r.status==200 and not r.headers.get_all('WWW-Authenticate',[]) and not r.headers.get_all('Proxy-Authenticate',[]),'IN_API_STATUS')
+                  ct=r.headers.get_all('Content-Type',[]); ce=r.headers.get_all('Content-Encoding',[])
+                  need(len(ct)==1 and ',' not in ct[0] and ct[0].split(';',1)[0].strip().lower()=='application/json' and (not ce or len(ce)==1 and ce[0].lower()=='identity'),'IN_API_TYPE')
+                  raw=r.read(1048577); need(len(raw)<=1048576,'IN_API_BOUND')
+                  lengths=r.headers.get_all('Content-Length',[])
+                  need(not lengths or len(lengths)==1 and lengths[0]==str(len(raw)),'IN_API_LENGTH')
+                  return json.loads(raw.decode('utf-8','strict'),object_pairs_hook=unique)
+              finally: c.close()
+
+
+          def tree(oid):
+              d=api('trees',oid); need(d.get('sha')==oid and d.get('truncated') is False and type(d.get('tree')) is list,'IN_TREE_SCHEMA')
+              out={}
+              for x in d['tree']:
+                  k=x.get('path'); v=(x.get('mode'),x.get('type'),x.get('sha'))
+                  need(type(k) is str and k not in out and '/' not in k and k not in ('','.','..') and is_oid(v[2]),'IN_TREE_ENTRY')
+                  out[k]=v
+              return out
+
+
+          def only_dir(a,b,k):
+              need(a.get(k,())[:2]==b.get(k,())[:2]==('040000','tree') and {n:v for n,v in a.items() if n!=k}=={n:v for n,v in b.items() if n!=k},'IN_TREE_DELTA')
+              return a[k][2],b[k][2]
+
+
+          def only_workflow(a,b):
+              want={n:('100644','blob',v) for n,v in OLD.items()}
+              need(a==want and TARGET not in a and b.get(TARGET,())[:2]==('100644','blob') and is_oid(b[TARGET][2]) and {k:v for k,v in b.items() if k!=TARGET}==a,'IN_WORKFLOW_DELTA')
+
+
+          def acquire(scope,head):
+              need(is_oid(head) and head!=PARENT,'IN_HEAD')
+              c=api('commits',head)
+              need(c.get('sha')==head and [x.get('sha') for x in c.get('parents',[])]==[PARENT] and is_oid(c.get('tree',{}).get('sha')),'IN_PARENT')
+              a,b=tree(TREE),tree(c['tree']['sha']); ag,bg=only_dir(a,b,'.github')
+              aw,bw=only_dir(tree(ag),tree(bg),'workflows'); only_workflow(tree(aw),tree(bw))
+              need(a.get('tool',())[:2]==('040000','tree'),'IN_PRODUCT_TREE')
+              t=tree(a['tool'][2])
+              for path,pin in PINS.items():
+                  entry=t.get('codex-instruct.py') if path.startswith('tool/') else a.get(path)
+                  need(entry==('100644','blob',pin[2]),'IN_PRODUCT_TREE')
+              print('IN_TREE_DELTA=SOLE_ADD;OLD_WORKFLOWS=7/7',flush=True)
+              for path,pin in PINS.items():
+                  raw=decode_blob(api('blobs',pin[2]),pin); p=scope/'source'/path
+                  put(p,raw); identity(p.read_bytes(),pin)
+              print('IN_RAW_SOURCE=3/3;BOM_CRLF=PASS',flush=True)
+
+
+          def source_bytes(scope):
+              result={}
+              for name,pin in PINS.items():
+                  p=scope/'source'/name; plain(p.parent); ordinary(p,False)
+                  raw=p.read_bytes(); identity(raw,pin); result[name]=raw
+              need(set(snap(scope/'source'))=={'.','tool',*PINS},'IN_SOURCE_SET')
+              return result
+
+
+          def fixture(data,label,raw,existing=True):
+              root=data/label/'Portable 中文 空格'
+              for name,b in raw.items():
+                  put(root/name,b); identity((root/name).read_bytes(),PINS[name])
+              put(root/'codex.exe',b'NON-EXECUTABLE SYNTHETIC ROOT MARKER\n')
+              put(root/INPUT,SOURCE_MD); put(root/'inside-sentinel',b'owned inside\n')
+              if existing:
+                  put(root/'env.local.ps1',OLD_ENV)
+                  put(root/'home'/MD,b'# old synthetic instruction\r\n')
+                  put(root/'home/fixture-model-unrestricted.md',b'AUTO_NOT_SELECTED\n')
+                  put(root/CONFIG,b'# synthetic existing config\n')
+              return root
+
+
+          def runtime(scope,label,win,ps,python):
+              r=scope/'runtime'/label
+              for d in ('home','tmp','appdata','localappdata','programdata','cache'):
+                  put(r/d/'sentinel',b'owned runtime\n')
+              e={'SystemRoot':str(win),'WINDIR':str(win),'SystemDrive':win.drive,'COMSPEC':str(win/'System32/cmd.exe'),
+                 'PATH':str(python.parent)+';'+str(win/'System32'),'PATHEXT':'.COM;.EXE;.BAT;.CMD','HOME':str(r/'home'),'USERPROFILE':str(r/'home'),
+                 'APPDATA':str(r/'appdata'),'LOCALAPPDATA':str(r/'localappdata'),'PROGRAMDATA':str(r/'programdata'),'ALLUSERSPROFILE':str(r/'programdata'),
+                 'TEMP':str(r/'tmp'),'TMP':str(r/'tmp'),'TMPDIR':str(r/'tmp'),'HOMEDRIVE':r.drive,'HOMEPATH':str(r/'home')[len(r.drive):],
+                 'XDG_CACHE_HOME':str(r/'cache'),'XDG_CONFIG_HOME':str(r/'appdata'),'PSModulePath':str(ps.parent/'Modules'),
+                 'PSModuleAnalysisCachePath':str(r/'localappdata/ModuleAnalysisCache'),'POWERSHELL_TELEMETRY_OPTOUT':'1'}
+              return r,e
+
+
+          def wire(lines): return ('\r\n'.join(lines)+'\r\n').encode('utf-8')
+
+
+          def preview(root):
+              return wire(['Package root : '+str(root),'CODEX_HOME   : '+str(root/'home'),'Write MD     : '+str(root/'home'/MD),'Persist via  : '+str(root/'env.local.ps1'),'Set value    : CODEX_MODEL_INSTRUCTIONS_FILE='+MD])
+
+
+          def result(r,rc,out,err):
+              need(r.returncode==rc and r.stdout==out and r.stderr==err,'IN_CLI_CONTRACT')
+
+
+          def record(label,r):
+              print('IN_CASE='+label+';RC='+str(r.returncode)+';OUT='+str(len(r.stdout))+';ERR='+str(len(r.stderr))+';OUT_SHA='+sha(r.stdout)+';ERR_SHA='+sha(r.stderr),flush=True)
+
+
+          def allowed_delta(data,root,before,after,want,optional=()):
+              prefix=root.relative_to(data).as_posix()+'/'
+              required={prefix+k for k in want}; actual=changes(before,after)
+              need(required<=actual<=required|{prefix+k for k in optional},'IN_FIXTURE_DELTA')
+
+
+          def read_config(root,fallback):
+              b=(root/CONFIG).read_bytes(); need(not b.startswith(b'\xef\xbb\xbf'),'IN_CONFIG_BOM')
+              doc=tomllib.loads(b.decode('utf-8','strict')); p=root/GENERATED
+              if fallback:
+                  need(set(doc)=={'developer_instructions'} and type(doc['developer_instructions']) is str and 'Current configured/requested model: fixture-model.' in doc['developer_instructions'] and '# User Model Instructions' not in doc['developer_instructions'] and not os.path.lexists(p),'IN_FALLBACK')
+              else:
+                  need(doc=={'model_instructions_file':str(p)},'IN_CONFIG_REFERENCE')
+                  raw=p.read_bytes(); need(not raw.startswith(b'\xef\xbb\xbf'),'IN_RUNTIME_BOM')
+                  s=raw.decode('utf-8','strict').replace('\r\n','\n')
+                  tail='# User Model Instructions\n\n# 新指令\nYou are Codex, synthetic fixture.\n保留中文\n\n'
+                  need(s.startswith('# Runtime Model Identity\n') and 'Current configured/requested model: fixture-model.' in s and s.count('# User Model Instructions')==1 and s.endswith(tail) and 'AUTO_NOT_SELECTED' not in s,'IN_RUNTIME_CONTENT')
+
+
+          def ps_result(r,label,expected_outside):
+              lines=r.stdout.decode('utf-8','strict').splitlines()
+              need(len(lines)>=2 and re.fullmatch(r'IN_PS_ENGINE=5\.1\.\d+\.\d+',lines[0]) and lines[1]=='IN_PS_SLICES=12/12;5/5','IN_PS_ENGINE_OR_SLICES')
+              common=['IN_PS_ENV=PASS','IN_PS_RESOLVE_BEGIN=1']
+              if label=='B4': need(r.returncode==21 and not r.stderr and lines[2:]==['IN_PS_ENV_DATA_REJECT=PASS'],'IN_ENV_NEGATIVE')
+              elif label=='B5': need(r.returncode==1 and not r.stderr and lines[2:]==common+['CODEX_MODEL_INSTRUCTIONS_FILE 必须位于当前 Codex 目录内，拒绝越界路径：'+expected_outside],'IN_PATH_NEGATIVE')
+              else: need(r.returncode==0 and not r.stderr and lines[2:]==common+['IN_PS_RESOLVE=PASS','IN_PS_WRITE=PASS'],'IN_PS_CONTRACT')
+              print(lines[0],flush=True)
+
+
+          def job_guard():
+              from ctypes import wintypes as W
+              class Basic(C.Structure):
+                  _fields_=[('t1',C.c_longlong),('t2',C.c_longlong),('flags',W.DWORD),('min',C.c_size_t),('max',C.c_size_t),('active',W.DWORD),('affinity',C.c_size_t),('priority',W.DWORD),('schedule',W.DWORD)]
+              class Limits(C.Structure):
+                  _fields_=[('basic',Basic),('io',C.c_ulonglong*6),('mem',C.c_size_t*4)]
+              class Accounting(C.Structure):
+                  _fields_=[('times',C.c_longlong*4),('faults',W.DWORD),('total',W.DWORD),('active',W.DWORD),('terminated',W.DWORD)]
+              k=C.WinDLL('kernel32',use_last_error=True)
+              def f(name,res,*args):
+                  fn=getattr(k,name); fn.restype=res; fn.argtypes=args; return fn
+              j=f('CreateJobObjectW',W.HANDLE,C.c_void_p,W.LPCWSTR)(None,None)
+              need(j,'IN_JOB_CREATE'); lim=Limits(); lim.basic.flags=0x2008; lim.basic.active=2
+              need(f('SetInformationJobObject',W.BOOL,W.HANDLE,C.c_int,C.c_void_p,W.DWORD)(j,9,C.byref(lim),C.sizeof(lim)),'IN_JOB_LIMIT')
+              need(f('AssignProcessToJobObject',W.BOOL,W.HANDLE,W.HANDLE)(j,f('GetCurrentProcess',W.HANDLE)()),'IN_JOB_ASSIGN')
+              def idle(total):
+                  x=Accounting()
+                  need(f('QueryInformationJobObject',W.BOOL,W.HANDLE,C.c_int,C.c_void_p,W.DWORD,C.c_void_p)(j,1,C.byref(x),C.sizeof(x),None) and x.active==1 and x.total==total,'IN_JOB_ACCOUNTING')
+              idle(1); return idle
+
+
+          def test(scope,win,python,ps):
+              raw=source_bytes(scope); source_before=snap(scope/'source')
+              def fixed_scope():
+                  return {k:v for k,v in snap(scope).items() if k.split('/',1)[0] not in ('fixtures','runtime')}
+              fixed_before=fixed_scope()
+              need(ps==win/'System32/WindowsPowerShell/v1.0/powershell.exe','IN_PS_PATH')
+              idle=job_guard(); calls=1
+              def no_network(event,args):
+                  if event.startswith(('socket.','http.client.','urllib.Request')): raise RuntimeError('IN_RUNTIME_NETWORK')
+              sys.addaudithook(no_network)
+              data=scope/'fixtures'; outside=data/'outside 中文 空格'
+              for d in ('cwd','home','tmp'): put(outside/d/'sentinel',b'owned outside\n')
+              put(outside/'sentinel.md',b'owned outside input\n')
+              a=fixture(data,'existing',raw); empty=fixture(data,'absent',raw,False); h=fixture(data,'handoff',raw)
+              rt,e=runtime(scope,'cli',win,ps,python); flags=['-S','-B','-X','utf8=0']
+              def run(exe,args,env):
+                  nonlocal calls
+                  need(exe in (python,ps),'IN_EXECUTABLE')
+                  try: r=subprocess.run([str(exe),*args],cwd=outside/'cwd',env=env,stdin=subprocess.DEVNULL,capture_output=True,timeout=15)
+                  except subprocess.TimeoutExpired: raise RuntimeError('IN_CHILD_TIMEOUT') from None
+                  calls+=1; idle(calls); need(len(r.stdout)<=65536 and len(r.stderr)<=65536,'IN_OUTPUT_BOUND'); return r
+              code='import sys,locale,json; print(json.dumps([sys.stdout.encoding,sys.stderr.encoding,sys.stdout.isatty(),sys.stderr.isatty(),sys.flags.utf8_mode,sys.flags.isolated,sys.getfilesystemencoding(),locale.getencoding()]))'
+              def baseline():
+                  before=snap(scope); r=run(python,flags+['-c',code],e)
+                  need(r.returncode==0 and not r.stderr and snap(scope)==before,'IN_BASELINE')
+                  v=json.loads(r.stdout.decode('ascii')); need(type(v) is list and len(v)==8 and v[2:6]==[False,False,0,0] and codecs.lookup(v[6]).name=='utf-8','IN_BASELINE_SCHEMA')
+                  names=[codecs.lookup(v[i]).name for i in (0,1,6,7)]
+                  need(all(re.fullmatch('[a-z0-9_-]+',n) for n in names),'IN_BASELINE_CODEC')
+                  print('IN_BASELINE='+(';'.join(names))+';PIPE=2;UTF8_MODE=0',flush=True)
+                  return names[0]==names[1]=='cp1252'
+              native=baseline()
+              if not native: e['PYTHONIOENCODING']='cp1252'; need(baseline(),'IN_CP1252_REQUIRED')
+              print('IN_CP1252='+('NATIVE_DEFAULT' if native else 'EXPLICIT_PIPE')+';ACP='+str(C.WinDLL('kernel32').GetACP()),flush=True)
+              def cli(label,root,args,rc,out,err,delta=()):
+                  for name,pin in PINS.items():
+                      plain((root/name).parent); ordinary(root/name,False); identity((root/name).read_bytes(),pin)
+                  print('IN_CASE_BEGIN='+label,flush=True)
+                  before=snap(data); runtime_before=snap(scope/'runtime')
+                  r=run(python,flags+[str(root/'tool/codex-instruct.py'),*args],e)
+                  record(label,r); result(r,rc,out,err); allowed_delta(data,root,before,snap(data),delta)
+                  need(snap(scope/'runtime')==runtime_before and fixed_scope()==fixed_before,'IN_CLI_OUTSIDE')
+                  if label=='A2': need(not any(os.path.lexists(root/p) for p in ('home','env.local.ps1','tmp')),'IN_ABSENT_OUTPUT')
+                  if label=='A5': need((root/'home'/MD).read_bytes()==INSTALLED and (root/'env.local.ps1').read_bytes()==NEW_ENV and not any((root/'tmp').iterdir()),'IN_INSTALL_BYTES')
+                  print('IN_CASE_PASS='+label,flush=True)
+              args=['--file',INPUT,'--name',NAME]
+              cli('A1',a,args+['--dry-run'],0,preview(a),b'')
+              cli('A2',empty,args+['--dry-run'],0,preview(empty),b'')
+              missing='不存在.md'
+              cli('A3',a,['--file',missing,'--name',NAME,'--dry-run'],1,b'',wire(['Instruction file not found: '+str(a/missing)]))
+              cli('A4',a,args+['--codex-dir',str(outside/'home'),'--dry-run'],1,b'',wire(['Refusing to write outside portable package: '+str(outside/'home')]))
+              cli('A5',h,args,0,wire(['Wrote '+str(h/'home'/MD),'env.local.ps1 updated: '+str(h/'env.local.ps1'),'The launcher will persist this setting across regenerated home/config.toml files.']),b'',('env.local.ps1','home/'+MD,'tmp'))
+              def ps_case(label,root,expected,delta=(),optional=()):
+                  for name,pin in PINS.items():
+                      plain((root/name).parent); ordinary(root/name,False); identity((root/name).read_bytes(),pin)
+                  rtd,pe=runtime(scope,label,win,ps,python)
+                  pe.update(CODEX_HOME=str(outside/'home'),CODEX_INSTALL_DIR=str(outside),CODEX_MODEL_INSTRUCTIONS_FILE=str(outside/'sentinel.md'))
+                  print('IN_CASE_BEGIN='+label,flush=True)
+                  before=snap(data); rb=snap(scope/'runtime')
+                  r=run(ps,['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(scope/'worker.ps1'),'-Root',str(root),'-Case',label,'-Expected',expected if expected else '__EMPTY_FIXTURE_VALUE__'],pe)
+                  record(label,r); ps_result(r,label,expected); allowed_delta(data,root,before,snap(data),delta,optional)
+                  after=snap(scope/'runtime'); key=rtd.relative_to(scope/'runtime').as_posix()+'/localappdata/ModuleAnalysisCache'
+                  need(changes(rb,after)<={key} and (key not in after or after[key][0]=='f') and fixed_scope()==fixed_before,'IN_PS_RUNTIME_DELTA')
+                  if label in ('B1','B2','B3'): read_config(root,label=='B3')
+                  if label in ('B4','B5'): need(not os.path.lexists(root/GENERATED) and not os.path.lexists(outside/'unexpected-command.txt'),'IN_NEGATIVE_SIDE_EFFECT')
+                  print('IN_CASE_PASS='+label,flush=True)
+              ps_case('B1',h,MD,(CONFIG,GENERATED))
+              original=snap(h); moved=h.with_name('Moved 中文 空格'); h.rename(moved)
+              need(not os.path.lexists(h) and snap(moved)==original,'IN_RELOCATION')
+              cli('A6',moved,args+['--dry-run'],0,preview(moved),b'')
+              ps_case('B2',moved,MD,(CONFIG,),(GENERATED,))
+              need(not os.path.lexists(h) and (moved/'env.local.ps1').read_bytes()==NEW_ENV and (moved/'home'/MD).read_bytes()==INSTALLED,'IN_MOVED_ROOT')
+              fallback=fixture(data,'fallback',raw); rewrite(fallback/'env.local.ps1',b"\xef\xbb\xbf$env:CODEX_MODEL = 'fixture-model'\r\n$env:CODEX_MODEL_INSTRUCTIONS_FILE = ''\r\n")
+              put(fallback/GENERATED,b'owned stale generated state\n')
+              ps_case('B3',fallback,'',(CONFIG,GENERATED))
+              bad=fixture(data,'bad-env',raw); marker=outside/'unexpected-command.txt'
+              bad_env="$env:CODEX_MODEL = 'fixture-model'\r\n[IO.File]::WriteAllText('"+str(marker).replace("'","''")+"','unexpected')\r\n"
+              rewrite(bad/'env.local.ps1',bad_env.encode('utf-8-sig'))
+              ps_case('B4',bad,'')
+              escaped=fixture(data,'outside-path',raw); expected=str(outside/'sentinel.md')
+              rewrite(escaped/'env.local.ps1',("$env:CODEX_MODEL = 'fixture-model'\r\n$env:CODEX_MODEL_INSTRUCTIONS_FILE = '"+expected.replace("'","''")+"'\r\n").encode('utf-8-sig'))
+              ps_case('B5',escaped,expected)
+              need(not os.path.lexists(h) and snap(scope/'source')==source_before and fixed_scope()==fixed_before,'IN_FINAL_SOURCE')
+              idle(calls)
+              print('IN_WINDOWS_RUNNER_CLI=6/6',flush=True)
+              print('IN_NATIVE_PRODUCTION_CONFIG_SLICE=5/5',flush=True)
+              print('IN_FULL_LAUNCHER=NOT_RUN;CODEX=NOT_RUN;EMBEDDED_PYTHON=NOT_RUN;BAT=NOT_RUN;ZIP=NOT_RUN;RELEASE_MODES=NOT_RUN',flush=True)
+
+
+          def main():
+              need(len(sys.argv)==7 and os.name=='nt' and sys.version_info>=(3,11) and struct.calcsize('P')==8 and sys.flags.isolated and sys.dont_write_bytecode,'IN_RUNTIME')
+              mode,scope,temp,head,win,python=sys.argv[1:]
+              scope=plain(scope); temp=plain(temp); win=plain(win); python=Path(os.path.abspath(python)); ps=win/'System32/WindowsPowerShell/v1.0/powershell.exe'
+              need(scope.parent==temp and re.fullmatch('instruction-native-[0-9a-f]{32}',scope.name) and Path(__file__).absolute()==scope/'probe.py' and Path(sys.executable).samefile(python),'IN_OWNED_SCOPE')
+              if mode=='cleanup':
+                  snap(scope); shutil.rmtree(scope); need(not os.path.lexists(scope),'IN_CLEANUP'); print('IN_OWNED_CLEANUP=PASS',flush=True); return
+              for exe in (python,ps):
+                  plain(exe.parent); st=exe.lstat()
+                  # OS-owned runtime files can legitimately be WinSxS hard links.
+                  need(stat.S_ISREG(st.st_mode) and not getattr(st,'st_file_attributes',0)&0x400,'IN_RUNTIME_FILE')
+                  with exe.open('rb') as f:
+                      need(f.read(2)==b'MZ','IN_RUNTIME_PE'); f.seek(60); off=struct.unpack('<I',f.read(4))[0]
+                      need(64<=off<=st.st_size-6,'IN_RUNTIME_PE'); f.seek(off); need(f.read(6)==b'PE\0\0\x64\x86','IN_RUNTIME_X64')
+              print('IN_PYTHON='+'.'.join(map(str,sys.version_info[:3]))+';X64;PATH_SHA='+sha(str(python).encode('utf-8')),flush=True)
+              if mode=='acquire': acquire(scope,head)
+              elif mode=='test': test(scope,win,python,ps)
+              else: raise RuntimeError('IN_MODE')
+
+
+          if __name__=='__main__':
+              try: main()
+              except BaseException as exc:
+                  label=str(exc) if isinstance(exc,RuntimeError) and re.fullmatch('IN_[A-Z0-9_]+',str(exc)) else 'IN_UNCLASSIFIED_FAILURE'
+                  print('IN_FAILURE='+label,flush=True); sys.exit(1)
+          '@
+          $ps = @'
+          param([string]$Root,[string]$Case,[string]$Expected)
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          if ($Expected -ceq '__EMPTY_FIXTURE_VALUE__') { $Expected = '' }
+          try {
+              if ($PSVersionTable.PSEdition -cne 'Desktop' -or $PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1 -or -not [Environment]::Is64BitProcess) { throw 'ENGINE' }
+              [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+              [Console]::WriteLine('IN_PS_ENGINE='+$PSVersionTable.PSVersion.ToString())
+              $Launcher = Join-Path $Root 'run-codex.ps1'
+              $EnvFile = Join-Path $Root 'env.ps1'
+              if ((Get-FileHash -LiteralPath $Launcher -Algorithm SHA256).Hash.ToLowerInvariant() -cne '16f1bb1e7b098900233a646afaae84b6eea1271b8898ae83d9bde2e2125c30fb' -or (Get-FileHash -LiteralPath $EnvFile -Algorithm SHA256).Hash.ToLowerInvariant() -cne '87473b5276d40a0286b3e52fdc6013fc74a338a316224c5513adad4343d0c258') { throw 'SOURCE' }
+              $Tokens = $null; $ParseErrors = $null
+              $Ast = [System.Management.Automation.Language.Parser]::ParseFile($Launcher,[ref]$Tokens,[ref]$ParseErrors)
+              if ($ParseErrors.Count -ne 0) { throw 'PARSE' }
+              $Definitions = @($Ast.FindAll({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst]},$true))
+              $Names = @('Test-IsUnderDirectory','Assert-PortablePath','Assert-PortableRegularInputFile','Write-PortableNewUtf8File','Move-TemporaryFileIntoPlace','Write-Utf8TextAtomic','Get-RuntimeModelIdentityInstructions','Remove-PortableDerivedStateFile','New-RuntimeModelInstructions','Convert-ToTomlString','Get-PortableFixedChildEnvironmentNames','Clear-UnconfiguredPortableEnvironment')
+              foreach ($Name in $Names) {
+                  $D = @($Definitions | Where-Object { $_.Name -ceq $Name })
+                  if ($D.Count -ne 1) { throw 'FUNCTION' }
+                  . ([scriptblock]::Create($D[0].Extent.Text))
+              }
+              $Lines = [IO.File]::ReadAllLines($Launcher,[Text.Encoding]::UTF8)
+              function Read-Slice([int]$First,[int]$Last,[string]$Hash) {
+                  $Text = ($Lines[($First-1)..($Last-1)] -join "`r`n")+"`r`n"
+                  $Hasher = [Security.Cryptography.SHA256]::Create()
+                  try { $Actual = [BitConverter]::ToString($Hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($Text))).Replace('-','').ToLowerInvariant() } finally { $Hasher.Dispose() }
+                  if ($Actual -cne $Hash) { throw 'SLICE' }
+                  return $Text
+              }
+              $S1 = Read-Slice 603 603 '58a8465c278770775fd9083ebfdd817e5961b53d74fcd443eed94bd624012407'
+              $S2 = Read-Slice 1142 1145 '3b344cd843d9c298c2aefbb4d891b6e73ffd59049466f9965fa05c92e9e24f3c'
+              $S3 = Read-Slice 3004 3021 '0dac4531309914a65da2300e8e4b6b921b74d3fd9a4c3f19cd709f0b6d912fdd'
+              $S4 = Read-Slice 3235 3240 'a464e89b78069d012a58335397875b4630a3000f445fb200ebb8ac7385ac7bca'
+              $S5 = Read-Slice 3488 3489 'ef7453e7e249d724fcb3ba59b205fa7b5c8a6a2cb0f5ddb15802dcbc82f380bb'
+              [Console]::WriteLine('IN_PS_SLICES=12/12;5/5')
+              . ([scriptblock]::Create($S1))
+              try { . ([scriptblock]::Create($S2)) }
+              catch {
+                  if ($Case -ceq 'B4' -and $_.Exception.Message -ceq 'env.local.ps1 第 2 行不是允许的纯数据赋值；拒绝执行：[source omitted]') {
+                      [Console]::WriteLine('IN_PS_ENV_DATA_REJECT=PASS'); exit 21
+                  }
+                  throw 'ENV'
+              }
+              if ($Case -ceq 'B4') { throw 'UNEXPECTED_ACCEPT' }
+              if ($env:CODEX_HOME -cne (Join-Path $Root 'home') -or $env:CODEX_INSTALL_DIR -cne $Root -or $script:CodexPortableRoot -cne $Root -or $env:CODEX_MODEL -cne 'fixture-model' -or $script:CodexPortableAutoModelInstructions -ne $false -or [string]$env:CODEX_MODEL_INSTRUCTIONS_FILE -cne $Expected) { throw 'ENV_VALUE' }
+              [Console]::WriteLine('IN_PS_ENV=PASS')
+              [Console]::WriteLine('IN_PS_RESOLVE_BEGIN=1')
+              . ([scriptblock]::Create($S3))
+              if ($Case -ceq 'B5') { throw 'UNEXPECTED_ACCEPT' }
+              [Console]::WriteLine('IN_PS_RESOLVE=PASS')
+              $Builder = New-Object System.Text.StringBuilder
+              . ([scriptblock]::Create($S4))
+              $GeneratedConfigPath = Join-Path $env:CODEX_HOME 'config.toml'
+              . ([scriptblock]::Create($S5))
+              [Console]::WriteLine('IN_PS_WRITE=PASS')
+              exit 0
+          } catch {
+              [Console]::Error.WriteLine('IN_PS_WORKER_FAILED')
+              exit 22
+          }
+          '@
+          $probeHash = '2f7f6c06ba8ecf8b48914ba229d9b142f389d2abe1e8664d5a2216dfa22220b8'
+          $workerHash = '3bc63720c1d81070110b04b5858980a609440fa97f7cf2b5af93307e12ddcfcb'
+          function Assert-Harness([string]$Path,[string]$Hash) {
+            $i=Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+            if ($i.PSIsContainer -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) -or [string]$i.LinkType -eq 'HardLink' -or (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $Hash) { throw 'IN_HARNESS_IDENTITY' }
+          }
+          function Invoke-Probe([string]$Mode,[int]$Timeout) {
+            Assert-Harness $probe $probeHash
+            if ($Mode -cne 'cleanup') { Assert-Harness $worker $workerHash }
+            $si = [Diagnostics.ProcessStartInfo]::new()
+            $si.FileName = $python
+            $si.UseShellExecute = $false
+            $si.RedirectStandardInput = $true
+            $si.RedirectStandardOutput = $true
+            $si.RedirectStandardError = $true
+            $si.StandardOutputEncoding = [Text.Encoding]::ASCII
+            $si.StandardErrorEncoding = [Text.Encoding]::ASCII
+            $si.WorkingDirectory = $temp
+            foreach ($arg in @('-I','-S','-B',$probe,$Mode,$owned,$temp,$env:GITHUB_SHA,$win,$python)) { $si.ArgumentList.Add($arg) }
+            $si.Environment.Clear()
+            foreach ($pair in @(@('SystemRoot',$win),@('WINDIR',$win),@('SystemDrive',[IO.Path]::GetPathRoot($win).TrimEnd('\')),@('ComSpec',(Join-Path $win 'System32\cmd.exe')),@('PATH',((Split-Path -Parent $python)+';'+(Join-Path $win 'System32'))))) { $si.Environment[$pair[0]]=$pair[1] }
+            foreach ($d in @('home','tmp','appdata','localappdata','programdata')) {
+              $p=Join-Path $owned ('boot\'+$d)
+              $i=Get-Item -LiteralPath $p -Force -ErrorAction Stop
+              if (-not $i.PSIsContainer -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'IN_BOOT_PATH' }
+            }
+            foreach ($pair in @(@('HOME','home'),@('USERPROFILE','home'),@('TEMP','tmp'),@('TMP','tmp'),@('TMPDIR','tmp'),@('APPDATA','appdata'),@('LOCALAPPDATA','localappdata'),@('PROGRAMDATA','programdata'))) { $si.Environment[$pair[0]]=Join-Path $owned ('boot\'+$pair[1]) }
+            $proc=[Diagnostics.Process]::new(); $proc.StartInfo=$si
+            try {
+              if (-not $proc.Start()) { throw 'IN_PROBE_START' }
+              $proc.StandardInput.Close()
+              $out=$proc.StandardOutput.ReadToEndAsync(); $err=$proc.StandardError.ReadToEndAsync()
+              if (-not $proc.WaitForExit($Timeout*1000)) { $proc.Kill($true); $proc.WaitForExit(); throw 'IN_PROBE_TIMEOUT' }
+              $lines=$out.GetAwaiter().GetResult() -split "`r?`n"
+              foreach ($line in $lines) {
+                if (-not $line) { continue }
+                if ($line -cnotmatch '^IN_[A-Z0-9_]+=[A-Za-z0-9_./;=:-]+$') { throw 'IN_PROBE_OUTPUT' }
+                Write-Output $line
+              }
+              if ($err.GetAwaiter().GetResult().Length -ne 0 -or $proc.ExitCode -ne 0) { throw 'IN_PROBE_BLOCKED' }
+            } finally { $proc.Dispose() }
+          }
+          $ready=$false
+          try {
+            $null=New-Item -ItemType Directory -Path (Join-Path $owned 'boot') -ErrorAction Stop
+            foreach ($d in @('home','tmp','appdata','localappdata','programdata')) { $null=New-Item -ItemType Directory -Path (Join-Path $owned ('boot\'+$d)) -ErrorAction Stop }
+            $py=$py.Replace("`r`n","`n").TrimEnd([char[]]"`r`n")+"`n"
+            $ps=$ps.Replace("`r`n","`n").TrimEnd([char[]]"`r`n")+"`n"
+            [IO.File]::WriteAllText($probe,$py,[Text.UTF8Encoding]::new($false))
+            Assert-Harness $probe $probeHash
+            $ready=$true
+            [IO.File]::WriteAllText($worker,$ps,[Text.UTF8Encoding]::new($true))
+            Assert-Harness $worker $workerHash
+            Write-Output 'IN_HARNESS_IDENTITY=PASS'
+            Write-Output 'IN_PHASE=OFFICIAL_GIT_TEXT_ACQUISITION'
+            Invoke-Probe acquire 105
+            Write-Output 'IN_PHASE=LOCAL_NATIVE_TESTS_ONLY'
+            Invoke-Probe test 145
+          } finally {
+            if ($ready) { Invoke-Probe cleanup 20 } else { throw 'IN_CLEANUP_UNAVAILABLE' }
+          }
+          Write-Output 'IN_DIRECTED_GATE=PASS'
