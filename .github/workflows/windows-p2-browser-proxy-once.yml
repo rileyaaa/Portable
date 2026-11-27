@@ -1,0 +1,283 @@
+name: Windows P2 browser proxy route (one-time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/windows-p2-browser-proxy-once.yml
+permissions:
+  contents: read
+jobs:
+  p2-route:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    env:
+      P2_BASE: b2c305024f9b5d72056c7c1535abc2cea3bf9801
+      P2_PATH: .github/workflows/windows-p2-browser-proxy-once.yml
+      GIT_TERMINAL_PROMPT: '0'
+    steps:
+      - name: Check one-time trigger
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $e = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          if ($env:GITHUB_REPOSITORY -cne 'rileyaaa/Portable' -or
+              $env:GITHUB_REF -cne 'refs/heads/dev/stable-tool-refresh' -or
+              $env:GITHUB_EVENT_NAME -cne 'push' -or $env:GITHUB_RUN_ATTEMPT -cne '1' -or
+              $env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64' -or
+              $e.ref -cne $env:GITHUB_REF -or $e.before -cne $env:P2_BASE -or
+              $e.after -cne $env:GITHUB_SHA -or $e.head_commit.id -cne $env:GITHUB_SHA -or
+              $e.created -ne $false -or $e.deleted -ne $false -or $e.forced -ne $false) {
+            throw 'Unexpected P2 trigger'
+          }
+          Write-Output 'P2_TRIGGER=PASS'
+      - name: Checkout exact source only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+          lfs: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/windows-p2-browser-proxy-once.yml
+            /tool/automation/install-browser.py
+            /tool/socks-http-bridge.py
+            /tool/python/Lib/site-packages/socks.py
+      - name: Actual installer and bridge on loopback only
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $probe = @'
+          import base64, contextlib, hashlib, importlib.util, os
+          from pathlib import Path
+          import socket, socketserver, struct, subprocess, sys, tempfile, threading
+          import urllib.error
+
+          def need(ok, label):
+              if not ok:
+                  raise RuntimeError(label)
+          def mark(label):
+              print(label + '=PASS', flush=True)
+          need(os.name == 'nt' and struct.calcsize('P') == 8 and sys.version_info >= (3, 11), 'P2_WINDOWS_RUNTIME')
+          base, head = os.environ['P2_BASE'], os.environ['GITHUB_SHA']
+          os.environ['GIT_NO_LAZY_FETCH'] = '1'
+          os.environ['GIT_ALLOW_PROTOCOL'] = 'file'
+          def git(*args):
+              return subprocess.check_output(['git', *args], timeout=30)
+          need(git('rev-list', '--parents', '-n', '1', 'HEAD').decode().split()
+               == [head, base], 'P2_PARENT')
+          need(git('diff-tree', '--no-commit-id', '--name-status', '--no-renames', '-r', base, head).decode().splitlines()
+               == ['A\t' + os.environ['P2_PATH']], 'P2_FILE_SET')
+          pins = {
+              'tool/automation/install-browser.py': 'a3f367c0b3d196fca6e171527a9d2858453311f8',
+              'tool/socks-http-bridge.py': '715ce1dbdb4afb8c2656750d98ca30d3bf68f0fd',
+              'tool/python/Lib/site-packages/socks.py': '83b1435dfaa53bcc0806053bc2436ee7773262b8',
+          }
+          source = {}
+          for path, sha in pins.items():
+              data = git('cat-file', 'blob', base + ':' + path)
+              need(hashlib.sha1(f'blob {len(data)}\0'.encode() + data).hexdigest() == sha
+                   and git('cat-file', 'blob', head + ':' + path) == data, 'P2_SOURCE_BLOB')
+              source[path] = data
+          mark('P2_SOURCE')
+          print('P2_PYTHON=' + sys.version.split()[0], flush=True)
+
+          calls, dns, denied = [], [], []
+          allowed = set()
+          def audit(event, args):
+              if event == 'socket.connect':
+                  address = args[1]
+                  calls.append(address)
+                  if address in allowed:
+                      return
+              elif event == 'socket.getaddrinfo':
+                  address = (args[0], args[1])
+                  dns.append(address)
+                  if address in allowed:
+                      return
+              elif event == 'socket.bind':
+                  if args[1] == ('127.0.0.1', 0):
+                      return
+              elif event not in ('socket.gethostbyname', 'socket.gethostbyaddr', 'socket.getnameinfo',
+                                 'subprocess.Popen', 'os.system', 'os.startfile', 'os.startfile/2',
+                                 'os.exec', 'os.spawn'):
+                  return
+              denied.append(event)
+              raise RuntimeError('P2_FORBIDDEN_OPERATION')
+          sys.addaudithook(audit)
+
+          def proxies(**values):
+              for key in list(os.environ):
+                  if key.lower().endswith('_proxy'):
+                      del os.environ[key]
+              os.environ.update(values)
+              need({k.upper(): v for k, v in os.environ.items() if k.lower().endswith('_proxy')} == values,
+                   'P2_PROCESS_PROXY_ENV')
+          def load(name, path):
+              spec = importlib.util.spec_from_file_location(name, path)
+              module = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(module)
+              return module
+          def exact(sock, count):
+              data = bytearray()
+              while len(data) < count:
+                  part = sock.recv(count - len(data))
+                  need(bool(part), 'P2_TRUNCATED_PROTOCOL')
+                  data.extend(part)
+              return bytes(data)
+          def headers(sock):
+              data = bytearray()
+              while not data.endswith(b'\r\n\r\n'):
+                  need(len(data) < 16384, 'P2_HEADER_LIMIT')
+                  data.extend(exact(sock, 1))
+              return bytes(data)
+          payload = b'P2 synthetic payload\n'
+          origin_requests, socks_requests, bridge_requests, errors = [], [], [], []
+          def respond(sock):
+              sock.sendall(b'HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: '
+                           + str(len(payload)).encode('ascii') + b'\r\n\r\n' + payload)
+          class Direct(socketserver.BaseRequestHandler):
+              def handle(self):
+                  self.request.settimeout(4)
+                  origin_requests.append(headers(self.request))
+                  respond(self.request)
+          class SocksPeer(socketserver.BaseRequestHandler):
+              def handle(self):
+                  sock = self.request
+                  sock.settimeout(4)
+                  ver, count = exact(sock, 2)
+                  need(ver == 5 and 0 in exact(sock, count), 'P2_SOCKS_GREETING')
+                  sock.sendall(b'\x05\x00')
+                  need(exact(sock, 4) == b'\x05\x01\x00\x03', 'P2_SOCKS_REMOTE_NAME')
+                  host = exact(sock, exact(sock, 1)[0]).decode('ascii')
+                  port = int.from_bytes(exact(sock, 2), 'big')
+                  socks_requests.append((host, port))
+                  need(host == 'p2-origin.invalid' and port in (80, 443), 'P2_SOCKS_TARGET')
+                  if port == 443:
+                      sock.sendall(b'\x05\x02\x00\x01' + b'\x00' * 6)
+                      return
+                  sock.sendall(b'\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x00')
+                  bridge_requests.append(headers(sock))
+                  respond(sock)
+          class FixtureServer(socketserver.TCPServer):
+              def handle_error(self, request, address):
+                  errors.append('fixture error')
+          @contextlib.contextmanager
+          def serving(server_type, handler):
+              with server_type(('127.0.0.1', 0), handler) as server:
+                  if isinstance(server, socketserver.ThreadingMixIn):
+                      server.daemon_threads = False
+                  thread = threading.Thread(target=server.serve_forever,
+                                            kwargs={'poll_interval': 0.02})
+                  thread.start()
+                  try:
+                      yield server.server_address
+                  finally:
+                      server.shutdown()
+                      thread.join(5)
+                      need(not thread.is_alive(), 'P2_SERVER_SHUTDOWN')
+
+          with tempfile.TemporaryDirectory(prefix='.p2-', dir=Path.cwd()) as tmp:
+              root = Path(tmp).absolute()
+              for name, data in source.items():
+                  p = root / name
+                  p.parent.mkdir(parents=True, exist_ok=True)
+                  p.write_bytes(data)
+              sys.path.insert(0, str(root / 'tool/python/Lib/site-packages'))
+              import socks
+              need(socks.__version__ == '1.7.1' and Path(socks.__file__) == root / 'tool/python/Lib/site-packages/socks.py', 'P2_PYSOCKS')
+              installer = load('p2_installer', root / 'tool/automation/install-browser.py')
+              bridge = load('p2_bridge', root / 'tool/socks-http-bridge.py')
+              token = 'a' * 64
+              def download(case, url):
+                  session = root / case
+                  session.mkdir()
+                  result = installer.download_archive(root, session, {'archive': {'resolvedUrl': url, 'size': len(payload)}})
+                  need(result == session / 'chrome-win64.zip' and result.read_bytes() == payload
+                       and list(session.iterdir()) == [result], 'P2_PAYLOAD_BYTES')
+              def empty(case):
+                  need(list((root / case).iterdir()) == [], 'P2_UNEXPECTED_DOWNLOAD')
+              def observed(begin, want):
+                  need(calls[begin:] == want and not denied and not errors, 'P2_CONNECTION_SET')
+              with serving(FixtureServer, Direct) as direct, serving(FixtureServer, SocksPeer) as upstream:
+                  class Handler(bridge.ProxyHandler):
+                      socks_host, socks_port = upstream
+                      socks_rdns = True
+                      expected_proxy_authorization = 'Basic ' + base64.b64encode(('codex:' + token).encode('ascii')).decode('ascii')
+                  with serving(bridge.ThreadingTCPServer, Handler) as proxy:
+                      http_proxy = f'http://codex:{token}@127.0.0.1:{proxy[1]}'
+                      https_url = 'https://p2-origin.invalid/p2.bin'
+                      for case, selected in (('ALL_SOCKS', f'socks5h://127.0.0.1:{upstream[1]}'),
+                                             ('ALL_HTTP', http_proxy)):
+                          proxies(ALL_PROXY=selected)
+                          allowed.clear()
+                          begin, lookup = len(calls), len(dns)
+                          try:
+                              download(case, https_url)
+                          except ValueError as exc:
+                              need(str(exc) == 'Pinned browser download requires the configured HTTP proxy/bridge', 'P2_WRONG_REFUSAL')
+                          else:
+                              raise RuntimeError('P2_ALL_PROXY_ACCEPTED')
+                          observed(begin, [])
+                          need(len(dns) == lookup and not origin_requests and not socks_requests and not bridge_requests, 'P2_ALL_PROXY_NETWORK')
+                          empty(case)
+                          mark('P2_' + case + '_REFUSED')
+                      proxies()
+                      allowed.clear()
+                      allowed.add(direct)
+                      begin = len(calls)
+                      download('DIRECT', f'http://127.0.0.1:{direct[1]}/p2.bin')
+                      observed(begin, [direct])
+                      need(len(origin_requests) == 1 and origin_requests[0].startswith(b'GET /p2.bin HTTP/')
+                           and not socks_requests and not bridge_requests, 'P2_DIRECT_WIRE')
+                      mark('P2_DIRECT_HTTP_BYTES')
+                      proxies(HTTP_PROXY=http_proxy, HTTPS_PROXY=http_proxy, ALL_PROXY=http_proxy,
+                              NO_PROXY='localhost,127.0.0.1')
+                      allowed.clear()
+                      allowed.update((proxy, upstream))
+                      begin = len(calls)
+                      download('BRIDGE_HTTP', 'http://p2-origin.invalid/p2.bin')
+                      observed(begin, [proxy, upstream])
+                      need(socks_requests == [('p2-origin.invalid', 80)] and len(bridge_requests) == 1
+                           and bridge_requests[0].startswith(b'GET /p2.bin HTTP/')
+                           and b'proxy-authorization:' not in bridge_requests[0].lower()
+                           and len(origin_requests) == 1, 'P2_BRIDGE_WIRE')
+                      mark('P2_REAL_BRIDGE_HTTP_BYTES')
+                      begin = len(calls)
+                      try:
+                          download('BRIDGE_HTTPS', https_url)
+                      except urllib.error.URLError as exc:
+                          need('502 Bad Gateway' in str(exc.reason), 'P2_CONNECT_WRONG_FAILURE')
+                      else:
+                          raise RuntimeError('P2_UNEXPECTED_CONNECT_SUCCESS')
+                      observed(begin, [proxy, upstream])
+                      need(socks_requests == [('p2-origin.invalid', 80), ('p2-origin.invalid', 443)]
+                           and len(bridge_requests) == len(origin_requests) == 1, 'P2_CONNECT_WIRE')
+                      empty('BRIDGE_HTTPS')
+                      mark('P2_REAL_BRIDGE_HTTPS_CONNECT_REFUSAL')
+              proxies()
+              allowed.clear()
+              need(not denied and not errors, 'P2_EXTERNAL_OR_FIXTURE_ERROR')
+              mark('P2_LOOPBACK_ONLY')
+          need(not root.exists(), 'P2_CLEANUP')
+          mark('P2_CLEANUP')
+          mark('P2_NATIVE_ROUTE')
+          '@
+          $output = @($probe | python -I -S -B -)
+          $rc = $LASTEXITCODE
+          $output | Write-Output
+          if ($rc -ne 0) { throw 'P2 native route failed' }
+          $expected = @('P2_SOURCE=PASS','P2_PYTHON',
+            'P2_ALL_SOCKS_REFUSED=PASS','P2_ALL_HTTP_REFUSED=PASS',
+            'P2_DIRECT_HTTP_BYTES=PASS','P2_REAL_BRIDGE_HTTP_BYTES=PASS',
+            'P2_REAL_BRIDGE_HTTPS_CONNECT_REFUSAL=PASS','P2_LOOPBACK_ONLY=PASS',
+            'P2_CLEANUP=PASS','P2_NATIVE_ROUTE=PASS')
+          if ($output.Count -ne $expected.Count -or $output[1] -cnotmatch '^P2_PYTHON=\d+\.\d+\.\d+$') {
+            throw 'P2 incomplete output'
+          }
+          for ($i=0; $i -lt $expected.Count; $i++) {
+            if ($i -ne 1 -and $output[$i] -cne $expected[$i]) { throw 'P2 incomplete coverage' }
+          }
+          (@('P2_TRIGGER=PASS') + $output + @('P2_OUTPUT_GATE=PASS')) |
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+          Write-Output 'P2_OUTPUT_GATE=PASS'
