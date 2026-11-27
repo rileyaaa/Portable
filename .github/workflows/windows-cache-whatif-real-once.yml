@@ -1,0 +1,718 @@
+name: Windows real cache preview with verified LFS (one-time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/windows-cache-whatif-real-once.yml
+permissions:
+  contents: read
+env:
+  CW_BASE: 1dc8e7a442e54332b5ffcf93421ec6116de9389a
+  CW_PARENT: da69849498f212083636ab9189a05181e09dfe3f
+  CW_PATH: .github/workflows/windows-cache-whatif-real-once.yml
+  GIT_LFS_SKIP_SMUDGE: '1'
+jobs:
+  cache-whatif:
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - name: Verify one-time trigger
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $e = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          if ($env:GITHUB_REPOSITORY -cne 'rileyaaa/Portable' -or $env:GITHUB_REF -cne 'refs/heads/dev/stable-tool-refresh' -or
+              $env:GITHUB_EVENT_NAME -cne 'push' -or $env:GITHUB_RUN_ATTEMPT -cne '1' -or $env:RUNNER_OS -cne 'Windows' -or
+              $env:RUNNER_ARCH -cne 'X64' -or $PSVersionTable.PSEdition -cne 'Core' -or -not [Environment]::Is64BitProcess -or $e.before -cne $env:CW_PARENT -or
+              $e.after -cne $env:GITHUB_SHA -or $e.ref -cne $env:GITHUB_REF -or $e.head_commit.id -cne $env:GITHUB_SHA -or
+              $e.created -ne $false -or $e.deleted -ne $false -or $e.forced -ne $false) { throw 'CW_TRIGGER_OR_ENV' }
+          Write-Output 'CW_TRIGGER=PASS'
+          Write-Output 'CW_PAYLOAD_STATUS=NOT_RUN'
+          Write-Output 'CW_BAT_STATUS=NOT_RUN'
+          Write-Output 'CW_PHASE=INITIAL_SOURCE_CHECKOUT_MAY_USE_NETWORK'
+      - name: Checkout pinned sources without LFS hydration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 8
+          persist-credentials: false
+          lfs: false
+          submodules: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.gitattributes
+            /清理缓存.bat
+            /清理缓存.ps1
+            /run-codex.ps1
+            /env.ps1
+            /tool/automation/portable-automation.ps1
+            /codex.exe
+            /.github/workflows/windows-cache-whatif-once.yml
+      - name: Owned local closure then one official LFS object then four BAT previews
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = (Get-Command python -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          $cursor = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          while ($cursor) {
+            $i = Get-Item -LiteralPath $cursor -Force
+            if (-not $i.PSIsContainer -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'CW_UNSAFE_PARENT' }
+            $cursor = [IO.Path]::GetDirectoryName($cursor.TrimEnd('\'))
+          }
+          $owned = Join-Path $env:RUNNER_TEMP ('cache-whatif-' + [Guid]::NewGuid().ToString('N'))
+          $null = New-Item -ItemType Directory -Path $owned -ErrorAction Stop
+          $script = Join-Path $owned 'probe.py'
+          $probe = @'
+          import ctypes as C, hashlib, http.client, json, os, re, shutil, ssl, stat, struct, subprocess, sys, time, zlib
+          from urllib.parse import urlsplit
+          from ctypes import wintypes as W
+          from pathlib import Path
+
+          BASE = '1dc8e7a442e54332b5ffcf93421ec6116de9389a'
+          TREE = 'efa66809452cae18a8745601bd7dfd0402f867e9'
+          PARENT = 'da69849498f212083636ab9189a05181e09dfe3f'
+          PARENT_TREE = '4fe6c9024acb1aa0f069e444ba9304d73b37cb12'
+          PARENT_PARENT = '80197be843506121b7e753ba987a6c183141c282'
+          OLD = '.github/workflows/windows-cache-whatif-once.yml'
+          OLD_BLOB = '8b0d7aadcd62433b35b0a8975d87679a460bd3d4'
+          WORKFLOW = '.github/workflows/windows-cache-whatif-real-once.yml'
+          BAT = '清理缓存.bat'
+          PINS = {BAT: '6a6023c9b6d2f58c9ec7be507406c7e8dc94a582',
+                  '清理缓存.ps1': 'aa92566c7618e47f429fee2949c34832c0dd87b6',
+                  'run-codex.ps1': '2eaac598eaf07eadf725a58308d8e81672a3e2bb',
+                  'env.ps1': 'fee7920e3e12a56c9f5a7f3693de360c1f49a760',
+                  'tool/automation/portable-automation.ps1': 'ac585e936fb4d8ddbe44ba12fa047069032297c3'}
+          OID = '3f42b12274b353ecb3ec555e6c8d0a43f6c6cb29c3a546179bc12dee4855deb6'
+          SIZE = 416707888
+          POINTER = '8a502114b89f0053a19ed1f561b7263306bec0f8'
+          SPEC = 'https://git-lfs.github.com/spec/v1'
+          DENY = re.compile(rb'^(url\.|credential\.|http\.|lfs\.|remote\..*\.lfsurl)')
+          CORE = set(b'core.repositoryformatversion core.filemode core.bare core.logallrefupdates core.ignorecase core.symlinks'.split())
+          REQUIRED = set(b'core.repositoryformatversion core.filemode core.bare'.split())
+          REMOTE = {b'remote.origin.url', b'remote.origin.fetch'}
+          FORMAT = b'lfs.repositoryformatversion'
+          SUFFIX = b'\n[lfs]\n\trepositoryformatversion = 0\n'
+          ATTR = 'f6e24317bd3cbf5157715b7d304ecbef3361a0a9'
+          ORIGIN = 'https://github.com/rileyaaa/Portable.git'
+          BATCH = ORIGIN + '/info/lfs/objects/batch'
+          STORAGE_HOSTS = {'github-cloud.githubusercontent.com','github-cloud.s3.amazonaws.com'}
+          MIME = 'application/vnd.git-lfs+json'
+          LOCKS = ('.codex-portable.instance.lock', '.codex-browser.instance.lock')
+          DIRS = set('home home/skills home/plugins home/.agents home/.agents/plugins home-runtime home-runtime/.android sqlite login_json appdata localappdata programdata tmp tmp/android cache cache/android cache/android/apktool-framework cache/android/frida cache/android/mitmproxy cache/android/appium cache/android/apk-lab logs work work/apk-jobs tool tool/android'.split())
+          PSCACHE = 'localappdata/Microsoft/Windows/PowerShell/ModuleAnalysisCache'
+          K = C.WinDLL('kernel32', use_last_error=True)
+
+          def need(ok, label):
+              if not ok: raise RuntimeError(label)
+          def api(name, result, *args):
+              f = getattr(K, name); f.restype, f.argtypes = result, args; return f
+          def ordinary(p, directory):
+              s = p.lstat()
+              need(not getattr(s, 'st_file_attributes', 0) & 0x400 and not stat.S_ISLNK(s.st_mode)
+                   and (stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode) and s.st_nlink == 1), 'CW_UNSAFE_ENTRY')
+              return s
+          def plain(p):
+              p = Path(p).absolute()
+              need(re.fullmatch(r'[A-Za-z]:', p.drive) and '..' not in p.parts and ':' not in str(p)[2:], 'CW_LOCAL_PATH')
+              for q in (*reversed(p.parents), p): ordinary(q, True)
+              return p
+          def digest(p):
+              ordinary(p, False)
+              with p.open('rb') as f: return hashlib.file_digest(f, 'sha256').hexdigest()
+          def snap(root):
+              out, pending = {}, [plain(root)]
+              while pending:
+                  for p in pending.pop().iterdir():
+                      isdir = stat.S_ISDIR(p.lstat().st_mode)
+                      ordinary(p, isdir)
+                      out[p.relative_to(root).as_posix()] = None if isdir else digest(p)
+                      if isdir: pending.append(p)
+              return out
+          def put(p, raw):
+              p.parent.mkdir(parents=True, exist_ok=True)
+              with p.open('xb') as f: f.write(raw)
+          def system():
+              buf = C.create_unicode_buffer(32768)
+              n = api('GetSystemWindowsDirectoryW', W.UINT, W.LPWSTR, W.UINT)(buf, len(buf))
+              need(0 < n < len(buf), 'CW_SYSTEM_DIRECTORY')
+              win = Path(buf.value)
+              return win, win/'System32/cmd.exe', win/'System32/WindowsPowerShell/v1.0/powershell.exe'
+          def env(win, cmd, ps, root):
+              e = {'SystemRoot': str(win), 'WINDIR': str(win), 'SystemDrive': win.drive, 'COMSPEC': str(cmd),
+                   'PATH': str(cmd.parent), 'PATHEXT': '.COM;.EXE;.BAT;.CMD', 'PSModulePath': str(ps.parent/'Modules'),
+                   'POWERSHELL_TELEMETRY_OPTOUT': '1'}
+              for d, keys in {'home': ('HOME','USERPROFILE'), 'temp': ('TEMP','TMP','TMPDIR'), 'appdata': ('APPDATA','XDG_CONFIG_HOME'),
+                              'localappdata': ('LOCALAPPDATA','XDG_DATA_HOME'), 'programdata': ('PROGRAMDATA','ALLUSERSPROFILE','PUBLIC'),
+                              'cache': ('XDG_CACHE_HOME','PIP_CACHE_DIR','NPM_CONFIG_CACHE')}.items():
+                  for k in keys: e[k] = str(root/d)
+              e.update(HOMEDRIVE=root.drive, HOMEPATH=str(root/'home')[len(root.drive):], PSModuleAnalysisCachePath=str(root/'localappdata/module-cache'))
+              return e
+
+          class Basic(C.Structure):
+              _fields_ = [('t1', C.c_longlong), ('t2', C.c_longlong), ('flags', W.DWORD), ('min', C.c_size_t), ('max', C.c_size_t),
+                          ('active', W.DWORD), ('affinity', C.c_size_t), ('priority', W.DWORD), ('schedule', W.DWORD)]
+          class Limits(C.Structure):
+              _fields_ = [('basic', Basic), ('io', C.c_ulonglong * 6), ('mem', C.c_size_t * 4)]
+          class Accounting(C.Structure):
+              _fields_ = [('times', C.c_longlong * 4), ('faults', W.DWORD), ('total', W.DWORD), ('active', W.DWORD), ('terminated', W.DWORD)]
+          def private_job_console():
+              ids = (W.DWORD * 4)()
+              need(api('GetConsoleProcessList', W.DWORD, C.POINTER(W.DWORD), W.DWORD)(ids, len(ids)) == 1 and ids[0] == os.getpid(), 'CW_PRIVATE_CONSOLE')
+              need(api('SetConsoleOutputCP', W.BOOL, W.UINT)(65001) and api('GetConsoleOutputCP', W.UINT)() == 65001, 'CW_UTF8_CONSOLE')
+              j = api('CreateJobObjectW', W.HANDLE, C.c_void_p, W.LPCWSTR)(None, None)
+              need(j, 'CW_JOB_CREATE'); lim = Limits(); lim.basic.flags = 0x2000
+              need(api('SetInformationJobObject', W.BOOL, W.HANDLE, C.c_int, C.c_void_p, W.DWORD)(j, 9, C.byref(lim), C.sizeof(lim)), 'CW_JOB_LIMIT')
+              need(api('AssignProcessToJobObject', W.BOOL, W.HANDLE, W.HANDLE)(j, api('GetCurrentProcess', W.HANDLE)()), 'CW_JOB_ASSIGN')
+              return j
+          def idle(j):
+              i = Accounting()
+              need(api('QueryInformationJobObject', W.BOOL, W.HANDLE, C.c_int, C.c_void_p, W.DWORD, C.c_void_p)(j, 1, C.byref(i), C.sizeof(i), None) and i.active == 1, 'CW_DESCENDANTS_ACTIVE')
+          def exclusive(p):
+              h = api('CreateFileW', W.HANDLE, W.LPCWSTR, W.DWORD, W.DWORD, C.c_void_p, W.DWORD, W.DWORD, W.HANDLE)(str(p), 0xc0000000, 0, None, 3, 0, None)
+              need(h not in (None, 0, C.c_void_p(-1).value), 'CW_LOCK_HARNESS')
+              return h
+          def close(h):
+              need(api('CloseHandle', W.BOOL, W.HANDLE)(h), 'CW_LOCK_RELEASE')
+
+          def inventory(root):
+              result, pending = {}, [plain(root)]
+              while pending:
+                  for p in pending.pop().iterdir():
+                      isdir = stat.S_ISDIR(p.lstat().st_mode)
+                      s = ordinary(p, isdir)
+                      result[p.relative_to(root).as_posix()] = None if isdir else (s.st_size, s.st_mtime_ns)
+                      if isdir: pending.append(p)
+              return result
+
+
+          def no_alternates(obj):
+              need(not any(os.path.lexists(obj/'info'/n) for n in ('alternates','http-alternates')), 'OG_ALTERNATES_FORBIDDEN')
+
+
+          def config_digest(p):
+              ordinary(p, False)
+              with p.open('rb') as f: return hashlib.file_digest(f, 'sha256').digest()
+
+
+          def canonical(kind, raw):
+              return f'{kind} {len(raw)}\0'.encode('ascii') + raw
+
+
+          def object_id(kind, raw):
+              return hashlib.sha1(canonical(kind,raw)).hexdigest()
+
+
+          class Owned:
+              def __init__(self, scope, gitexe, system_env, job):
+                  self.scope, self.gitexe, self.job = scope, gitexe, job
+                  scope.mkdir(); self.repo = scope/'git'; self.repo.mkdir()
+                  self.template = scope/'empty-template'; self.template.mkdir()
+                  home = scope/'home'; home.mkdir()
+                  temp = scope/'tmp'; temp.mkdir()
+                  empty = scope/'empty-config'; empty.touch(exist_ok=False)
+                  self.env = dict(system_env, HOME=str(home), USERPROFILE=str(home), APPDATA=str(home), LOCALAPPDATA=str(home),
+                                  TEMP=str(temp), TMP=str(temp), TMPDIR=str(temp), XDG_CONFIG_HOME=str(home),
+                                  GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=str(empty), GIT_CONFIG_SYSTEM=str(empty),
+                                  GIT_ATTR_NOSYSTEM='1', GIT_ALLOW_PROTOCOL='', GIT_PROTOCOL_FROM_USER='0', GIT_NO_LAZY_FETCH='1',
+                                  GIT_NO_REPLACE_OBJECTS='1', GIT_OPTIONAL_LOCKS='0', GIT_TERMINAL_PROMPT='0', GIT_LFS_SKIP_SMUDGE='1')
+                  self.git('init', '--template='+str(self.template), '--object-format=sha1', '--initial-branch=probe')
+                  self.config = self.repo/'.git/config'; self.objects = self.repo/'.git/objects'
+                  self.gate(self.config, False)
+                  self.git('remote', 'add', 'origin', ORIGIN)
+                  self.gate(self.config, True)
+                  self.baseline = config_digest(self.config)
+                  self.imported = {}
+                  self.integrity()
+
+              def run(self, *args, data=None, source=None):
+                  e = dict(self.env)
+                  if source is not None:
+                      need(args == ('cat-file','--batch'), 'OG_SOURCE_COMMAND')
+                      e['GIT_OBJECT_DIRECTORY'] = str(source)
+                  try:
+                      r = subprocess.run([self.gitexe, *args], cwd=self.repo, env=e, input=data,
+                                            stdin=subprocess.DEVNULL if data is None else None, capture_output=True, timeout=40)
+                      idle(self.job); return r
+                  except subprocess.TimeoutExpired: raise RuntimeError('OG_GIT_TIMEOUT') from None
+
+              def git(self, *args, data=None, source=None):
+                  r = self.run(*args, data=data, source=source)
+                  need(r.returncode == 0 and not r.stderr, 'OG_SOURCE_OBJECT_READ_FAILED' if source is not None else 'OG_GIT_COMMAND_FAILED')
+                  return r.stdout
+
+              def keys(self, path):
+                  ordinary(path, False)
+                  raw = self.git('config','--file',str(path),'--no-includes','--null','--name-only','--list')
+                  need(raw.endswith(b'\0'), 'OG_CONFIG_KEY_FORMAT')
+                  return raw[:-1].split(b'\0')
+
+              def gate(self, path, origin=True, expected=None):
+                  names = self.keys(path); keys = set(names)
+                  need(not any(DENY.match(k) for k in names), 'OG_ORIGINAL_DENY')
+                  need(len(keys) == len(names), 'OG_CONFIG_DUPLICATE')
+                  need((REQUIRED | (REMOTE if origin else set())) <= keys <= (CORE | (REMOTE if origin else set())), 'OG_CONFIG_UNKNOWN_KEY')
+                  if expected is not None: need(config_digest(path) == expected, 'OG_CONFIG_CHANGED')
+
+              def integrity(self):
+                  self.gate(self.config, True, self.baseline)
+                  no_alternates(self.objects)
+                  need(not any(os.path.lexists(self.repo/'.git'/p) for p in ('hooks','config.worktree','shallow','commondir','lfs')), 'OG_INHERITED_METADATA')
+
+              def batch(self, requested, source=None):
+                  need(0 < len(requested) <= 128 and all(re.fullmatch(r'[0-9a-f]{40}', k) for k in requested), 'OG_OBJECT_REQUEST')
+                  raw = self.git('cat-file','--batch', data=('\n'.join(requested)+'\n').encode('ascii'), source=source)
+                  pos, result = 0, {}
+                  for oid, kind in requested.items():
+                      end = raw.find(b'\n', pos); need(end >= pos, 'OG_OBJECT_HEADER')
+                      parts = raw[pos:end].split(b' ')
+                      need(parts != [oid.encode(), b'missing'], 'OG_LOCAL_OBJECT_MISSING')
+                      need(len(parts) == 3 and parts[:2] == [oid.encode(), kind.encode()] and parts[2].isdigit(), 'OG_OBJECT_HEADER')
+                      size = int(parts[2]); start = end+1; pos = start+size+1
+                      need(size <= 2*1024*1024 and raw[pos-1:pos] == b'\n', 'OG_OBJECT_BOUND')
+                      body = raw[start:pos-1]; packed = canonical(kind,body)
+                      need(len(body) == size and hashlib.sha1(packed).hexdigest() == oid, 'OG_OBJECT_HASH')
+                      result[oid] = (body, packed)
+                  need(pos == len(raw), 'OG_OBJECT_TRAILING_BYTES')
+                  return result
+
+              def put_object(self, oid, kind, packed):
+                  need(oid not in self.imported, 'OG_OBJECT_DUPLICATE')
+                  p = self.objects/oid[:2]/oid[2:]; p.parent.mkdir(exist_ok=True)
+                  with p.open('xb') as f: f.write(zlib.compress(packed))
+                  self.imported[oid] = kind
+
+              def import_batch(self, requested, source):
+                  objects = self.batch(requested, source)
+                  for oid, (_, packed) in objects.items(): self.put_object(oid, requested[oid], packed)
+                  verified = self.batch(requested)
+                  need(verified == objects, 'OG_OBJECT_READBACK')
+                  return {oid: body for oid, (body, _) in verified.items()}
+
+              def tree_closure(self, roots, source):
+                  pending = set(roots); count = 0
+                  while pending:
+                      selected = sorted(pending)[:128]; pending.difference_update(selected)
+                      requested = {oid:'tree' for oid in selected if oid not in self.imported}
+                      if not requested: continue
+                      for body in self.import_batch(requested, source).values():
+                          pos = 0
+                          while pos < len(body):
+                              space = body.find(b' ',pos); end = body.find(b'\0',space+1)
+                              need(pos < space < end and end+21 <= len(body), 'OG_TREE_FORMAT')
+                              mode, name, oid = body[pos:space], body[space+1:end], body[end+1:end+21].hex()
+                              need(name and b'/' not in name and mode in (b'40000',b'100644',b'100755',b'120000'), 'OG_TREE_ENTRY')
+                              if mode == b'40000' and oid not in self.imported: pending.add(oid)
+                              pos = end+21
+                      count += len(requested); need(count <= 2000, 'OG_TREE_BOUND')
+                  return count
+
+              def exact_loose_set(self):
+                  files = {k for k,v in inventory(self.objects).items() if v is not None}
+                  need(all(re.fullmatch(r'[0-9a-f]{2}/[0-9a-f]{38}',k) for k in files) and {k.replace('/','') for k in files} == set(self.imported), 'OG_UNEXPECTED_OBJECT')
+                  no_alternates(self.objects)
+
+
+          def negative_controls(o):
+              cases = [
+                  ('URL', b'[url "https://example.invalid/"]\n insteadOf = https://github.com/\n', 'OG_ORIGINAL_DENY'),
+                  ('HTTP', b'[http]\n proxy = http://example.invalid/\n', 'OG_ORIGINAL_DENY'),
+                  ('LFS', b'[lfs]\n url = https://example.invalid/\n', 'OG_ORIGINAL_DENY'),
+                  ('CREDENTIAL', b'[credential]\n helper = synthetic\n', 'OG_ORIGINAL_DENY'),
+                  ('INCLUDE', b'[include]\n path = poison.cfg\n', 'OG_CONFIG_UNKNOWN_KEY'),
+                  ('INCLUDEIF', b'[includeIf "gitdir:**"]\n path = poison.cfg\n', 'OG_CONFIG_UNKNOWN_KEY'),
+                  ('HOOKS', b'[core]\n hooksPath = synthetic\n', 'OG_CONFIG_UNKNOWN_KEY'),
+                  ('REMOTE_OTHER', b'[remote "other"]\n url = https://example.invalid/\n', 'OG_CONFIG_UNKNOWN_KEY'),
+                  ('REMOTE_LFS', b'[remote "origin"]\n lfsurl = https://example.invalid/\n', 'OG_ORIGINAL_DENY'),
+                  ('DUPLICATE', b'[remote "origin"]\n url = https://example.invalid/\n', 'OG_CONFIG_DUPLICATE'),
+                  ('SAME_KEY_VALUE', None, 'OG_CONFIG_CHANGED'),
+              ]
+              d = o.scope/'negative'; d.mkdir(); (d/'poison.cfg').write_bytes(b'[invalid\n')
+              for label, suffix, expected in cases:
+                  p = d/(label+'.cfg'); shutil.copyfile(o.config,p)
+                  if suffix is None:
+                      o.git('config','--file',str(p),'--no-includes','--replace-all','remote.origin.url','https://example.invalid/synthetic')
+                  else:
+                      with p.open('ab') as f: f.write(b'\n'+suffix)
+                  try: o.gate(p, True, o.baseline)
+                  except RuntimeError as exc: need(str(exc) == expected, 'OG_NEGATIVE_WRONG_REASON')
+                  else: raise RuntimeError('OG_NEGATIVE_ACCEPTED')
+                  print('OG_NEGATIVE='+label+':REJECT',flush=True)
+              o.integrity(); print('OG_NEGATIVES=11/11',flush=True)
+              print('OG_OWNED_CONFIG=PASS',flush=True)
+
+
+          def commit_info(raw):
+              headers = raw.split(b'\n\n',1)[0].splitlines()
+              trees = [x[5:].decode('ascii') for x in headers if x.startswith(b'tree ')]
+              parents = [x[7:].decode('ascii') for x in headers if x.startswith(b'parent ')]
+              need(len(trees)==1 and all(re.fullmatch(r'[0-9a-f]{40}', x) for x in trees+parents), 'OG_COMMIT_HEADER')
+              return trees[0], parents
+
+
+          def entries(o, tree):
+              result = {}
+              for record in o.git('ls-tree','-r','-t','-z',tree).split(b'\0'):
+                  if not record: continue
+                  meta,name = record.split(b'\t',1); mode,kind,oid = meta.split(b' ')
+                  path = name.decode('utf-8','strict')
+                  need(path not in result and kind in (b'blob',b'tree'), 'OG_TREE_LEAF')
+                  result[path] = (mode.decode('ascii'),kind.decode('ascii'),oid.decode('ascii'))
+              return result
+
+
+          def pointer(oid, size):
+              return f'version {SPEC}\noid sha256:{oid}\nsize {size}\n'.encode('ascii')
+
+
+          def start_lfs(o):
+              o.integrity(); before = inventory(o.scope)
+              print('LS_VERSION_EXPECTED=3.8.1;windows/amd64',flush=True)
+              r = o.run('lfs','version')
+              print('LS_VERSION_RC='+str(r.returncode),flush=True)
+              need(r.returncode==0,'LS_VERSION_COMMAND_FAILED')
+              need(not r.stderr,'LS_VERSION_STDERR')
+              need(len(r.stdout)<=256,'LS_VERSION_OUTPUT_BOUND')
+              m = re.fullmatch(rb'git-lfs/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}) \([^;\r\n]+; ([a-z0-9]{1,16}) ([a-z0-9]{1,16}); go [^\r\n]+\)\r?\n',r.stdout)
+              need(m is not None,'LS_VERSION_FORMAT')
+              print('LS_VERSION_OBSERVED='+m.group(1).decode('ascii'),flush=True)
+              need(m.group(1)==b'3.8.1','LS_FIXED_VERSION_REQUIRED')
+              need(m.group(2)==b'windows' and m.group(3)==b'amd64','LS_VERSION_PLATFORM')
+              need(inventory(o.scope)==before,'LS_VERSION_SIDE_EFFECT')
+              o.integrity()
+              raw = o.config.read_bytes(); names = o.keys(o.config)
+              need(raw.endswith(b'\n') and FORMAT not in names,'LS_BASE_CONFIG')
+              expected = raw+SUFFIX
+              with o.config.open('ab') as f: f.write(SUFFIX)
+              o.lfs_hash = hashlib.sha256(expected).digest(); o.lfs_keys = set(names)|{FORMAT}
+              lfs_gate(o)
+              print('LS_VERSION=3.8.1;windows/amd64',flush=True)
+              print('LS_OWNED_CONFIG_TRANSITION=PASS',flush=True)
+
+
+          def lfs_gate(o):
+              names = o.keys(o.config)
+              need(len(names)==len(set(names)) and set(names)==o.lfs_keys and config_digest(o.config)==o.lfs_hash,'LS_CONFIG_CHANGED')
+              o.exact_loose_set()
+              need(set(o.repo.iterdir())=={o.repo/'.git'},'LS_WORKTREE_CHANGED')
+              need(not any(os.path.lexists(o.repo/'.git'/p) for p in ('hooks','index','config.worktree','shallow','commondir')), 'LS_UNEXPECTED_METADATA')
+              storage = o.repo/'.git/lfs'
+              if storage.exists(): need(all(v is None and k in ('objects','tmp') for k,v in inventory(storage).items()),'LS_STORAGE_NOT_EMPTY')
+
+
+          def decode_rows(raw):
+              def unique(pairs):
+                  d = dict(pairs); need(len(d)==len(pairs),'LS_JSON_DUPLICATE_KEY'); return d
+              need(len(raw)<=65536,'LS_JSON_BOUND')
+              try: doc = json.loads(raw,object_pairs_hook=unique)
+              except (ValueError,UnicodeError): raise RuntimeError('LS_JSON_INVALID') from None
+              need(type(doc) is dict and set(doc)=={'files'},'LS_JSON_SCHEMA')
+              rows = doc['files']; need(rows is None or type(rows) is list,'LS_JSON_SCHEMA')
+              rows = [] if rows is None else rows
+              for x in rows:
+                  need(type(x) is dict and set(x)=={'name','size','checkout','downloaded','oid_type','oid','version'},'LS_JSON_SCHEMA')
+                  need(type(x['name']) is str and type(x['size']) is int and x['size']>0 and
+                       type(x['checkout']) is bool and type(x['downloaded']) is bool and
+                       x['oid_type']=='sha256' and type(x['oid']) is str and re.fullmatch(r'[0-9a-f]{64}',x['oid']) and x['version']==SPEC,'LS_JSON_FIELD')
+              return rows
+
+
+          def row(name, oid, size):
+              return dict(name=name,size=size,checkout=False,downloaded=False,oid_type='sha256',oid=oid,version=SPEC)
+
+
+          def single(rows, oid, size):
+              need(len(rows)==1,'LS_NOT_SINGLE')
+              need(rows[0]==row('codex.exe',oid,size),'LS_POINTER_IDENTITY')
+
+
+          def scan(o, ref, label):
+              lfs_gate(o); before=inventory(o.scope)
+              need(re.fullmatch(r'[0-9a-f]{40}',ref),'LS_REF')
+              r=o.run('lfs','ls-files','--json','--include=codex.exe','--exclude=',ref)
+              print('LS_SCAN_RC='+label+':'+str(r.returncode),flush=True)
+              need(r.returncode==0 and not r.stderr,'LS_SCANNER_FAILED')
+              rows=decode_rows(r.stdout)
+              lfs_gate(o); after=inventory(o.scope)
+              need(all(after.get(k,False)==v for k,v in before.items()),'LS_METADATA_CHANGED')
+              allowed={'git/.git/lfs','git/.git/lfs/objects','git/.git/lfs/tmp'}
+              need(all(k in allowed and after[k] is None for k in after.keys()-before.keys()),'LS_UNEXPECTED_INITIALIZATION')
+              print('LS_SCAN='+json.dumps({'case':label,'count':len(rows),'added':sorted(after.keys()-before.keys())},ensure_ascii=True),flush=True)
+              return rows
+
+
+          def local_closure(scope, repo, head, gitexe, win, cmd, j):
+              need(re.fullmatch(r'[0-9a-f]{40}',head) and head not in (BASE,PARENT) and Path(gitexe).is_absolute(),'CW_INPUTS')
+              source = plain(repo/'.git/objects'); no_alternates(source)
+              original = inventory(source)
+              e = {'SystemRoot':str(win),'WINDIR':str(win),'SystemDrive':win.drive,'COMSPEC':str(cmd),'PATH':str(Path(gitexe).parent)+';'+str(cmd.parent)}
+              o = Owned(scope/'local-objects',gitexe,e,j); negative_controls(o)
+              commits = o.import_batch({head:'commit',PARENT:'commit',BASE:'commit'},source)
+              bt,bp = commit_info(commits[BASE]); pt,pp = commit_info(commits[PARENT]); ht,hp = commit_info(commits[head])
+              need(bt==TREE and pt==PARENT_TREE and pp==[PARENT_PARENT] and hp==[PARENT],'OG_FIXED_COMMIT_TREE')
+              count = o.tree_closure((bt,pt,ht),source)
+              base,parent,now = (entries(o,t) for t in (bt,pt,ht))
+              def sole_add(before,after,path,blob=None):
+                  ancestors = {p.as_posix() for p in Path(path).parents if p.as_posix()!='.'}
+                  need(path not in before and path in after and after[path][:2]==('100644','blob'),'OG_DELTA_FILE')
+                  need(blob is None or after[path][2]==blob,'OG_DELTA_BLOB')
+                  need(all(before.get(p,())[:2]==after.get(p,())[:2]==('040000','tree') for p in ancestors),'OG_DELTA_ANCESTORS')
+                  need({k:v for k,v in before.items() if k not in ancestors}=={k:v for k,v in after.items() if k not in ancestors|{path}},'OG_DELTA_EXTRA')
+              sole_add(base,parent,OLD,OLD_BLOB); sole_add(parent,now,WORKFLOW)
+              need('.lfsconfig' not in now and [k for k in now if k.rsplit('/',1)[-1].casefold()=='codex.exe']==['codex.exe'],'OG_LFS_PATH_SCOPE')
+              pins = dict(PINS, **{'.gitattributes':ATTR,'codex.exe':POINTER})
+              need(all(base.get(p)==('100644','blob',oid) for p,oid in pins.items()),'OG_PRODUCT_PIN')
+              requested = {**{oid:'blob' for oid in pins.values()},OLD_BLOB:'blob'}
+              blobs = o.import_batch(requested,source)
+              raw = pointer(OID,SIZE)
+              need(len(raw)==134 and blobs[POINTER]==raw,'OG_POINTER_BYTES')
+              need(b'codex.exe filter=lfs diff=lfs merge=lfs -text' in blobs[ATTR].splitlines(),'OG_LFS_ATTRIBUTE')
+              o.exact_loose_set(); o.integrity()
+              need(inventory(source)==original,'OG_SOURCE_OBJECT_METADATA_CHANGED')
+              print('OG_IMPORTED='+json.dumps({'commits':3,'trees':count,'blobs':len(blobs),'total':len(o.imported)}),flush=True)
+              print('OG_FIXED_COMMIT_TREE=PASS',flush=True)
+              print('OG_SOLE_WORKFLOW_DELTAS=PASS',flush=True)
+              print('OG_POINTER=PASS;bytes=134',flush=True)
+              start_lfs(o); rows=scan(o,BASE,'PRODUCT'); single(rows,OID,SIZE)
+              final=o.batch(requested)
+              need(all(final[oid][0]==blobs[oid] for oid in requested),'LS_FINAL_PINNED_BLOB_READBACK')
+              lfs_gate(o); need(inventory(source)==original,'OG_SOURCE_OBJECT_METADATA_CHANGED')
+              print('LS_PRODUCT_ROW='+json.dumps(rows[0],ensure_ascii=True),flush=True)
+              print('CW_LOCAL_CLOSURE=PASS',flush=True)
+              return o,source,original,{name:final[blob][0] for name,blob in PINS.items()}
+
+
+          def verified(p):
+              if not os.path.lexists(p): return False
+              plain(p.parent); st=ordinary(p,False)
+              return st.st_size==SIZE and digest(p)==OID
+
+
+          def pe(p):
+              with p.open('rb') as f:
+                  need(f.read(2)==b'MZ','CW_PAYLOAD_PE')
+                  f.seek(60); off=struct.unpack('<I',f.read(4))[0]
+                  need(64<=off<=SIZE-24,'CW_PAYLOAD_PE')
+                  f.seek(off); h=f.read(24)
+                  need(h[:4]==b'PE\0\0' and len(h)==24,'CW_PAYLOAD_PE')
+                  machine,sections,_,_,_,opt,flags=struct.unpack('<HHIIIHH',h[4:])
+                  need(machine==0x8664 and 1<=sections<=96 and opt>=112 and off+24+opt+40*sections<=SIZE and flags&2 and not flags&0x2000,'CW_PAYLOAD_X64')
+                  need(f.read(2)==b'\x0b\x02','CW_PAYLOAD_PE32_PLUS')
+
+
+          def official_url(url, batch=False):
+              need(type(url) is str and 0<len(url)<=8192 and all(33<=ord(c)<127 for c in url) and '\\' not in url and '#' not in url,'CW_LFS_URL_FORMAT')
+              p=urlsplit(url)
+              need(p.scheme=='https' and p.username is None and p.password is None and p.netloc==p.hostname and p.path.startswith('/') and not p.path.startswith('//'),'CW_LFS_URL_SCOPE')
+              need(url==BATCH if batch else p.hostname in STORAGE_HOSTS,'CW_LFS_HOST_SCOPE')
+              return p.hostname,p.path+('?' + p.query if p.query else '')
+
+
+          def request(url, method, body=None):
+              batch=method=='POST'
+              need((batch and body is not None) or (method=='GET' and body is None),'CW_LFS_METHOD')
+              host,target=official_url(url,batch)
+              # Direct TLS, no proxy, cookies, auth, Git credential helper, client cert or retries.
+              conn=http.client.HTTPSConnection(host,443,timeout=25,context=ssl.create_default_context())
+              headers={'User-Agent':'Portable-CW-single-object/1','Accept-Encoding':'identity','Connection':'close'}
+              if batch: headers.update({'Accept':MIME,'Content-Type':MIME})
+              else: headers['Accept']='application/octet-stream'
+              try:
+                  conn.request(method,target,body=body,headers=headers)
+                  r=conn.getresponse()
+                  print(('CW_LFS_BATCH_HTTP=' if batch else 'CW_LFS_GET_HTTP=')+str(r.status),flush=True)
+                  need(r.status not in (401,403,407) and not r.getheader('WWW-Authenticate') and not r.getheader('Proxy-Authenticate'),'CW_LFS_AUTH_REQUIRED')
+                  return conn,r
+              except BaseException:
+                  conn.close(); raise
+
+
+          def unique_json(raw):
+              def unique(pairs):
+                  d=dict(pairs); need(len(d)==len(pairs),'CW_LFS_DUPLICATE_KEY'); return d
+              try: return json.loads(raw.decode('utf-8','strict'),object_pairs_hook=unique)
+              except (ValueError,UnicodeError): raise RuntimeError('CW_LFS_JSON') from None
+
+
+          def download_action():
+              body=json.dumps({'operation':'download','transfers':['basic'],'hash_algo':'sha256','objects':[{'oid':OID,'size':SIZE}]},separators=(',',':')).encode('ascii')
+              c,r=request(BATCH,'POST',body)
+              try:
+                  need(r.status==200,'CW_LFS_BATCH_REJECTED')
+                  need(r.getheader('Content-Type','').split(';',1)[0].strip().lower()==MIME and r.getheader('Content-Encoding','identity').lower()=='identity','CW_LFS_BATCH_TYPE')
+                  raw=r.read(65537); need(len(raw)<=65536,'CW_LFS_BATCH_BOUND')
+                  doc=unique_json(raw)
+              finally: c.close()
+              need(type(doc) is dict and set(doc)<= {'transfer','hash_algo','objects'} and doc.get('transfer','basic')=='basic' and doc.get('hash_algo','sha256')=='sha256','CW_LFS_BATCH_SCHEMA')
+              rows=doc.get('objects')
+              need(type(rows) is list and len(rows)==1 and type(rows[0]) is dict,'CW_LFS_BATCH_NOT_SINGLE')
+              row=rows[0]
+              need(row.get('oid')==OID and type(row.get('size')) is int and row['size']==SIZE,'CW_LFS_BATCH_IDENTITY')
+              if 'error' in row:
+                  err=row['error']; need(not (type(err) is dict and err.get('code') in (401,403,407)),'CW_LFS_AUTH_REQUIRED')
+                  raise RuntimeError('CW_LFS_OBJECT_REJECTED')
+              need(set(row)<= {'oid','size','authenticated','actions'} and type(row.get('authenticated',False)) is bool,'CW_LFS_OBJECT_SCHEMA')
+              actions=row.get('actions')
+              need(type(actions) is dict and set(actions)=={'download'} and type(actions['download']) is dict,'CW_LFS_ACTION')
+              action=actions['download']
+              need(set(action)<= {'href','header','expires_at','expires_in'},'CW_LFS_ACTION_SCHEMA')
+              need(action.get('header',{})=={},'CW_LFS_ACTION_HEADERS_REQUIRED')
+              url=action.get('href'); official_url(url)
+              print('CW_LFS_BATCH_SINGLE=PASS',flush=True)
+              return url
+
+
+          def fetch_official(storage):
+              need(not os.path.lexists(storage),'CW_LFS_STORAGE_EXISTS')
+              storage.mkdir(); part=storage/'payload.part'
+              deadline=time.monotonic()+240
+              try:
+                  url=download_action(); seen=set()
+                  for hop in range(3):
+                      need(time.monotonic()<deadline and url not in seen,'CW_LFS_DEADLINE_OR_REDIRECT_LOOP')
+                      seen.add(url)
+                      c,r=request(url,'GET')
+                      try:
+                          if r.status in (301,302,303,307,308):
+                              need(hop<2 and len(r.headers.get_all('Location',[]))==1,'CW_LFS_REDIRECT_LIMIT')
+                              url=r.getheader('Location'); official_url(url)
+                              print('CW_LFS_STORAGE_REDIRECT='+str(hop+1),flush=True)
+                              continue
+                          need(r.status==200,'CW_LFS_GET_REJECTED')
+                          need(r.getheader('Content-Encoding','identity').lower()=='identity' and not r.getheader('Transfer-Encoding') and r.getheader('Content-Length')==str(SIZE),'CW_LFS_RESPONSE_SIZE')
+                          total=0; h=hashlib.sha256()
+                          with part.open('xb') as f:
+                              while True:
+                                  need(time.monotonic()<deadline,'CW_LFS_DEADLINE')
+                                  chunk=r.read(min(1048576,SIZE-total+1))
+                                  if not chunk: break
+                                  total+=len(chunk); need(total<=SIZE,'CW_LFS_SIZE_OVERFLOW')
+                                  h.update(chunk); f.write(chunk)
+                          need(total==SIZE and h.hexdigest()==OID,'CW_LFS_STREAM_IDENTITY')
+                          need(set(storage.iterdir())=={part} and verified(part),'CW_LFS_PAYLOAD_MISSING_OR_MISMATCH')
+                          pe(part)
+                          print('CW_LFS_SINGLE_OBJECT=PASS',flush=True)
+                          return part
+                      finally: c.close()
+                  raise RuntimeError('CW_LFS_REDIRECT_LIMIT')
+              except RuntimeError:
+                  if part.exists(): part.unlink()
+                  raise
+              except Exception:
+                  if part.exists(): part.unlink()
+                  raise RuntimeError('CW_LFS_TRANSPORT_OR_IO') from None
+
+
+          def worker(scope, repo, head, gitexe):
+              j = private_job_console()
+              win, cmd, ps = system()
+              need(cmd.is_file() and ps.is_file(), 'CW_SYSTEM_SHELLS')
+              harness, outside = scope/'harness', scope/'outside'
+              outside_initial=snap(outside)
+              print('CW_PHASE=LOCAL_CLOSURE',flush=True)
+              o,source,source_before,files=local_closure(scope,repo,head,gitexe,win,cmd,j)
+              a, b = scope/'Portable initial', scope/'Portable 中文 空格'
+              a.mkdir(); identities = {}
+              for name,raw in files.items():
+                  put(a/name,raw); identities[name]=hashlib.sha256(raw).hexdigest()
+              print('CW_PHASE=OFFICIAL_SINGLE_LFS',flush=True)
+              print('CW_PAYLOAD_SOURCE=OFFICIAL_REPO_LFS',flush=True)
+              storage=scope/'lfs'
+              part=fetch_official(storage)
+              part.rename(a/'codex.exe')
+              need(not any(storage.iterdir()) and verified(a/'codex.exe'),'CW_PAYLOAD_IDENTITY')
+              pe(a/'codex.exe'); lfs_gate(o)
+              need(inventory(source)==source_before and snap(outside)==outside_initial,'CW_PREFLIGHT_BOUNDARY')
+              idle(j)
+              print('CW_SOURCE='+json.dumps(identities,ensure_ascii=True),flush=True)
+              print(f'CW_PAYLOAD=PASS;bytes={SIZE};sha256={OID}',flush=True)
+              print('CW_PHASE=REAL_BAT_WHATIF',flush=True)
+              check = subprocess.run([str(ps),'-NoLogo','-NoProfile','-NonInteractive','-Command',"if (-not [Environment]::Is64BitProcess -or $PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { exit 2 }; [Console]::WriteLine($PSVersionTable.PSVersion.ToString())"],cwd=harness,env=env(win,cmd,ps,harness),stdin=subprocess.DEVNULL,capture_output=True,timeout=15)
+              idle(j); version = check.stdout.decode('ascii').strip()
+              need(check.returncode == 0 and not check.stderr and re.fullmatch(r'5\.1\.\d+\.\d+',version), 'CW_PS51_REQUIRED')
+              print('CW_PS51='+version,flush=True)
+              # Synthetic data only; Android skeleton directories are created by the original cleaner, not Android tools.
+              for p in ('cache/browser/profile/synthetic-cookie','logs/synthetic.log','work/keep.txt','home/skills/keep.txt','home/plugins/keep.txt','home/.agents/plugins/marketplace.json'):
+                  put(a/p,b'{}' if p.endswith('.json') else ('owned:'+p).encode())
+              for name in LOCKS: put(a/name,b'')
+              initial = snap(a); a.rename(b)
+              need(not a.exists() and snap(b)==initial,'CW_RELOCATION')
+              print('CW_RELOCATION=PASS',flush=True)
+              outside_before = snap(outside)
+              need(outside_before==outside_initial,'CW_OUTSIDE_PREFLIGHT_CHANGED')
+              childenv = env(win,cmd,ps,outside)
+              bat = b/BAT
+              need(not any(c in str(bat) for c in '%!&^<>|"\r\n'), 'CW_CMD_PATH')
+              command = f'"{cmd}" /d /s /c ""{bat}" -WhatIf"'
+              allowed_dirs = DIRS | {'localappdata/Microsoft','localappdata/Microsoft/Windows','localappdata/Microsoft/Windows/PowerShell'}
+              cases = [('package_busy',0),('package_released',None),('browser_busy',1),('browser_released',None)]
+              for label, index in cases:
+                  before = snap(b)
+                  h = exclusive(b/LOCKS[index]) if index is not None else None
+                  try:
+                      print('CW_BAT_START='+label,flush=True)
+                      r = subprocess.run(command,executable=str(cmd),cwd=outside/'cwd',env=childenv,stdin=subprocess.DEVNULL,capture_output=True,timeout=40)
+                      idle(j)
+                  finally:
+                      if h is not None: close(h)
+                  need(not r.stderr and len(r.stdout)<=65536,'CW_NATIVE_STDERR_OR_BOUND')
+                  text = r.stdout.decode('utf-8','strict'); lines = text.splitlines()
+                  if index is not None:
+                      msg = ('[安全终止] Codex 便携包正在运行，或无法安全创建包级锁文件；未清理任何文件。' if index==0 else '[安全终止] 浏览器正在运行，或浏览器状态锁/清理助手不安全；未清理任何文件。')
+                      need(r.returncode==2 and lines==[msg],'CW_BUSY_CONTRACT')
+                  else:
+                      required = ['包目录：'+str(b),'  Skills  ：保留','  work    ：保留','  Plugins ：保留','将清理以下内容：','[预览模式] 未删除任何文件。']
+                      need(r.returncode==0 and all(lines.count(x)==1 for x in required) and lines[-1]==required[-1] and [lines.index(x) for x in required]==sorted(lines.index(x) for x in required),'CW_PREVIEW_REPORT')
+                      need(all(any(re.match(r'^  '+d+r'\s+[1-9]\d* 项\s+',x) for x in lines) for d in ('logs','cache')), 'CW_NONEMPTY_PLAN')
+                  after = snap(b)
+                  need(all(k in after and after[k]==v for k,v in before.items() if k!=PSCACHE), 'CW_EXISTING_DATA_CHANGED')
+                  need(snap(outside)==outside_before and not a.exists(), 'CW_OUTSIDE_OR_OLD_ROOT_CHANGED')
+                  need(PSCACHE not in after or after[PSCACHE] is not None,'CW_PS_CACHE_TYPE')
+                  if index is None: need(all(d in after and after[d] is None for d in DIRS),'CW_RUNTIME_DIRS')
+                  added = sorted(after.keys()-before.keys())
+                  need(all((after[k] is None and k in allowed_dirs) or (k=='home/plugins/.keep' and after[k]==hashlib.sha256(b'').hexdigest()) or k==PSCACHE for k in added),'CW_UNEXPECTED_INITIALIZATION')
+                  for name in LOCKS: close(exclusive(b/name))
+                  record = {'case':label,'rc':r.returncode,'stdout_bytes':len(r.stdout),'stderr_bytes':len(r.stderr),'stdout_sha256':hashlib.sha256(r.stdout).hexdigest(),'stdout_hex':r.stdout.hex(),'report':lines,'added':added,'ps_cache_changed':before.get(PSCACHE)!=after.get(PSCACHE)}
+                  print('CW_CASE='+json.dumps(record,ensure_ascii=True),flush=True)
+              need(verified(b/'codex.exe') and all(digest(b/name)==v for name,v in identities.items()),'CW_FINAL_SOURCE')
+              lfs_gate(o); need(inventory(source)==source_before and not any(storage.iterdir()),'CW_FINAL_LOCAL_BOUNDARY')
+              idle(j)
+              print('CW_REAL_BAT_GATE=PASS',flush=True)
+              # Keep job handle until worker exit.
+              _ = j
+
+          def main(scope, repo, head, gitexe):
+              scope, repo = plain(scope), plain(repo)
+              need(scope.parent==plain(os.environ['RUNNER_TEMP']) and scope.name.startswith('cache-whatif-') and set(scope.iterdir())=={Path(__file__).absolute()},'CW_OWNED_SCOPE')
+              for sub in ('harness','outside'):
+                  for d in ('cwd','home','temp','appdata','localappdata','programdata','cache'):
+                      put(scope/sub/d/'sentinel',b'owned synthetic sentinel')
+              win,cmd,ps=system(); startup=subprocess.STARTUPINFO(); startup.dwFlags|=subprocess.STARTF_USESHOWWINDOW; startup.wShowWindow=0
+              try:
+                  r=subprocess.run([sys.executable,'-I','-S','-B',str(Path(__file__).absolute()),'--worker',str(scope),str(repo),head,gitexe],cwd=scope,env=env(win,cmd,ps,scope/'harness'),stdin=subprocess.DEVNULL,capture_output=True,startupinfo=startup,creationflags=subprocess.CREATE_NEW_CONSOLE,timeout=620)
+              except subprocess.TimeoutExpired as exc:
+                  started=any(x.startswith(b'CW_BAT_START=') for x in (exc.stdout or b'').splitlines())
+                  print('CW_BAT_STATUS='+('INCONCLUSIVE' if started else 'NOT_RUN'),flush=True)
+                  raise RuntimeError('CW_WORKER_TIMEOUT') from None
+              # Worker records are ASCII; do not re-emit arbitrary stderr or double CRLF.
+              lines=r.stdout.decode('ascii').splitlines()
+              for line in lines:
+                  if line.startswith(('CW_','OG_','LS_')): print(line,flush=True)
+              if r.returncode or r.stderr:
+                  labels=re.findall(rb'(?m)^RuntimeError: ((?:CW|OG|LS)_[A-Z0-9_]+)\r?$',r.stderr)
+                  print('CW_BAT_STATUS='+('FAILED_OR_INCONCLUSIVE' if any(x.startswith('CW_BAT_START=') for x in lines) else 'NOT_RUN'),flush=True)
+                  raise RuntimeError(labels[-1].decode() if labels else 'CW_WORKER_FAILED_OR_TIMEOUT')
+              need([json.loads(x[8:])['case'] for x in lines if x.startswith('CW_CASE=')]==['package_busy','package_released','browser_busy','browser_released'] and lines[-1]=='CW_REAL_BAT_GATE=PASS','CW_OUTPUT_GATE')
+              snap(scope); shutil.rmtree(scope); need(not scope.exists(),'CW_OWNED_CLEANUP')
+              print('CW_OWNED_CLEANUP=PASS',flush=True); print('CW_OUTPUT_GATE=PASS',flush=True)
+              print('CW_BAT_STATUS=PASS',flush=True)
+
+          if __name__=='__main__':
+              need(os.name=='nt' and struct.calcsize('P')==8 and sys.flags.isolated and sys.dont_write_bytecode and hasattr(hashlib,'file_digest'),'CW_WINDOWS_PYTHON_REQUIRED')
+              if len(sys.argv)==6 and sys.argv[1]=='--worker': worker(Path(sys.argv[2]),Path(sys.argv[3]),sys.argv[4],sys.argv[5])
+              else:
+                  need(len(sys.argv)==5,'CW_ARGS'); main(Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3],sys.argv[4])
+          '@
+          [IO.File]::WriteAllText($script, $probe, [Text.UTF8Encoding]::new($false))
+          $git = (Get-Command git.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          & $python -I -S -B $script $owned $env:GITHUB_WORKSPACE $env:GITHUB_SHA $git
+          if ($LASTEXITCODE -ne 0) { throw 'CW_FAILED_OR_INCONCLUSIVE; owned scope retained when possible' }
