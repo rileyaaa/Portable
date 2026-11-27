@@ -1,0 +1,370 @@
+name: Windows real isolation BAT consumer (one-time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/windows-isolation-bat-once.yml
+permissions:
+  contents: read
+jobs:
+  isolation-bat:
+    runs-on: windows-2025
+    timeout-minutes: 5
+    env:
+      ISO_BASE: c15791938d23a56cc338c92a3b8a0663c2faba09
+      ISO_PATH: .github/workflows/windows-isolation-bat-once.yml
+    steps:
+      - name: Verify one-time trigger
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $e = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          if ($env:GITHUB_REPOSITORY -cne 'rileyaaa/Portable' -or
+              $env:GITHUB_REF -cne 'refs/heads/dev/stable-tool-refresh' -or
+              $env:GITHUB_EVENT_NAME -cne 'push' -or $env:GITHUB_RUN_ATTEMPT -cne '1' -or
+              $env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64' -or
+              $e.ref -cne $env:GITHUB_REF -or $e.before -cne $env:ISO_BASE -or
+              $e.after -cne $env:GITHUB_SHA -or $e.head_commit.id -cne $env:GITHUB_SHA -or
+              $e.created -ne $false -or $e.deleted -ne $false -or $e.forced -ne $false) {
+            throw 'ISO_TRIGGER_INCONCLUSIVE'
+          }
+          Write-Output 'ISO_TRIGGER=PASS'
+      - name: Checkout two fixed source files only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+          lfs: false
+          submodules: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /检查隔离.bat
+            /检查隔离.ps1
+      - name: Real BAT and original isolation report
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = (Get-Command python -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          $owned = Join-Path $env:RUNNER_TEMP ('isolation-bat-' + [Guid]::NewGuid().ToString('N'))
+          $cursor = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          while ($cursor) {
+            $item = Get-Item -LiteralPath $cursor -Force
+            if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'ISO_UNSAFE_PARENT' }
+            $cursor = [IO.Path]::GetDirectoryName($cursor.TrimEnd('\'))
+          }
+          $null = New-Item -ItemType Directory -Path $owned -ErrorAction Stop
+          $script = Join-Path $owned 'probe.py'
+          $probe = @'
+          import ctypes as C, hashlib, json, os, queue, re, shutil, stat, struct, subprocess, sys, threading, time
+          from ctypes import wintypes as W
+          from pathlib import Path
+          import msvcrt
+
+          BAT = '\u68c0\u67e5\u9694\u79bb.bat'
+          PS1 = '\u68c0\u67e5\u9694\u79bb.ps1'
+          PINS = {
+              BAT: (6762, 'a509842a82340f6ca33a3555d40024f4b41e5ec8', '6802d85cb0e9d03acd6288846ead8ae6c0ca17d7b2e8384d1efd3dbd606edb34'),
+              PS1: (14294, '4e1a15fecfc15a08ca909280597c726b8908da9c', 'aaa10e973a6ad2f7b6858f13ec54eafc6fad8a4259a35dc05e5b34cec997b11f'),
+          }
+          DIRS = ('home','logs','sqlite','login_json','tmp','work','cache','appdata','localappdata','programdata','home-runtime','tool')
+          MARKET = 'home/.agents/plugins/marketplace.json'
+          MANIFEST = 'home/plugins/normal-plugin/.codex-plugin/plugin.json'
+          PROMPT = '隔离检查需要读取真实用户目录和 HKCU 注册表才能扫描包外残留。是否仅本次允许只读扫描宿主？(y/N)'
+          HEADER = '当前便携包目录： '
+          SKIP = '宿主残留检查：未执行。'
+          CLEAN = '包内隔离检查通过；宿主未扫描。'
+          WARNING = '包内检查完成，但有警告；宿主未扫描。'
+          JUNK = {'openpyxl.audit': b'synthetic openpyxl', 'tmp/login-json-probe-audit.json': b'{}'}
+          K = C.WinDLL('kernel32', use_last_error=True)
+
+          def need(ok, label):
+              if not ok:
+                  raise RuntimeError(label)
+
+          def api(name, result, *args):
+              f = getattr(K, name)
+              f.restype, f.argtypes = result, args
+              return f
+
+          def sha(raw):
+              return hashlib.sha256(raw).hexdigest()
+
+          def source_ok(name, raw):
+              size, blob, digest = PINS[name]
+              return (len(raw) == size and sha(raw) == digest and
+                      hashlib.sha1(f'blob {size}\0'.encode('ascii') + raw).hexdigest() == blob)
+
+          def plain_dir(path):
+              p = Path(path).absolute()
+              need(re.fullmatch(r'[A-Za-z]:', p.drive) and '..' not in p.parts and ':' not in str(p)[2:], 'ISO_LOCAL_PATH')
+              for item in (*reversed(p.parents), p):
+                  st = item.lstat()
+                  need(stat.S_ISDIR(st.st_mode) and not getattr(st, 'st_file_attributes', 0) & 0x400, 'ISO_UNSAFE_DIRECTORY')
+              return p
+
+          def snapshot(root):
+              out, pending = {}, [plain_dir(root)]
+              while pending:
+                  for p in pending.pop().iterdir():
+                      st = p.lstat()
+                      need(not stat.S_ISLNK(st.st_mode) and not getattr(st, 'st_file_attributes', 0) & 0x400, 'ISO_UNSAFE_TREE')
+                      rel = p.relative_to(root).as_posix()
+                      if stat.S_ISDIR(st.st_mode):
+                          out[rel] = None
+                          pending.append(p)
+                      else:
+                          need(stat.S_ISREG(st.st_mode) and st.st_nlink == 1, 'ISO_UNSAFE_FILE')
+                          out[rel] = sha(p.read_bytes())
+              return out
+
+          def put(path, data):
+              path.parent.mkdir(parents=True, exist_ok=True)
+              with path.open('xb') as f:
+                  f.write(data)
+
+          def system():
+              buf = C.create_unicode_buffer(32768)
+              n = api('GetSystemWindowsDirectoryW', W.UINT, W.LPWSTR, W.UINT)(buf, len(buf))
+              need(0 < n < len(buf), 'ISO_SYSTEM_DIRECTORY')
+              win = Path(buf.value)
+              cmd, ps = win / 'System32/cmd.exe', win / 'System32/WindowsPowerShell/v1.0/powershell.exe'
+              need(cmd.is_file() and ps.is_file(), 'ISO_NATIVE_SHELLS')
+              return win, cmd, ps
+
+          def child_env(win, cmd, ps, base):
+              env = {'SystemRoot': str(win), 'WINDIR': str(win), 'SystemDrive': win.drive,
+                     'COMSPEC': str(cmd), 'PATH': str(cmd.parent), 'PATHEXT': '.COM;.EXE;.BAT;.CMD',
+                     'PSModulePath': str(ps.parent / 'Modules'), 'POWERSHELL_TELEMETRY_OPTOUT': '1'}
+              groups = {'home': ('HOME','USERPROFILE'), 'temp': ('TEMP','TMP','TMPDIR'),
+                        'appdata': ('APPDATA','XDG_CONFIG_HOME'), 'localappdata': ('LOCALAPPDATA','XDG_DATA_HOME'),
+                        'programdata': ('PROGRAMDATA','ALLUSERSPROFILE','PUBLIC'),
+                        'cache': ('XDG_CACHE_HOME','PIP_CACHE_DIR','NPM_CONFIG_CACHE','PSModuleAnalysisCachePath')}
+              for folder, names in groups.items():
+                  for name in names:
+                      env[name] = str(base / folder / 'module-cache' if name == 'PSModuleAnalysisCachePath' else base / folder)
+              env.update(HOMEDRIVE=base.drive, HOMEPATH=str(base / 'home')[len(base.drive):],
+                         CODEX_HOME=str(base / 'home' / 'codex'), CODEX_SQLITE_HOME=str(base / 'cache' / 'sqlite'))
+              return env
+
+          # Private harness job, not the product supervisor. Closing the sole
+          # handle on worker exit kills any surviving owned descendants.
+          class Basic(C.Structure):
+              _fields_ = [('per_process', C.c_longlong), ('per_job', C.c_longlong), ('flags', W.DWORD),
+                          ('min_ws', C.c_size_t), ('max_ws', C.c_size_t), ('active_limit', W.DWORD),
+                          ('affinity', C.c_size_t), ('priority', W.DWORD), ('schedule', W.DWORD)]
+          class Limits(C.Structure):
+              _fields_ = [('basic', Basic), ('io', C.c_ulonglong * 6), ('memory', C.c_size_t * 4)]
+          class Accounting(C.Structure):
+              _fields_ = [('times', C.c_longlong * 4), ('faults', W.DWORD), ('total', W.DWORD),
+                          ('active', W.DWORD), ('terminated', W.DWORD)]
+
+          def private_job():
+              job = api('CreateJobObjectW', W.HANDLE, C.c_void_p, W.LPCWSTR)(None, None)
+              need(job, 'ISO_JOB_CREATE')
+              limit = Limits()
+              limit.basic.flags = 0x2000
+              need(api('SetInformationJobObject', W.BOOL, W.HANDLE, C.c_int, C.c_void_p, W.DWORD)(job, 9, C.byref(limit), C.sizeof(limit)), 'ISO_JOB_LIMIT')
+              current = api('GetCurrentProcess', W.HANDLE)()
+              need(api('AssignProcessToJobObject', W.BOOL, W.HANDLE, W.HANDLE)(job, current), 'ISO_JOB_ASSIGN')
+              return job
+
+          def idle(job):
+              info = Accounting()
+              need(api('QueryInformationJobObject', W.BOOL, W.HANDLE, C.c_int, C.c_void_p, W.DWORD, C.c_void_p)(job, 1, C.byref(info), C.sizeof(info), None)
+                   and info.active == 1, 'ISO_DESCENDANTS_NOT_FINISHED')
+
+          def private_console():
+              ids = (W.DWORD * 4)()
+              need(api('GetConsoleProcessList', W.DWORD, C.POINTER(W.DWORD), W.DWORD)(ids, len(ids)) == 1 and ids[0] == os.getpid(), 'ISO_PRIVATE_CONSOLE_REQUIRED')
+              need(api('SetConsoleCP', W.BOOL, W.UINT)(65001) and api('SetConsoleOutputCP', W.BOOL, W.UINT)(65001)
+                   and api('GetConsoleCP', W.UINT)() == 65001 and api('GetConsoleOutputCP', W.UINT)() == 65001, 'ISO_PRIVATE_UTF8_CONSOLE')
+
+          def invoke(cmd, root, outside, env, job):
+              bat = root / BAT
+              need(not any(c in str(bat) for c in '%!&^<>|"\r\n'), 'ISO_CMD_PATH')
+              command = f'"{cmd}" /d /s /c ""{bat}" -PromptHostScan"'
+              rd, wr = os.pipe()
+              msvcrt.setmode(rd, os.O_BINARY); msvcrt.setmode(wr, os.O_BINARY)
+              p = subprocess.Popen(command, executable=str(cmd), cwd=outside / 'cwd', env=env,
+                                   stdin=rd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+              events = queue.Queue()
+              def pump(name, stream):
+                  try:
+                      while True:
+                          chunk = stream.read1(4096)
+                          if not chunk:
+                              break
+                          events.put((name, chunk))
+                  except Exception:
+                      events.put(('error', None))
+                  finally:
+                      events.put((name, None))
+              for name, stream in (('out', p.stdout), ('err', p.stderr)):
+                  threading.Thread(target=pump, args=(name, stream), daemon=True).start()
+              data, ended, sent = {'out': bytearray(), 'err': bytearray()}, set(), False
+              deadline = time.monotonic() + 35
+              while len(ended) != 2 or p.poll() is None:
+                  need(time.monotonic() < deadline, 'ISO_INTERACTION_TIMEOUT')
+                  try:
+                      name, chunk = events.get(timeout=.1)
+                  except queue.Empty:
+                      continue
+                  need(name != 'error', 'ISO_PIPE_READ_FAILED')
+                  if chunk is None:
+                      ended.add(name)
+                      need(name != 'out' or sent, 'ISO_EOF_BEFORE_PROMPT')
+                      continue
+                  data[name] += chunk
+                  need(sum(map(len, data.values())) <= 65536, 'ISO_OUTPUT_LIMIT')
+                  if not sent and PROMPT.encode('utf-8') in data['out']:
+                      need(p.poll() is None and HEADER.encode('utf-8') not in data['out'] and not data['err'], 'ISO_PROMPT_NOT_WAITING')
+                      need(os.write(wr, b'N\r\n') == 3, 'ISO_N_WRITE')
+                      sent = True
+              # Keep both pipe ends open until CMD and all descendants finish.
+              idle(job)
+              available = W.DWORD()
+              need(api('PeekNamedPipe', W.BOOL, W.HANDLE, C.c_void_p, W.DWORD, C.c_void_p, C.POINTER(W.DWORD), C.c_void_p)
+                   (msvcrt.get_osfhandle(rd), None, 0, None, C.byref(available), None)
+                   and sent and available.value == 0, 'ISO_N_NOT_CONSUMED')
+              os.close(wr); os.close(rd)
+              p.stdout.close(); p.stderr.close()
+              need(p.returncode == 0 and not data['err'], 'ISO_NATIVE_EXIT_OR_STDERR')
+              raw = bytes(data['out'])
+              text = raw.decode('utf-8', 'strict')
+              need(text.count(PROMPT) == 1 and text.count(HEADER) == 1, 'ISO_PROMPT_OR_REPORT_MISSING')
+              prefix, report = text.split(HEADER, 1)
+              need(prefix.strip() in (PROMPT, PROMPT + ':', PROMPT + ': N', PROMPT + ':\r\nN', PROMPT + ':\nN'), 'ISO_UNEXPECTED_PROMPT_TRANSCRIPT')
+              return raw, (HEADER + report).splitlines()
+
+          def expected(root, warning):
+              lines = [HEADER + str(root), '', '包根安全检查：', '  OK  入口及包根祖先不含 hardlink/junction/symlink/reparse point', '', '包内目录检查：']
+              lines += ['  OK  ' + str(root / d) for d in DIRS]
+              lines += ['', '包内临时残留检查：',
+                        '  发现包根旧版 openpyxl 临时残留：1 个' if warning else '  未发现包根旧版 openpyxl 临时残留',
+                        '  发现 tmp 内账号检测临时残留：1 个' if warning else '  未发现 tmp 内账号检测临时残留', '', '插件隔离检查（包内）：',
+                        '  OK  包内插件路径：' + str(root / 'home/plugins'),
+                        '  OK  包内插件路径：' + str(root / 'home/.agents/plugins'),
+                        '  OK  Marketplace JSON 可解析', '  OK  插件清单：' + str(root / MANIFEST), '', SKIP,
+                        '  原因：读取真实用户目录/注册表属于包外只读操作，尚未取得本次授权。', '  需要时运行：检查隔离.bat（会询问）或 检查隔离.ps1 -ScanHostResidue', '', WARNING if warning else CLEAN, '注意：Windows 事件日志、杀毒记录、DNS/系统网络缓存等不属于应用目录，便携脚本无法完全阻止。']
+              return lines
+
+          def worker(scope):
+              private_console()
+              job = private_job()
+              win, cmd, ps = system()
+              root, outside, harness = scope / 'Portable \u4e2d\u6587 \u7a7a\u683c', scope / 'outside', scope / 'harness'
+              e = child_env(win, cmd, ps, harness)
+              check = subprocess.run([str(ps), '-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
+                  "if (-not [Environment]::Is64BitProcess -or $PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { exit 2 }; [Console]::WriteLine($PSVersionTable.PSVersion.ToString())"],
+                  cwd=harness, env=e, stdin=subprocess.DEVNULL, capture_output=True, timeout=15)
+              idle(job)
+              version = check.stdout.decode('ascii').strip()
+              need(check.returncode == 0 and not check.stderr and re.fullmatch(r'5\.1\.\d+\.\d+', version), 'ISO_PS51_REQUIRED')
+              print('ISO_PS51=' + version, flush=True)
+              env = child_env(win, cmd, ps, outside)
+              outside_before = snapshot(outside)
+              for warning in (False, True):
+                  for name in PINS:
+                      need(source_ok(name, (root / name).read_bytes()), 'ISO_SOURCE_CHANGED')
+                  if warning:
+                      for rel, raw in JUNK.items():
+                          put(root / rel, raw)
+                  before = snapshot(root)
+                  raw, report = invoke(cmd, root, outside, env, job)
+                  need(report == expected(root, warning), 'ISO_REPORT_MISMATCH')
+                  after = snapshot(root)
+                  def ps_cache(k):
+                      return k.startswith('localappdata/Microsoft/Windows/PowerShell/')
+                  need(all(k in after and after[k] == v for k, v in before.items() if not (v is not None and ps_cache(k))), 'ISO_EXISTING_DATA_CHANGED')
+                  need(snapshot(outside) == outside_before and not (scope / 'Portable initial').exists(), 'ISO_OUTSIDE_OR_OLD_ROOT_CHANGED')
+                  need(all((root / d).is_dir() for d in DIRS), 'ISO_RUNTIME_DIR_MISSING')
+                  allowed_dirs = set(DIRS) | {'localappdata/Microsoft','localappdata/Microsoft/Windows','localappdata/Microsoft/Windows/PowerShell','cache/pip','cache/npm','cache/npm-prefix','cache/python-userbase','cache/pycache'}
+                  need(all(k in allowed_dirs or ps_cache(k) for k in after.keys() - before.keys() if after[k] is None), 'ISO_UNEXPECTED_NEW_DIRECTORY')
+                  added_files = sorted(k for k in after.keys() - before.keys() if after[k] is not None)
+                  need(all(ps_cache(k) for k in added_files), 'ISO_UNEXPECTED_NEW_FILE')
+                  cache_delta = sorted(k for k in before.keys() | after.keys() if ps_cache(k) and before.get(k) != after.get(k))
+                  # Log only the exact verified synthetic report, never an unexpected transcript.
+                  record = {'case': 'warning' if warning else 'clean', 'rc': 0, 'stderr_bytes': 0,
+                            'stdin_hex': '4e0d0a', 'stdin_remaining': 0, 'stdout_bytes': len(raw), 'stdout_sha256': sha(raw),
+                            'stdout_hex': raw.hex(), 'report': report, 'package_ps_cache_delta': cache_delta}
+                  print('ISO_CASE=' + json.dumps(record, ensure_ascii=True), flush=True)
+              idle(job)
+              print('ISO_WORKER_GATE=PASS', flush=True)
+              # Do not close the job while the worker itself is a member.
+
+          def main(scope):
+              scope = plain_dir(scope)
+              need(scope.parent == plain_dir(os.environ['RUNNER_TEMP']) and scope.name.startswith('isolation-bat-')
+                   and set(scope.iterdir()) == {Path(__file__).absolute()}, 'ISO_OWNED_SCOPE')
+              base, head = os.environ['ISO_BASE'], os.environ['GITHUB_SHA']
+              for sub in ('outside','harness'):
+                  for folder in ('cwd','temp','home','appdata','localappdata','programdata','cache'):
+                      put(scope / sub / folder / 'sentinel', b'owned synthetic sentinel')
+              win, cmd, ps = system()
+              gitexe = shutil.which('git.exe')
+              need(gitexe and Path(gitexe).is_absolute(), 'ISO_LOCAL_GIT_REQUIRED')
+              git_env = dict(child_env(win,cmd,ps,scope/'harness'), GIT_NO_LAZY_FETCH='1', GIT_ALLOW_PROTOCOL='', GIT_TERMINAL_PROMPT='0',
+                             GIT_NO_REPLACE_OBJECTS='1', GIT_OPTIONAL_LOCKS='0', GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull)
+              def git(*args):
+                  return subprocess.check_output([gitexe, *args], env=git_env, timeout=30)
+              need(git('rev-list','--parents','-n','1','HEAD').decode('ascii').split() == [head, base], 'ISO_PARENT')
+              need(git('rev-parse',base+'^{tree}').decode('ascii').strip() == 'efa66809452cae18a8745601bd7dfd0402f867e9', 'ISO_BASE_TREE')
+              need(git('diff-tree','--no-commit-id','--name-status','--no-renames','-r',base,head).decode('ascii').splitlines()
+                   == ['A\t' + os.environ['ISO_PATH']], 'ISO_SINGLE_FILE_DELTA')
+              a, b = scope / 'Portable initial', scope / 'Portable \u4e2d\u6587 \u7a7a\u683c'
+              a.mkdir()
+              for name, (_, blob, _) in PINS.items():
+                  need(git('rev-parse', base + ':' + name).decode('ascii').strip() == blob, 'ISO_SOURCE_TREE')
+                  raw = git('cat-file','blob',blob)
+                  need(source_ok(name, raw), 'ISO_SOURCE_BYTES')
+                  put(a / name, raw)
+              for d in ('logs','work','tool'):
+                  (a / d).mkdir()
+              put(a / MARKET, b'{}'); put(a / MANIFEST, b'{}')
+              initial = snapshot(a)
+              a.rename(b)
+              need(not a.exists() and snapshot(b) == initial, 'ISO_RELOCATION')
+              startup = subprocess.STARTUPINFO()
+              startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+              startup.wShowWindow = 0
+              try:
+                  r = subprocess.run([sys.executable,'-I','-S','-B',str(Path(__file__).absolute()),str(scope),'worker'],
+                                     cwd=scope, env=child_env(win,cmd,ps,scope/'harness'), stdin=subprocess.DEVNULL,
+                                     capture_output=True, timeout=105, startupinfo=startup, creationflags=subprocess.CREATE_NEW_CONSOLE)
+              except subprocess.TimeoutExpired:
+                  raise RuntimeError('ISO_WORKER_TIMEOUT') from None
+              if r.returncode or r.stderr:
+                  labels = re.findall(rb'(?m)^RuntimeError: (ISO_[A-Z0-9_]+)\r?$', r.stderr)
+                  raise RuntimeError(labels[-1].decode('ascii') if labels else 'ISO_WORKER_FAILED_OR_INCONCLUSIVE')
+              text = r.stdout.decode('ascii')
+              normalized = text.replace('\r\n','\n')
+              need(normalized.endswith('\n') and '\r' not in normalized and text in (normalized, normalized.replace('\n','\r\n')), 'ISO_WORKER_OUTPUT_FORMAT')
+              lines = normalized[:-1].split('\n')
+              need(len(lines) == 4 and re.fullmatch(r'ISO_PS51=5\.1\.\d+\.\d+',lines[0]) and lines[3] == 'ISO_WORKER_GATE=PASS', 'ISO_WORKER_OUTPUT_GATE')
+              for line, case in zip(lines[1:3], ('clean','warning')):
+                  need(line.startswith('ISO_CASE=') and json.loads(line[len('ISO_CASE='):])['case'] == case, 'ISO_CASE_ORDER')
+              for name in PINS:
+                  need(source_ok(name,(b/name).read_bytes()), 'ISO_FINAL_SOURCE')
+              snapshot(scope)
+              shutil.rmtree(scope)
+              need(not scope.exists(), 'ISO_OWNED_CLEANUP')
+              for line in lines:
+                  print(line, flush=True)
+              for name, (size, blob, digest) in PINS.items():
+                  print('ISO_SOURCE=' + json.dumps({'file': name, 'bytes': size, 'blob': blob, 'sha256': digest}, ensure_ascii=True), flush=True)
+              print('ISO_SOURCE_RELOCATION=PASS', flush=True)
+              print('ISO_OWNED_CLEANUP=PASS', flush=True)
+              print('ISO_OUTPUT_GATE=PASS', flush=True)
+
+          if __name__ == '__main__':
+              need(os.name == 'nt' and struct.calcsize('P') == 8 and sys.flags.isolated and sys.dont_write_bytecode, 'ISO_WINDOWS_X64_REQUIRED')
+              if len(sys.argv) == 3 and sys.argv[2] == 'worker':
+                  worker(Path(sys.argv[1]))
+              else:
+                  need(len(sys.argv) == 2, 'ISO_ARGS')
+                  main(Path(sys.argv[1]))
+          '@
+          [IO.File]::WriteAllText($script, $probe, [Text.UTF8Encoding]::new($false))
+          & $python -I -S -B $script $owned
+          if ($LASTEXITCODE -ne 0) { throw 'ISO_FAILED_OR_INCONCLUSIVE; owned fixture retained when possible' }
