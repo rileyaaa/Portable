@@ -1,0 +1,260 @@
+name: Windows console-script exit contract (one-time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/windows-python-cli-exit-once.yml
+permissions:
+  contents: read
+jobs:
+  cli-exit:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    env:
+      CLI_BASE: 1aed4df48db4a30ada8e2d8b256dba9b7b0d6746
+      CLI_PATH: .github/workflows/windows-python-cli-exit-once.yml
+      GIT_TERMINAL_PROMPT: '0'
+    steps:
+      - name: Verify one-time trigger
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $e = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          if ($env:GITHUB_REPOSITORY -cne 'rileyaaa/Portable' -or
+              $env:GITHUB_REF -cne 'refs/heads/dev/stable-tool-refresh' -or
+              $env:GITHUB_EVENT_NAME -cne 'push' -or $env:GITHUB_RUN_ATTEMPT -cne '1' -or
+              $env:RUNNER_OS -cne 'Windows' -or $env:RUNNER_ARCH -cne 'X64' -or
+              $e.ref -cne $env:GITHUB_REF -or $e.before -cne $env:CLI_BASE -or
+              $e.after -cne $env:GITHUB_SHA -or $e.head_commit.id -cne $env:GITHUB_SHA -or
+              $e.created -ne $false -or $e.deleted -ne $false -or $e.forced -ne $false) {
+            throw 'Unexpected console-script trigger'
+          }
+          Write-Output 'CLI_TRIGGER=PASS'
+      - name: Checkout fixed tracked files only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+          lfs: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/workflows/windows-python-cli-exit-once.yml
+            /tool/bin/idna.cmd
+            /tool/bin/markdown-it.cmd
+            /tool/bin/portable-python-cli.py
+            /tool/python/*.dll
+            /tool/python/*.pyd
+            /tool/python/python.exe
+            /tool/python/python314._pth
+            /tool/python/python314.zip
+            /tool/python/Lib/site-packages/idna/
+            /tool/python/Lib/site-packages/idna-3.18.dist-info/
+      - name: Actual CMD and bundled Python exit propagation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $probe = @'
+          import ctypes, hashlib, os, stat, struct, subprocess, sys, tempfile
+          from pathlib import Path
+
+          def need(ok, label):
+              if not ok:
+                  raise RuntimeError(label)
+          def mark(label):
+              print(label + '=PASS', flush=True)
+          need(os.name == 'nt' and struct.calcsize('P') == 8, 'CLI_WINDOWS')
+          base, head = os.environ['CLI_BASE'], os.environ['GITHUB_SHA']
+          os.environ['GIT_NO_LAZY_FETCH'] = '1'
+          os.environ['GIT_ALLOW_PROTOCOL'] = 'file'
+          def git(*args, input=None):
+              return subprocess.check_output(['git', *args], input=input, timeout=120)
+          need(git('rev-list', '--parents', '-n', '1', 'HEAD').decode().split() == [head, base], 'CLI_PARENT')
+          need(git('diff-tree', '--no-commit-id', '--name-status', '--no-renames', '-r', base, head).decode().splitlines()
+               == ['A\t' + os.environ['CLI_PATH']], 'CLI_FILE_SET')
+          pins = {
+              'tool/bin/idna.cmd': '05718cd52f4de5643ee9bb9d7a7e949c50bdd335',
+              'tool/bin/markdown-it.cmd': '89f6f48169cf0cb286ddcf0715871946b5c289ae',
+              'tool/bin/portable-python-cli.py': '930fa202ce20b49baa1aeb50aca09d718690cf3b',
+              'tool/python/python.exe': 'de2e56b051d9da399e4ffa6a76b7c3c4144979e5',
+              'tool/python/python314.dll': 'e399338eed921178149f9da3bcf084fa832f4b48',
+              'tool/python/python314.zip': '6a0ea17b6bcd130a06507345b246f8d12d61d445',
+              'tool/python/python314._pth': '57abc30eddc5801bb16d229846fd7b071bcd3771',
+          }
+          paths = dict(pins)
+          def add_tree(folder, tree=None):
+              if tree:
+                  need(git('rev-parse', base + ':' + folder).decode().strip() == tree, 'CLI_DEP_TREE')
+              for entry in git('ls-tree', '-rz' if tree else '-z', base + ':' + folder).split(b'\0'):
+                  if not entry:
+                      continue
+                  meta, name = entry.decode('ascii').split('\t')
+                  mode, kind, sha = meta.split()
+                  if not tree and not name.endswith(('.dll', '.pyd')):
+                      continue
+                  need(kind == 'blob' and mode in ('100644', '100755'), 'CLI_SOURCE_TYPE')
+                  path = folder + '/' + name
+                  need(path not in paths or paths[path] == sha, 'CLI_PIN')
+                  paths[path] = sha
+          add_tree('tool/python')
+          sp = 'tool/python/Lib/site-packages'
+          add_tree(sp + '/idna', '1f0905431c83f32f791e27272ac87695b1524016')
+          add_tree(sp + '/idna-3.18.dist-info', '69f51a268f098a56cce4871bf8a7bbc4709b5c57')
+          files = sorted(paths)
+          data = git('cat-file', '--batch', input=''.join(base + ':' + p + '\n' for p in files).encode('ascii'))
+          with tempfile.TemporaryDirectory(prefix='.cli-exit-', dir=Path.cwd()) as tmp:
+              owned = Path(tmp).absolute()
+              root = owned / 'Portable \u4fbf\u643a \u8def\u5f84'
+              root.mkdir()
+              pos = 0
+              for name in files:
+                  end = data.index(b'\n', pos)
+                  sha, kind, size = data[pos:end].decode('ascii').split()
+                  pos = end + 1
+                  raw = data[pos:pos + int(size)]
+                  pos += int(size)
+                  need(data[pos:pos+1] == b'\n' and kind == 'blob' and sha == paths[name]
+                       and hashlib.sha1(f'blob {len(raw)}\0'.encode() + raw).hexdigest() == sha
+                       and not raw.startswith(b'version https://git-lfs.github.com/spec/v1'), 'CLI_SOURCE_BYTES')
+                  pos += 1
+                  dest = root / name
+                  dest.parent.mkdir(parents=True, exist_ok=True)
+                  dest.write_bytes(raw)
+              need(pos == len(data), 'CLI_BATCH_TRAILING')
+              del data
+              mark('CLI_SOURCE')
+              work, scratch = root / 'work', root / 'tmp'
+              state, outside = scratch / 'runner-state', owned / 'outside'
+              for folder in (work, state, outside):
+                  folder.mkdir(parents=True)
+              (outside / 'sentinel').write_bytes(b'outside unchanged')
+              native = root / 'tool/python/python.exe'
+              site = root / sp
+              fixture = site / 'portable_exit_fixture.py'
+              fixture.write_text(r'''
+          import os, struct, sys, tempfile
+          from pathlib import Path
+          def main():
+              root = Path(__file__).absolute().parents[4]
+              py = root / 'tool/python'
+              scratch = root / 'tmp'
+              assert __debug__ and os.name == 'nt' and struct.calcsize('P') == 8
+              assert sys.version_info[:2] == (3, 14) and sys.flags.isolated and sys.dont_write_bytecode
+              assert Path(sys.executable) == py / 'python.exe' and Path.cwd() == root / 'work'
+              assert all(Path(p).absolute().is_relative_to(py) for p in sys.path)
+              assert len(sys.argv) == 2 and sys.argv[0] == 'markdown-it'
+              assert all(Path(os.environ[k]) == scratch for k in ('TMPDIR', 'TEMP', 'TMP'))
+              def guard(event, args):
+                  if event.startswith('socket.') or event in ('subprocess.Popen', 'os.system', 'os.startfile', 'os.startfile/2'):
+                      raise RuntimeError('fixture external operation')
+                  if event == 'open' and isinstance(args[0], (str, bytes)) and args[2] & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND):
+                      if not Path(os.fsdecode(args[0])).absolute().is_relative_to(root):
+                          raise RuntimeError('fixture write outside package')
+              sys.addaudithook(guard)
+              assert Path(tempfile.gettempdir()) == scratch
+              with tempfile.NamedTemporaryFile() as f:
+                  path = Path(f.name)
+                  assert path.parent == scratch and f.write(b'owned') == 5
+                  f.flush()
+                  f.seek(0)
+                  assert f.read() == b'owned'
+              assert not path.exists()
+              print('stdout: \u4fbf\u643a')
+              print('stderr: \u8def\u5f84', file=sys.stderr)
+              return {'none': None, 'zero': 0, 'seven': 7, 'true': True,
+                      'false': False, 'message': '\u4fbf\u643a \u8def\u5f84: synthetic failure'}[sys.argv[1]]
+          ''', encoding='ascii')
+              info = site / 'portable_exit_fixture-0.0.dist-info'
+              info.mkdir()
+              (info / 'METADATA').write_bytes(b'Metadata-Version: 2.1\nName: portable-exit-fixture\nVersion: 0.0\n')
+              (info / 'entry_points.txt').write_bytes(b'[console_scripts]\nmarkdown-it = portable_exit_fixture:main\n')
+              def snapshot():
+                  result = {}
+                  for p in owned.rglob('*'):
+                      st = p.lstat()
+                      need(not stat.S_ISLNK(st.st_mode) and not getattr(st, 'st_file_attributes', 0) & 0x400, 'CLI_LINK')
+                      if p == state or p.is_relative_to(state):
+                          continue
+                      if stat.S_ISDIR(st.st_mode):
+                          result[p.relative_to(owned)] = None
+                      else:
+                          need(stat.S_ISREG(st.st_mode) and st.st_nlink == 1, 'CLI_FILE_TYPE')
+                          result[p.relative_to(owned)] = hashlib.sha256(p.read_bytes()).hexdigest()
+                  return result
+              before = snapshot()
+              buf = ctypes.create_unicode_buffer(32768)
+              need(0 < ctypes.windll.kernel32.GetSystemWindowsDirectoryW(buf, len(buf)) < len(buf), 'CLI_SYSTEM_DIR')
+              win = Path(buf.value)
+              cmd = win / 'System32/cmd.exe'
+              ps = win / 'System32/WindowsPowerShell/v1.0/powershell.exe'
+              need(cmd.is_file() and ps.is_file(), 'CLI_NATIVE_SHELLS')
+              env = {'SystemRoot': str(win), 'WINDIR': str(win), 'SystemDrive': win.drive,
+                     'COMSPEC': str(cmd), 'PATH': ';'.join(map(str, (root / 'tool/bin', native.parent, cmd.parent))),
+                     'PATHEXT': '.COM;.EXE;.BAT;.CMD', 'PSModulePath': str(ps.parent / 'Modules'),
+                     'PSModuleAnalysisCachePath': str(state / 'module-cache')}
+              env.update({k: str(state) for k in ('HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA', 'ALLUSERSPROFILE', 'PUBLIC')})
+              env.update({k: str(scratch) for k in ('TMPDIR', 'TEMP', 'TMP')})
+              env.update(HOMEDRIVE=state.drive, HOMEPATH=str(state)[len(state.drive):])
+              def invoke(name, args, cwd=work):
+                  shim = root / 'tool/bin' / name
+                  need(not any(c in str(shim) for c in '%!&^<>|"'), 'CLI_CMD_PATH')
+                  command = f'"{cmd}" /d /s /c ""{shim}" {" ".join(args)}"'
+                  return subprocess.run(command, executable=str(cmd), cwd=cwd, env=env,
+                                        stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
+              def exact_lines(raw, expected):
+                  return raw in (expected, expected.replace(b'\n', b'\r\n'))
+              def unchanged():
+                  need(snapshot() == before and set(scratch.iterdir()) == {state}, 'CLI_FIXTURE_CHANGED')
+              identity = subprocess.run([str(native), '-I', '-B', '-c',
+                  'import idna,sys,importlib.metadata as m; from pathlib import Path; '
+                  'assert sys.flags.isolated and sys.version_info[:2]==(3,14); '
+                  'assert Path(idna.__file__).parent==Path(sys.executable).parent/"Lib/site-packages/idna"; '
+                  'assert m.version("idna")=="3.18"; print(sys.version.split()[0])'],
+                  cwd=work, env=env, stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
+              version = identity.stdout.decode('ascii').strip()
+              need(identity.returncode == 0 and not identity.stderr and version.startswith('3.14.'), 'CLI_RUNTIME_ID')
+              print('CLI_PYTHON=' + version, flush=True)
+              unchanged()
+              mark('CLI_NATIVE_RUNTIME')
+              r = invoke('idna.cmd', ['--encode', 'probe-good.invalid', 'bad_label.invalid'])
+              err = r.stderr.decode('utf-8').splitlines()
+              need(r.returncode == 1 and exact_lines(r.stdout, b'probe-good.invalid\n') and len(err) == 1
+                   and err[0].startswith("idna: encode failed for 'bad_label.invalid': "), 'CLI_IDNA_MIXED_EXIT')
+              unchanged()
+              mark('CLI_REAL_IDNA_MIXED')
+              out = 'stdout: \u4fbf\u643a\n'.encode('utf-8')
+              err = 'stderr: \u8def\u5f84\n'.encode('utf-8')
+              message = '\u4fbf\u643a \u8def\u5f84: synthetic failure\n'.encode('utf-8')
+              for case, rc in (('none', 0), ('zero', 0), ('seven', 7), ('true', 1), ('false', 0), ('message', 1)):
+                  r = invoke('markdown-it.cmd', [case])
+                  need(r.returncode == rc and exact_lines(r.stdout, out)
+                       and exact_lines(r.stderr, err + (message if case == 'message' else b'')), 'CLI_EXIT_' + case)
+                  unchanged()
+                  mark('CLI_RETURN_' + case.upper())
+              r = invoke('markdown-it.cmd', ['none'], cwd=outside)
+              need(r.returncode == 3 and not r.stdout and exact_lines(r.stderr,
+                   b'Safety stop: unsafe package/code/cwd; target NOT EXECUTED.\n'), 'CLI_OUTSIDE_REFUSAL')
+              unchanged()
+              mark('CLI_OUTSIDE_CWD_REFUSED')
+              mark('CLI_TEMP_AND_SOURCE_PRESERVED')
+          need(not owned.exists(), 'CLI_CLEANUP')
+          mark('CLI_CLEANUP')
+          mark('CLI_NATIVE_EXIT_CONTRACT')
+          '@
+          $output = @($probe | python -I -S -B -)
+          $rc = $LASTEXITCODE
+          $output | Write-Output
+          if ($rc -ne 0) { throw 'CLI native exit contract failed' }
+          $expected = @('CLI_SOURCE=PASS','CLI_PYTHON','CLI_NATIVE_RUNTIME=PASS','CLI_REAL_IDNA_MIXED=PASS',
+            'CLI_RETURN_NONE=PASS','CLI_RETURN_ZERO=PASS','CLI_RETURN_SEVEN=PASS','CLI_RETURN_TRUE=PASS',
+            'CLI_RETURN_FALSE=PASS','CLI_RETURN_MESSAGE=PASS','CLI_OUTSIDE_CWD_REFUSED=PASS',
+            'CLI_TEMP_AND_SOURCE_PRESERVED=PASS','CLI_CLEANUP=PASS','CLI_NATIVE_EXIT_CONTRACT=PASS')
+          if ($output.Count -ne $expected.Count -or $output[1] -cnotmatch '^CLI_PYTHON=3\.14\.\d+$') {
+            throw 'CLI incomplete output'
+          }
+          for ($i=0; $i -lt $expected.Count; $i++) {
+            if ($i -ne 1 -and $output[$i] -cne $expected[$i]) { throw 'CLI incomplete coverage' }
+          }
+          (@('CLI_TRIGGER=PASS') + $output + @('CLI_OUTPUT_GATE=PASS')) |
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+          Write-Output 'CLI_OUTPUT_GATE=PASS'
