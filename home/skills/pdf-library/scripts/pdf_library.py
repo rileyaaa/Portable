@@ -300,7 +300,14 @@ def _database(library: Path, *, create=False):
         connection.close()
         raise ValueError("Not a PDF library database")
     if not create:
-        connection.execute("PRAGMA query_only=ON")
+        try:
+            connection.execute("PRAGMA query_only=ON")
+            # Check recovery state and read the index in the same snapshot.
+            connection.execute("BEGIN")
+            _require_complete(connection)
+        except BaseException:
+            connection.close()
+            raise
         return connection
     # Establish ownership before any persistent PRAGMA. Views and other schema
     # objects also identify a nonempty, unowned database; do not adopt it.
@@ -320,8 +327,21 @@ def _database(library: Path, *, create=False):
             text_total INTEGER, text_matched INTEGER, code_total INTEGER, code_matched INTEGER,
             ocr_status TEXT, ocr_reason TEXT, images INTEGER, supplement_lines INTEGER,
             PRIMARY KEY(document,page));
+        CREATE TABLE IF NOT EXISTS pending_output(
+            singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+            document TEXT NOT NULL, previous_sha TEXT, desired_sha TEXT,
+            publication_token TEXT DEFAULT 'unknown',
+            CHECK(previous_sha IS NOT NULL OR desired_sha IS NOT NULL));
     """)
     connection.commit()
+    # Older pending rows did not record whether the output operation started.
+    # Never grant them new publication permission merely by upgrading.
+    with connection:
+        connection.execute("BEGIN IMMEDIATE")
+        if "publication_token" not in {row[1] for row in connection.execute(
+                "PRAGMA table_info(pending_output)")}:
+            connection.execute("ALTER TABLE pending_output ADD COLUMN "
+                               "publication_token TEXT DEFAULT 'unknown'")
     return connection
 
 
@@ -447,7 +467,7 @@ def _check_orphan_pages(connection) -> None:
         raise ValueError("Library index contains orphan pages")
 
 
-def _check_indexed_output(library: Path, connection, row) -> str:
+def _indexed_text(connection, row) -> str:
     document = row["document"]
     indexed = connection.execute(
         "SELECT page,markdown FROM pages WHERE document=? ORDER BY page", (document,)
@@ -455,6 +475,12 @@ def _check_indexed_output(library: Path, connection, row) -> str:
     expected = list(range(1, row["pages"] + 1))
     if [page["page"] for page in indexed] != expected:
         raise ValueError(f"Indexed page mapping differs from generated Markdown: {document}")
+    return "# " + Path(document).stem.replace("\n", " ") + "\n\n" + \
+        "\n".join(page["markdown"] for page in indexed)
+
+
+def _check_indexed_output(library: Path, connection, row) -> str:
+    document = row["document"]
     # Reconstruct the same UTF-8 text written by build, including page separators.
     # Do not normalize newlines when comparing the indexed and generated content.
     raw = checked(_output(library, document), exists=True, kind="file").read_bytes()
@@ -462,11 +488,99 @@ def _check_indexed_output(library: Path, connection, row) -> str:
         raise ValueError(f"Generated Markdown was removed/edited: {document}; "
                          "use a new library instead of overwriting user changes")
     text = raw.decode("utf-8")
-    reconstructed = "# " + Path(document).stem.replace("\n", " ") + "\n\n" + \
-        "\n".join(page["markdown"] for page in indexed)
-    if reconstructed != text:
+    if _indexed_text(connection, row) != text:
         raise ValueError(f"Indexed page content differs from generated Markdown: {document}")
     return text
+
+
+def _require_complete(connection) -> None:
+    # Existing libraries have no recovery table until the next build.
+    if (connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='pending_output'"
+        ).fetchone() and connection.execute(
+            "SELECT 1 FROM pending_output LIMIT 1"
+        ).fetchone()):
+        raise ValueError("Unfinished Markdown/index update; rerun build to recover it")
+
+
+def _recover_output(library: Path, connection) -> None:
+    # The index and intent are already committed. NULL means publication has
+    # never been authorized; a durable token means it may have happened.
+    # Only the call that commits a new token may change the previous output.
+    claim = None
+    while True:
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            pending = connection.execute("SELECT * FROM pending_output").fetchone()
+            if claim is not None and (pending is None or pending["publication_token"] != claim):
+                raise ValueError("Pending Markdown update changed during recovery; retry")
+            if pending is None:
+                return
+            document = pending["document"]
+            previous, desired = pending["previous_sha"], pending["desired_sha"]
+            if any(value is not None and not re.fullmatch(r"[0-9a-f]{64}", value)
+                   for value in (previous, desired)):
+                raise ValueError("Invalid pending Markdown identity")
+            output = checked(_output(library, document), kind="file")
+            row = connection.execute("SELECT * FROM documents WHERE document=?", (document,)).fetchone()
+            _check_orphan_pages(connection)
+            if desired is None:
+                if row is not None:
+                    raise ValueError("Pending Markdown deletion differs from index")
+            else:
+                if row is None or row["output_sha"] != desired:
+                    raise ValueError("Pending Markdown identity differs from index")
+                text = _indexed_text(connection, row)
+                if hashlib.sha256(text.encode("utf-8")).hexdigest() != desired:
+                    raise ValueError("Pending Markdown content differs from index")
+                check_markdown(text)
+            actual = sha256(output) if output.exists() else None
+            if actual != desired:
+                if actual != previous:
+                    raise ValueError("Pending Markdown was removed/edited; refusing to overwrite user changes")
+                if claim is None:
+                    if pending["publication_token"] is not None:
+                        raise ValueError(f"Pending Markdown publication is uncertain: {document}; "
+                                         "refusing to overwrite user changes; preserve this library "
+                                         "and use a new library or reconcile the pending output before retrying")
+                    claim = uuid.uuid4().hex
+                    connection.execute("UPDATE pending_output SET publication_token=? WHERE singleton=1",
+                                       (claim,))
+                    # Exiting this transaction commits the token BEFORE touching
+                    # the file. Reacquire the write lock and recheck its identity,
+                    # index and current bytes before using the one-shot claim.
+                    continue
+                if desired is None:
+                    _check_owned_output(library, {"document": document, "output_sha": previous})
+                    checked(output, exists=True, kind="file").unlink()
+                else:
+                    _write(output, text, expected_sha=previous, require_absent=previous is None)
+            if (sha256(output) if output.exists() else None) != desired:
+                raise ValueError("Pending Markdown output differs after recovery")
+            connection.execute("DELETE FROM pending_output WHERE singleton=1")
+            return
+
+
+@contextlib.contextmanager
+def _document_update(library: Path, connection, name, previous, desired):
+    # One document at a time. SQL failure rolls back both the index and the
+    # intent before touching Markdown. Once committed, recovery is forward-only.
+    with connection:
+        connection.execute("BEGIN IMMEDIATE")
+        _require_complete(connection)
+        row = connection.execute("SELECT * FROM documents WHERE document=?", (name,)).fetchone()
+        if row != previous:
+            raise ValueError("Indexed document changed during build; retry")
+        if previous is None:
+            if _output(library, name).exists():
+                raise ValueError("Refusing to replace an unowned Markdown output")
+        else:
+            _check_owned_output(library, previous)
+        connection.execute("INSERT INTO pending_output "
+                           "(singleton,document,previous_sha,desired_sha,publication_token) VALUES(1,?,?,?,NULL)",
+                           (name, previous["output_sha"] if previous is not None else None, desired))
+        yield
+    _recover_output(library, connection)
 
 
 def _summary(connection) -> dict:
@@ -536,6 +650,7 @@ def build_library(input_path: Path, library_path: Path, *, ocr="none",
     connection = _database(library, create=True)
     reused = removed = 0
     try:
+        _recover_output(library, connection)
         _check_orphan_pages(connection)
         old = {row["document"]: row for row in connection.execute("SELECT * FROM documents")}
         for row in old.values():
@@ -564,28 +679,24 @@ def build_library(input_path: Path, library_path: Path, *, ocr="none",
             text = "# " + Path(name).stem.replace("\n", " ") + "\n\n" + \
                 "\n".join(page["markdown"] for page in pages)
             check_markdown(text)
-            _write(output, text,
-                   expected_sha=previous["output_sha"] if previous is not None else None,
-                   require_absent=previous is None)
-            connection.execute("DELETE FROM pages WHERE document=?", (name,))
-            for page in pages:
-                connection.execute(
-                    "INSERT INTO pages VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                    (name, page["page"], page["markdown"], page["text_total"],
-                     page["text_matched"], page["code_total"], page["code_matched"],
-                     page["ocr_status"], page["ocr_reason"], page["images"],
-                     page["supplement_lines"]),
-                )
-            connection.execute("INSERT OR REPLACE INTO documents VALUES(?,?,?,?,?)",
-                               (name, digest, sha256(output), signature, len(pages)))
-            connection.commit()
+            desired = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            with _document_update(library, connection, name, previous, desired):
+                connection.execute("DELETE FROM pages WHERE document=?", (name,))
+                for page in pages:
+                    connection.execute(
+                        "INSERT INTO pages VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                        (name, page["page"], page["markdown"], page["text_total"],
+                         page["text_matched"], page["code_total"], page["code_matched"],
+                         page["ocr_status"], page["ocr_reason"], page["images"],
+                         page["supplement_lines"]),
+                    )
+                connection.execute("INSERT OR REPLACE INTO documents VALUES(?,?,?,?,?)",
+                                   (name, digest, desired, signature, len(pages)))
         for name in old.keys() - current:
-            _check_owned_output(library, old[name])
-            _output(library, name).unlink()
-            connection.execute("DELETE FROM pages WHERE document=?", (name,))
-            connection.execute("DELETE FROM documents WHERE document=?", (name,))
+            with _document_update(library, connection, name, old[name], None):
+                connection.execute("DELETE FROM pages WHERE document=?", (name,))
+                connection.execute("DELETE FROM documents WHERE document=?", (name,))
             removed += 1
-        connection.commit()
         summary = _summary(connection)
         summary.update(reused=reused, removed=removed)
         _reports(library, connection, summary)
@@ -670,7 +781,6 @@ def verify_library(library: Path) -> dict:
     library = checked(library, exists=True, kind="dir")
     connection = _database(library)
     try:
-        connection.execute("BEGIN")
         for _ in _verified_entries(library, connection):
             pass
         return _summary(connection)
@@ -687,7 +797,6 @@ def export_library(library: Path, destination: Path, *, strict=False) -> dict:
         raise FileExistsError("Export destination already exists; choose a new output")
     connection = _database(library)
     try:
-        connection.execute("BEGIN")
         summary = _summary(connection)
         if strict and not summary["strict_ok"]:
             for _ in _verified_entries(library, connection):
