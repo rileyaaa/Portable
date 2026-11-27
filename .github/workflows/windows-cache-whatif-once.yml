@@ -1,0 +1,304 @@
+name: Windows real cache preview (one-time)
+on:
+  push:
+    branches: [dev/stable-tool-refresh]
+    paths:
+      - .github/workflows/windows-cache-whatif-once.yml
+permissions:
+  contents: read
+env:
+  CW_BASE: 1dc8e7a442e54332b5ffcf93421ec6116de9389a
+  CW_PATH: .github/workflows/windows-cache-whatif-once.yml
+  GIT_LFS_SKIP_SMUDGE: '1'
+jobs:
+  cache-whatif:
+    runs-on: windows-2025
+    timeout-minutes: 9
+    steps:
+      - name: Verify one-time trigger
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $e = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          if ($env:GITHUB_REPOSITORY -cne 'rileyaaa/Portable' -or $env:GITHUB_REF -cne 'refs/heads/dev/stable-tool-refresh' -or
+              $env:GITHUB_EVENT_NAME -cne 'push' -or $env:GITHUB_RUN_ATTEMPT -cne '1' -or $env:RUNNER_OS -cne 'Windows' -or
+              $env:RUNNER_ARCH -cne 'X64' -or -not [Environment]::Is64BitProcess -or $e.before -cne $env:CW_BASE -or
+              $e.after -cne $env:GITHUB_SHA -or $e.ref -cne $env:GITHUB_REF -or $e.head_commit.id -cne $env:GITHUB_SHA -or
+              $e.created -ne $false -or $e.deleted -ne $false -or $e.forced -ne $false) { throw 'CW_TRIGGER_OR_ENV' }
+          Write-Output 'CW_TRIGGER=PASS'
+      - name: Checkout pinned sources without LFS hydration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+          lfs: false
+          submodules: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.gitattributes
+            /清理缓存.bat
+            /清理缓存.ps1
+            /run-codex.ps1
+            /env.ps1
+            /tool/automation/portable-automation.ps1
+            /codex.exe
+      - name: Fixed payload and real noninteractive BAT preview
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = (Get-Command python -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          $cursor = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          while ($cursor) {
+            $i = Get-Item -LiteralPath $cursor -Force
+            if (-not $i.PSIsContainer -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'CW_UNSAFE_PARENT' }
+            $cursor = [IO.Path]::GetDirectoryName($cursor.TrimEnd('\'))
+          }
+          $owned = Join-Path $env:RUNNER_TEMP ('cache-whatif-' + [Guid]::NewGuid().ToString('N'))
+          $null = New-Item -ItemType Directory -Path $owned -ErrorAction Stop
+          $script = Join-Path $owned 'probe.py'
+          $probe = @'
+          import ctypes as C, hashlib, json, os, re, shutil, stat, struct, subprocess, sys
+          from ctypes import wintypes as W
+          from pathlib import Path
+
+          BASE = '1dc8e7a442e54332b5ffcf93421ec6116de9389a'
+          TREE = 'efa66809452cae18a8745601bd7dfd0402f867e9'
+          WORKFLOW = '.github/workflows/windows-cache-whatif-once.yml'
+          BAT = '清理缓存.bat'
+          PINS = {BAT: '6a6023c9b6d2f58c9ec7be507406c7e8dc94a582',
+                  '清理缓存.ps1': 'aa92566c7618e47f429fee2949c34832c0dd87b6',
+                  'run-codex.ps1': '2eaac598eaf07eadf725a58308d8e81672a3e2bb',
+                  'env.ps1': 'fee7920e3e12a56c9f5a7f3693de360c1f49a760',
+                  'tool/automation/portable-automation.ps1': 'ac585e936fb4d8ddbe44ba12fa047069032297c3'}
+          OID = '3f42b12274b353ecb3ec555e6c8d0a43f6c6cb29c3a546179bc12dee4855deb6'
+          SIZE = 416707888
+          POINTER = '8a502114b89f0053a19ed1f561b7263306bec0f8'
+          LOCKS = ('.codex-portable.instance.lock', '.codex-browser.instance.lock')
+          DIRS = set('home home/skills home/plugins home/.agents home/.agents/plugins home-runtime home-runtime/.android sqlite login_json appdata localappdata programdata tmp tmp/android cache cache/android cache/android/apktool-framework cache/android/frida cache/android/mitmproxy cache/android/appium cache/android/apk-lab logs work work/apk-jobs tool tool/android'.split())
+          PSCACHE = 'localappdata/Microsoft/Windows/PowerShell/ModuleAnalysisCache'
+          K = C.WinDLL('kernel32', use_last_error=True)
+
+          def need(ok, label):
+              if not ok: raise RuntimeError(label)
+          def api(name, result, *args):
+              f = getattr(K, name); f.restype, f.argtypes = result, args; return f
+          def ordinary(p, directory):
+              s = p.lstat()
+              need(not getattr(s, 'st_file_attributes', 0) & 0x400 and not stat.S_ISLNK(s.st_mode)
+                   and (stat.S_ISDIR(s.st_mode) if directory else stat.S_ISREG(s.st_mode) and s.st_nlink == 1), 'CW_UNSAFE_ENTRY')
+              return s
+          def plain(p):
+              p = Path(p).absolute()
+              need(re.fullmatch(r'[A-Za-z]:', p.drive) and '..' not in p.parts and ':' not in str(p)[2:], 'CW_LOCAL_PATH')
+              for q in (*reversed(p.parents), p): ordinary(q, True)
+              return p
+          def digest(p):
+              ordinary(p, False)
+              with p.open('rb') as f: return hashlib.file_digest(f, 'sha256').hexdigest()
+          def snap(root):
+              out, pending = {}, [plain(root)]
+              while pending:
+                  for p in pending.pop().iterdir():
+                      isdir = stat.S_ISDIR(p.lstat().st_mode)
+                      ordinary(p, isdir)
+                      out[p.relative_to(root).as_posix()] = None if isdir else digest(p)
+                      if isdir: pending.append(p)
+              return out
+          def put(p, raw):
+              p.parent.mkdir(parents=True, exist_ok=True)
+              with p.open('xb') as f: f.write(raw)
+          def system():
+              buf = C.create_unicode_buffer(32768)
+              n = api('GetSystemWindowsDirectoryW', W.UINT, W.LPWSTR, W.UINT)(buf, len(buf))
+              need(0 < n < len(buf), 'CW_SYSTEM_DIRECTORY')
+              win = Path(buf.value)
+              return win, win/'System32/cmd.exe', win/'System32/WindowsPowerShell/v1.0/powershell.exe'
+          def env(win, cmd, ps, root):
+              e = {'SystemRoot': str(win), 'WINDIR': str(win), 'SystemDrive': win.drive, 'COMSPEC': str(cmd),
+                   'PATH': str(cmd.parent), 'PATHEXT': '.COM;.EXE;.BAT;.CMD', 'PSModulePath': str(ps.parent/'Modules'),
+                   'POWERSHELL_TELEMETRY_OPTOUT': '1'}
+              for d, keys in {'home': ('HOME','USERPROFILE'), 'temp': ('TEMP','TMP','TMPDIR'), 'appdata': ('APPDATA','XDG_CONFIG_HOME'),
+                              'localappdata': ('LOCALAPPDATA','XDG_DATA_HOME'), 'programdata': ('PROGRAMDATA','ALLUSERSPROFILE','PUBLIC'),
+                              'cache': ('XDG_CACHE_HOME','PIP_CACHE_DIR','NPM_CONFIG_CACHE')}.items():
+                  for k in keys: e[k] = str(root/d)
+              e.update(HOMEDRIVE=root.drive, HOMEPATH=str(root/'home')[len(root.drive):], PSModuleAnalysisCachePath=str(root/'localappdata/module-cache'))
+              return e
+
+          class Basic(C.Structure):
+              _fields_ = [('t1', C.c_longlong), ('t2', C.c_longlong), ('flags', W.DWORD), ('min', C.c_size_t), ('max', C.c_size_t),
+                          ('active', W.DWORD), ('affinity', C.c_size_t), ('priority', W.DWORD), ('schedule', W.DWORD)]
+          class Limits(C.Structure):
+              _fields_ = [('basic', Basic), ('io', C.c_ulonglong * 6), ('mem', C.c_size_t * 4)]
+          class Accounting(C.Structure):
+              _fields_ = [('times', C.c_longlong * 4), ('faults', W.DWORD), ('total', W.DWORD), ('active', W.DWORD), ('terminated', W.DWORD)]
+          def private_job_console():
+              ids = (W.DWORD * 4)()
+              need(api('GetConsoleProcessList', W.DWORD, C.POINTER(W.DWORD), W.DWORD)(ids, len(ids)) == 1 and ids[0] == os.getpid(), 'CW_PRIVATE_CONSOLE')
+              need(api('SetConsoleOutputCP', W.BOOL, W.UINT)(65001) and api('GetConsoleOutputCP', W.UINT)() == 65001, 'CW_UTF8_CONSOLE')
+              j = api('CreateJobObjectW', W.HANDLE, C.c_void_p, W.LPCWSTR)(None, None)
+              need(j, 'CW_JOB_CREATE'); lim = Limits(); lim.basic.flags = 0x2000
+              need(api('SetInformationJobObject', W.BOOL, W.HANDLE, C.c_int, C.c_void_p, W.DWORD)(j, 9, C.byref(lim), C.sizeof(lim)), 'CW_JOB_LIMIT')
+              need(api('AssignProcessToJobObject', W.BOOL, W.HANDLE, W.HANDLE)(j, api('GetCurrentProcess', W.HANDLE)()), 'CW_JOB_ASSIGN')
+              return j
+          def idle(j):
+              i = Accounting()
+              need(api('QueryInformationJobObject', W.BOOL, W.HANDLE, C.c_int, C.c_void_p, W.DWORD, C.c_void_p)(j, 1, C.byref(i), C.sizeof(i), None) and i.active == 1, 'CW_DESCENDANTS_ACTIVE')
+          def exclusive(p):
+              h = api('CreateFileW', W.HANDLE, W.LPCWSTR, W.DWORD, W.DWORD, C.c_void_p, W.DWORD, W.DWORD, W.HANDLE)(str(p), 0xc0000000, 0, None, 3, 0, None)
+              need(h not in (None, 0, C.c_void_p(-1).value), 'CW_LOCK_HARNESS')
+              return h
+          def close(h):
+              need(api('CloseHandle', W.BOOL, W.HANDLE)(h), 'CW_LOCK_RELEASE')
+
+          def worker(scope, repo, head, gitexe):
+              j = private_job_console()
+              win, cmd, ps = system()
+              need(cmd.is_file() and ps.is_file(), 'CW_SYSTEM_SHELLS')
+              harness, outside = scope/'harness', scope/'outside'
+              ge = env(win, cmd, ps, harness)
+              ge.update(PATH=str(Path(gitexe).parent)+';'+str(cmd.parent), GIT_NO_LAZY_FETCH='1', GIT_ALLOW_PROTOCOL='',
+                        GIT_LFS_SKIP_SMUDGE='1', GIT_TERMINAL_PROMPT='0', GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull,
+                        GIT_OPTIONAL_LOCKS='0', GIT_NO_REPLACE_OBJECTS='1')
+              def git(*args, timeout=25, ok=(0,), hydrate=False):
+                  try:
+                      r = subprocess.run([gitexe, *args], cwd=repo, env=dict(ge, GIT_ALLOW_PROTOCOL='https') if hydrate else ge, stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout)
+                  except subprocess.TimeoutExpired:
+                      raise RuntimeError('CW_LFS_FETCH_TIMEOUT' if hydrate else 'CW_GIT_TIMEOUT') from None
+                  idle(j)
+                  need(r.returncode in ok, 'CW_LFS_FETCH_FAILED' if hydrate else 'CW_GIT_FAILED')
+                  return r.stdout, r.returncode
+              def g(*args): return git(*args)[0]
+              need(g('rev-list','--parents','-n','1','HEAD').decode().split() == [head,BASE] and g('rev-parse',BASE+'^{tree}').decode().strip() == TREE, 'CW_PARENT_TREE')
+              need(g('diff-tree','--no-commit-id','--name-status','--no-renames','-r',BASE,head).decode().splitlines() == ['A\t'+WORKFLOW], 'CW_SINGLE_DELTA')
+              need(g('remote','get-url','origin').decode().strip() in ('https://github.com/rileyaaa/Portable','https://github.com/rileyaaa/Portable.git'), 'CW_LFS_ORIGIN')
+              need(not g('ls-tree',BASE,'--','.lfsconfig') and not (repo/'.lfsconfig').exists(), 'CW_LFSCONFIG')
+              need(g('rev-parse',BASE+':.gitattributes').decode().strip() == 'f6e24317bd3cbf5157715b7d304ecbef3361a0a9', 'CW_ATTRIBUTES')
+              _, rc = git('config','--local','--name-only','--get-regexp',r'^(url\.|credential\.|http\.|lfs\.|remote\..*\.lfsurl)',ok=(0,1))
+              need(rc == 1, 'CW_UNEXPECTED_GIT_CONFIG')
+              a, b = scope/'Portable initial', scope/'Portable 中文 空格'
+              a.mkdir(); identities = {}
+              for name, blob in PINS.items():
+                  need(g('rev-parse',BASE+':'+name).decode().strip() == blob, 'CW_SOURCE_TREE')
+                  raw = g('cat-file','blob',blob)
+                  need(hashlib.sha1(f'blob {len(raw)}\0'.encode()+raw).hexdigest() == blob, 'CW_SOURCE_BLOB')
+                  put(a/name,raw); identities[name] = hashlib.sha256(raw).hexdigest()
+              need(g('rev-parse',BASE+':codex.exe').decode().strip() == POINTER, 'CW_LFS_POINTER')
+              paths = g('ls-tree','-r','-z','--name-only',head).decode('utf-8').split('\0')
+              need([x for x in paths if x.rsplit('/',1)[-1].lower()=='codex.exe']==['codex.exe'], 'CW_LFS_INCLUDE_SCOPE')
+              need(g('check-attr','filter','--','codex.exe').decode().strip()=='codex.exe: filter: lfs', 'CW_LFS_ATTRIBUTE')
+              pointer = f'version https://git-lfs.github.com/spec/v1\noid sha256:{OID}\nsize {SIZE}\n'.encode()
+              need(g('cat-file','blob',POINTER) == pointer and hashlib.sha1(b'blob 134\0'+pointer).hexdigest() == POINTER, 'CW_LFS_POINTER_BYTES')
+              def verified(p):
+                  if not os.path.lexists(p): return False
+                  plain(p.parent); s = ordinary(p, False)
+                  return s.st_size == SIZE and digest(p) == OID
+              storage = scope/'lfs'; storage.mkdir()
+              rel = Path('objects')/OID[:2]/OID[2:4]/OID
+              existing = (repo/'codex.exe', repo/'.git/lfs'/rel)
+              source = next((p for p in existing if verified(p)), None)
+              if source is None:
+                  print('CW_PAYLOAD_SOURCE=OFFICIAL_REPO_LFS', flush=True)
+                  git('lfs','version')
+                  git('-c','credential.helper=','-c','credential.interactive=false','-c','lfs.fetchrecentalways=false',
+                      '-c','lfs.basictransfersonly=true','-c','lfs.url=https://github.com/rileyaaa/Portable.git/info/lfs',
+                      '-c','lfs.storage='+str(storage),'lfs','fetch','--include=codex.exe','--exclude=','origin',head,timeout=180,hydrate=True)
+                  source = storage/rel
+                  need(verified(source), 'CW_LFS_PAYLOAD_MISSING_OR_MISMATCH')
+                  need({k for k,v in snap(storage/'objects').items() if v is not None} == {rel.relative_to('objects').as_posix()}, 'CW_LFS_EXTRA_OBJECT')
+                  source.rename(a/'codex.exe')
+              else:
+                  print('CW_PAYLOAD_SOURCE=EXISTING_VERIFIED', flush=True)
+                  shutil.copyfile(source,a/'codex.exe')
+              need(verified(a/'codex.exe'), 'CW_PAYLOAD_IDENTITY')
+              with (a/'codex.exe').open('rb') as f:
+                  need(f.read(2) == b'MZ', 'CW_PAYLOAD_PE'); f.seek(60); off = struct.unpack('<I', f.read(4))[0]
+                  need(64 <= off < SIZE-6, 'CW_PAYLOAD_PE'); f.seek(off); need(f.read(6) == b'PE\0\0\x64\x86', 'CW_PAYLOAD_X64')
+              print('CW_SOURCE='+json.dumps(identities,ensure_ascii=True),flush=True)
+              print(f'CW_PAYLOAD=PASS;bytes={SIZE};sha256={OID}',flush=True)
+              check = subprocess.run([str(ps),'-NoLogo','-NoProfile','-NonInteractive','-Command',"if (-not [Environment]::Is64BitProcess -or $PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { exit 2 }; [Console]::WriteLine($PSVersionTable.PSVersion.ToString())"],cwd=harness,env=env(win,cmd,ps,harness),stdin=subprocess.DEVNULL,capture_output=True,timeout=15)
+              idle(j); version = check.stdout.decode('ascii').strip()
+              need(check.returncode == 0 and not check.stderr and re.fullmatch(r'5\.1\.\d+\.\d+',version), 'CW_PS51_REQUIRED')
+              print('CW_PS51='+version,flush=True)
+              # Synthetic data only; Android skeleton directories are created by the original cleaner, not Android tools.
+              for p in ('cache/browser/profile/synthetic-cookie','logs/synthetic.log','work/keep.txt','home/skills/keep.txt','home/plugins/keep.txt','home/.agents/plugins/marketplace.json'):
+                  put(a/p,b'{}' if p.endswith('.json') else ('owned:'+p).encode())
+              for name in LOCKS: put(a/name,b'')
+              initial = snap(a); a.rename(b)
+              need(not a.exists() and snap(b)==initial,'CW_RELOCATION')
+              print('CW_RELOCATION=PASS',flush=True)
+              outside_before = snap(outside)
+              childenv = env(win,cmd,ps,outside)
+              bat = b/BAT
+              need(not any(c in str(bat) for c in '%!&^<>|"\r\n'), 'CW_CMD_PATH')
+              command = f'"{cmd}" /d /s /c ""{bat}" -WhatIf"'
+              allowed_dirs = DIRS | {'localappdata/Microsoft','localappdata/Microsoft/Windows','localappdata/Microsoft/Windows/PowerShell'}
+              cases = [('package_busy',0),('package_released',None),('browser_busy',1),('browser_released',None)]
+              for label, index in cases:
+                  before = snap(b)
+                  h = exclusive(b/LOCKS[index]) if index is not None else None
+                  try:
+                      print('CW_BAT_START='+label,flush=True)
+                      r = subprocess.run(command,executable=str(cmd),cwd=outside/'cwd',env=childenv,stdin=subprocess.DEVNULL,capture_output=True,timeout=40)
+                      idle(j)
+                  finally:
+                      if h is not None: close(h)
+                  need(not r.stderr and len(r.stdout)<=65536,'CW_NATIVE_STDERR_OR_BOUND')
+                  text = r.stdout.decode('utf-8','strict'); lines = text.splitlines()
+                  if index is not None:
+                      msg = ('[安全终止] Codex 便携包正在运行，或无法安全创建包级锁文件；未清理任何文件。' if index==0 else '[安全终止] 浏览器正在运行，或浏览器状态锁/清理助手不安全；未清理任何文件。')
+                      need(r.returncode==2 and lines==[msg],'CW_BUSY_CONTRACT')
+                  else:
+                      required = ['包目录：'+str(b),'  Skills  ：保留','  work    ：保留','  Plugins ：保留','将清理以下内容：','[预览模式] 未删除任何文件。']
+                      need(r.returncode==0 and all(lines.count(x)==1 for x in required) and lines[-1]==required[-1] and [lines.index(x) for x in required]==sorted(lines.index(x) for x in required),'CW_PREVIEW_REPORT')
+                      need(all(any(re.match(r'^  '+d+r'\s+[1-9]\d* 项\s+',x) for x in lines) for d in ('logs','cache')), 'CW_NONEMPTY_PLAN')
+                  after = snap(b)
+                  need(all(k in after and after[k]==v for k,v in before.items() if k!=PSCACHE), 'CW_EXISTING_DATA_CHANGED')
+                  need(snap(outside)==outside_before and not a.exists(), 'CW_OUTSIDE_OR_OLD_ROOT_CHANGED')
+                  need(PSCACHE not in after or after[PSCACHE] is not None,'CW_PS_CACHE_TYPE')
+                  if index is None: need(all(d in after and after[d] is None for d in DIRS),'CW_RUNTIME_DIRS')
+                  added = sorted(after.keys()-before.keys())
+                  need(all((after[k] is None and k in allowed_dirs) or (k=='home/plugins/.keep' and after[k]==hashlib.sha256(b'').hexdigest()) or k==PSCACHE for k in added),'CW_UNEXPECTED_INITIALIZATION')
+                  for name in LOCKS: close(exclusive(b/name))
+                  record = {'case':label,'rc':r.returncode,'stdout_bytes':len(r.stdout),'stderr_bytes':len(r.stderr),'stdout_sha256':hashlib.sha256(r.stdout).hexdigest(),'stdout_hex':r.stdout.hex(),'report':lines,'added':added,'ps_cache_changed':before.get(PSCACHE)!=after.get(PSCACHE)}
+                  print('CW_CASE='+json.dumps(record,ensure_ascii=True),flush=True)
+              need(verified(b/'codex.exe') and all(digest(b/name)==v for name,v in identities.items()),'CW_FINAL_SOURCE')
+              idle(j)
+              print('CW_REAL_BAT_GATE=PASS',flush=True)
+              # Keep job handle until worker exit.
+              _ = j
+
+          def main(scope, repo, head, gitexe):
+              scope, repo = plain(scope), plain(repo)
+              need(scope.parent==plain(os.environ['RUNNER_TEMP']) and scope.name.startswith('cache-whatif-') and set(scope.iterdir())=={Path(__file__).absolute()},'CW_OWNED_SCOPE')
+              for sub in ('harness','outside'):
+                  for d in ('cwd','home','temp','appdata','localappdata','programdata','cache'):
+                      put(scope/sub/d/'sentinel',b'owned synthetic sentinel')
+              win,cmd,ps=system(); startup=subprocess.STARTUPINFO(); startup.dwFlags|=subprocess.STARTF_USESHOWWINDOW; startup.wShowWindow=0
+              try:
+                  r=subprocess.run([sys.executable,'-I','-S','-B',str(Path(__file__).absolute()),'--worker',str(scope),str(repo),head,gitexe],cwd=scope,env=env(win,cmd,ps,scope/'harness'),stdin=subprocess.DEVNULL,capture_output=True,startupinfo=startup,creationflags=subprocess.CREATE_NEW_CONSOLE,timeout=460)
+              except subprocess.TimeoutExpired:
+                  print('CW_BAT_STATUS=INCONCLUSIVE',flush=True)
+                  raise RuntimeError('CW_WORKER_TIMEOUT') from None
+              # Worker records are ASCII; do not re-emit arbitrary stderr or double CRLF.
+              lines=r.stdout.decode('ascii').splitlines()
+              for line in lines:
+                  if line.startswith('CW_'): print(line,flush=True)
+              if r.returncode or r.stderr:
+                  labels=re.findall(rb'(?m)^RuntimeError: (CW_[A-Z0-9_]+)\r?$',r.stderr)
+                  print('CW_BAT_STATUS='+('FAILED_OR_INCONCLUSIVE' if any(x.startswith('CW_BAT_START=') for x in lines) else 'NOT_RUN'),flush=True)
+                  raise RuntimeError(labels[-1].decode() if labels else 'CW_WORKER_FAILED_OR_TIMEOUT')
+              need([json.loads(x[8:])['case'] for x in lines if x.startswith('CW_CASE=')]==['package_busy','package_released','browser_busy','browser_released'] and lines[-1]=='CW_REAL_BAT_GATE=PASS','CW_OUTPUT_GATE')
+              snap(scope); shutil.rmtree(scope); need(not scope.exists(),'CW_OWNED_CLEANUP')
+              print('CW_OWNED_CLEANUP=PASS',flush=True); print('CW_OUTPUT_GATE=PASS',flush=True)
+
+          if __name__=='__main__':
+              need(os.name=='nt' and struct.calcsize('P')==8 and sys.flags.isolated and sys.dont_write_bytecode and hasattr(hashlib,'file_digest'),'CW_WINDOWS_PYTHON_REQUIRED')
+              if len(sys.argv)==6 and sys.argv[1]=='--worker': worker(Path(sys.argv[2]),Path(sys.argv[3]),sys.argv[4],sys.argv[5])
+              else:
+                  need(len(sys.argv)==5,'CW_ARGS'); main(Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3],sys.argv[4])
+          '@
+          [IO.File]::WriteAllText($script, $probe, [Text.UTF8Encoding]::new($false))
+          $git = (Get-Command git.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+          & $python -I -S -B $script $owned $env:GITHUB_WORKSPACE $env:GITHUB_SHA $git
+          if ($LASTEXITCODE -ne 0) { throw 'CW_FAILED_OR_INCONCLUSIVE; owned scope retained when possible' }
